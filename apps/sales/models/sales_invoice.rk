@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/model.json
+name: sales_invoice
+label: {id: Faktur penjualan}
+icon: invoice
+is_submittable: true
+naming: INV-{YYYY}-{#####}
+title_field: customer
+fields:
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    required: true
+    in_list: true
+    peek: [outstanding, payment_days, npwp]
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    required: true
+  - name: posting_date
+    type: date
+    label: {id: Tanggal faktur}
+    default: today()
+    required: true
+    in_list: true
+  - name: due_date
+    type: date
+    label: {id: Jatuh tempo}
+    default: posting_date + duration(customer.payment_days)
+    relative_to: posting_date
+  - name: items
+    type: table
+    of: sales_invoice_item
+    label: {id: Barang}
+    min_rows: 1
+  - name: subtotal
+    type: currency
+    label: {id: Subtotal}
+    compute: items.map(i, i.amount).sum()
+  - name: tax_rate
+    type: percent
+    label: {id: Tarif PPN}
+    default: '12'
+  - name: ppn
+    type: currency
+    label: {id: PPN 12% × DPP 11/12}
+    compute: round(subtotal * 11 / 12 * tax_rate / 100)
+  - name: grand_total
+    type: currency
+    label: {id: Total}
+    compute: subtotal + ppn
+    in_list: true
+  - name: paid_amount
+    type: currency
+    label: {id: Sudah dibayar}
+    read_only: true
+  - name: notes
+    type: text
+    label: {id: Catatan untuk pelanggan}
+rules:
+  - name: due_after_posting
+    on: save
+    check: due_date >= posting_date
+    message: {id: Jatuh tempo tidak boleh sebelum tanggal faktur}
+  - name: credit_limit
+    on: submit
+    level: warn
+    check: customer.outstanding + grand_total <= customer.credit_limit
+    message: {id: Melebihi batas kredit pelanggan}
+views:
+  list:
+    columns: [name, customer, posting_date, status, grand_total]
+    sort: -posting_date
+  form:
+    layout:
+      - section: {id: Pelanggan}
+        columns:
+          - [customer, outlet]
+          - [posting_date, due_date]
+      - section: {id: Barang}
+        fields: [items]
+      - section: {id: Catatan}
+        fields: [notes]

@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/features.json
+plans:
+  - name: mulai
+    label: {id: Mulai, en: Starter}
+    apps: [core, crm]
+    capabilities: [realtime, queue, scheduler, files, search, notify_email, api]
+    limits: {users: 3, outlets: 1, storage_mb: 1024, ai_credits_month: 200}
+  - name: tumbuh
+    label: {id: Tumbuh, en: Growth}
+    extends: mulai
+    apps: [core, crm, sales]
+    capabilities: [realtime, queue, scheduler, files, search, notify_email, notify_whatsapp, api, mcp, ai, sso]
+    limits: {users: 15, outlets: 5, storage_mb: 10240, ai_credits_month: 2000}

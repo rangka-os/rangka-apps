@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/template.json
+name: crm
+label: {id: Rangka CRM, en: Rangka CRM}
+version: 0.1.0
+summary:
+  id: Kelola lead dari WhatsApp sampai closing, dengan pipeline yang bisa langsung jadi faktur.
+apps: {core: ^1.0, crm: ^0.1}
+recommends: {sales: ^1.2}
+connectors:
+  - name: whatsapp_business
+    flow: crm/flows/whatsapp_to_lead.rk
+    required: false
+fixtures: []
+roles: [sales_rep, sales_manager]
+home: {model: deal, view: kanban}
+onboarding:
+  - ask: {id: 'Berapa orang tim sales kamu?'}
+    sets: seed.users
+  - ask: {id: 'Dari mana pelanggan biasanya datang?'}
+    options:
+      - whatsapp
+      - instagram
+      - referral
+      - walk_in
+      - website
+      - marketplace
+    sets: lead.source.options
+  - ask:
+      id: Tahap jualan kamu sama dengan Prospek → Kualifikasi → Penawaran → Negosiasi → Menang/Kalah?
+    sets: deal.stage.options
+  - ask:
+      id: Sambungkan WhatsApp Business supaya chat masuk otomatis jadi lead?
+    sets: connectors.whatsapp_business

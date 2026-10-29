@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/dashboard.json
+name: crm_overview
+label: {id: Ringkasan CRM, en: CRM overview}
+default_period: 30
+cache: 5m
+widgets:
+  - name: pipeline
+    type: number
+    label: {id: Nilai pipeline}
+    model: deal
+    aggregate: sum
+    field: value
+    filter: stage != 'won' && stage != 'lost'
+    compact: true
+    span: 3
+  - name: weighted
+    type: number
+    label: {id: Pipeline tertimbang}
+    description: {id: Nilai × peluang menang}
+    model: deal
+    aggregate: sum
+    field: weighted_value
+    filter: stage != 'won' && stage != 'lost'
+    compact: true
+    span: 3
+  - name: won
+    type: number
+    label: {id: Nilai menang}
+    model: deal
+    aggregate: sum
+    field: value
+    filter: stage == 'won'
+    period: expected_close
+    compact: true
+    span: 3
+  - name: new_leads
+    type: number
+    label: {id: Lead belum dihubungi}
+    model: lead
+    filter: status == 'new'
+    good_when: down
+    span: 3
+  - name: by_stage
+    type: chart
+    chart: funnel
+    label: {id: Pipeline per tahap}
+    model: deal
+    group_by: stage
+    aggregate: sum
+    field: value
+    filter: stage != 'lost'
+    span: 6
+  - name: lead_sources
+    type: chart
+    chart: donut
+    label: {id: Sumber lead}
+    model: lead
+    group_by: source
+    span: 6
+  - name: by_owner
+    type: chart
+    chart: bar
+    label: {id: Pipeline per penanggung jawab}
+    model: deal
+    group_by: owner
+    aggregate: sum
+    field: value
+    filter: stage != 'won' && stage != 'lost'
+    sort: -value
+    span: 6
+  - name: activities_due
+    type: list
+    label: {id: Aktivitas belum selesai}
+    model: activity
+    filter: '!done'
+    sort: due_date
+    limit: 5
+    columns: [subject, activity_type, due_date, owner]
+    span: 6
+  - name: closing_soon
+    type: list
+    label: {id: Closing terdekat}
+    model: deal
+    filter: stage != 'won' && stage != 'lost'
+    sort: expected_close
+    limit: 5
+    columns: [deal_name, customer, stage, expected_close, value]
+    span: 12

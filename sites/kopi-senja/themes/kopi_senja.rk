@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/theme.json
+name: kopi_senja
+label: {id: Kopi Senja}
+extends: rangka/standard
+mode: system
+color:
+  brand: '#9a5b2e'
+  chart-1: '#0c66e4'
+radius: standard
+density: standard

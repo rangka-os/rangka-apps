@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/app.json
+name: sales
+version: 1.2.0
+title: {id: Penjualan, en: Sales}
+requires: {rangka: '>=0.4', core: ^1.0}
+dashboards: [sales_overview]
+menu:
+  - group: {id: Penjualan}
+    items: [sales_invoice]

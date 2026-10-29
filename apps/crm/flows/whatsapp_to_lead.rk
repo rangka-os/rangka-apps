@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/flow.json
+name: whatsapp_to_lead
+label: {id: Chat WhatsApp baru jadi lead}
+on: whatsapp_business.message_received
+steps:
+  - {find: lead, where: phone == event.from, as: lead}
+  - {find: customer, where: phone == event.from, as: customer}
+  - if: lead == null && customer == null
+    create: lead
+    set:
+      lead_name: event.profile_name
+      phone: event.from
+      source: "'whatsapp'"
+      status: "'new'"
+    as: lead
+  - create: activity
+    set:
+      activity_type: "'whatsapp'"
+      subject: truncate(event.text, 80)
+      lead: lead.name
+      due_date: today()
+      done: 'true'
+      notes: event.text
+idempotency: event.message_id

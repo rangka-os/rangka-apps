@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/model.json
+name: user
+label: {id: Pengguna}
+icon: user
+title_field: full_name
+naming: USR-{###}
+fields:
+  - name: full_name
+    type: data
+    label: {id: Nama}
+    required: true
+    in_list: true
+  - name: role
+    type: data
+    label: {id: Peran}
+    in_list: true

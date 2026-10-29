@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/dashboard.json
+name: sales_overview
+label: {id: Ringkasan penjualan, en: Sales overview}
+default_period: 90
+widgets:
+  - name: revenue
+    type: number
+    label: {id: Penjualan}
+    model: sales_invoice
+    aggregate: sum
+    field: grand_total
+    filter: docstatus == 1
+    period: posting_date
+    compact: true
+    span: 4
+  - name: receivable
+    type: number
+    label: {id: Piutang belum lunas}
+    model: sales_invoice
+    aggregate: sum
+    field: grand_total
+    filter: docstatus == 1 && paid_amount < grand_total
+    good_when: down
+    compact: true
+    span: 4
+  - name: drafts
+    type: number
+    label: {id: Faktur draf}
+    description: {id: Perlu diajukan}
+    model: sales_invoice
+    filter: docstatus == 0
+    good_when: down
+    span: 4
+  - name: revenue_by_week
+    type: chart
+    chart: line
+    label: {id: Penjualan per minggu}
+    model: sales_invoice
+    group_by: posting_date
+    grain: week
+    aggregate: sum
+    field: grand_total
+    filter: docstatus == 1
+    period: posting_date
+    span: 7
+  - name: top_customers
+    type: chart
+    chart: bar
+    label: {id: Pelanggan teratas}
+    model: sales_invoice
+    group_by: customer
+    aggregate: sum
+    field: grand_total
+    filter: docstatus == 1
+    sort: -value
+    limit: 5
+    span: 5
+  - name: unpaid
+    type: list
+    label: {id: Faktur belum lunas}
+    model: sales_invoice
+    filter: docstatus == 1 && paid_amount < grand_total
+    sort: due_date
+    limit: 5
+    columns: [name, customer, due_date, status, grand_total]
+    span: 12
