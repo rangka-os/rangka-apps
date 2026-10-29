@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/app.json
+name: crm
+version: 0.1.0
+title: {id: CRM, en: CRM}
+requires: {rangka: '>=0.4', core: ^1.0}
+optional: {sales: ^1.2}
+dashboards: [crm_overview]
+menu:
+  - group: {id: CRM}
+    items: [deal, lead, activity]
+hooks: [crm.convert_lead, crm.mark_won]

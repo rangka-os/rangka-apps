@@ -1,0 +1,5 @@
+.DS_Store
+*.log
+.pgtemp*/
+.pgtemp*
+__pycache__/

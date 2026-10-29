@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/model.json
+name: customer
+label: {id: Pelanggan}
+icon: user
+naming: CUST-{####}
+title_field: customer_name
+fields:
+  - name: customer_name
+    type: data
+    label: {id: Nama pelanggan}
+    required: true
+    in_list: true
+  - name: city
+    type: data
+    label: {id: Kota}
+    in_list: true
+  - name: phone
+    type: phone
+    label: {id: Nomor WhatsApp}
+  - name: payment_days
+    type: int
+    label: {id: Tempo (hari)}
+    default: '14'
+    in_list: true
+  - name: credit_limit
+    type: currency
+    label: {id: Batas kredit}
+    default: '25000000'
+  - name: outstanding
+    type: currency
+    label: {id: Piutang}
+    read_only: true
+    in_list: true
+  - name: npwp
+    type: npwp
+    label: {id: NPWP}
+rules:
+  - name: npwp_16
+    on: save
+    check: npwp == '' || size(npwp) == 16
+    message: {id: NPWP harus 16 angka}
+views:
+  form:
+    layout:
+      - section: {id: Identitas}
+        columns:
+          - [customer_name, city]
+          - [npwp]
+      - section: {id: Pembayaran}
+        columns:
+          - [payment_days]
+          - [credit_limit, outstanding]

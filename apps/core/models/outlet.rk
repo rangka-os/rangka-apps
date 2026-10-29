@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/model.json
+name: outlet
+naming: OUT-{##}
+label: {id: Outlet}
+icon: store
+title_field: outlet_name
+fields:
+  - name: outlet_name
+    type: data
+    label: {id: Nama outlet}
+    in_list: true

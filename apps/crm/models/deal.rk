@@ -1,0 +1,143 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/model.json
+name: deal
+label: {id: Peluang, en: Deal}
+icon: card
+naming: DEAL-{#####}
+title_field: deal_name
+realtime: true
+fields:
+  - name: deal_name
+    type: data
+    label: {id: Judul peluang}
+    required: true
+    in_list: true
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    required: true
+    in_list: true
+    peek: [outstanding, payment_days]
+  - name: contact_person
+    type: data
+    label: {id: Kontak}
+  - name: stage
+    type: select
+    label: {id: Tahap}
+    default: "'prospect'"
+    in_list: true
+    chip: true
+    options:
+      - value: prospect
+        label: {id: Prospek}
+        probability: 10
+      - value: qualified
+        label: {id: Kualifikasi}
+        probability: 25
+      - value: proposal
+        label: {id: Penawaran}
+        probability: 50
+      - value: negotiation
+        label: {id: Negosiasi}
+        probability: 75
+      - value: won
+        label: {id: Menang}
+        probability: 100
+        tone: ok
+        closed: true
+      - value: lost
+        label: {id: Kalah}
+        probability: 0
+        tone: bad
+        closed: true
+  - name: value
+    type: currency
+    label: {id: Nilai}
+    in_list: true
+  - name: probability
+    type: percent
+    label: {id: Peluang menang}
+    compute: option('stage', 'probability')
+  - name: weighted_value
+    type: currency
+    label: {id: Nilai tertimbang}
+    compute: round(value * probability / 100)
+  - name: expected_close
+    type: date
+    label: {id: Perkiraan closing}
+    in_list: true
+  - name: owner
+    type: link
+    to: user
+    label: {id: Penanggung jawab}
+    in_list: true
+  - name: source
+    type: data
+    label: {id: Sumber}
+  - name: lost_reason
+    type: data
+    label: {id: Alasan kalah}
+    depends_on: stage == 'lost'
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: lost_needs_reason
+    on: save
+    check: stage != 'lost' || lost_reason != ''
+    message: {id: Tulis alasan kalah supaya tim bisa belajar}
+  - name: open_needs_close_date
+    on: save
+    level: warn
+    check: stage == 'won' || stage == 'lost' || expected_close != ''
+    message: {id: Peluang terbuka sebaiknya punya perkiraan closing}
+automations:
+  - name: won_to_invoice
+    when: stage changes to 'won'
+    if: app_installed('sales')
+    do: crm.mark_won
+permissions:
+  - role: sales_rep
+    read: true
+    create: true
+    write: true
+    if: owner == user.name
+  - role: sales_manager
+    read: true
+    create: true
+    write: true
+    delete: true
+    export: true
+views:
+  list:
+    columns:
+      - name
+      - deal_name
+      - customer
+      - stage
+      - value
+      - expected_close
+      - owner
+    sort: expected_close
+  kanban:
+    group_by: stage
+    title: deal_name
+    card: [customer, value, expected_close, owner]
+    sum: value
+  default: kanban
+  form:
+    layout:
+      - section: {id: Peluang}
+        columns:
+          - [deal_name, customer, contact_person]
+          - [stage, value, expected_close]
+      - section: {id: Perkiraan}
+        columns:
+          - [probability]
+          - [weighted_value]
+      - section: {id: Tindak lanjut}
+        columns:
+          - [owner, source]
+          - [lost_reason]
+      - section: {id: Catatan}
+        fields: [notes]

@@ -1,0 +1,168 @@
+user:
+  - {name: USR-001, full_name: Dede Kurniawan, role: Pemilik}
+  - {name: USR-002, full_name: Rina Wulandari, role: Sales}
+  - {name: USR-003, full_name: Budi Santoso, role: Sales}
+lead:
+  - name: LEAD-00031
+    lead_name: Andi Pratama
+    company_name: Kedai Kopi Andi
+    phone: '+6281234567890'
+    email: ""
+    city: Bandung
+    source: whatsapp
+    status: new
+    owner: USR-002
+    notes: Tanya harga grosir biji kopi 20 kg per bulan.
+    converted_customer: ""
+    converted_deal: ""
+  - name: LEAD-00030
+    lead_name: Sinta Maharani
+    company_name: Toko Roti Sinta
+    phone: '+6285711122233'
+    email: sinta@contoh.id
+    city: Bogor
+    source: instagram
+    status: contacted
+    owner: USR-003
+    notes: ""
+    converted_customer: ""
+    converted_deal: ""
+  - name: LEAD-00029
+    lead_name: Pak Hendra
+    company_name: Kantin PT Sejahtera
+    phone: '+6287788899900'
+    email: ""
+    city: Cikarang
+    source: referral
+    status: qualified
+    owner: USR-002
+    notes: Butuh pasokan kopi untuk 300 karyawan.
+    converted_customer: ""
+    converted_deal: ""
+  - name: LEAD-00027
+    lead_name: Lia
+    company_name: ""
+    phone: '+6281399988877'
+    email: ""
+    city: Depok
+    source: walk_in
+    status: lost
+    owner: USR-003
+    notes: Hanya beli eceran.
+    converted_customer: ""
+    converted_deal: ""
+deal:
+  - name: DEAL-00012
+    deal_name: Kopi untuk 3 cabang Maju Jaya
+    customer: CUST-0012
+    contact_person: Ibu Rina
+    stage: proposal
+    value: 12500000
+    expected_close: 2026-11-20
+    owner: USR-002
+    source: referral
+    lost_reason: ""
+    notes: ""
+  - name: DEAL-00011
+    deal_name: Paket catering kantor Desember
+    customer: CUST-0031
+    contact_person: Pak Yudi
+    stage: negotiation
+    value: 28000000
+    expected_close: 2026-11-10
+    owner: USR-003
+    source: whatsapp
+    lost_reason: ""
+    notes: ""
+  - name: DEAL-00010
+    deal_name: Langganan sirup aren bulanan
+    customer: CUST-0047
+    contact_person: ""
+    stage: qualified
+    value: 3900000
+    expected_close: 2026-12-01
+    owner: USR-002
+    source: instagram
+    lost_reason: ""
+    notes: ""
+  - name: DEAL-00009
+    deal_name: Gelas kertas untuk event
+    customer: CUST-0058
+    contact_person: Bu Sri
+    stage: prospect
+    value: 2100000
+    expected_close: 2026-11-30
+    owner: USR-003
+    source: walk_in
+    lost_reason: ""
+    notes: ""
+  - name: DEAL-00008
+    deal_name: Biji kopi Gayo untuk roastery
+    customer: CUST-0012
+    contact_person: Ibu Rina
+    stage: won
+    value: 8550000
+    expected_close: 2026-10-22
+    owner: USR-002
+    source: referral
+    lost_reason: ""
+    notes: ""
+  - name: DEAL-00007
+    deal_name: Mesin espresso bekas
+    customer: CUST-0047
+    contact_person: ""
+    stage: lost
+    value: 15000000
+    expected_close: 2026-10-15
+    owner: USR-003
+    source: marketplace
+    lost_reason: Harga kompetitor lebih murah
+    notes: ""
+  - name: DEAL-00006
+    deal_name: Susu oat untuk 2 outlet
+    customer: CUST-0031
+    contact_person: Pak Yudi
+    stage: prospect
+    value: 4620000
+    expected_close: 2026-12-05
+    owner: USR-002
+    source: whatsapp
+    lost_reason: ""
+    notes: ""
+activity:
+  - name: ACT-00044
+    activity_type: whatsapp
+    subject: Kirim penawaran harga biji kopi
+    deal: DEAL-00012
+    lead: ""
+    due_date: 2026-10-30
+    done: false
+    owner: USR-002
+    notes: ""
+  - name: ACT-00043
+    activity_type: meeting
+    subject: Negosiasi harga paket Desember
+    deal: DEAL-00011
+    lead: ""
+    due_date: 2026-11-03
+    done: false
+    owner: USR-003
+    notes: ""
+  - name: ACT-00042
+    activity_type: call
+    subject: Follow up lead dari Instagram
+    deal: ""
+    lead: LEAD-00030
+    due_date: 2026-10-29
+    done: true
+    owner: USR-003
+    notes: Minta katalog lewat email.
+  - name: ACT-00041
+    activity_type: visit
+    subject: Kunjungan ke kantin PT Sejahtera
+    deal: ""
+    lead: LEAD-00029
+    due_date: 2026-11-04
+    done: false
+    owner: USR-002
+    notes: ""

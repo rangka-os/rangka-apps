@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/model.json
+name: activity
+label: {id: Aktivitas, en: Activity}
+icon: calendar
+naming: ACT-{#####}
+title_field: subject
+fields:
+  - name: activity_type
+    type: select
+    label: {id: Jenis}
+    in_list: true
+    default: "'whatsapp'"
+    options:
+      - value: whatsapp
+        label: {id: WhatsApp}
+      - value: call
+        label: {id: Telepon}
+      - value: meeting
+        label: {id: Meeting}
+      - value: visit
+        label: {id: Kunjungan}
+      - value: email
+        label: {id: Email}
+  - name: subject
+    type: data
+    label: {id: Perihal}
+    required: true
+    in_list: true
+  - name: deal
+    type: link
+    to: deal
+    label: {id: Peluang}
+    in_list: true
+  - name: lead
+    type: link
+    to: lead
+    label: {id: Lead}
+  - name: due_date
+    type: date
+    label: {id: Tanggal}
+    default: today()
+    in_list: true
+  - name: done
+    type: check
+    label: {id: Selesai}
+    in_list: true
+  - name: owner
+    type: link
+    to: user
+    label: {id: Penanggung jawab}
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: linked
+    on: save
+    check: deal != '' || lead != ''
+    message: {id: Hubungkan aktivitas ke peluang atau lead}
+views:
+  list:
+    columns: [due_date, activity_type, subject, deal, owner, done]
+    sort: due_date
+  form:
+    layout:
+      - section: {id: Aktivitas}
+        columns:
+          - [activity_type, subject, due_date]
+          - [deal, lead, owner]
+      - section: {id: Hasil}
+        columns:
+          - [done]
+          - []
+      - section: {id: Catatan}
+        fields: [notes]

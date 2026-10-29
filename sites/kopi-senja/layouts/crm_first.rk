@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/layout.json
+name: crm_first
+label: {id: CRM dulu}
+extends: rangka/top-nav
+shell: top-nav
+home: dashboard:crm_overview
+nav:
+  top:
+    - {to: 'dashboard:crm_overview', label: {id: Dasbor}}
+    - {to: 'model:deal', label: {id: Peluang}}
+    - {to: 'model:sales_invoice', label: {id: Faktur}, if: "app_installed('sales')"}
+  create: [deal, lead, sales_invoice]
+  app_switcher: true
+pages:
+  - name: pagi_ini
+    label: {id: Pagi ini}
+    icon: time
+    blocks:
+      - {block: page_header, props: {title: Pagi ini}}
+      - block: columns
+        children:
+          - {block: number, span: 4, props: {dashboard: crm_overview, widget: pipeline}}
+          - {block: list, span: 8, props: {dashboard: crm_overview, widget: activities_due}}

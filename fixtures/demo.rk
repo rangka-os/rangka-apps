@@ -1,0 +1,396 @@
+outlet:
+  - {name: OUT-01, outlet_name: Kopi Senja · Kemang}
+  - {name: OUT-02, outlet_name: Kopi Senja · Bintaro}
+customer:
+  - name: CUST-0012
+    customer_name: CV Maju Jaya
+    city: Jakarta Selatan
+    payment_days: 14
+    credit_limit: 10000000
+    outstanding: 3700000
+    npwp: '0123456789012345'
+    phone: ""
+  - name: CUST-0031
+    customer_name: Maju Bersama Catering
+    city: Depok
+    payment_days: 30
+    credit_limit: 25000000
+    outstanding: 0
+    npwp: ""
+    phone: ""
+  - name: CUST-0047
+    customer_name: Toko Sumber Rejeki
+    city: Bekasi
+    payment_days: 7
+    credit_limit: 5000000
+    outstanding: 560000
+    npwp: ""
+    phone: ""
+  - name: CUST-0058
+    customer_name: Warung Bu Sri
+    city: Jakarta Timur
+    payment_days: 0
+    credit_limit: 2000000
+    outstanding: 0
+    npwp: ""
+    phone: ""
+item:
+  - name: BRG-0101
+    item_name: Susu oat 1 L
+    uom: Pcs
+    rate: 38500
+    stock: 24
+  - name: BRG-0044
+    item_name: Biji kopi arabika Gayo 1 kg
+    uom: Kg
+    rate: 285000
+    stock: 3
+  - name: BRG-0210
+    item_name: Gelas kertas 12 oz (isi 50)
+    uom: Pak
+    rate: 42000
+    stock: 80
+  - name: BRG-0305
+    item_name: Sirup gula aren 750 ml
+    uom: Botol
+    rate: 65000
+    stock: 18
+sales_invoice:
+  - name: INV-2026-00046
+    docstatus: 1
+    customer: CUST-0047
+    outlet: OUT-01
+    posting_date: 2026-10-28
+    due_date: 2026-11-04
+    paid_amount: 0
+    notes: ""
+    items:
+      - item: BRG-0210
+        qty: 10
+        uom: Pak
+        rate: 42000
+        discount: 0
+      - item: BRG-0305
+        qty: 2
+        uom: Botol
+        rate: 65000
+        discount: 0
+  - name: INV-2026-00045
+    docstatus: 0
+    customer: CUST-0058
+    outlet: OUT-01
+    posting_date: 2026-10-27
+    due_date: 2026-10-27
+    paid_amount: 0
+    notes: ""
+    items:
+      - item: BRG-0101
+        qty: 12
+        uom: Pcs
+        rate: 38500
+        discount: 0
+  - name: INV-2026-00044
+    docstatus: 1
+    customer: CUST-0031
+    outlet: OUT-02
+    posting_date: 2026-09-24
+    due_date: 2026-10-24
+    paid_amount: 0
+    notes: ""
+    items:
+      - item: BRG-0044
+        qty: 8
+        uom: Kg
+        rate: 285000
+        discount: 0
+  - name: INV-2026-00043
+    docstatus: 1
+    customer: CUST-0012
+    outlet: OUT-01
+    posting_date: 2026-10-22
+    due_date: 2026-11-05
+    paid_amount: 5000000
+    notes: ""
+    items:
+      - item: BRG-0044
+        qty: 20
+        uom: Kg
+        rate: 285000
+        discount: 5
+      - item: BRG-0101
+        qty: 48
+        uom: Pcs
+        rate: 38500
+        discount: 0
+  - name: INV-2026-00042
+    docstatus: 1
+    customer: CUST-0058
+    outlet: OUT-01
+    posting_date: 2026-10-21
+    due_date: 2026-10-21
+    paid_amount: 1348095
+    notes: ""
+    items:
+      - item: BRG-0101
+        qty: 25
+        uom: Pcs
+        rate: 38500
+        discount: 0
+      - item: BRG-0210
+        qty: 6
+        uom: Pak
+        rate: 42000
+        discount: 0
+  - name: INV-2026-00041
+    docstatus: 1
+    customer: CUST-0058
+    outlet: OUT-01
+    posting_date: 2026-10-19
+    due_date: 2026-11-02
+    paid_amount: 2516925
+    notes: ""
+    items:
+      - item: BRG-0101
+        qty: 5
+        uom: Pcs
+        rate: 38500
+        discount: 0
+      - item: BRG-0305
+        qty: 10
+        uom: Botol
+        rate: 65000
+        discount: 0
+      - item: BRG-0044
+        qty: 5
+        uom: Kg
+        rate: 285000
+        discount: 0
+  - name: INV-2026-00040
+    docstatus: 1
+    customer: CUST-0047
+    outlet: OUT-01
+    posting_date: 2026-10-14
+    due_date: 2026-10-28
+    paid_amount: 4440000
+    notes: ""
+    items:
+      - item: BRG-0210
+        qty: 10
+        uom: Pak
+        rate: 42000
+        discount: 0
+      - item: BRG-0305
+        qty: 20
+        uom: Botol
+        rate: 65000
+        discount: 0
+      - item: BRG-0044
+        qty: 8
+        uom: Kg
+        rate: 285000
+        discount: 0
+  - name: INV-2026-00039
+    docstatus: 1
+    customer: CUST-0012
+    outlet: OUT-01
+    posting_date: 2026-10-09
+    due_date: 2026-10-23
+    paid_amount: 1265400
+    notes: ""
+    items:
+      - item: BRG-0044
+        qty: 4
+        uom: Kg
+        rate: 285000
+        discount: 0
+  - name: INV-2026-00038
+    docstatus: 1
+    customer: CUST-0012
+    outlet: OUT-01
+    posting_date: 2026-10-06
+    due_date: 2026-10-20
+    paid_amount: 2475300
+    notes: ""
+    items:
+      - item: BRG-0305
+        qty: 8
+        uom: Botol
+        rate: 65000
+        discount: 0
+      - item: BRG-0044
+        qty: 6
+        uom: Kg
+        rate: 285000
+        discount: 0
+  - name: INV-2026-00037
+    docstatus: 1
+    customer: CUST-0058
+    outlet: OUT-01
+    posting_date: 2026-09-30
+    due_date: 2026-10-14
+    paid_amount: 2135640
+    notes: ""
+    items:
+      - item: BRG-0101
+        qty: 20
+        uom: Pcs
+        rate: 38500
+        discount: 0
+      - item: BRG-0210
+        qty: 12
+        uom: Pak
+        rate: 42000
+        discount: 0
+      - item: BRG-0305
+        qty: 10
+        uom: Botol
+        rate: 65000
+        discount: 0
+  - name: INV-2026-00036
+    docstatus: 1
+    customer: CUST-0012
+    outlet: OUT-01
+    posting_date: 2026-09-16
+    due_date: 2026-09-30
+    paid_amount: 3520920
+    notes: ""
+    items:
+      - item: BRG-0044
+        qty: 10
+        uom: Kg
+        rate: 285000
+        discount: 0
+      - item: BRG-0101
+        qty: 4
+        uom: Pcs
+        rate: 38500
+        discount: 0
+      - item: BRG-0210
+        qty: 4
+        uom: Pak
+        rate: 42000
+        discount: 0
+  - name: INV-2026-00035
+    docstatus: 1
+    customer: CUST-0031
+    outlet: OUT-01
+    posting_date: 2026-09-09
+    due_date: 2026-09-23
+    paid_amount: 2243310
+    notes: ""
+    items:
+      - item: BRG-0044
+        qty: 5
+        uom: Kg
+        rate: 285000
+        discount: 0
+      - item: BRG-0305
+        qty: 4
+        uom: Botol
+        rate: 65000
+        discount: 0
+      - item: BRG-0210
+        qty: 8
+        uom: Pak
+        rate: 42000
+        discount: 0
+  - name: INV-2026-00034
+    docstatus: 1
+    customer: CUST-0012
+    outlet: OUT-01
+    posting_date: 2026-09-02
+    due_date: 2026-09-16
+    paid_amount: 632700
+    notes: ""
+    items:
+      - item: BRG-0044
+        qty: 2
+        uom: Kg
+        rate: 285000
+        discount: 0
+  - name: INV-2026-00033
+    docstatus: 1
+    customer: CUST-0012
+    outlet: OUT-01
+    posting_date: 2026-08-27
+    due_date: 2026-09-10
+    paid_amount: 1077810
+    notes: ""
+    items:
+      - item: BRG-0305
+        qty: 6
+        uom: Botol
+        rate: 65000
+        discount: 0
+      - item: BRG-0101
+        qty: 2
+        uom: Pcs
+        rate: 38500
+        discount: 0
+      - item: BRG-0210
+        qty: 12
+        uom: Pak
+        rate: 42000
+        discount: 0
+  - name: INV-2026-00032
+    docstatus: 1
+    customer: CUST-0047
+    outlet: OUT-01
+    posting_date: 2026-08-19
+    due_date: 2026-09-02
+    paid_amount: 603840
+    notes: ""
+    items:
+      - item: BRG-0305
+        qty: 6
+        uom: Botol
+        rate: 65000
+        discount: 0
+      - item: BRG-0101
+        qty: 4
+        uom: Pcs
+        rate: 38500
+        discount: 0
+  - name: INV-2026-00031
+    docstatus: 1
+    customer: CUST-0031
+    outlet: OUT-01
+    posting_date: 2026-08-12
+    due_date: 2026-08-26
+    paid_amount: 1177710
+    notes: ""
+    items:
+      - item: BRG-0101
+        qty: 6
+        uom: Pcs
+        rate: 38500
+        discount: 0
+      - item: BRG-0044
+        qty: 2
+        uom: Kg
+        rate: 285000
+        discount: 0
+      - item: BRG-0305
+        qty: 4
+        uom: Botol
+        rate: 65000
+        discount: 0
+  - name: INV-2026-00030
+    docstatus: 1
+    customer: CUST-0012
+    outlet: OUT-01
+    posting_date: 2026-08-04
+    due_date: 2026-08-18
+    paid_amount: 921300
+    notes: ""
+    items:
+      - item: BRG-0044
+        qty: 2
+        uom: Kg
+        rate: 285000
+        discount: 0
+      - item: BRG-0305
+        qty: 4
+        uom: Botol
+        rate: 65000
+        discount: 0

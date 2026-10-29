@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/model.json
+name: sales_invoice_item
+is_child: true
+fields:
+  - name: item
+    type: link
+    to: item
+    label: {id: Barang}
+    required: true
+  - name: qty
+    type: float
+    label: {id: Qty}
+    default: '1'
+  - name: uom
+    type: data
+    label: {id: Satuan}
+    default: item.uom
+  - name: rate
+    type: currency
+    label: {id: Harga}
+    default: item.rate
+  - name: discount
+    type: percent
+    label: {id: Diskon %}
+    default: '0'
+  - name: amount
+    type: currency
+    label: {id: Jumlah}
+    compute: round(qty * rate * (1 - discount / 100))

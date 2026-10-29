@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/model.json
+name: item
+label: {id: Barang}
+icon: stock
+naming: BRG-{####}
+title_field: item_name
+fields:
+  - name: item_name
+    type: data
+    label: {id: Nama barang}
+    required: true
+    in_list: true
+  - name: uom
+    type: data
+    label: {id: Satuan}
+    default: "'Pcs'"
+    in_list: true
+  - name: rate
+    type: currency
+    label: {id: Harga jual}
+    in_list: true
+  - name: stock
+    type: float
+    label: {id: Stok}
+    in_list: true

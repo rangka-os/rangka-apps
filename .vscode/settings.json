@@ -1,0 +1,9 @@
+{
+  "files.associations": { "*.rk": "yaml" },
+  "yaml.customTags": [],
+  "yaml.schemas": {
+    "./schema/0.4/app.json": ["apps/*/app.rk"],
+    "./schema/0.4/model.json": ["apps/*/models/*.rk"]
+  },
+  "[yaml]": { "editor.insertSpaces": true, "editor.tabSize": 2 }
+}

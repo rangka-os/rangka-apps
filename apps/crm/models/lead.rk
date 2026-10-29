@@ -1,0 +1,122 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/model.json
+name: lead
+label: {id: Lead, en: Lead}
+icon: user
+naming: LEAD-{#####}
+title_field: lead_name
+fields:
+  - name: lead_name
+    type: data
+    label: {id: Nama}
+    required: true
+    in_list: true
+  - name: company_name
+    type: data
+    label: {id: Nama usaha}
+    in_list: true
+  - name: phone
+    type: phone
+    label: {id: Nomor WhatsApp}
+    in_list: true
+    unique: true
+  - name: email
+    type: data
+    label: {id: Email}
+  - name: city
+    type: data
+    label: {id: Kota}
+  - name: source
+    type: select
+    label: {id: Sumber}
+    in_list: true
+    options:
+      - value: whatsapp
+        label: {id: WhatsApp}
+      - value: instagram
+        label: {id: Instagram}
+      - value: referral
+        label: {id: Referensi}
+      - value: walk_in
+        label: {id: Datang langsung}
+      - value: website
+        label: {id: Website}
+      - value: marketplace
+        label: {id: Marketplace}
+  - name: status
+    type: select
+    label: {id: Status}
+    default: "'new'"
+    in_list: true
+    chip: true
+    options:
+      - value: new
+        label: {id: Baru}
+        tone: info
+      - value: contacted
+        label: {id: Dihubungi}
+        tone: neutral
+      - value: qualified
+        label: {id: Memenuhi syarat}
+        tone: ok
+      - value: lost
+        label: {id: Tidak cocok}
+        tone: muted
+  - name: owner
+    type: link
+    to: user
+    label: {id: Penanggung jawab}
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+  - name: converted_customer
+    type: link
+    to: customer
+    label: {id: Jadi pelanggan}
+    read_only: true
+  - name: converted_deal
+    type: link
+    to: deal
+    label: {id: Jadi peluang}
+    read_only: true
+rules:
+  - name: reach
+    on: save
+    check: phone != '' || email != ''
+    message: {id: Isi nomor WhatsApp atau email supaya lead bisa dihubungi}
+actions:
+  - name: convert
+    label:
+      id: Jadikan pelanggan + peluang
+      en: Convert to customer + deal
+    icon: check
+    hook: crm.convert_lead
+    primary: true
+    if: status != 'lost' && converted_deal == ''
+permissions:
+  - role: sales_rep
+    read: true
+    create: true
+    write: true
+    if: owner == user.name
+  - role: sales_manager
+    read: true
+    create: true
+    write: true
+    delete: true
+views:
+  list:
+    columns: [name, lead_name, company_name, source, status, owner]
+    sort: -created_at
+  form:
+    layout:
+      - section: {id: Kontak}
+        columns:
+          - [lead_name, company_name, city]
+          - [phone, email, source]
+      - section: {id: Tindak lanjut}
+        columns:
+          - [status, owner]
+          - [converted_customer, converted_deal]
+      - section: {id: Catatan}
+        fields: [notes]
