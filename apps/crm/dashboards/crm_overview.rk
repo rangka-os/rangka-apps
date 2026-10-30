@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://rangka.dev/schema/0.4/dashboard.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/dashboard.json
 name: crm_overview
 label: {id: Ringkasan CRM, en: CRM overview}
 default_period: 30

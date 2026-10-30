@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://rangka.dev/schema/0.4/system.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/system.json
 # Layer 2: one file per installation. App files say what they need; this file decides how.
 db: {driver: postgres, url: '${DATABASE_URL}', pool: 10, isolation: shared}
 cache: {driver: memory, max_mb: 64}

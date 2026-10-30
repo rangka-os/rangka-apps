@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://rangka.dev/schema/0.4/flow.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/flow.json
 name: whatsapp_to_lead
 label: {id: Chat WhatsApp baru jadi lead}
 on: whatsapp_business.message_received

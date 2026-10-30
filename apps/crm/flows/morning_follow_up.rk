@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://rangka.dev/schema/0.4/flow.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/flow.json
 name: morning_follow_up
 label: {id: Pengingat follow-up pagi}
 schedule: 0 8 * * 1-5
