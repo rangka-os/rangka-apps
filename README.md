@@ -1,92 +1,105 @@
-# rangka-apps (spike)
+# Rangka Apps
 
-Metadata for the Rangka framework spike, plus the tools that read it.
+**Ready-to-use business apps for [Rangka OS](https://github.com/rangka-os/rangka-os)**, written entirely as `.rk`
+metadata: models, rules, dashboards, flows and roles. No application code — the Rangka kernel turns these files into a
+database, an API and screens.
 
-## File format: `.rk`
+> **Status: v0 (October 2026).** Three apps, one template and one example site. All files pass validation with 0
+> errors.
 
-Every metadata file is a `.rk` file: YAML with a few strict rules, so it means the same thing in every tool.
+Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) (kernel, schemas, Console) ·
+**rangka-apps** · [rangka-connectors](https://github.com/rangka-os/rangka-connectors) ·
+[rangka-ai](https://github.com/rangka-os/rangka-ai)
 
-```yaml
-# yaml-language-server: $schema=https://rangka.dev/schema/0.4/model.json
-name: deal
-label: {id: Peluang, en: Deal}
-fields:
-  - name: stage
-    type: select
-    default: "'prospect'"        # a CEL expression, so the string is quoted inside
-    options:
-      - {value: prospect, label: {id: Prospek}, probability: 10}
-  - name: weighted_value
-    type: currency
-    compute: round(value * probability / 100)
+## What's inside
+
+| App | Depends on | Models | Also |
+| --- | --- | --- | --- |
+| `core` | — | `customer`, `item`, `outlet`, `user` | Shared master data every other app links to |
+| `sales` | core | `sales_invoice` (document: draft → submitted → cancelled/amended), `sales_invoice_item` | PPN 12% × DPP 11/12, payment status (draft, submitted, partly paid, paid, overdue), dashboard `sales_overview` |
+| `crm` | core, sales (optional) | `lead`, `deal`, `activity` | Kanban pipeline with win probability per stage, "convert lead" action, won deal → draft invoice, dashboard `crm_overview`, flows `whatsapp_to_lead` and `morning_follow_up`, roles `sales_rep` and `sales_manager` |
+
+| Folder | What |
+| --- | --- |
+| `apps/<app>/app.rk` | Manifest: version, dependencies, menu, dashboards, hooks |
+| `apps/<app>/models/*.rk` | Models: fields, views (list, form, kanban), rules, actions, permissions |
+| `apps/<app>/dashboards/*.rk` | Number, chart (bar, line, donut, funnel) and list widgets computed from records |
+| `apps/<app>/flows/*.rk` | Event- or schedule-driven steps (find, create, update, notify, call a connector) |
+| `apps/<app>/roles/*.rk` | Roles shipped with the app |
+| `templates/crm/template.rk` | **Rangka CRM** template: apps, onboarding questions, starting configuration |
+| `sites/kopi-senja/` | An example installation ("Kopi Senja", a coffee shop): `system.rk`, `features.rk` (plans), `config.rk`, `themes/`, `layouts/` |
+| `fixtures/*.rk` | Demo data for Kopi Senja: 4 customers, 4 items, 2 outlets, 17 invoices, 7 deals, 4 leads, 4 activities |
+
+## Try it
+
+Clone next to rangka-os and rangka-connectors, then run the kernel's demo, which loads this repo:
+
+```bash
+git clone git@github.com:rangka-os/rangka-os.git
+git clone git@github.com:rangka-os/rangka-apps.git
+git clone git@github.com:rangka-os/rangka-connectors.git
+cd rangka-os/kernel && make run-demo   # http://localhost:8080/prototype/ · /console/ (ceo@saga.co.id / rangka-demo)
 ```
 
-Rules (checked by `tools/rkfile.py`, used by every tool):
+Validate after any change (Python 3 with `pyyaml` and `jsonschema`, or the Go binary):
 
-- YAML 1.2 types only: `true`/`false`, `null`, numbers. Dates stay text.
-- Values that older YAML tools read differently must be quoted: `yes`, `no`, `on`, `off`, `y`, `n`,
-  numbers with a leading zero (phone numbers, NPWP, item codes like `"0812..."`), `1_000`, times like `"08:30"`.
-  Keys are always text, so `on: save` is fine.
-- No duplicate keys, no tabs, no anchors/aliases (`&`, `*`), no merge keys (`<<`). One document per file.
-- Errors point at `file:line:col`.
+```bash
+python3 ../rangka-os/tools/rangka_validate.py apps --site sites/kopi-senja --connectors ../rangka-connectors
+../rangka-os/kernel/bin/rangka validate --apps apps --site sites/kopi-senja --connectors ../rangka-connectors
+```
 
-Accepted extensions: `.rk` (preferred), `.rk.yaml`, `.rk.yml`. Legacy `.json` still loads during migration;
-`tools/rk_convert.py <dir>` converts it and refuses any file that would not read back identically.
-The JSON Schemas in `schema/0.4` validate `.rk` files unchanged. `.vscode/settings.json` maps `*.rk` to YAML and
-attaches the schemas, so VS Code (with the Red Hat YAML extension) gives highlighting, completion and errors.
+Each problem prints as `file:line:col  level  code  path  message`, e.g.
+`crm/models/deal.rk:15:9  error  unknown_model  fields/1/to  "custommer" … did you mean "customer"?`.
 
-## Layout
+## Writing an app
 
-- `apps/core`, `apps/sales`, `apps/crm` — `app.rk` manifests and `models/*.rk`
-- `apps/crm/roles/*.rk`, `apps/crm/flows/whatsapp_to_lead.rk` — roles and the WhatsApp → lead flow
-- `apps/crm/dashboards/crm_overview.rk`, `apps/sales/dashboards/sales_overview.rk` — dashboards (see below)
-- `templates/crm/template.rk` — the Rangka CRM template
-- Connectors live in the rangka-connectors repo
-- `sites/kopi-senja/` — an example installation: system.rk, features.rk, config.rk, themes/, layouts/
-- Schemas, validator and tools live in rangka-os (`schema/0.4`, `tools/`)
-- `fixtures/*.rk` — demo data for Kopi Senja
-
-## Dashboards
-
-A dashboard is a `.rk` file in `apps/<app>/dashboards/`, listed in `app.rk` under `dashboards:` (the first one is the app's home).
-Widgets are computed from records when the page opens; nothing is stored.
+Files are `.rk`: strict YAML whose first line names its schema, so VS Code (Red Hat YAML extension) completes and
+checks as you type — `.vscode/settings.json` in this repo sets that up.
 
 ```yaml
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/dashboard.json
+name: crm_overview
+label: {id: Ringkasan CRM, en: CRM overview}
+cache: 5m
 widgets:
-  - name: pipeline            # number: one aggregated value
+  - name: pipeline
     type: number
     model: deal
-    aggregate: sum            # count | sum | avg | min | max
-    field: value
-    filter: stage != 'won' && stage != 'lost'   # CEL, same dialect as rules
-    compact: true             # Rp 51,1 jt
-    span: 3                   # of 12 columns
-  - name: by_stage            # chart: values grouped by a field
-    type: chart
-    chart: funnel             # bar | line | donut | funnel
-    model: deal
-    group_by: stage           # select, link, check, date (+ grain: day|week|month) or data
     aggregate: sum
     field: value
-    span: 6
-  - name: closing_soon        # list: first rows of a filtered, sorted list
-    type: list
-    model: deal
-    sort: expected_close      # -field for descending
-    limit: 5
-    columns: [deal_name, customer, stage, expected_close, value]
-    span: 12
+    filter: stage != 'won' && stage != 'lost'   # CEL
+    compact: true                               # Rp 51,1 jt
+    span: 3
 ```
 
-`period: <date field>` makes a widget follow the dashboard's 7/30/90-day switch and compare with the period before;
-`good_when: down` flips the colour of the change for figures where less is better. Widgets on a model from an optional
-app need `if: app_installed('<app>')`. The validator checks every model, field, type, grain and filter expression.
+Rules worth knowing:
 
-## Tools (Python 3, `pip install pyyaml jsonschema`)
+- **Quote what YAML could misread**: `"yes"`, `"no"`, `"on"`, phone numbers and codes with a leading zero, times like
+  `"08:30"`, and `'${ENV}'` inside `{ }`. Unquoted, the validator refuses them.
+- **Dependencies point one way**: an app may link to its own models and to apps it `requires`; models from an
+  `optional` app need `if: app_installed('<app>')`. `core` never links to `crm`.
+- **Names are forever**: model and field names are `snake_case` and never renamed after release; companies add their
+  own fields as `x_…` in a site's `custom/<model>.rk` overlay, never in these files.
+- **Labels are Bahasa Indonesia first** (`label: {id: …, en: …}`); money is rupiah without decimals.
+- **Backend needs are one line**: `realtime: true` on a model, `schedule:` on a flow, `queue:` on an action, `cache:` on
+  a dashboard. The site's `system.rk` decides how they run.
 
-- `python3 ../rangka-os/tools/rangka_validate.py apps --site sites/kopi-senja --connectors ../rangka-connectors` — syntax, shape and meaning checks, one line per problem with `file:line:col`
-- `tools/rangka_docs.py apps crm out.json` — generate the API reference model
-- `tools/build_proto.py . meta.js` — bundle metadata (and the `.rk` sources) for the browser prototype
-- `tools/rk_convert.py .` — convert `.json` metadata to `.rk`
+The full format, CEL dialect and lifecycle are in
+[rangka-os/docs/contracts.md](https://github.com/rangka-os/rangka-os/blob/main/docs/contracts.md) and the schemas in
+[rangka-os/schema/0.4](https://github.com/rangka-os/rangka-os/tree/main/schema/0.4).
 
-Spec: Rangka Framework Spec (Claude Docs). Domain `rangka.dev` in schema URLs is a placeholder.
+## Roadmap
+
+POS (cashier, shifts, offline sales, QRIS), Stock (warehouses, transfers, stock moves), Ledger (journals, receivables),
+Payments, HR basics; industry packs for F&B, clinics and services on top of the core apps.
+
+## Contributing
+
+New apps and fixes are welcome. A pull request must keep `rangka_validate.py` at 0 errors and include fixtures that
+exercise new models. Write UI labels in Bahasa Indonesia (English optional) and keep money and stock logic in rules
+and hooks, never in flows driven by an LLM.
+
+## Licence
+
+Not chosen yet; no `LICENSE` file is committed, so all rights are reserved until one is. The intent is a licence that
+lets partners build and sell templates on top of these apps.
