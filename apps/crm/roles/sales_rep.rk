@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://rangka.dev/schema/0.4/role.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/role.json
 name: sales_rep
 label: {id: Sales}
 description: {id: Melihat dan mengubah lead dan peluang miliknya sendiri}

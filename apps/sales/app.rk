@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://rangka.dev/schema/0.4/app.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/app.json
 name: sales
 version: 1.2.0
 title: {id: Penjualan, en: Sales}

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://rangka.dev/schema/0.4/role.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/role.json
 name: sales_manager
 label: {id: Manajer sales}
 description: {id: 'Melihat semua pipeline, mengatur target, mengekspor data'}

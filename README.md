@@ -57,7 +57,7 @@ Files are `.rk`: strict YAML whose first line names its schema, so VS Code (Red 
 checks as you type — `.vscode/settings.json` in this repo sets that up.
 
 ```yaml
-# yaml-language-server: $schema=https://rangka.dev/schema/0.4/dashboard.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/dashboard.json
 name: crm_overview
 label: {id: Ringkasan CRM, en: CRM overview}
 cache: 5m
