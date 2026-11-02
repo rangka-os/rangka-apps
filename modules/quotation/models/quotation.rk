@@ -105,7 +105,7 @@ rules:
     message: {id: Masa berlaku tidak boleh sebelum tanggal penawaran}
   - name: draft_outcome_open
     on: save
-    check: docstatus != 0 || outcome == 'open'
+    check: docstatus != 0 || outcome == 'open' || outcome == ''
     message: {id: Penawaran yang belum disubmit harus berstatus menunggu}
   - name: discount_within_subtotal
     on: save
