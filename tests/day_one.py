@@ -368,20 +368,45 @@ def scenario_quotation(api):
         else:
             check("action mark_outcome sets outcome", st == 200 and api.get("quotation", name)["outcome"] == "accepted", (st, resp))
 
-    # revise
-    st, resp = api.action("quotation", name, "new_revision")
+    # make_order takes {po_number, po_date} from the call body; it is shown only for an accepted quotation
+    st, resp = api.action("quotation", name, "make_order", {"po_number": "PO-CJT-0900", "po_date": "2026-11-02"})
+    if accepted_by_patch or (st != 409 and st != 501):
+        check("orders.from_quotation creates a draft customer_order", st == 200 and resp.get("open", {}).get("model") == "customer_order", (st, resp))
+        if st == 200:
+            order = api.get("customer_order", resp["open"]["name"])
+            check("order from quotation is a draft with quotation, PO and 2 lines",
+                  order["docstatus"] == 0 and order["quotation"] == name and order["po_number"] == "PO-CJT-0900" and len(order["items"]) == 2, order)
+            st2, resp2 = api.action("quotation", name, "make_order", {"po_number": "PO-CJT-0900", "po_date": "2026-11-02"})
+            check("orders.from_quotation reuses the existing draft", st2 == 200 and resp2["open"]["name"] == resp["open"]["name"], (st2, resp2))
+            st2, resp2 = api.action("quotation", name, "make_order", {})
+            check("orders.from_quotation without PO -> 422 po_required", st2 == 422 and resp2["error"]["code"] == "po_required", (st2, resp2))
+    else:
+        check("make_order refused while outcome is open", st == 409 and resp["error"]["code"] == "action_not_allowed", (st, resp))
+        gap("orders.from_quotation creates a draft customer_order", "kernel (S8c hooks; needs mark_outcome first)", "mark_outcome is 501, so no quotation can reach accepted")
+
+    # revision flow on a separate submitted quotation whose outcome is still open: Rev.00 -> Rev.01
+    st, q2 = api.create("quotation", {"customer": customer, "subject": "Untuk revisi", "items": [{"item": ndt, "qty": 3, "rate": 1_500_000}, {"item": ut, "qty": 5, "rate": 85_000}]})
+    check("create quotation to revise", st == 201, q2)
+    if st != 201:
+        return
+    st, resp = api.verb("quotation", q2["name"], "submit")
+    check("submit quotation to revise", st == 200, resp)
+    old = resp.get("name", q2["name"])
+    st, resp = api.action("quotation", old, "new_revision")
     if st == 501:
         gap("quotation.revise creates a draft with revision + 1", "kernel (S8c hooks)", "501 hook_not_implemented")
-    elif st == 409 and not accepted_by_patch:
-        pass
-    else:
-        check("quotation.revise returns a new draft", st == 200, (st, resp))
-
-    # make_order is shown only for an accepted quotation: while outcome is open the kernel refuses it
-    st, resp = api.action("quotation", name, "make_order")
-    check("make_order refused while outcome is open", st == 409 and resp["error"]["code"] == "action_not_allowed", (st, resp))
-    if not accepted_by_patch:
-        gap("orders.from_quotation creates a draft customer_order", "kernel (S8c hooks; needs mark_outcome first)", "mark_outcome is 501, so no quotation can reach accepted")
+        return
+    check("quotation.revise answers 200 with the new draft", st == 200 and resp.get("open", {}).get("model") == "quotation", (st, resp))
+    if st != 200:
+        return
+    new = api.get("quotation", resp["open"]["name"])
+    eq("revision draft has docstatus 0", new["docstatus"], 0)
+    eq("revision draft has revision 1", new["revision"], 1)
+    eq("revision draft has outcome open", new["outcome"], "open")
+    check("revision draft keeps the same lines", [(r["item"], r["qty"], r["rate"]) for r in new["items"]] == [(r["item"], r["qty"], r["rate"]) for r in q2["items"]], new["items"])
+    eq("old quotation is cancelled (docstatus 2)", api.get("quotation", old)["docstatus"], 2)
+    st, resp = api.action("quotation", old, "new_revision")
+    check("revising the cancelled quotation again is refused", st in (409, 422), (st, resp))
 
 
 def scenario_orders(api):

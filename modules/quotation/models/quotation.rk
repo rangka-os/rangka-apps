@@ -83,6 +83,7 @@ fields:
     type: select
     label: {id: Hasil penawaran}
     default: "'open'"
+    read_only: true
     in_list: true
     chip: true
     options:
@@ -92,6 +93,7 @@ fields:
   - name: lost_reason
     type: text
     label: {id: Alasan kalah}
+    read_only: true
     depends_on: outcome == 'lost'
   - name: notes
     type: text
@@ -101,6 +103,10 @@ rules:
     on: save
     check: valid_until >= quotation_date
     message: {id: Masa berlaku tidak boleh sebelum tanggal penawaran}
+  - name: draft_outcome_open
+    on: save
+    check: docstatus != 0 || outcome == 'open'
+    message: {id: Penawaran yang belum disubmit harus berstatus menunggu}
   - name: discount_within_subtotal
     on: save
     check: discount_amount <= subtotal

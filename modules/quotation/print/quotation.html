@@ -15,7 +15,7 @@
 {{template "letterhead" .}}
 <h1>Surat Penawaran Harga</h1>
 <table class="meta">
-  <tr><td>Nomor</td><td>: {{.Doc.name}}{{if .Doc.revision}} / Rev. {{.Doc.revision}}{{end}}</td><td>Kepada Yth.</td><td>: {{.Links.customer.customer_name}}</td></tr>
+  <tr><td>Nomor</td><td>: {{.Doc.name}} Rev.{{printf "%02d" .Doc.revision}}</td><td>Kepada Yth.</td><td>: {{.Links.customer.customer_name}}</td></tr>
   <tr><td>Tanggal</td><td>: {{date .Doc.quotation_date}}</td><td>Alamat</td><td>: {{.Links.customer.address}}</td></tr>
   <tr><td>Perihal</td><td>: {{.Doc.subject}}</td><td>Up.</td><td>: {{.Doc.contact_person}}</td></tr>
   {{if .Doc.rfq_ref}}<tr><td>Ref. RFQ</td><td>: {{.Doc.rfq_ref}}{{if .Doc.rfq_date}} ({{date .Doc.rfq_date}}){{end}}</td><td></td><td></td></tr>{{end}}
