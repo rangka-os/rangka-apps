@@ -1,0 +1,45 @@
+uom:
+  - {name: UOM-001, uom_name: Pcs}
+  - {name: UOM-002, uom_name: Hari}
+  - {name: UOM-003, uom_name: Jam}
+  - {name: UOM-004, uom_name: Orang-hari}
+  - {name: UOM-005, uom_name: Unit}
+  - {name: UOM-006, uom_name: Paket}
+customer:
+  - name: CUST-0001
+    customer_name: PT Contoh Energi Nusantara
+    city: Cilegon
+    payment_days: 30
+    credit_limit: 500000000
+    npwp: '0000000000000000'
+    contacts:
+      - {person_name: Bambang Contoh, position: Manajer Pemeliharaan, phone: '+620000000001', is_primary: true}
+  - name: CUST-0002
+    customer_name: PT Contoh Kilang Mandiri
+    city: Balikpapan
+    payment_days: 45
+    credit_limit: 800000000
+    npwp: '0000000000000000'
+    contacts:
+      - {person_name: Sari Contoh, position: Superintenden Inspeksi, phone: '+620000000002', is_primary: true}
+item:
+  - {name: BRG-0001, item_name: Inspeksi NDT (per orang-hari), kind: service, stock_uom: UOM-004, sales_uom: UOM-004, sku: JSA-NDT, rate: 1500000}
+  - {name: BRG-0002, item_name: Pengujian ketebalan UT (per titik), kind: service, stock_uom: UOM-001, sku: JSA-UT, rate: 85000}
+  - {name: BRG-0003, item_name: Mobilisasi dan demobilisasi, kind: service, stock_uom: UOM-006, sales_uom: UOM-006, sku: JSA-MOB, rate: 12000000}
+worker:
+  - name: WRK-0001
+    worker_name: Andi Contoh
+    employee_no: EMP-001
+    role_title: Inspektor NDT Level II
+    day_rate: 1500000
+    active: true
+    certifications:
+      - {cert_name: NDT Level II UT, cert_no: UT-0001, issuer: Lembaga Sertifikasi Contoh, issued_on: 2025-01-15, expires_on: 2028-01-15}
+  - name: WRK-0002
+    worker_name: Budi Contoh
+    employee_no: EMP-002
+    role_title: Inspektor NDT Level II
+    day_rate: 1500000
+    active: true
+    certifications:
+      - {cert_name: NDT Level II MT, cert_no: MT-0002, issuer: Lembaga Sertifikasi Contoh, issued_on: 2021-03-01, expires_on: 2025-03-01}

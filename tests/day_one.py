@@ -153,6 +153,9 @@ class Api:
             except Exception:
                 return e.code, {"error": {"code": "non_json", "message": raw.decode(errors="replace")[:200]}}
 
+    def patch(self, model, name, body):
+        return self.call("PATCH", f"/api/v1/r/{model}/{name}", body)
+
     def create(self, model, body):
         return self.call("POST", f"/api/v1/r/{model}", body)
 
@@ -311,10 +314,182 @@ def scenario_invoicing(api):
     else:
         eq("cancel restores customer.outstanding", final, before)
 
+# ---------- scenarios: project services (demo-jasa)
+
+def scenario_quotation(api):
+    customer = api.list("customer")[0]["name"]
+    items = api.list("item")
+    ndt, ut = items[0]["name"], items[1]["name"]
+
+    st, q = api.create("quotation", {"customer": customer, "subject": "Inspeksi NDT shutdown 2026", "rfq_ref": "RFQ-001",
+                                     "items": [{"item": ndt, "qty": 10, "rate": 1_500_000}, {"item": ut, "qty": 100, "rate": 85_000, "discount": 10}]})
+    check("create quotation with 2 lines", st == 201, q)
+    if st != 201:
+        return
+    eq("quotation line 1 amount 15.000.000", q["items"][0]["amount"], 15_000_000)
+    eq("quotation line 2 amount (10% off) 7.650.000", q["items"][1]["amount"], 7_650_000)
+    eq("quotation subtotal 22.650.000", q["subtotal"], 22_650_000)
+    eq("quotation ppn 2.491.500", q["ppn"], 2_491_500)
+    eq("quotation grand_total 25.141.500", q["grand_total"], 25_141_500)
+    eq("quotation revision 0", q["revision"], 0)
+    eq("quotation outcome open", q["outcome"], "open")
+    check("quotation valid_until defaults 30 days after quotation_date", bool(q.get("valid_until")) and q["valid_until"] > q["quotation_date"], (q.get("quotation_date"), q.get("valid_until")))
+    check("line uom defaults to the item's sales_uom", q["items"][0]["uom"] == items[0].get("sales_uom"), q["items"][0])
+
+    st, resp = api.create("quotation", {"customer": customer, "subject": "x", "valid_until": "2000-01-01", "items": [{"item": ndt}]})
+    check("valid_until before quotation_date rejected", st == 422, (st, resp))
+    st, resp = api.create("quotation", {"customer": customer, "subject": "x", "discount_amount": 99_999_999_999, "items": [{"item": ndt}]})
+    check("discount above subtotal rejected", st == 422 and any("Diskon" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("quotation", {"customer": customer, "subject": "x", "ppn_applies": False, "items": [{"item": ndt, "qty": 2, "rate": 1_000_000}]})
+    eq("quotation without PPN: grand_total = dpp_base", (resp.get("ppn"), resp.get("grand_total")), (0, 2_000_000))
+
+    # submit (the approval policy is a sidecar until S2: the document submits straight away)
+    st, resp = api.verb("quotation", q["name"], "submit")
+    check("submit quotation", st == 200, resp)
+    name = resp.get("name", q["name"])
+    if resp.get("approval"):
+        gap("quotation manager_approval", "kernel (S2 approvals)", "submit returned a pending approval")
+    sub = api.get("quotation", name)
+    check("submitted quotation is numbered QUO-<year>-nnnnn", sub["name"].startswith("QUO-"), sub["name"])
+    eq("submitted quotation revision 0", sub["revision"], 0)
+
+    # can `outcome` be set on a submitted document? Recorded in the task report.
+    st, resp = api.patch("quotation", name, {"outcome": "accepted"})
+    if st == 200:
+        eq("PATCH sets outcome on a submitted quotation", api.get("quotation", name)["outcome"], "accepted")
+        ok("outcome editable after submit (PATCH 200)")
+        accepted_by_patch = True
+    else:
+        check("PATCH on a submitted quotation is refused with 409", st == 409, (st, resp))
+        accepted_by_patch = False
+        st, resp = api.action("quotation", name, "mark_outcome", {"outcome": "accepted"})
+        if st == 501:
+            gap("quotation.mark_outcome", "kernel (S8c hooks)", "501 hook_not_implemented")
+        else:
+            check("action mark_outcome sets outcome", st == 200 and api.get("quotation", name)["outcome"] == "accepted", (st, resp))
+
+    # revise
+    st, resp = api.action("quotation", name, "new_revision")
+    if st == 501:
+        gap("quotation.revise creates a draft with revision + 1", "kernel (S8c hooks)", "501 hook_not_implemented")
+    elif st == 409 and not accepted_by_patch:
+        pass
+    else:
+        check("quotation.revise returns a new draft", st == 200, (st, resp))
+
+    # make_order is shown only for an accepted quotation: while outcome is open the kernel refuses it
+    st, resp = api.action("quotation", name, "make_order")
+    check("make_order refused while outcome is open", st == 409 and resp["error"]["code"] == "action_not_allowed", (st, resp))
+    if not accepted_by_patch:
+        gap("orders.from_quotation creates a draft customer_order", "kernel (S8c hooks; needs mark_outcome first)", "mark_outcome is 501, so no quotation can reach accepted")
+
+
+def scenario_orders(api):
+    customer, other = api.list("customer")[0]["name"], api.list("customer")[1]["name"]
+    ndt = api.list("item")[0]["name"]
+    st, q = api.create("quotation", {"customer": customer, "subject": "Untuk pesanan", "items": [{"item": ndt, "qty": 4, "rate": 1_500_000}]})
+    st, o = api.create("customer_order", {"customer": customer, "quotation": q["name"], "po_number": "PO-CJT-0001", "po_date": "2026-11-02",
+                                          "site": "Cilegon", "items": [{"item": ndt, "qty": 4, "rate": 1_500_000}, {"item": ndt, "qty": 1, "rate": 500_000}]})
+    check("create customer_order from a quotation", st == 201, o)
+    if st != 201:
+        return
+    eq("order subtotal 6.500.000", o["subtotal"], 6_500_000)
+    eq("order line amount round(qty*rate)", o["items"][0]["amount"], 6_000_000)
+    eq("order invoiced_amount 0", o["invoiced_amount"], 0)
+    st, resp = api.create("customer_order", {"customer": other, "quotation": q["name"], "po_number": "PO-X", "po_date": "2026-11-02", "items": [{"item": ndt}]})
+    check("order quotation of another customer rejected", st == 422 and any("Penawaran" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("customer_order", {"customer": customer, "po_date": "2026-11-02", "items": [{"item": ndt}]})
+    check("order without po_number rejected", st == 422, (st, resp))
+    st, resp = api.create("customer_order", {"customer": customer, "po_number": "PO-Y", "po_date": "2026-11-02", "start_date": "2026-12-01", "end_date": "2026-11-01", "items": [{"item": ndt}]})
+    check("order end before start rejected", st == 422, (st, resp))
+
+    st, resp = api.verb("customer_order", o["name"], "submit")
+    check("submit customer_order", st == 200, resp)
+    name = resp.get("name", o["name"])
+
+    st, resp = api.action("customer_order", name, "make_invoice")
+    if st == 501:
+        gap("invoicing.from_order creates a draft sales_invoice", "kernel (S8c hooks)", "501 hook_not_implemented")
+    else:
+        check("invoicing.from_order creates a draft invoice", st == 200, (st, resp))
+
+    # the invoice links moved out of the sidecar: customer_order, po_number default
+    st, inv = api.create("sales_invoice", {"customer": customer, "customer_order": name, "items": [{"item": ndt, "qty": 1, "rate": 1_000_000}]})
+    check("sales_invoice accepts customer_order", st == 201, inv)
+    if st == 201:
+        eq("sales_invoice po_number defaults from customer_order", inv.get("po_number"), "PO-CJT-0001")
+
+
+def scenario_workforce(api):
+    st, w = api.create("worker", {"worker_name": "Citra Uji", "day_rate": 1_500_000, "role_title": "Inspektor NDT Level II",
+                                  "certifications": [{"cert_name": "Kedaluwarsa kemarin", "expires_on": yesterday()},
+                                                     {"cert_name": "Masih berlaku", "expires_on": "2099-01-01"},
+                                                     {"cert_name": "Tanpa kedaluwarsa"}]})
+    check("create worker with certifications", st == 201, w)
+    if st != 201:
+        return
+    certs = w["certifications"]
+    eq("certification expired yesterday -> expired true", certs[0].get("expired") in (True, "true"), True)
+    eq("certification valid in 2099 -> expired false", certs[1].get("expired") in (True, "true"), False)
+    eq("certification without date -> expired false", certs[2].get("expired") in (True, "true"), False)
+    fixtures = {x["worker_name"]: x for x in api.list("worker")}
+    check("fixture has a worker with an expired certification", any(c.get("expired") in (True, "true") for c in api.get("worker", fixtures["Budi Contoh"]["name"])["certifications"]), fixtures.get("Budi Contoh"))
+    gap("certification.expired stays current after save", "kernel (computed-on-read or a scheduled recompute)", "computes run at save; the flag goes stale once expires_on passes")
+
+
+def yesterday():
+    import datetime
+    return (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+
+
+def scenario_projects(api):
+    customer = api.list("customer")[0]["name"]
+    worker = next(w for w in api.list("worker") if w["worker_name"] == "Andi Contoh")["name"]
+    st, p = api.create("project", {"project_name": "Inspeksi shutdown Cilegon", "customer": customer, "site": "Cilegon"})
+    check("create project", st == 201, p)
+    if st != 201:
+        return
+    eq("project state defaults to planned", p["state"], "planned")
+    eq("project number PRJ-<year>-nnnn", p["name"].startswith("PRJ-"), True)
+
+    st, a = api.create("assignment", {"project": p["name"], "worker": worker, "start_date": "2026-11-10", "end_date": "2026-11-20"})
+    check("create assignment", st == 201, a)
+    if st == 201:
+        eq("assignment day_rate defaults from the worker", a["day_rate"], 1_500_000)
+        eq("assignment site defaults from the project", a["site"], "Cilegon")
+    st, resp = api.create("assignment", {"project": p["name"], "worker": worker, "start_date": "2026-11-20", "end_date": "2026-11-10"})
+    check("assignment end before start -> 422", st == 422 and any("selesai" in m.lower() for m in messages(resp)), (st, resp))
+
+    st, t = api.create("timesheet", {"project": p["name"], "worker": worker, "assignment": a["name"], "work_date": "2026-11-10", "days": 1, "description": "Inspeksi UT pipa"})
+    check("create timesheet", st == 201, t)
+    if st == 201:
+        eq("timesheet day_rate defaults from the assignment", t["day_rate"], 1_500_000)
+        eq("timesheet 1 day x 1.500.000 = 1.500.000", t["amount"], 1_500_000)
+        st, resp = api.verb("timesheet", t["name"], "submit")
+        check("submit timesheet", st == 200, resp)
+    st, resp = api.create("timesheet", {"project": p["name"], "worker": worker, "work_date": "2026-11-10", "days": 2, "description": "x"})
+    check("timesheet 2 days rejected", st == 422, (st, resp))
+    st, resp = api.create("timesheet", {"project": p["name"], "worker": worker, "work_date": "2026-11-10", "days": 0, "description": "x"})
+    check("timesheet 0 days rejected", st == 422, (st, resp))
+    st, half = api.create("timesheet", {"project": p["name"], "worker": worker, "work_date": "2026-11-11", "days": 1.5, "day_rate": 1_000_001, "description": "lembur"})
+    eq("timesheet 1,5 days rounds to whole rupiah", half.get("amount"), 1_500_002)
+
+    st, b = api.create("acceptance", {"project": p["name"], "accepted_on": "2026-11-21", "accepted_by": "Bambang Contoh", "scope": "Inspeksi tahap 1", "amount": 15_000_000})
+    check("create acceptance", st == 201, b)
+    if st == 201:
+        st, resp = api.verb("acceptance", b["name"], "submit")
+        check("submit acceptance", st == 200 and str(resp.get("name", "")).startswith("BA-"), resp)
+        st, inv = api.create("sales_invoice", {"customer": customer, "project": p["name"], "acceptance": resp.get("name", b["name"]),
+                                               "items": [{"item": api.list("item")[0]["name"], "qty": 10, "rate": 1_500_000}]})
+        check("sales_invoice accepts project and acceptance", st == 201, inv)
+    st, resp = api.create("acceptance", {"project": p["name"], "accepted_on": "2026-11-21", "scope": "x"})
+    check("acceptance without accepted_by rejected", st == 422, (st, resp))
+
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing],
-    # Task 10 adds "demo-jasa" and "demo-fnb" here; Task 11 extends them with the day-one flows.
+    "demo-jasa": [scenario_quotation, scenario_orders, scenario_workforce, scenario_projects],
+    # Task 10 adds "demo-fnb" here and completes demo-jasa; Task 11 extends both with the day-one flows.
 }
 
 
