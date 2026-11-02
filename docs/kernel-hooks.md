@@ -62,6 +62,9 @@ rolls the whole submit/cancel back. Money is whole rupiah and no hook consults a
 - **Reads:** the quotation and its lines.
 - **Writes:** cancels the submitted quotation and creates its amendment (cancel + amend, `amended_from` = the old one) as a
   **draft** with the same header and lines, `revision = old revision + 1` and `outcome = open` (`lost_reason` cleared).
+  The kernel's amend zeroes every `read_only` field (`revision`, `outcome`, `lost_reason` are read-only), so the hook sets
+  `revision = old + 1` and `outcome = 'open'` explicitly on the new draft. The model's rule `draft_outcome_open` also
+  accepts an empty `outcome` on a draft, so an amended draft saves even before the hook's values land.
   Returns `{open: {model: quotation, name}}`. The user edits the draft and submits it, which asks for the manager's
   approval again.
 - **Refuses:** `409 not_open` when `outcome != 'open'` (an accepted or lost quotation is not revised; make a new one);
@@ -87,6 +90,8 @@ rolls the whole submit/cancel back. Money is whole rupiah and no hook consults a
 - **Writes:** a **draft** `customer_order` with `customer`, `quotation` and one line per quotation line (`item`, `description`,
   `qty`, `uom`, `rate`), `po_number` and `po_date` from the args (both are required on the order, so a draft cannot exist
   without them). Returns `{open: {model: customer_order, name}}`.
+- **Order of checks:** the `po_number`/`po_date` args check (`422 po_required`) runs first, before looking for a draft to reuse,
+  so a call without a PO is refused even when a draft exists.
 - **Idempotency:** reuses an existing **draft** `customer_order` for the quotation and returns it; creates a new one only when
   none exists (when reusing, `po_number`/`po_date` of the draft are left as they are). A submitted order for the quotation does not block a new draft (partial orders are allowed).
 - **Refuses:** `422 po_required` when `po_number` or `po_date` is missing (the hook never invents a PO number);

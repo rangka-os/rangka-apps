@@ -406,7 +406,7 @@ def scenario_quotation(api):
     check("revision draft keeps the same lines", [(r["item"], r["qty"], r["rate"]) for r in new["items"]] == [(r["item"], r["qty"], r["rate"]) for r in q2["items"]], new["items"])
     eq("old quotation is cancelled (docstatus 2)", api.get("quotation", old)["docstatus"], 2)
     st, resp = api.action("quotation", old, "new_revision")
-    check("revising the cancelled quotation again is refused", st in (409, 422), (st, resp))
+    check("revising the cancelled quotation again is refused (action_not_allowed)", st == 409 and resp["error"]["code"] == "action_not_allowed", (st, resp))
 
 
 def scenario_orders(api):
