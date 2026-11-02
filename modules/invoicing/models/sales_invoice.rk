@@ -5,7 +5,19 @@ icon: invoice
 is_submittable: true
 naming: INV-{YYYY}-{#####}
 title_field: customer
+on_submit: [ledger.post_receivable]
+on_cancel: [invoicing.reverse_receivable]
 fields:
+  - name: kind
+    type: select
+    label: {id: Jenis faktur}
+    default: "'regular'"
+    in_list: true
+    chip: true
+    options:
+      - {value: regular, label: {id: Reguler}}
+      - {value: down_payment, label: {id: Uang muka (DP)}}
+      - {value: retention, label: {id: Retensi}}
   - name: customer
     type: link
     to: customer
@@ -13,11 +25,13 @@ fields:
     required: true
     in_list: true
     peek: [outstanding, payment_days, npwp]
+  - name: po_number
+    type: data
+    label: {id: No. PO pelanggan}
   - name: outlet
     type: link
     to: outlet
     label: {id: Outlet}
-    required: true
   - name: posting_date
     type: date
     label: {id: Tanggal faktur}
@@ -32,29 +46,85 @@ fields:
   - name: items
     type: table
     of: sales_invoice_item
-    label: {id: Barang}
+    label: {id: Barang/jasa}
     min_rows: 1
   - name: subtotal
     type: currency
     label: {id: Subtotal}
     compute: items.map(i, i.amount).sum()
+  - name: discount_amount
+    type: currency
+    label: {id: Diskon}
+    default: '0'
+  - name: dp_invoice
+    type: link
+    to: sales_invoice
+    label: {id: Faktur uang muka}
+    depends_on: kind == 'regular'
+  - name: dp_deduction
+    type: currency
+    label: {id: Potongan uang muka}
+    default: '0'
+  - name: dpp_base
+    type: currency
+    label: {id: DPP}
+    compute: subtotal - discount_amount - dp_deduction
+  - name: ppn_applies
+    type: check
+    label: {id: Kena PPN}
+    default: 'true'
   - name: tax_rate
     type: percent
     label: {id: Tarif PPN}
     default: '12'
   - name: ppn
     type: currency
-    label: {id: PPN 12% × DPP 11/12}
-    compute: round(subtotal * 11 / 12 * tax_rate / 100)
+    label: {id: PPN (tarif x DPP nilai lain 11/12)}
+    compute: "ppn_applies ? round(dpp_base * 11 / 12 * tax_rate / 100) : 0"
   - name: grand_total
     type: currency
     label: {id: Total}
-    compute: subtotal + ppn
+    compute: dpp_base + ppn
+    in_list: true
+  - name: retention_percent
+    type: percent
+    label: {id: Retensi %}
+    default: '0'
+  - name: retention_amount
+    type: currency
+    label: {id: Retensi ditahan}
+    compute: round(dpp_base * retention_percent / 100)
+  - name: retention_of
+    type: link
+    to: sales_invoice
+    label: {id: Retensi untuk faktur}
+    depends_on: kind == 'retention'
+  - name: pph23_applies
+    type: check
+    label: {id: Dipotong PPh 23}
+    default: 'false'
+  - name: pph23_rate
+    type: percent
+    label: {id: Tarif PPh 23}
+    default: '2'
+  - name: pph23_amount
+    type: currency
+    label: {id: PPh 23 dipotong pelanggan}
+    compute: "pph23_applies ? round(dpp_base * pph23_rate / 100) : 0"
+  - name: amount_due
+    type: currency
+    label: {id: Tagihan bersih}
+    compute: grand_total - retention_amount - pph23_amount
     in_list: true
   - name: paid_amount
     type: currency
     label: {id: Sudah dibayar}
     read_only: true
+  - name: outstanding
+    type: currency
+    label: {id: Sisa tagihan}
+    compute: amount_due - paid_amount
+    in_list: true
   - name: notes
     type: text
     label: {id: Catatan untuk pelanggan}
@@ -66,19 +136,63 @@ rules:
   - name: credit_limit
     on: submit
     level: warn
-    check: customer.outstanding + grand_total <= customer.credit_limit
+    check: customer.outstanding + amount_due <= customer.credit_limit
     message: {id: Melebihi batas kredit pelanggan}
+  - name: discount_within_subtotal
+    on: save
+    check: discount_amount <= subtotal
+    message: {id: Diskon tidak boleh melebihi subtotal}
+  - name: dp_deduction_within_dp
+    on: save
+    check: dp_invoice == '' || dp_deduction <= dp_invoice.dpp_base
+    message: {id: Potongan uang muka melebihi nilai DPP faktur uang muka}
+  - name: dp_needs_invoice
+    on: save
+    check: dp_deduction == 0 || dp_invoice != ''
+    message: {id: Pilih faktur uang muka yang dipotong}
+  - name: dp_invoice_is_dp
+    on: save
+    check: dp_invoice == '' || (dp_invoice.kind == 'down_payment' && dp_invoice.docstatus == 1)
+    message: {id: Faktur uang muka harus berjenis uang muka dan sudah disubmit}
+  - name: dp_not_on_dp
+    on: save
+    check: kind != 'down_payment' || dp_deduction == 0
+    message: {id: Faktur uang muka tidak boleh memotong uang muka}
+  - name: retention_needs_origin
+    on: save
+    check: kind != 'retention' || retention_of != ''
+    message: {id: Faktur retensi harus menunjuk faktur asalnya}
+  - name: retention_origin_submitted
+    on: save
+    check: retention_of == '' || retention_of.docstatus == 1
+    message: {id: Faktur asal retensi harus sudah disubmit dan tidak dibatalkan}
+  - name: retention_range
+    on: save
+    check: retention_percent >= 0 && retention_percent <= 20
+    message: {id: Retensi antara 0 dan 20 persen}
+  - name: dpp_not_negative
+    on: save
+    check: dpp_base >= 0
+    message: {id: DPP tidak boleh negatif; kurangi potongan atau diskon}
 views:
   list:
-    columns: [name, customer, posting_date, status, grand_total]
+    columns: [name, customer, kind, posting_date, status, grand_total, outstanding]
     sort: -posting_date
   form:
     layout:
       - section: {id: Pelanggan}
         columns:
-          - [customer, outlet]
-          - [posting_date, due_date]
-      - section: {id: Barang}
+          - [kind, customer, po_number]
+          - [posting_date, due_date, outlet]
+      - section: {id: Barang/jasa}
         fields: [items]
+      - section: {id: Pajak & potongan}
+        columns:
+          - [discount_amount, dp_invoice, dp_deduction, ppn_applies, tax_rate, ppn]
+          - [pph23_applies, pph23_rate, pph23_amount, retention_percent, retention_of, retention_amount]
+      - section: {id: Ringkasan}
+        columns:
+          - [subtotal, dpp_base, grand_total]
+          - [amount_due, paid_amount, outstanding]
       - section: {id: Catatan}
         fields: [notes]
