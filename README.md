@@ -23,7 +23,9 @@ the menu, dashboards, home and onboarding. Apps define no models.
 | `catalogue` | contacts | `item`, `uom`, `uom_conversion`, `price_list` (+ `price_list_item`) |
 | `outlets` | none | `outlet` |
 | `users` | none | `user` (interim: moves to the kernel when contract 0001 lands) |
-| `invoicing` | contacts, catalogue, outlets | `sales_invoice` (+ `sales_invoice_item`) |
+| `invoicing` | contacts, catalogue (optional: outlets, tax_id, currency) | `sales_invoice` (+ `sales_invoice_item`): PPN on/off, PPh 23, down payment, retention, discount; print format; sidecar for pending kernel streams |
+| `tax_id` | none | `tax_code` |
+| `currency` | none | `currency`, `exchange_rate` |
 | `pipeline` | contacts, users | `lead`, `deal`, `activity`, flows `whatsapp_to_lead` and `morning_follow_up`, roles `sales_rep` and `sales_manager` |
 
 | App | Modules | Also |
@@ -38,6 +40,8 @@ apps/<a>/template.rk                roles, home, onboarding, connectors
 examples/sites/kopi-senja/          example installation: system.rk, features.rk, config.rk, themes/, layouts/
 examples/fixtures/kopi-senja/       its demo data
 scripts/                            catalogue.sh, validate.sh, check_experimental.py
+tests/day_one.py                    integration test against a live kernel (`python3 tests/day_one.py --site kopi-senja`)
+docs/kernel-hooks.md                what each hook the modules declare must do
 ```
 
 The kernel and the validators read one flat directory of units, so `scripts/catalogue.sh` symlinks every module and

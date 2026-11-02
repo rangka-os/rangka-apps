@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+name: sales_invoice
+model: sales_invoice
+label: {id: Faktur, en: Invoice}
+paper: A4
+template: sales_invoice.html
+default: true
