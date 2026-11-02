@@ -1,0 +1,5 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/app.json
+name: invoicing
+version: 1.0.0
+title: {id: Faktur, en: Invoicing}
+requires: {rangka: '>=0.4', contacts: ^1.0, catalogue: ^1.0, outlets: ^1.0}

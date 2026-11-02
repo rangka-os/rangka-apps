@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/model.json
+name: uom
+label: {id: Satuan}
+icon: stock
+naming: UOM-{###}
+title_field: uom_name
+fields:
+  - name: uom_name
+    type: data
+    label: {id: Nama satuan}
+    required: true
+    in_list: true
+    unique: true
