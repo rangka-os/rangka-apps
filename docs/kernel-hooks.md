@@ -58,7 +58,8 @@ rolls the whole submit/cancel back. Money is whole rupiah and no hook consults a
 ## quotation
 
 ### `quotation.revise` (action `new_revision` on `quotation`)
-- **Trigger:** the action on a submitted quotation with `outcome == 'open'` (`if: docstatus == 1 && outcome == 'open'`).
+- **Trigger:** the action on a submitted quotation whose outcome is open (`if: docstatus == 1 && (outcome == 'open' || outcome == '')`).
+  An empty `outcome` means open: a generic amend zeroes the read-only field, and such a quotation must not get stuck.
 - **Reads:** the quotation and its lines.
 - **Writes:** cancels the submitted quotation and creates its amendment (cancel + amend, `amended_from` = the old one) as a
   **draft** with the same header and lines, `revision = old revision + 1` and `outcome = open` (`lost_reason` cleared).
@@ -67,24 +68,26 @@ rolls the whole submit/cancel back. Money is whole rupiah and no hook consults a
   accepts an empty `outcome` on a draft, so an amended draft saves even before the hook's values land.
   Returns `{open: {model: quotation, name}}`. The user edits the draft and submits it, which asks for the manager's
   approval again.
-- **Refuses:** `409 not_open` when `outcome != 'open'` (an accepted or lost quotation is not revised; make a new one);
-  `409 already_cancelled` when the document is cancelled.
+- **Refuses:** the action `if` gate answers first: `409 action_not_allowed` for an accepted or lost quotation (make a new one) and
+  for a cancelled or draft one. The hook-level codes `409 not_open` and `409 already_cancelled` only apply when the hook is
+  reached past the gate (a direct call from another hook or the queue); keep them as a second line of defence.
 - **Idempotency:** the old document is cancelled, so a second call finds it not submitted and is refused. Linked draft orders
   keep pointing at the cancelled quotation until they are edited; submitting an order whose quotation is cancelled is not blocked here.
 
 ### `quotation.mark_outcome` (action `mark_outcome` on `quotation`)
 - **Why a hook:** a submitted document cannot be edited (`PATCH` answers `409`, verified in `tests/day_one.py`), but a sent
   quotation is won or lost after submit. This hook is the one controlled way to write on a submitted quotation.
-- **Trigger:** the action on a submitted quotation with `outcome == 'open'`. Args: `{outcome: accepted|lost, lost_reason}`.
+- **Trigger:** the action on a submitted quotation whose outcome is open (`''` counts as open, as above). Args: `{outcome: accepted|lost, lost_reason}`.
 - **Writes:** sets `outcome` and `lost_reason` and nothing else; every other field is left as submitted, the snapshot hash
   of the approval is not touched. Audit entry `quotation.outcome`.
 - **Refuses:** `422` when `outcome` is not `accepted` or `lost`, or when `lost` comes without `lost_reason`;
-  `409 not_open` when the outcome is already set.
+  outside the gate (`409 action_not_allowed` on an accepted or lost quotation), the hook itself answers `409 not_open`.
 
 ## orders
 
 ### `orders.from_quotation` (action `make_order` on `quotation`; declared in `modules/quotation/app.rk`, implemented with orders)
-- **Trigger:** the action on a submitted quotation with `outcome == 'accepted'`. Args from the call body (same pattern as
+- **Trigger:** the action on a submitted quotation with `outcome == 'accepted'` (gate: `if: docstatus == 1 && outcome == 'accepted'`, so
+  any other outcome, including `''`, answers `409 action_not_allowed` first). Args from the call body (same pattern as
   `mark_outcome`): `{po_number, po_date}`, the customer's PO.
 - **Reads:** the quotation, its lines, existing `customer_order` records with `quotation = <this>`.
 - **Writes:** a **draft** `customer_order` with `customer`, `quotation` and one line per quotation line (`item`, `description`,
@@ -95,7 +98,7 @@ rolls the whole submit/cancel back. Money is whole rupiah and no hook consults a
 - **Idempotency:** reuses an existing **draft** `customer_order` for the quotation and returns it; creates a new one only when
   none exists (when reusing, `po_number`/`po_date` of the draft are left as they are). A submitted order for the quotation does not block a new draft (partial orders are allowed).
 - **Refuses:** `422 po_required` when `po_number` or `po_date` is missing (the hook never invents a PO number);
-  `409 not_accepted` when `outcome != 'accepted'`; `409 orders_not_installed` when the orders module is absent.
+  `409 not_accepted` only past the gate (as with the hook codes above); `409 orders_not_installed` when the orders module is absent.
 
 ## workforce
 

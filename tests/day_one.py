@@ -384,6 +384,24 @@ def scenario_quotation(api):
         check("make_order refused while outcome is open", st == 409 and resp["error"]["code"] == "action_not_allowed", (st, resp))
         gap("orders.from_quotation creates a draft customer_order", "kernel (S8c hooks; needs mark_outcome first)", "mark_outcome is 501, so no quotation can reach accepted")
 
+    # a generic amend zeroes read-only fields, so the amended draft has outcome '' which counts as open (not stuck)
+    st, q3 = api.create("quotation", {"customer": customer, "subject": "Untuk amend", "items": [{"item": ndt, "qty": 1, "rate": 1_500_000}]})
+    st, resp = api.verb("quotation", q3["name"], "submit")
+    n3 = resp.get("name", q3["name"])
+    st, resp = api.verb("quotation", n3, "cancel")
+    check("cancel quotation before generic amend", st == 200, resp)
+    st, am = api.verb("quotation", n3, "amend")
+    check("generic amend creates a draft", st in (200, 201), (st, am))
+    if st in (200, 201):
+        am_name = am.get("name") or am.get("data", {}).get("name")
+        st, resp = api.verb("quotation", am_name, "submit")
+        check("amended draft (outcome empty) submits", st == 200, (st, resp))
+        n4 = resp.get("name", am_name)
+        st, resp = api.action("quotation", n4, "new_revision")
+        check("empty outcome is open: new_revision passes the gate", st != 409, (st, resp))
+        st, resp = api.action("quotation", n4, "mark_outcome", {"outcome": "lost", "lost_reason": "uji"})
+        check("empty outcome is open: mark_outcome passes the gate", st != 409, (st, resp))
+
     # revision flow on a separate submitted quotation whose outcome is still open: Rev.00 -> Rev.01
     st, q2 = api.create("quotation", {"customer": customer, "subject": "Untuk revisi", "items": [{"item": ndt, "qty": 3, "rate": 1_500_000}, {"item": ut, "qty": 5, "rate": 85_000}]})
     check("create quotation to revise", st == 201, q2)
