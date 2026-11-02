@@ -26,6 +26,10 @@ the menu, dashboards, home and onboarding. Apps define no models.
 | `invoicing` | contacts, catalogue (optional: outlets, tax_id, currency) | `sales_invoice` (+ `sales_invoice_item`): PPN on/off, PPh 23, down payment, retention, discount; print format; sidecar for pending kernel streams |
 | `tax_id` | none | `tax_code` |
 | `currency` | none | `currency`, `exchange_rate` |
+| `quotation` | contacts, catalogue (optional: tax_id, currency) | `quotation` (+ `quotation_item`): revisions, outcome, manager approval (sidecar), print *Surat penawaran harga*; role `sales_manager` |
+| `orders` | contacts, catalogue (optional: quotation) | `customer_order` (+ `customer_order_item`): customer PO, action `make_invoice` |
+| `workforce` | none | `worker`, `certification` (expiry flag) |
+| `projects` | contacts, users, workforce (optional: orders) | `project`, `assignment`, `timesheet`, `acceptance` (berita acara); role `project_admin` |
 | `pipeline` | contacts, users | `lead`, `deal`, `activity`, flows `whatsapp_to_lead` and `morning_follow_up`, roles `sales_rep` and `sales_manager` |
 
 | App | Modules | Also |
@@ -37,10 +41,11 @@ modules/<m>/app.rk                  manifest (kind app for now: version, require
 modules/<m>/models|roles|flows/     the module's metadata
 apps/<a>/app.rk, dashboards/        manifest with menu and dashboards
 apps/<a>/template.rk                roles, home, onboarding, connectors
+examples/sites/demo-jasa/            interim project-services site (quotation to acceptance); Task 10 adds the jasa_proyek app
 examples/sites/kopi-senja/          example installation: system.rk, features.rk, config.rk, themes/, layouts/
 examples/fixtures/kopi-senja/       its demo data
 scripts/                            catalogue.sh, validate.sh, check_experimental.py
-tests/day_one.py                    integration test against a live kernel (`python3 tests/day_one.py --site kopi-senja`)
+tests/day_one.py                    integration test against a live kernel (`python3 tests/day_one.py --site kopi-senja|demo-jasa`)
 docs/kernel-hooks.md                what each hook the modules declare must do
 ```
 

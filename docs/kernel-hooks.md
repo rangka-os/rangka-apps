@@ -35,7 +35,7 @@ rolls the whole submit/cancel back. Money is whole rupiah and no hook consults a
 - **Idempotency:** cancel happens once per document. The hook is the exact inverse of `ledger.post_receivable`, so
   submit then cancel leaves `customer.outstanding` unchanged.
 
-### `invoicing.from_order` (action `make_invoice` on `customer_order`, added with orders)
+### `invoicing.from_order` (action `make_invoice` on `customer_order`; declared by the orders module, needs invoicing)
 - **Trigger:** the action on a submitted `customer_order` (`if: docstatus == 1`).
 - **Reads:** the order and its lines; every submitted, not cancelled `sales_invoice` with `customer_order = <order>`
   and its lines.
@@ -47,8 +47,53 @@ rolls the whole submit/cancel back. Money is whole rupiah and no hook consults a
 - **Idempotency:** each call creates a new draft containing only the remainder, so calling it twice before the first
   draft is submitted would produce two drafts for the same remainder: the hook reuses an existing draft for the order
   (same `customer_order`, `docstatus 0`) and returns it instead of creating another.
+- **Declared in:** `modules/orders/app.rk` `hooks:` (the action lives on `customer_order`); the semantics sit here because
+  the hook writes invoices.
 
 ### Not checkable in a rule (hook or kernel work)
 - A DP invoice deducted by two regular invoices: each rule checks `dp_deduction <= dp_invoice.dpp_base` alone. The
   submit hook must refuse when the sum of `dp_deduction` over submitted invoices naming the same `dp_invoice` exceeds its `dpp_base`
   (`409 dp_over_deducted`). Likewise one `retention_of` may be billed once (`409 retention_billed`).
+
+## quotation
+
+### `quotation.revise` (action `new_revision` on `quotation`)
+- **Trigger:** the action on a submitted quotation with `outcome == 'open'` (`if: docstatus == 1 && outcome == 'open'`).
+- **Reads:** the quotation and its lines.
+- **Writes:** cancels the submitted quotation and creates its amendment (cancel + amend, `amended_from` = the old one) as a
+  **draft** with the same header and lines, `revision = old revision + 1` and `outcome = open` (`lost_reason` cleared).
+  Returns `{open: {model: quotation, name}}`. The user edits the draft and submits it, which asks for the manager's
+  approval again.
+- **Refuses:** `409 not_open` when `outcome != 'open'` (an accepted or lost quotation is not revised; make a new one);
+  `409 already_cancelled` when the document is cancelled.
+- **Idempotency:** the old document is cancelled, so a second call finds it not submitted and is refused. Linked draft orders
+  keep pointing at the cancelled quotation until they are edited; submitting an order whose quotation is cancelled is not blocked here.
+
+### `quotation.mark_outcome` (action `mark_outcome` on `quotation`)
+- **Why a hook:** a submitted document cannot be edited (`PATCH` answers `409`, verified in `tests/day_one.py`), but a sent
+  quotation is won or lost after submit. This hook is the one controlled way to write on a submitted quotation.
+- **Trigger:** the action on a submitted quotation with `outcome == 'open'`. Args: `{outcome: accepted|lost, lost_reason}`.
+- **Writes:** sets `outcome` and `lost_reason` and nothing else; every other field is left as submitted, the snapshot hash
+  of the approval is not touched. Audit entry `quotation.outcome`.
+- **Refuses:** `422` when `outcome` is not `accepted` or `lost`, or when `lost` comes without `lost_reason`;
+  `409 not_open` when the outcome is already set.
+
+## orders
+
+### `orders.from_quotation` (action `make_order` on `quotation`; declared in `modules/quotation/app.rk`, implemented with orders)
+- **Trigger:** the action on a submitted quotation with `outcome == 'accepted'`.
+- **Reads:** the quotation, its lines, existing `customer_order` records with `quotation = <this>`.
+- **Writes:** a **draft** `customer_order` with `customer`, `quotation` and one line per quotation line (`item`, `description`,
+  `qty`, `uom`, `rate`). `po_number` and `po_date` are left for the user: they come from the customer's PO. Returns
+  `{open: {model: customer_order, name}}`.
+- **Idempotency:** reuses an existing **draft** `customer_order` for the quotation and returns it; creates a new one only when
+  none exists. A submitted order for the quotation does not block a new draft (partial orders are allowed).
+- **Refuses:** `409 not_accepted` when `outcome != 'accepted'`; `409 orders_not_installed` when the orders module is absent.
+
+## workforce
+
+### Computed `certification.expired` goes stale (kernel gap, no hook)
+`expired` is a compute (`expires_on != '' && expires_on < today()`) and computes are evaluated at save, so a certification
+saved while valid stays `expired = false` after `expires_on` passes. The kernel needs either computed-on-read for
+date-dependent computes or a scheduled recompute (a flow with `schedule:` that touches rows crossing their date). Until then
+only a save of the worker refreshes it; `tests/day_one.py` asserts the value right after creation.
