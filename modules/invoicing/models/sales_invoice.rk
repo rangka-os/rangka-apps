@@ -25,9 +25,22 @@ fields:
     required: true
     in_list: true
     peek: [outstanding, payment_days, npwp]
+  - name: customer_order
+    type: link
+    to: customer_order
+    label: {id: Pesanan pelanggan}
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+  - name: acceptance
+    type: link
+    to: acceptance
+    label: {id: Berita acara}
   - name: po_number
     type: data
     label: {id: No. PO pelanggan}
+    default: customer_order.po_number
   - name: outlet
     type: link
     to: outlet
@@ -182,8 +195,8 @@ views:
     layout:
       - section: {id: Pelanggan}
         columns:
-          - [kind, customer, po_number]
-          - [posting_date, due_date, outlet]
+          - [kind, customer, po_number, customer_order, project]
+          - [posting_date, due_date, outlet, acceptance]
       - section: {id: Barang/jasa}
         fields: [items]
       - section: {id: Pajak & potongan}
