@@ -81,14 +81,16 @@ rolls the whole submit/cancel back. Money is whole rupiah and no hook consults a
 ## orders
 
 ### `orders.from_quotation` (action `make_order` on `quotation`; declared in `modules/quotation/app.rk`, implemented with orders)
-- **Trigger:** the action on a submitted quotation with `outcome == 'accepted'`.
+- **Trigger:** the action on a submitted quotation with `outcome == 'accepted'`. Args from the call body (same pattern as
+  `mark_outcome`): `{po_number, po_date}`, the customer's PO.
 - **Reads:** the quotation, its lines, existing `customer_order` records with `quotation = <this>`.
 - **Writes:** a **draft** `customer_order` with `customer`, `quotation` and one line per quotation line (`item`, `description`,
-  `qty`, `uom`, `rate`). `po_number` and `po_date` are left for the user: they come from the customer's PO. Returns
-  `{open: {model: customer_order, name}}`.
+  `qty`, `uom`, `rate`), `po_number` and `po_date` from the args (both are required on the order, so a draft cannot exist
+  without them). Returns `{open: {model: customer_order, name}}`.
 - **Idempotency:** reuses an existing **draft** `customer_order` for the quotation and returns it; creates a new one only when
-  none exists. A submitted order for the quotation does not block a new draft (partial orders are allowed).
-- **Refuses:** `409 not_accepted` when `outcome != 'accepted'`; `409 orders_not_installed` when the orders module is absent.
+  none exists (when reusing, `po_number`/`po_date` of the draft are left as they are). A submitted order for the quotation does not block a new draft (partial orders are allowed).
+- **Refuses:** `422 po_required` when `po_number` or `po_date` is missing (the hook never invents a PO number);
+  `409 not_accepted` when `outcome != 'accepted'`; `409 orders_not_installed` when the orders module is absent.
 
 ## workforce
 
