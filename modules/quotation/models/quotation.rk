@@ -116,14 +116,14 @@ actions:
     label: {id: Buat revisi, en: New revision}
     icon: edit
     hook: quotation.revise
-    if: docstatus == 1 && outcome == 'open'
+    if: docstatus == 1 && (outcome == 'open' || outcome == '')
   # Args come from the call body: {outcome: accepted|lost, lost_reason}. Needed because a submitted document
   # cannot be edited, so `outcome` is changed only through this hook (docs/kernel-hooks.md).
   - name: mark_outcome
     label: {id: Catat hasil penawaran, en: Record outcome}
     icon: check
     hook: quotation.mark_outcome
-    if: docstatus == 1 && outcome == 'open'
+    if: docstatus == 1 && (outcome == 'open' || outcome == '')
   - name: make_order
     label: {id: Buat pesanan pelanggan, en: Create customer order}
     icon: check
