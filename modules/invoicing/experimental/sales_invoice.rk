@@ -20,11 +20,6 @@ defaults:
   ppn_applies: org.pkp
 
 fields:
-  # Links to models of optional modules that do not exist yet; they move into the model when
-  # orders (Task 4) and projects/acceptance (Task 5) land.
-  - {name: customer_order, type: link, to: customer_order, label: {id: Pesanan pelanggan}}
-  - {name: project, type: link, to: project, label: {id: Proyek}}
-  - {name: acceptance, type: link, to: acceptance, label: {id: Berita acara}}
   # S8a, contract 0013: foreign-currency invoices. `currency` holds the ISO code (data, not a link, because
   # record names of the currency module are CUR-nnn); a site with the currency module installed picks from it.
   # For a foreign invoice the `*_fx` fields are the source of truth and the kernel adds the `*_fx_idr` twins;
