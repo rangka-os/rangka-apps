@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/model.json
+name: currency
+label: {id: Mata uang}
+icon: card
+naming: CUR-{###}
+title_field: code
+fields:
+  - name: code
+    type: data
+    label: {id: Kode ISO}
+    required: true
+    unique: true
+    in_list: true
+  - name: currency_name
+    type: data
+    label: {id: Nama}
+    in_list: true
+  - name: symbol
+    type: data
+    label: {id: Simbol}
+rules:
+  - name: iso_code
+    on: save
+    check: size(code) == 3
+    message: {id: Kode mata uang terdiri dari 3 huruf (ISO 4217)}
