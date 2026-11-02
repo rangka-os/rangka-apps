@@ -4,8 +4,9 @@
 metadata: models, rules, dashboards, flows and roles. No application code — the Rangka kernel turns these files into a
 database, an API and screens.
 
-> **Status: v0 (October 2026).** Three apps, one template and one example site. All files pass validation with 0
-> errors.
+> **Status: v0 (November 2026).** Six modules, one app and one example site, laid out per
+> [contract 0001](https://github.com/rangka-os/rangka-os/blob/main/docs/contracts/0001-modules-and-apps.md).
+> All files pass both validators with 0 errors.
 
 Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) (kernel, schemas, Console) ·
 **rangka-apps** · [rangka-connectors](https://github.com/rangka-os/rangka-connectors) ·
@@ -13,43 +14,62 @@ Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) (
 
 ## What's inside
 
-| App | Depends on | Models | Also |
-| --- | --- | --- | --- |
-| `core` | — | `customer`, `item`, `outlet`, `user` | Shared master data every other app links to |
-| `sales` | core | `sales_invoice` (document: draft → submitted → cancelled/amended), `sales_invoice_item` | PPN 12% × DPP 11/12, payment status (draft, submitted, partly paid, paid, overdue), dashboard `sales_overview` |
-| `crm` | core, sales (optional) | `lead`, `deal`, `activity` | Kanban pipeline with win probability per stage, "convert lead" action, won deal → draft invoice, dashboard `crm_overview`, flows `whatsapp_to_lead` and `morning_follow_up`, roles `sales_rep` and `sales_manager` |
+A **module** holds models, rules, flows and roles. An **app** is what a customer installs: it picks modules and adds
+the menu, dashboards, home and onboarding. Apps define no models.
 
-| Folder | What |
-| --- | --- |
-| `apps/<app>/app.rk` | Manifest: version, dependencies, menu, dashboards, hooks |
-| `apps/<app>/models/*.rk` | Models: fields, views (list, form, kanban), rules, actions, permissions |
-| `apps/<app>/dashboards/*.rk` | Number, chart (bar, line, donut, funnel) and list widgets computed from records |
-| `apps/<app>/flows/*.rk` | Event- or schedule-driven steps (find, create, update, notify, call a connector) |
-| `apps/<app>/roles/*.rk` | Roles shipped with the app |
-| `templates/crm/template.rk` | **Rangka CRM** template: apps, onboarding questions, starting configuration |
-| `sites/kopi-senja/` | An example installation ("Kopi Senja", a coffee shop): `system.rk`, `features.rk` (plans), `config.rk`, `themes/`, `layouts/` |
-| `fixtures/*.rk` | Demo data for Kopi Senja: 4 customers, 4 items, 2 outlets, 17 invoices, 7 deals, 4 leads, 4 activities |
+| Module | Requires | Models |
+| --- | --- | --- |
+| `contacts` | none | `customer`, `vendor`, `contact_person` |
+| `catalogue` | contacts | `item`, `uom`, `uom_conversion`, `price_list` (+ `price_list_item`) |
+| `outlets` | none | `outlet` |
+| `users` | none | `user` (interim: moves to the kernel when contract 0001 lands) |
+| `invoicing` | contacts, catalogue, outlets | `sales_invoice` (+ `sales_invoice_item`) |
+| `pipeline` | contacts, users | `lead`, `deal`, `activity`, flows `whatsapp_to_lead` and `morning_follow_up`, roles `sales_rep` and `sales_manager` |
+
+| App | Modules | Also |
+| --- | --- | --- |
+| `crm` | contacts, pipeline, invoicing, outlets, users | Menu, dashboards `crm_overview` and `sales_overview`, onboarding in `template.rk` |
+
+```
+modules/<m>/app.rk                  manifest (kind app for now: version, requires, hooks)
+modules/<m>/models|roles|flows/     the module's metadata
+apps/<a>/app.rk, dashboards/        manifest with menu and dashboards
+apps/<a>/template.rk                roles, home, onboarding, connectors
+examples/sites/kopi-senja/          example installation: system.rk, features.rk, config.rk, themes/, layouts/
+examples/fixtures/kopi-senja/       its demo data
+scripts/                            catalogue.sh, validate.sh, check_experimental.py
+```
+
+The kernel and the validators read one flat directory of units, so `scripts/catalogue.sh` symlinks every module and
+app into `build/catalogue/` (git-ignored). A site's `config.apps` lists the app and every module it requires.
 
 ## Try it
 
-Clone next to rangka-os and rangka-connectors, then run the kernel's demo, which loads this repo:
+Clone next to rangka-os and rangka-connectors, build the catalogue, then run the kernel on it with a Postgres 16
+database (`$URL`):
 
 ```bash
 git clone git@github.com:rangka-os/rangka-os.git
 git clone git@github.com:rangka-os/rangka-apps.git
 git clone git@github.com:rangka-os/rangka-connectors.git
-cd rangka-os/kernel && make run-demo   # http://localhost:8080/prototype/ · /console/ (ceo@saga.co.id / rangka-demo)
+cd rangka-apps && scripts/catalogue.sh
+K=../rangka-os/kernel/bin/rangka     # make -C ../rangka-os/kernel build
+A="--apps build/catalogue --site examples/sites/kopi-senja --db $URL"
+$K migrate $A && $K seed $A --fixtures examples/fixtures/kopi-senja && $K serve $A --addr 127.0.0.1:8080 --dev-open
 ```
 
-Validate after any change (Python 3 with `pyyaml` and `jsonschema`, or the Go binary):
+(`make run-demo` in rangka-os still expects the old `apps/` layout until its Makefile is updated.)
+
+Validate after any change (Python 3 with `pyyaml` and `jsonschema` for the reference validator, plus the Go binary;
+`RANGKA_OS` points at the rangka-os checkout, found next to this repo by default):
 
 ```bash
-python3 ../rangka-os/tools/rangka_validate.py apps --site sites/kopi-senja --connectors ../rangka-connectors
-../rangka-os/kernel/bin/rangka validate --apps apps --site sites/kopi-senja --connectors ../rangka-connectors
+scripts/validate.sh                      # both validators, every site in examples/sites; prints "0 errors"
+scripts/validate.sh examples/sites/kopi-senja
 ```
 
 Each problem prints as `file:line:col  level  code  path  message`, e.g.
-`crm/models/deal.rk:15:9  error  unknown_model  fields/1/to  "custommer" … did you mean "customer"?`.
+`pipeline/models/deal.rk:15:9  error  unknown_model  fields/1/to  "custommer" … did you mean "customer"?`.
 
 ## Writing an app
 
@@ -76,8 +96,8 @@ Rules worth knowing:
 
 - **Quote what YAML could misread**: `"yes"`, `"no"`, `"on"`, phone numbers and codes with a leading zero, times like
   `"08:30"`, and `'${ENV}'` inside `{ }`. Unquoted, the validator refuses them.
-- **Dependencies point one way**: an app may link to its own models and to apps it `requires`; models from an
-  `optional` app need `if: app_installed('<app>')`. `core` never links to `crm`.
+- **Dependencies point one way**: a unit may link to its own models and to units it `requires`; models from an
+  `optional` unit need `if: app_installed('<name>')`. `contacts` never links to `pipeline`.
 - **Names are forever**: model and field names are `snake_case` and never renamed after release; companies add their
   own fields as `x_…` in a site's `custom/<model>.rk` overlay, never in these files.
 - **Labels are Bahasa Indonesia first** (`label: {id: …, en: …}`); money is rupiah without decimals.
