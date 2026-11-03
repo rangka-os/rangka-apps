@@ -2,6 +2,8 @@
 name: currency
 label: {id: Mata uang}
 icon: card
+# Named by ISO code (ruling): naming has no field source in schema 0.5 (contract 0009), so fixtures set name = code (IDR, USD)
+# and documents' `currency` holds the code; a currency added in the UI gets CUR-nnn until the kernel can name from a field.
 naming: CUR-{###}
 title_field: code
 permissions:

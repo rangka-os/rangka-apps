@@ -78,10 +78,10 @@ tax_code:
   - {name: PJK-01, code: PPN-12, tax_name: PPN 12% (DPP nilai lain 11/12), kind: ppn, rate: 12, dpp_ratio: 11/12, active: true}
   - {name: PJK-02, code: PPH23-2, tax_name: PPh Pasal 23 jasa 2%, kind: pph23, rate: 2, active: true}
 currency:
-  - {name: CUR-001, code: IDR, currency_name: Rupiah, symbol: Rp}
-  - {name: CUR-002, code: USD, currency_name: Dolar Amerika Serikat, symbol: $}
+  - {name: IDR, code: IDR, currency_name: Rupiah, symbol: Rp}
+  - {name: USD, code: USD, currency_name: Dolar Amerika Serikat, symbol: $}
 exchange_rate:
-  - {name: KURS-00001, currency: CUR-002, rate_date: 2026-11-02, rate: 16000}
+  - {name: KURS-00001, currency: USD, rate_date: 2026-11-02, rate: 16000}
 user:
   - {name: USR-001, full_name: Dewi Contoh, role: sales_manager, email: dewi@contohjasa.test}
   - {name: USR-002, full_name: Hendra Contoh, role: finance_manager, email: hendra@contohjasa.test}
