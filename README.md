@@ -4,7 +4,7 @@
 metadata: models, rules, dashboards, flows and roles. No application code — the Rangka kernel turns these files into a
 database, an API and screens.
 
-> **Status: v0 (November 2026).** Sixteen modules, three apps and three example sites, laid out per
+> **Status: v0 (November 2026).** Sixteen modules, three apps (`crm`, `fnb_cabang`, `jasa_proyek`) and three example sites, laid out per
 > [contract 0001](https://github.com/rangka-os/rangka-os/blob/main/docs/contracts/0001-modules-and-apps.md).
 > All files pass both validators with 0 errors.
 
@@ -50,9 +50,9 @@ modules/<m>/imports/                spreadsheet imports (kind import, contract 0
 apps/<a>/app.rk, dashboards/        what a customer installs: modules, menu, dashboards, connectors, roles, home, onboarding
 examples/sites/<site>/              example installations: system.rk, features.rk, config.rk (+ letterhead.rk, letterheads/<org>.rk, themes/, layouts/)
 examples/fixtures/<dir>/            their demo data (`demo-jasa` seeds the first PT, `demo-jasa-pelatihan` the second; see below)
-scripts/                            validate.sh
+scripts/                            validate.sh (both validators over every site), lib.sh (finds rangka-os and the kernel binary)
 tests/day_one.py                    integration test against a live kernel (`python3 tests/day_one.py --site kopi-senja|demo-jasa|demo-fnb`)
-docs/kernel-hooks.md                what each hook the modules declare must do
+docs/kernel-hooks.md                what each hook the modules declare does in the kernel, and the table of kernel gaps
 ```
 
 The kernel and both validators read `apps/` and the `modules/` folder next to it, so there is nothing to build. A
@@ -97,7 +97,7 @@ $K migrate $A && $K seed $A --fixtures examples/fixtures/kopi-senja && $K serve 
 ```
 
 Validate after any change (Python 3 with `pyyaml` and `jsonschema` for the reference validator, plus the Go binary;
-`RANGKA_OS` points at the rangka-os checkout, found next to this repo by default):
+`RANGKA_OS` points at the rangka-os checkout, found next to this repo by default; `PYTHON` picks the interpreter that has those packages):
 
 ```bash
 scripts/validate.sh                      # both validators, every site in examples/sites; prints "0 errors"
@@ -106,6 +106,33 @@ scripts/validate.sh examples/sites/kopi-senja
 
 Each problem prints as `file:line:col  level  code  path  message`, e.g.
 `pipeline/models/deal.rk:15:9  error  unknown_model  fields/1/to  "custommer" … did you mean "customer"?`.
+
+## Tests
+
+`tests/day_one.py` starts a throwaway Postgres, migrates, seeds and serves one site on a free port, then walks its day-one scenarios over
+the REST API (documents, hooks, approvals, prints, dashboards, roles, imports). It needs the same `RANGKA_OS` and Python as the validators.
+
+```bash
+RANGKA_OS=../rangka-os PYTHON=python3 scripts/validate.sh
+python3 tests/day_one.py --site kopi-senja      # or demo-jasa, demo-fnb; add --only <text> for one scenario, --strict to fail on gaps
+```
+
+Each check prints `OK`, `FAIL` or `GAP`; the last line reads `N ok · M gaps · K failed`. A `GAP` is something the kernel does not do yet
+(named with its owning stream in [docs/kernel-hooks.md](docs/kernel-hooks.md#kernel-gaps)); it does not fail the run.
+Last run on rangka-os with S8c, S8d and S8e: `kopi-senja` 40 ok, `demo-jasa` 487 ok · 5 gaps, `demo-fnb` 296 ok · 2 gaps, 0 failed.
+
+## Kernel version
+
+The modules need rangka-os `main` with these merged: S8c business hooks
+([#15](https://github.com/rangka-os/rangka-os/pull/15), merged), S8d `org` and `tax` CEL globals
+([#20](https://github.com/rangka-os/rangka-os/pull/20), open) and S8e two-step stock transfers with `dpp`/`down_payment` ledger reads
+([#24](https://github.com/rangka-os/rangka-os/pull/24), open). Without S8d the PPN rules cannot read `tax`; without S8e a transfer
+moves stock in one step and the DP/retention checks read the old field names. Hook behaviour: [docs/kernel-hooks.md](docs/kernel-hooks.md).
+
+## Data
+
+Everything here is fictional: Kopi Senja, PT Contoh Inspeksi, CV Contoh Pelatihan and Tahu Contoh are made up, and the fixtures hold no real customer data.
+Do not commit real customer, NPWP, bank or personal data to this repo.
 
 ## Writing an app
 
@@ -146,8 +173,8 @@ The full format, CEL dialect and lifecycle are in
 
 ## Roadmap
 
-POS (cashier, shifts, offline sales, QRIS), Stock (warehouses, transfers, stock moves), Ledger (journals, receivables),
-Payments, HR basics; industry packs for F&B, clinics and services on top of the core apps.
+POS (cashier, shifts, offline sales, QRIS), a general ledger (journals; receivables and payables are tracked on the parties today),
+warehouses beyond outlets, HR basics; industry packs for F&B, clinics and services on top of the core apps.
 
 ## Contributing
 
