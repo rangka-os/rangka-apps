@@ -5,7 +5,7 @@ timezone: Asia/Jakarta
 tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: true}
 numbering:
   sales_invoice: INV-{YYYY}-{#####}
-apps: [crm, contacts, catalogue, outlets, users, pipeline, invoicing]
+apps: [crm]
 plan: tumbuh
 theme: kopi_senja
 layout: crm_first
