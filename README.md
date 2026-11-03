@@ -17,24 +17,28 @@ Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) (
 A **module** holds models, rules, flows and roles. An **app** is what a customer installs: it picks modules and adds
 the menu, dashboards, home and onboarding. Apps define no models.
 
-| Module | Requires | Models |
+Every module requires `users`, which holds all roles (`sales_manager`, `sales_rep`, `finance_manager`, `purchasing_manager`,
+`project_admin`, `head_office`, `outlet_staff`), so a permission never names a role a site lacks. Who may do what is in
+[docs/permissions.md](docs/permissions.md).
+
+| Module | Requires (besides `users`) | Models |
 | --- | --- | --- |
-| `contacts` | none | `customer`, `vendor`, `contact_person` |
+| `users` | none | `user`; every role |
+| `contacts` | none | `customer`, `vendor` (`pkp`), `contact_person` |
 | `catalogue` | contacts | `item`, `uom`, `uom_conversion`, `price_list` (+ `price_list_item`) |
 | `outlets` | none | `outlet` |
-| `users` | none | `user` |
-| `invoicing` | contacts, catalogue (optional: outlets, tax_id, currency) | `sales_invoice` (+ `sales_invoice_item`): PPN on/off, PPh 23, down payment, retention, discount; print format; finance approval above Rp 100.000.000; foreign-currency `*_fx` money fields; numbering series `invoice`; sidecar for the org-PKP default |
+| `invoicing` | contacts, catalogue (optional: outlets, tax_id, currency, orders, projects) | `sales_invoice` (+ `sales_invoice_item`): PPN from config, PPh 23, down payment, retention (no PPN again, bounded by the origin), header discount; print format; finance approval above Rp 100.000.000; foreign-currency `*_fx` totals; numbering series `invoice` |
 | `tax_id` | none | `tax_code` |
-| `currency` | none | `currency`, `exchange_rate` |
-| `quotation` | contacts, catalogue (optional: tax_id, currency) | `quotation` (+ `quotation_item`): line discounts only (no header discount), revisions, outcome, manager approval, numbering series `quotation`, foreign-currency `*_fx` fields (sidecar for the org-PKP default), print *Surat penawaran harga*; role `sales_manager` |
-| `orders` | contacts, catalogue (optional: quotation) | `customer_order` (+ `customer_order_item`): customer PO, action `make_invoice` |
+| `currency` | none | `currency` (named by ISO code), `exchange_rate` |
+| `quotation` | contacts, catalogue (optional: tax_id, currency) | `quotation` (+ `quotation_item`): line discounts only (no header discount), revisions, outcome, manager approval, numbering series `quotation`, foreign-currency `*_fx` totals, print *Surat penawaran harga* |
+| `orders` | contacts, catalogue (optional: quotation) | `customer_order` (+ `customer_order_item`): customer PO, action `make_invoice`; refuses a foreign quotation |
 | `workforce` | none | `worker`, `certification` (expiry flag) |
-| `projects` | contacts, users, workforce (optional: orders) | `project`, `assignment`, `timesheet`, `acceptance` (berita acara); role `project_admin` |
-| `payments` | users, contacts, invoicing, procurement (optional: currency) | `payment` (+ `payment_allocation`), `withholding` (PPh 23 certificate); foreign-currency `amount_fx`; hooks `payments.allocate` and `payments.unallocate`; print *Statement* |
-| `procurement` | contacts, catalogue (optional: outlets, users, currency, stock) | `purchase_request`, `purchase_order`, `goods_receipt`, `vendor_bill` (+ line models): approval above Rp 5.000.000, foreign-currency `*_fx` fields, print *Pesanan pembelian*, actions `make_po` and `receive`; role `purchasing_manager` |
-| `stock` | catalogue, outlets (optional: users) | `recipe` (+ line), `stock_move`, `stock_balance`, `stock_transfer` (two steps), `stock_transfer_receipt`, `stock_count`, `stock_adjustment` (+ line models): moving-average cost, recipes, negative stock allowed and flagged; roles `head_office` and `outlet_staff` (row scope by outlet); flow `stock_negative_alert` |
+| `projects` | contacts, workforce (optional: orders) | `project`, `assignment`, `timesheet`, `acceptance` (berita acara) |
+| `payments` | contacts, invoicing, procurement (optional: currency) | `payment` (+ `payment_allocation`), `withholding` (PPh 23 certificate); foreign-currency `amount_fx`; hooks `payments.allocate` and `payments.unallocate`; print *Statement* |
+| `procurement` | contacts, catalogue (optional: outlets, currency, stock) | `purchase_request`, `purchase_order`, `goods_receipt`, `vendor_bill` (+ line models): approval above Rp 5.000.000 (purchasing_manager or head_office), foreign-currency `*_fx` totals, print *Pesanan pembelian*, actions `make_po` and `receive` |
+| `stock` | catalogue, outlets | `recipe` (+ line), `stock_move`, `stock_balance`, `stock_transfer` (two steps), `stock_transfer_receipt`, `stock_count`, `stock_adjustment` (+ line models): moving-average cost, recipes, negative stock allowed and flagged; flow `stock_negative_alert` |
 | `outlet_sales` | outlets, catalogue, stock | `outlet_sales` (+ line): daily sales per outlet, submit posts stock through the recipes; imports `moka_item_details` and `daily_form` |
-| `pipeline` | contacts, users | `lead`, `deal`, `activity`, flows `whatsapp_to_lead` and `morning_follow_up`, roles `sales_rep` and `sales_manager` |
+| `pipeline` | contacts (optional: invoicing) | `lead`, `deal`, `activity`, flows `whatsapp_to_lead` and `morning_follow_up` |
 
 | App | Modules | Also |
 | --- | --- | --- |
@@ -44,8 +48,8 @@ the menu, dashboards, home and onboarding. Apps define no models.
 
 ```
 modules/<m>/module.rk               manifest: name, version, title, requires, optional, hooks
-modules/<m>/models|roles|flows/     the module's metadata
-modules/<m>/print/                  print formats (inert until the kernel's print stream, S3, merges)
+modules/<m>/models|roles|flows/     the module's metadata (roles only in modules/users/roles/)
+modules/<m>/print/                  print formats (contract 0008; rendered by the kernel)
 modules/<m>/imports/                spreadsheet imports (kind import, contract 0012)
 apps/<a>/app.rk, dashboards/        what a customer installs: modules, menu, dashboards, connectors, roles, home, onboarding
 examples/sites/<site>/              example installations: system.rk, features.rk, config.rk (+ letterhead.rk, letterheads/<org>.rk, themes/, layouts/)
@@ -53,6 +57,7 @@ examples/fixtures/<dir>/            their demo data (`demo-jasa` seeds the first
 scripts/                            validate.sh (both validators over every site), lib.sh (finds rangka-os and the kernel binary)
 tests/day_one.py                    integration test against a live kernel (`python3 tests/day_one.py --site kopi-senja|demo-jasa|demo-fnb`)
 docs/kernel-hooks.md                what each hook the modules declare does in the kernel, and the table of kernel gaps
+docs/permissions.md                 the permission matrix every model declares
 ```
 
 The kernel and both validators read `apps/` and the `modules/` folder next to it, so there is nothing to build. A
@@ -123,11 +128,11 @@ Last run on rangka-os with S8c, S8d and S8e: `kopi-senja` 40 ok, `demo-jasa` 487
 
 ## Kernel version
 
-The modules need rangka-os `main` with these merged: S8c business hooks
-([#15](https://github.com/rangka-os/rangka-os/pull/15), merged), S8d `org` and `tax` CEL globals
-([#20](https://github.com/rangka-os/rangka-os/pull/20), open) and S8e two-step stock transfers with `dpp`/`down_payment` ledger reads
-([#24](https://github.com/rangka-os/rangka-os/pull/24), open). Without S8d the PPN rules cannot read `tax`; without S8e a transfer
-moves stock in one step and the DP/retention checks read the old field names. Hook behaviour: [docs/kernel-hooks.md](docs/kernel-hooks.md).
+The modules need rangka-os `main` at 9c206b4 or later, which has merged S2 approvals, S3 prints, S7 imports, S8a money, S8c business hooks
+([#15](https://github.com/rangka-os/rangka-os/pull/15)), S8d `org` and `tax` CEL globals ([#20](https://github.com/rangka-os/rangka-os/pull/20))
+and S8e two-step stock transfers with `dpp`/`down_payment` ledger reads ([#24](https://github.com/rangka-os/rangka-os/pull/24)). Pending kernel
+keys no longer live in sidecars: every model is one file. Hook behaviour: [docs/kernel-hooks.md](docs/kernel-hooks.md).
+CI (`.github/workflows/day-one.yml`) runs `scripts/validate.sh` and the three `day_one` sites against rangka-os `main` on every push and pull request.
 
 ## Data
 
