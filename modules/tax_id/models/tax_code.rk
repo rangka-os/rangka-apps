@@ -30,7 +30,7 @@ fields:
     in_list: true
   - name: dpp_ratio
     type: data
-    label: {id: 'Rasio DPP (mis. 11/12)'}
+    label: {id: 'Rasio DPP (pembilang/penyebut)'}
   - name: active
     type: check
     label: {id: Aktif}

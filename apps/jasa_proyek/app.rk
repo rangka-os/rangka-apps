@@ -36,11 +36,11 @@ menu:
     items: [purchase_request, purchase_order]
   - group: {id: Data induk}
     items: [customer, vendor, item, uom, price_list, tax_code, currency]
-# Answers set the first defaults of a new installation (PKP decides ppn_applies, the business line the sample items and terms).
+# Answers set the first defaults of a new installation (PKP decides tax_rate, the business line the sample items and terms).
 onboarding:
   - ask: {id: 'Apakah perusahaan kamu PKP?'}
     options: ['ya', 'tidak']
-    sets: org.pkp
+    sets: tax.pkp
   - ask: {id: 'Apa bidang usaha kamu?'}
     options: [manpower, inspeksi, rental, training]
     sets: settings.business_line

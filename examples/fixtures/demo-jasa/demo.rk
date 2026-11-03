@@ -40,11 +40,13 @@ vendor:
   - name: VND-0001
     vendor_name: PT Contoh Bahan Uji
     city: Tangerang
+    pkp: true
     payment_days: 30
     npwp: '0000000000000000'
   - name: VND-0002
     vendor_name: CV Contoh Jasa Angkut
     city: Serang
+    pkp: false
     payment_days: 14
     npwp: '0000000000000000'
 worker:

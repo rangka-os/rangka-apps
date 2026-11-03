@@ -1,8 +1,0 @@
-# Sidecar for quotation: the one thing that still waits for a kernel stream (checked by scripts/check_experimental.py).
-model: quotation
-stream: [S5]
-
-defaults:
-  # S5: CEL has no `org` variable yet, so the org's `pkp` cannot decide. Until then the model's own default is the
-  # constant 'true' and a non-PKP org unticks the box.
-  ppn_applies: org.pkp
