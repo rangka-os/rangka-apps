@@ -257,7 +257,7 @@ What the modules need that the kernel does not do yet. "Harness gap" is the chec
 
 | Gap | Owning stream | Effect on the modules | Harness gap |
 | --- | --- | --- | --- |
-| Flows with `on: <model>.created` are not dispatched | unowned (kernel) | `stock_negative_alert` does not notify head office by itself; the "Stok minus" list is the working view | `stock_negative_alert notifies head_office when a move turns negative` |
+| Flows with `on: <model>.created` are not dispatched | kernel, unassigned (ask integrator) | `stock_negative_alert` does not notify head office by itself; the "Stok minus" list is the working view | `stock_negative_alert notifies head_office when a move turns negative` |
 | `read_only` is not enforced on child-row fields over REST | S1 | a client can send `pph23_applies=false` on an allocation row; `payments.allocate` re-reads the invoice and refuses `pph23_already_deducted` from the stored value | `client-supplied pph23_applies=false on a row is ignored` |
 | `min_rows` is not enforced on create | S1/engine | a purchase request or outlet sale can be saved with no lines | `min_rows 1: a purchase request without lines is refused`, `min_rows 1: an outlet_sales without lines is refused` |
 | Computed fields are evaluated at save only | engine | `certification.expired` goes stale after `expires_on` passes until the worker is saved again | `certification.expired stays current after save` |
@@ -267,8 +267,9 @@ What the modules need that the kernel does not do yet. "Harness gap" is the chec
 | Print helper `aging` buckets `grand_total - paid_amount`, not `outstanding` | S3 | the statement sums its buckets in the template from `outstanding` | none |
 | Conversion hooks drop `currency` and `exchange_rate` (`orders.from_quotation`, `invoicing.from_order`) | S8c follow-up | an order cannot be made from a foreign quotation (rule `quotation_in_rupiah`, 422); foreign invoices are created directly | none (the 422 is checked in `scenario_fx_jasa`) |
 | Prints get `.Links` for top-level link fields only, not for child rows | S3 | line `description` defaults to `item.item_name`, so prints show names; the line unit prints as its `uom` code (e.g. `UOM-004`) until child-row links reach templates | none |
-| Imports see only `row` in CEL (no `org`, no `tax`) | S7 | import rules cannot read the PPN rate or the org; the Moka and daily-form imports carry no tax logic | `Moka import: upload, preview, commit, duplicates` (only on a kernel without imports) |
+| Imports see only `row` in CEL (no `org`, no `tax`) | S7 | import rules cannot read the PPN rate or the org; the Moka and daily-form imports carry no tax logic | none (S7 is merged: a kernel without imports makes `Moka import: upload, preview, commit, duplicates` fail) |
 
-Not kernel gaps, but reported as `GAP` on one site: `stock.post_moves` / `stock.reverse_moves` on `demo-jasa` (the `stock` module is optional for
-`procurement` and is not installed there; `demo-fnb` covers them). A kernel older than S8c/S8e shows the `kernel (S8c hooks)` gaps
-(`hook.skipped` or `501`) and, without S8a, `kernel (S8a money)`.
+Only the rows above are `GAP` lines. `stock.post_moves` / `stock.reverse_moves` on `demo-jasa` (the `stock` module is optional for
+`procurement` and not installed there) are checked as no-ops (`OK`); `demo-fnb` covers the moves. A setup failure, or a hook or endpoint of
+a stream merged on rangka-os main 9c206b4 (S2 approvals, S3 prints, S7 imports, S8a money, S8c/S8d/S8e hooks) that answers `501`,
+`hook.skipped` or `404`, is a `FAIL`, not a gap.
