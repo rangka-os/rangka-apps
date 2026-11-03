@@ -9,8 +9,9 @@ on_submit: [payments.allocate]
 on_cancel: [payments.unallocate]
 permissions:
   - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
-  - {role: sales_manager, read: true, print: true}
-  - {role: head_office, read: true, create: true, write: true, submit: true, print: true}
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  # head office records vendor payments only
+  - {role: head_office, read: true, create: true, write: true, submit: true, print: true, if: direction == 'pay'}
 fields:
   - name: direction
     type: select

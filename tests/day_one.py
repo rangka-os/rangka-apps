@@ -440,14 +440,14 @@ def scenario_invoicing(api):
     submitted = resp.get("name", name)
     after = api.get("customer", customer)["outstanding"]
     if skipped(api, "ledger.post_receivable", f"sales_invoice/{submitted}"):
-        fail("ledger.post_receivable adds amount_due to customer.outstanding", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
+        fail("ledger.post_receivable adds amount_due to customer.outstanding", "kernel (S8c hooks) is merged on main: hook.skipped in the audit log")
     else:
         eq("ledger.post_receivable adds 11.100.000 to outstanding", after - before, 11_100_000)
     st, resp = api.verb("sales_invoice", submitted, "cancel")
     check("cancel invoice", st == 200, resp)
     final = api.get("customer", customer)["outstanding"]
     if skipped(api, "invoicing.reverse_receivable", f"sales_invoice/{submitted}"):
-        fail("invoicing.reverse_receivable subtracts amount_due on cancel", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
+        fail("invoicing.reverse_receivable subtracts amount_due on cancel", "kernel (S8c hooks) is merged on main: hook.skipped in the audit log")
     else:
         eq("cancel restores customer.outstanding", final, before)
 
@@ -529,7 +529,7 @@ def scenario_quotation(api):
         accepted_by_patch = False
         st, resp = api.action("quotation", name, "mark_outcome", {"outcome": "accepted"})
         if st == 501:
-            fail("quotation.mark_outcome", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
+            fail("quotation.mark_outcome", "kernel (S8c hooks) is merged on main: 501 hook_not_implemented")
         else:
             check("action mark_outcome sets outcome", st == 200 and api.get("quotation", name)["outcome"] == "accepted", (st, resp))
 
@@ -547,7 +547,7 @@ def scenario_quotation(api):
             check("orders.from_quotation without PO -> 422 po_required", st2 == 422 and resp2["error"]["code"] == "po_required", (st2, resp2))
     else:
         check("make_order refused while outcome is open", st == 409 and resp["error"]["code"] == "action_not_allowed", (st, resp))
-        fail("orders.from_quotation creates a draft customer_order", "kernel (S8c hooks; needs mark_outcome first) is merged on main: " + str("mark_outcome is 501, so no quotation can reach accepted"))
+        fail("orders.from_quotation creates a draft customer_order", "kernel (S8c hooks) is merged on main: mark_outcome answered 501, so no quotation reached accepted")
 
     # a generic amend zeroes read-only fields, so the amended draft has outcome '' which counts as open (not stuck)
     def amended_submitted(subject):
@@ -584,7 +584,7 @@ def scenario_quotation(api):
     old = resp.get("name", q2["name"])
     st, resp = api.action("quotation", old, "new_revision")
     if st == 501:
-        fail("quotation.revise creates a draft with revision + 1", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
+        fail("quotation.revise creates a draft with revision + 1", "kernel (S8c hooks) is merged on main: 501 hook_not_implemented")
         return
     check("quotation.revise answers 200 with the new draft", st == 200 and resp.get("open", {}).get("model") == "quotation", (st, resp))
     if st != 200:
@@ -759,7 +759,7 @@ def scenario_orders(api):
 
     st, resp = api.action("customer_order", name, "make_invoice")
     if st == 501:
-        fail("invoicing.from_order creates a draft sales_invoice", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
+        fail("invoicing.from_order creates a draft sales_invoice", "kernel (S8c hooks) is merged on main: 501 hook_not_implemented")
     else:
         check("invoicing.from_order creates a draft invoice", st == 200, (st, resp))
 
@@ -904,9 +904,9 @@ def scenario_payments(api):
     check("submit payment passes the rules", st == 200, (st, resp))
     pname = resp.get("name", p["name"])
     if skipped(api, "payments.allocate", f"payment/{pname}"):
-        fail("payments.allocate pays both invoices", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
-        fail("payments.unallocate restores on cancel", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
-        fail("payments.allocate refuses the second payment (409 over_allocation)", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
+        fail("payments.allocate pays both invoices", "kernel (S8c hooks) is merged on main: hook.skipped in the audit log")
+        fail("payments.unallocate restores on cancel", "kernel (S8c hooks) is merged on main: hook.skipped in the audit log")
+        fail("payments.allocate refuses the second payment (409 over_allocation)", "kernel (S8c hooks) is merged on main: hook.skipped in the audit log")
         api.verb("payment", pname, "cancel")
     else:
         i1, i2 = api.get("sales_invoice", inv1), api.get("sales_invoice", inv2)
@@ -957,7 +957,7 @@ def scenario_payments(api):
             st2, r2 = api.verb("payment", resp["name"], "submit")
             bypass = r2.get("name", resp["name"]) if st2 == 200 else resp["name"]
             if st2 == 200 and skipped(api, "payments.allocate", f"payment/{bypass}"):
-                fail("payments.allocate refuses withheld on a pph23 invoice (409 pph23_already_deducted)", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
+                fail("payments.allocate refuses withheld on a pph23 invoice (409 pph23_already_deducted)", "kernel (S8c hooks) is merged on main: hook.skipped in the audit log")
             else:
                 check("hook refuses the bypassed row: 409 pph23_already_deducted", st2 == 409 and r2["error"]["code"] == "pph23_already_deducted", (st2, r2))
             if st2 == 200:
@@ -992,13 +992,13 @@ def scenario_payments(api):
         if st == 200 and not skipped(api, "payments.allocate", f"payment/{resp.get('name', p3['name'])}"):
             eq("cash + withheld clears the invoice: outstanding 0", api.get("sales_invoice", inv4)["outstanding"], 0)
         elif st == 200:
-            fail("cash + withheld clears a non-pph23 invoice", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
+            fail("cash + withheld clears a non-pph23 invoice", "kernel (S8c hooks) is merged on main: hook.skipped in the audit log")
 
     # USD payment: conversion happens once at the header (amount = round(amount_fx x exchange_rate)); rows are IDR
     inv5 = submitted_invoice(10_000_000)
     st, usd = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 16000, "amount_fx": 1000, "amount": 16_000_000})
     if st != 201 or "amount_fx" not in usd:
-        fail("USD 1.000 at 16.000 gives payment.amount 16.000.000", "kernel (S8a money) is merged on main: " + str(f"money field amount_fx not served ({st})"))
+        fail("USD 1.000 at 16.000 gives payment.amount 16.000.000", f"kernel (S8a money) is merged on main: money field amount_fx not served ({st})")
     else:
         eq("USD 1.000 at 16.000 -> amount 16.000.000", usd["amount"], 16_000_000)
         st, resp = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 16000, "amount_fx": 1000,
@@ -1075,8 +1075,8 @@ def scenario_procurement(api):
     # make_po: vendor comes from the call body
     st, resp = api.action("purchase_request", prn, "make_po", {})
     if st == 501:
-        fail("procurement.make_po creates the draft PO from the request", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
-        fail("procurement.make_po without vendor -> 422 vendor_required", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
+        fail("procurement.make_po creates the draft PO from the request", "kernel (S8c hooks) is merged on main: 501 hook_not_implemented")
+        fail("procurement.make_po without vendor -> 422 vendor_required", "kernel (S8c hooks) is merged on main: 501 hook_not_implemented")
     else:
         check("make_po without vendor -> 422 vendor_required", st == 422 and resp.get("error", {}).get("code") == "vendor_required", (st, resp))
         st, resp = api.action("purchase_request", prn, "make_po", {"vendor": vendor})
@@ -1150,7 +1150,7 @@ def scenario_procurement(api):
     st, sub = api.verb("purchase_order", noout["name"], "submit")
     st, resp = api.action("purchase_order", sub.get("name", noout["name"]), "receive", {})
     if st == 501:
-        fail("procurement.receive on a PO without outlet -> 422 outlet_required", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
+        fail("procurement.receive on a PO without outlet -> 422 outlet_required", "kernel (S8c hooks) is merged on main: 501 hook_not_implemented")
     else:
         check("receive on a PO without outlet -> 422 outlet_required 'Outlet tujuan wajib diisi di PO sebelum barang diterima'",
               st == 422 and resp.get("error", {}).get("code") == "outlet_required" and "Outlet tujuan wajib diisi" in resp["error"]["message"], (st, resp))
@@ -1158,7 +1158,7 @@ def scenario_procurement(api):
     # receive action: draft goods receipt with the remainder per line
     st, resp = api.action("purchase_order", pon, "receive", {})
     if st == 501:
-        fail("procurement.receive creates the draft goods receipt", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
+        fail("procurement.receive creates the draft goods receipt", "kernel (S8c hooks) is merged on main: 501 hook_not_implemented")
     else:
         check("receive opens a draft goods_receipt", st == 200 and resp.get("open", {}).get("model") == "goods_receipt", (st, resp))
         if st == 200:
@@ -1222,8 +1222,8 @@ def scenario_procurement(api):
     vbn = resp.get("name", vb["name"])
     posted = api.get("vendor", vendor)["outstanding"]
     if skipped(api, "procurement.post_payable", f"vendor_bill/{vbn}"):
-        fail("procurement.post_payable adds amount_due to vendor.outstanding", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
-        fail("procurement.reverse_payable subtracts on cancel", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
+        fail("procurement.post_payable adds amount_due to vendor.outstanding", "kernel (S8c hooks) is merged on main: hook.skipped in the audit log")
+        fail("procurement.reverse_payable subtracts on cancel", "kernel (S8c hooks) is merged on main: hook.skipped in the audit log")
         hooked = False
     else:
         eq("vendor outstanding += amount_due (2.255.500)", posted, vendor_before + 2_255_500)
@@ -1261,7 +1261,7 @@ def scenario_procurement(api):
     check("submit payment to vendor", st == 200, (st, resp))
     pn = resp.get("name", p["name"])
     if skipped(api, "payments.allocate", f"payment/{pn}"):
-        fail("payments.allocate pays the vendor bill (direction pay)", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
+        fail("payments.allocate pays the vendor bill (direction pay)", "kernel (S8c hooks) is merged on main: hook.skipped in the audit log")
         api.verb("payment", pn, "cancel")
     else:
         b = api.get("vendor_bill", vbn)
@@ -1307,7 +1307,7 @@ def decide(cl, approval_id, verb="approve", reason=""):
 def scenario_roles_jasa(api):
     sm, fm, pm, pa = (CTX.get(x) for x in ("sm", "fm", "pm", "pa"))
     if not all((sm, fm, pm, pa)):
-        fail("members per role on demo-jasa", "harness is merged on main: " + str(f"could not sign in as non-owners: {CTX.get('login_error')}"))
+        fail("members per role on demo-jasa", f"setup failed: could not sign in as non-owners: {CTX.get('login_error')}")
         return
     ndt = services(api)[0]["name"]
     customer = "CUST-0001"
@@ -1341,20 +1341,23 @@ def scenario_roles_jasa(api):
     st, resp = decide(sm, resp["approval"]["id"], "reject", "Harga belum sesuai")
     check("sales_manager rejects: the request is rejected and the quotation stays a draft", st == 200 and resp.get("state", resp.get("approval", {}).get("state")) == "rejected" and api.get("quotation", q2)["docstatus"] == 0, (st, resp))
 
-    # B-side of A5: a big invoice (> 100.000.000) asks finance_manager. Only finance_manager may create and submit invoices
-    # (docs/permissions.md), and an approver self-approves, so the request is recorded approved; nobody else can make one.
+    # B-side of A5: a big invoice (> 100.000.000) by a sales_manager (who may invoice, docs/permissions.md) is held for finance_manager;
+    # project_admin may not invoice at all
     st, resp = pa.create("sales_invoice", invoice_body(customer, ndt, rate=100_000_000))
     check("project_admin may not create a sales_invoice -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
-    st, resp = sm.create("sales_invoice", invoice_body(customer, ndt, rate=100_000_000))
-    check("sales_manager may not create a sales_invoice -> 403", st == 403, (st, resp))
-    st, inv = fm.create("sales_invoice", invoice_body(customer, ndt, rate=100_000_000))
-    check("finance_manager creates a big invoice (111.000.000)", st == 201 and inv["grand_total"] == 111_000_000, (st, inv))
+    st, inv = sm.create("sales_invoice", invoice_body(customer, ndt, rate=100_000_000))
+    check("sales_manager creates a big invoice (111.000.000)", st == 201 and inv["grand_total"] == 111_000_000, (st, inv))
     if st == 201:
-        st, resp = fm.verb("sales_invoice", inv["name"], "submit", {"force": True})
-        big = resp.get("name", inv["name"]) if st == 200 else None
-        reqs = [a for a in approvals_of(api, "sales_invoice", big or inv["name"]) if a.get("policy") == "big_invoice"]
-        check("finance_manager submits the big invoice: self-approved, the big_invoice request recorded approved",
-              st == 200 and len(reqs) == 1 and reqs[0]["approvers"] == ["finance_manager"] and reqs[0]["state"] == "approved", (st, resp, reqs))
+        st, resp = sm.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        check("big invoice by a sales_manager: held, 202, policy big_invoice for finance_manager",
+              st == 202 and resp["approval"]["policy"] == "big_invoice" and resp["approval"]["approvers"] == ["finance_manager"], (st, resp))
+        big = None
+        if st == 202:
+            st2, r2 = decide(sm, resp["approval"]["id"])
+            check("sales_manager cannot approve the big invoice -> 403", st2 == 403, (st2, r2))
+            st2, r2 = decide(fm, resp["approval"]["id"])
+            check("finance_manager approves the big invoice: submitted", st2 == 200 and r2.get("record", {}).get("docstatus") == 1, (st2, r2))
+            big = r2.get("record", {}).get("name")
         if big:
             # finance_manager's main job: record the customer's payment against it
             st3, pay = fm.create("payment", {"direction": "receive", "customer": customer, "amount": 11_100_000, "allocations": [{"sales_invoice": big, "amount": 11_100_000}]})
@@ -1363,6 +1366,10 @@ def scenario_roles_jasa(api):
                 st3, resp3 = fm.verb("payment", pay["name"], "submit")
                 check("finance_manager submits the payment", st3 == 200, (st3, resp3))
                 eq("the invoice's outstanding fell by the payment (111.000.000 - 11.100.000)", api.get("sales_invoice", big)["outstanding"], 99_900_000)
+    st, inv = fm.create("sales_invoice", invoice_body(customer, ndt, rate=100_000_000))
+    st, resp = fm.verb("sales_invoice", inv["name"], "submit", {"force": True})
+    reqs = [x for x in approvals_of(api, "sales_invoice", resp.get("name", inv["name"])) if x.get("policy") == "big_invoice"]
+    check("finance_manager submits its own big invoice: self-approved, request recorded approved", st == 200 and len(reqs) == 1 and reqs[0]["state"] == "approved", (st, resp, reqs))
 
     # new_revision cancels the quotation first, and project_admin has no cancel (docs/permissions.md): refused. The site overlay
     # (custom/quotation.rk) makes the cancel need a sales_manager, who self-approves, so the request is recorded approved.
@@ -1440,14 +1447,16 @@ _PIPE = dict({r: _R for r in ("finance_manager", "purchasing_manager", "project_
              sales_manager=_ALL, sales_rep={"read", "create", "write"})          # sales_rep: own records (if: owner == user.name)
 _STOCK_DOC = {"head_office": _ALL, "outlet_staff": _RCWS}
 MATRIX = {
-    **{m: _MASTER for m in ("customer", "vendor", "item", "uom", "uom_conversion", "price_list", "tax_code", "currency", "exchange_rate", "outlet", "worker")},
+    **{m: _MASTER for m in ("vendor", "uom", "uom_conversion", "price_list", "tax_code", "currency", "exchange_rate", "worker")},
+    "customer": dict(_MASTER, sales_rep={"read", "create", "write"}),     # crm.convert_lead makes customers for sales reps
+    "item": dict(_MASTER, sales_rep=_R), "outlet": dict(_MASTER, sales_rep=_R),
     "user": {r: _R for r in _JASA + ("head_office", "outlet_staff", "sales_rep")},
     "quotation": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
     "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
     **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("project", "assignment", "timesheet", "acceptance")},
-    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _RP},
+    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
-    "payment": {"finance_manager": _ALL, "sales_manager": _RP, "head_office": {"read", "create", "write", "submit", "print"}},
+    "payment": {"finance_manager": _ALL, "sales_manager": _ALL, "head_office": {"read", "create", "write", "submit", "print"}},   # head_office: if direction == 'pay'
     "purchase_request": {"purchasing_manager": _ALL, "project_admin": _RCWS, "head_office": _ALL, "outlet_staff": _RCWS},
     "purchase_order": {"purchasing_manager": _ALL, "finance_manager": _RP, "head_office": _ALL},
     "vendor_bill": {"purchasing_manager": _ALL, "finance_manager": {"read", "submit", "print"}, "head_office": _ALL},
@@ -1472,8 +1481,9 @@ def setup_kopi_senja(api, k):
     """Members for the matrix check on the CRM site: a sales_manager and a sales_rep."""
     CTX.update(kernel=k, org="kopi-senja")
     pw = secrets.token_urlsafe(18)   # throwaway password of a throwaway database
-    for key, email, role, name in (("sm", "manajer@kopisenja.test", "sales_manager", "Sari Contoh"), ("sr", "sales@kopisenja.test", "sales_rep", "Raka Contoh")):
-        code, out = k.user_add(email, role, CTX["org"], name, password=pw)
+    # the sales_rep is the fixture's USR-002, owner of LEAD-00031 (user.name in the own-records grant)
+    for key, email, role, name, rec in (("sm", "manajer@kopisenja.test", "sales_manager", "Sari Contoh", "USR-003"), ("sr", "sales@kopisenja.test", "sales_rep", "Rina Wulandari", "USR-002")):
+        code, out = k.user_add(email, role, CTX["org"], name, record=rec, password=pw)
         cl = Api.login(k.base, email, pw) if code == 0 else None
         if cl is None:
             CTX["login_error"] = f"{email}: " + (out if code else "login refused")
@@ -1512,6 +1522,42 @@ def money_bodies(api, site):
 
 def denied(st, resp):
     return st == 403 and isinstance(resp, dict) and resp.get("error", {}).get("code") == "permission_denied"
+
+
+def scenario_crm_roles(api):
+    """crm on kopi-senja: a sales_rep converts its own lead (crm.convert_lead makes the customer), a sales_manager wins the deal
+    (crm.mark_won makes the draft invoice) and submits the invoice."""
+    sm, sr = CTX.get("sm"), CTX.get("sr")
+    if not (sm and sr):
+        fail("crm members signed in", CTX.get("login_error"))
+        return
+    st, resp = sr.action("lead", "LEAD-00031", "convert")
+    check("sales_rep converts its own lead (crm.convert_lead) -> 200", st == 200, (st, resp))
+    if st != 200:
+        return
+    lead = api.get("lead", "LEAD-00031")
+    cust, deal = lead.get("converted_customer"), lead.get("converted_deal")
+    check("the conversion created a customer and a deal", bool(cust) and bool(deal), lead)
+    st, c = sr.call("GET", f"/api/v1/r/customer/{Api.q(cust)}")
+    check("sales_rep opens the customer the conversion created", st == 200 and c.get("customer_name") == "Kedai Kopi Andi", (st, c))
+    st, d = sr.call("GET", f"/api/v1/r/deal/{Api.q(deal)}")
+    check("sales_rep opens the deal (its own)", st == 200 and d.get("customer") == cust, (st, d))
+    st, resp = sr.create("customer", {"customer_name": "Pelanggan dari sales"})
+    check("sales_rep creates a customer", st == 201, (st, resp))
+    st, resp = sr.call("GET", "/api/v1/r/item?limit=1")
+    check("sales_rep reads items", st == 200, (st, resp))
+    st, resp = sr.create("sales_invoice", invoice_body(cust, api.list("item")[0]["name"]))
+    check("sales_rep may not create a sales_invoice -> 403", denied(st, resp), (st, resp))
+    st, resp = sm.patch("deal", deal, {"stage": "won", "value": 2_000_000})
+    check("sales_manager marks the deal won", st == 200, (st, resp))
+    invs = [i for i in api.list("sales_invoice", limit=200) if str(i.get("notes", "")).startswith("Dari peluang " + deal)]
+    check("crm.mark_won made one draft invoice for the deal's customer", len(invs) == 1 and invs[0]["customer"] == cust and invs[0]["docstatus"] == 0, invs)
+    if len(invs) != 1:
+        return
+    st, resp = sm.patch("sales_invoice", invs[0]["name"], {"items": [{"item": api.list("item")[0]["name"], "qty": 1, "rate": 2_000_000}]})
+    check("sales_manager fills the draft invoice", st == 200, (st, resp))
+    st, resp = sm.verb("sales_invoice", invs[0]["name"], "submit", {"force": True})
+    check("sales_manager submits the invoice", st == 200 and resp.get("docstatus") == 1, (st, resp))
 
 
 def scenario_dashboards_crm(api):
@@ -1589,6 +1635,9 @@ def scenario_permissions(api):
         st, resp = dago.call("GET", "/api/v1/r/payment")
         check("outlet_staff cannot list payments -> 403", denied(st, resp), (st, resp))
         hq = CTX["hq"]
+        st, cust = api.create("customer", {"customer_name": "Pelanggan uji izin"})
+        st, resp = hq.create("payment", {"direction": "receive", "customer": cust.get("name"), "amount": 1_000})
+        check("head_office cannot create a receive payment (grant only if direction == 'pay') -> 403", denied(st, resp), (st, resp))
         st, p = hq.create("payment", {"direction": "pay", "vendor": "VND-0002", "amount": 1_000})
         check("head_office creates a vendor payment", st == 201, (st, p))
         if st == 201:
@@ -1705,7 +1754,7 @@ def scenario_prints_jasa(api):
     check("SOA: submit the payment of the current invoice", st == 200, (st, resp))
     paid = api.get("sales_invoice", open_ids["current"])["outstanding"] == 0
     if not paid:
-        fail("SOA: payments.allocate settles the invoice", "kernel (S8c hooks) is merged on main: " + str("hook did not run; the statement lists the invoice as open"))
+        fail("SOA: payments.allocate settles the invoice", "kernel (S8c hooks) is merged on main: hook did not run; the statement lists the invoice as open")
     soa = check_print("statement (customer)", api, "customer", cust["name"], "statement",
                       ["PT Contoh Piutang", open_ids["d30"], open_ids["d60"], "Umur piutang", "Total sisa tagihan"])
     cells = aging_cells(soa)
@@ -2163,7 +2212,7 @@ def scenario_stock(api):
     braga = CTX.get("staff_braga") or api   # without a session the receipts are made by owner so the numbers below still hold; staff-only checks are skipped
     dago_staff = CTX.get("staff_dago")
     if not has_staff:
-        fail("outlet_staff receive transfers and are refused elsewhere (staff sessions)", "harness is merged on main: " + str(f"could not sign in as a non-owner: {CTX.get('login_error')}"))
+        fail("outlet_staff receive transfers and are refused elsewhere (staff sessions)", f"setup failed: could not sign in as a non-owner: {CTX.get('login_error')}")
     leftovers = []   # draft receipts that stay after refusals; removed at the end of the block
     st, tr = api.create("stock_transfer", {"from_outlet": DAGO, "to_outlet": BRAGA, "items": [{"item": m, "qty": 30}]})
     check("create transfer 30 kg", st == 201, tr)
@@ -2408,7 +2457,7 @@ def scenario_stock_access(api):
     all_bal = api.find("stock_balance", "item == '%s'" % m)
     check("setup: the stock scenario left balances at several outlets", len({b["outlet"] for b in all_bal}) >= 3, all_bal)
     if hq is None or dago is None:
-        fail("outlet_staff row scope check (list own outlet, 403 on another)", "harness is merged on main: " + str(f"could not sign in as a non-owner: {CTX.get('login_error')}"))
+        fail("outlet_staff row scope check (list own outlet, 403 on another)", f"setup failed: could not sign in as a non-owner: {CTX.get('login_error')}")
         return
     move = api.find("stock_move", "item == '%s'" % m)[0]
     bal_dago = balance(api, DAGO, m)
@@ -2487,7 +2536,7 @@ def scenario_outlet_sales(api):
     check("meta lists the imports moka_item_details and daily_form on outlet_sales",
           st == 200 and all(imps.get(n, {}).get("model") == "outlet_sales" and imps[n].get("per") == "outlet" for n in ("moka_item_details", "daily_form")), imps)
     if not imps:
-        fail("Moka import: upload, preview, commit, duplicates", "kernel (S7 imports) is merged on main: " + str("no imports in /meta: the imports stream has not merged into this kernel"))
+        fail("Moka import: upload, preview, commit, duplicates", "kernel (S7 imports) is merged on main: no imports in /meta")
         return
 
     # stock to sell from: Dago receives the fixture materials
@@ -2640,7 +2689,7 @@ def setup_demo_fnb(api, k):
 
 
 SCENARIOS = {
-    "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions],
+    "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],

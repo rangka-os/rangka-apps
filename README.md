@@ -124,7 +124,7 @@ python3 tests/day_one.py --site kopi-senja      # or demo-jasa, demo-fnb; add --
 
 Each check prints `OK`, `FAIL` or `GAP`; the last line reads `N ok · M gaps · K failed`. A `GAP` is a genuine kernel limitation no merged stream covers
 (named with its owning stream in [docs/kernel-hooks.md](docs/kernel-hooks.md#kernel-gaps)); it does not fail the run.
-Last run on rangka-os main 9c206b4: `kopi-senja` 59 ok, `demo-jasa` 595 ok · 3 gaps, `demo-fnb` 331 ok · 2 gaps, 0 failed.
+Last run on rangka-os main 9c206b4: `kopi-senja` 70 ok, `demo-jasa` 595 ok · 3 gaps, `demo-fnb` 332 ok · 2 gaps, 0 failed.
 
 ## Kernel version
 
