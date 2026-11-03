@@ -1,0 +1,13 @@
+# Synthetic data for CV Contoh Pelatihan, the second (non-PKP) org of the demo-jasa site. Fictional.
+uom:
+  - {name: UOM-001, uom_name: Paket}
+  - {name: UOM-002, uom_name: Orang-hari}
+customer:
+  - {name: CUST-0001, customer_name: PT Contoh Peserta Mandiri, city: Serang, payment_days: 14, credit_limit: 100000000, npwp: '0000000000000000'}
+item:
+  - {name: BRG-0001, item_name: Pelatihan K3 dasar (per kelas), kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: PLT-K3, rate: 10000000}
+  - {name: BRG-0002, item_name: Instruktur tamu (per orang-hari), kind: service, stock_uom: UOM-002, sales_uom: UOM-002, sku: PLT-INS, rate: 1500000}
+vendor:
+  - {name: VND-0001, vendor_name: CV Contoh Modul Cetak, city: Serang, payment_days: 14, npwp: '0000000000000000'}
+user:
+  - {name: USR-001, full_name: Sinta Contoh, role: finance_manager, email: sinta@contohpelatihan.test}

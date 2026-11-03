@@ -31,6 +31,7 @@ item:
   - {name: BRG-0003, item_name: Mobilisasi dan demobilisasi, kind: service, stock_uom: UOM-006, sales_uom: UOM-006, sku: JSA-MOB, rate: 12000000}
   - {name: BRG-0004, item_name: Cairan penetran contoh, kind: material, stock_uom: UOM-009, sku: MAT-PEN, standard_cost: 85000}
   - {name: BRG-0005, item_name: Bubuk magnetik contoh, kind: material, stock_uom: UOM-007, sku: MAT-MAG, standard_cost: 12000}
+  - {name: BRG-0006, item_name: Pelatihan dasar NDT (per paket), kind: service, stock_uom: UOM-006, sales_uom: UOM-006, sku: JSA-TRN, rate: 7500000}
 uom_conversion:
   - {name: KONV-0001, item: BRG-0005, uom: UOM-008, factor: 50}
 outlet:
@@ -63,3 +64,24 @@ worker:
     active: true
     certifications:
       - {cert_name: NDT Level II MT, cert_no: MT-0002, issuer: Lembaga Sertifikasi Contoh, issued_on: 2021-03-01, expires_on: 2025-03-01}
+  - name: WRK-0003
+    worker_name: Citra Contoh
+    employee_no: EMP-003
+    role_title: Inspektor visual
+    day_rate: 1200000
+    active: true
+    certifications:
+      - {cert_name: Inspektor visual Level I, cert_no: VT-0003, issuer: Lembaga Sertifikasi Contoh, issued_on: 2025-06-01, expires_on: 2030-06-01}
+tax_code:
+  - {name: PJK-01, code: PPN-12, tax_name: PPN 12% (DPP nilai lain 11/12), kind: ppn, rate: 12, dpp_ratio: 11/12, active: true}
+  - {name: PJK-02, code: PPH23-2, tax_name: PPh Pasal 23 jasa 2%, kind: pph23, rate: 2, active: true}
+currency:
+  - {name: CUR-001, code: IDR, currency_name: Rupiah, symbol: Rp}
+  - {name: CUR-002, code: USD, currency_name: Dolar Amerika Serikat, symbol: $}
+exchange_rate:
+  - {name: KURS-00001, currency: CUR-002, rate_date: 2026-11-02, rate: 16000}
+user:
+  - {name: USR-001, full_name: Dewi Contoh, role: sales_manager, email: dewi@contohjasa.test}
+  - {name: USR-002, full_name: Hendra Contoh, role: finance_manager, email: hendra@contohjasa.test}
+  - {name: USR-003, full_name: Lina Contoh, role: purchasing_manager, email: lina@contohjasa.test}
+  - {name: USR-004, full_name: Agus Contoh, role: project_admin, email: agus@contohjasa.test}

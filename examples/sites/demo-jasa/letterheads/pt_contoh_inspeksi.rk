@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+legal_name: PT Contoh Inspeksi
+tagline: Inspeksi dan pengujian tak merusak
+address: |
+  Jl. Contoh Industri No. 1
+  Cilegon 42400
+phone: '+62 254 000 0001'
+email: halo@contohinspeksi.test
+website: contohinspeksi.test
+npwp: '00.000.000.0-000.001'
+bank:
+  - {bank: Bank Contoh, account: '111 000 0001', holder: PT Contoh Inspeksi, branch: Cilegon}
+signatory: {name: Bambang Penandatangan, title: Direktur}
+footer: {id: Terima kasih atas kepercayaan kamu}
