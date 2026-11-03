@@ -970,11 +970,11 @@ def scenario_procurement(api):
     check("submit goods receipt", st == 200, (st, resp))
     grn = resp.get("name", gr["name"])
     if not installed(api, "stock_move"):
-        # S8c's stock.post_moves answers with a message and writes nothing while there are no stock models (Task 8)
-        gap("stock.post_moves posts the receipt and updates PO received_qty/received_pct", "stock module (Task 8)", "no stock_move/stock_balance models installed; the hook is a no-op")
+        # S8c's stock.post_moves answers with a message and writes nothing while the stock module is not installed
+        gap("stock.post_moves posts the receipt and updates PO received_qty/received_pct", "stock module (not installed on this site)", "no stock_move/stock_balance models; the hook is a no-op (stock is optional for procurement; demo-fnb covers it)")
         st, resp = api.verb("goods_receipt", grn, "cancel")
         check("cancel goods receipt", st == 200, (st, resp))
-        gap("stock.reverse_moves reverses the receipt", "stock module (Task 8)", "no stock models installed; the hook is a no-op")
+        gap("stock.reverse_moves reverses the receipt", "stock module (not installed on this site)", "no stock models; the hook is a no-op (demo-fnb covers it)")
     else:
         pod = api.get("purchase_order", pon)
         eq("PO received_pct 100 after the receipt", pod["received_pct"], 100)
