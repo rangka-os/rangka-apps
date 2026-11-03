@@ -23,6 +23,16 @@ PPN (assessed in rupiah), `grand_total`, retention, PPh 23 and `amount_due` stay
 IDR line `amount` (qty x rate) cannot see the parent's currency, so a foreign header ignores it. The `*_fx` header totals are
 informative. A foreign payment's IDR `amount` is `round(amount_fx x exchange_rate)`, so allocation rows stay IDR.
 
+Choice for adjustments (review item 6): `discount_amount`, `down_payment` (sales_invoice) and `pph23_amount` (vendor_bill) are entered in
+**rupiah only**, also on a foreign document; their foreign twins were removed, and `dpp_fx` / `amount_due_fx` derive from them as
+`IDR / exchange_rate`. Every money document (`quotation`, `sales_invoice`, `purchase_order`, `vendor_bill`, `payment`) refuses a foreign
+`currency` with `exchange_rate <= 1` (rule `foreign_needs_rate`). Prints of `quotation`, `sales_invoice` and `purchase_order` show `rate_fx`,
+`amount_fx` and the totals in the document currency, the kurs, then the rupiah totals.
+
+The conversion hooks (`orders.from_quotation`, `invoicing.from_order`) do not carry `currency`/`exchange_rate` (kernel gap, S8c
+follow-up). `customer_order` has no currency, so it refuses a foreign quotation (rule `quotation_in_rupiah`); a foreign invoice is
+created directly. A CEL rule cannot tell that a draft was made by a hook, so this is the only guard.
+
 ## invoicing
 
 ### `ledger.post_receivable` (core hook, `sales_invoice.on_submit`)
@@ -255,6 +265,7 @@ What the modules need that the kernel does not do yet. "Harness gap" is the chec
 | Amend zeroes `read_only` fields | engine | `dpp_num`/`dpp_den` stay editable so an amended draft keeps its rate; `revision`/`outcome` are reset by `quotation.revise` | none (the amend case is checked in the quotation scenarios) |
 | Print helper `dppfactor` reads `dpp_ratio`, not the document's `dpp_num`/`dpp_den` | S3 | formats join `dpp_num`/`dpp_den` themselves | none |
 | Print helper `aging` buckets `grand_total - paid_amount`, not `outstanding` | S3 | the statement sums its buckets in the template from `outstanding` | none |
+| Conversion hooks drop `currency` and `exchange_rate` (`orders.from_quotation`, `invoicing.from_order`) | S8c follow-up | an order cannot be made from a foreign quotation (rule `quotation_in_rupiah`, 422); foreign invoices are created directly | none (the 422 is checked in `scenario_fx_jasa`) |
 | Imports see only `row` in CEL (no `org`, no `tax`) | S7 | import rules cannot read the PPN rate or the org; the Moka and daily-form imports carry no tax logic | `Moka import: upload, preview, commit, duplicates` (only on a kernel without imports) |
 
 Not kernel gaps, but reported as `GAP` on one site: `stock.post_moves` / `stock.reverse_moves` on `demo-jasa` (the `stock` module is optional for

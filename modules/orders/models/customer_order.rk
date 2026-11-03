@@ -64,6 +64,12 @@ rules:
     on: save
     check: quotation == '' || quotation.customer == customer
     message: {id: Penawaran harus milik pelanggan yang sama}
+  # orders.from_quotation copies the IDR line rate and the order has no currency (kernel gap S8c follow-up: conversions drop
+  # the currency), so an order from a foreign quotation would carry wrong amounts: refused until the hooks carry it.
+  - name: quotation_in_rupiah
+    on: save
+    check: quotation == '' || quotation.currency == '' || quotation.currency == 'IDR'
+    message: {id: Pesanan dari penawaran valas belum didukung; buat faktur valas langsung dari penawaran}
   - name: end_after_start
     on: save
     check: start_date == '' || end_date == '' || end_date >= start_date

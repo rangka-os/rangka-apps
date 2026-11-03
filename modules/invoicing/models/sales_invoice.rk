@@ -150,15 +150,19 @@ fields:
   - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
   - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency; line `rate` stays the unit price
   - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
-  - {name: discount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Diskon (valas)}, default: '0'}
-  - {name: down_payment_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Potongan uang muka (valas)}, default: '0'}
-  - {name: dpp_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "subtotal_fx - discount_fx - down_payment_fx"}
+  # Adjustments (discount_amount, down_payment) are entered in rupiah only, also on a foreign document: the ledger, the DP checks
+  # and PPN read the IDR fields. Their foreign twins are derived here (IDR / exchange_rate), never entered.
+  - {name: dpp_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "currency != '' && currency != 'IDR' ? round(subtotal_fx - (discount_amount + down_payment) / exchange_rate, 2) : 0"}
   - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "round(dpp_fx * dpp_num / dpp_den * tax_rate / 100, 2)"}
   - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_fx + ppn_fx"}
   - {name: retention_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Retensi ditahan (valas)}, compute: "round(dpp_fx * retention_percent / 100, 2)"}
   - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, compute: "pph23_applies ? round(dpp_fx * pph23_rate / 100, 2) : 0"}
   - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - retention_amount_fx - pph23_amount_fx"}
 rules:
+  - name: foreign_needs_rate
+    on: save
+    check: currency == '' || currency == 'IDR' || exchange_rate > 1
+    message: {id: Dokumen valas wajib diisi kursnya (rupiah per 1 unit mata uang asing)}
   # Every document this invoice points at belongs to the same customer (the idiom of project.rk order_same_customer).
   - name: dp_invoice_same_customer
     on: save
