@@ -90,6 +90,10 @@ rules:
     on: save
     check: dpp_den > 0 && dpp_num > 0 && dpp_num <= dpp_den && tax_rate >= 0 && tax_rate <= 100
     message: {id: Tarif PPN atau faktor DPP tidak valid}
+  - name: ppn_needs_pkp
+    on: save
+    check: vendor.pkp || tax_rate == 0
+    message: {id: Pemasok bukan PKP tidak boleh dikenai PPN (tarif PPN harus 0)}
   - name: delivery_after_order
     on: save
     check: delivery_date == '' || delivery_date >= order_date
