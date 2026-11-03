@@ -7,6 +7,9 @@ naming: {series: invoice, pattern: "INV-{YYYY}-{#####}"}
 title_field: customer
 on_submit: [ledger.post_receivable]
 on_cancel: [invoicing.reverse_receivable]
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true, print: true}
 fields:
   - name: kind
     type: select

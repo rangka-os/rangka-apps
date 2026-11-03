@@ -5,6 +5,14 @@ icon: card
 naming: DEAL-{#####}
 title_field: deal_name
 realtime: true
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true}
+  - {role: purchasing_manager, read: true}
+  - {role: project_admin, read: true}
+  - {role: head_office, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: sales_rep, read: true, create: true, write: true, if: owner == user.name}
 fields:
   - name: deal_name
     type: data
@@ -96,18 +104,6 @@ automations:
     when: stage changes to 'won'
     if: app_installed('invoicing')
     do: crm.mark_won
-permissions:
-  - role: sales_rep
-    read: true
-    create: true
-    write: true
-    if: owner == user.name
-  - role: sales_manager
-    read: true
-    create: true
-    write: true
-    delete: true
-    export: true
 views:
   list:
     columns:

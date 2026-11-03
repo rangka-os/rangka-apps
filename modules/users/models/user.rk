@@ -4,6 +4,14 @@ label: {id: Pengguna}
 icon: user
 title_field: full_name
 naming: USR-{###}
+permissions:
+  - {role: sales_manager, read: true}
+  - {role: finance_manager, read: true}
+  - {role: purchasing_manager, read: true}
+  - {role: project_admin, read: true}
+  - {role: head_office, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: sales_rep, read: true}
 fields:
   - name: full_name
     type: data

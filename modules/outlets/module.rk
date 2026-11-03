@@ -2,4 +2,4 @@
 name: outlets
 version: 1.0.0
 title: {id: Outlet, en: Outlets}
-requires: {rangka: '>=0.5'}
+requires: {rangka: '>=0.5', users: ^1.0}

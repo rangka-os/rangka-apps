@@ -2,6 +2,6 @@
 name: outlet_sales
 version: 1.0.0
 title: {id: Penjualan outlet, en: Outlet sales}
-requires: {rangka: '>=0.5', outlets: ^1.0, catalogue: ^1.0, stock: ^1.0}
+requires: {rangka: '>=0.5', users: ^1.0, outlets: ^1.0, catalogue: ^1.0, stock: ^1.0}
 # Semantics fixed in docs/kernel-hooks.md (section stock): submitting posts the stock moves through the recipes.
 hooks: [stock.reverse_moves]

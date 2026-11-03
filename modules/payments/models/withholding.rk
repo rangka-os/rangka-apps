@@ -5,6 +5,9 @@ icon: invoice
 is_submittable: true
 naming: BP-{YYYY}-{#####}
 title_field: cert_no
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true, print: true}
 fields:
   - name: customer
     type: link

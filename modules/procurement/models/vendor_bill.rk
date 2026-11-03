@@ -7,6 +7,10 @@ naming: BILL-{YYYY}-{#####}
 title_field: bill_no
 on_submit: [procurement.post_payable]
 on_cancel: [procurement.reverse_payable]
+permissions:
+  - {role: purchasing_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true, submit: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
 fields:
   - name: vendor
     type: link

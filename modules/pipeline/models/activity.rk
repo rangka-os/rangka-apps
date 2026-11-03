@@ -4,6 +4,14 @@ label: {id: Aktivitas, en: Activity}
 icon: calendar
 naming: ACT-{#####}
 title_field: subject
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true}
+  - {role: purchasing_manager, read: true}
+  - {role: project_admin, read: true}
+  - {role: head_office, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: sales_rep, read: true, create: true, write: true, if: owner == user.name}
 fields:
   - name: activity_type
     type: select
