@@ -107,6 +107,14 @@ fields:
   - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, default: '0'}
   - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - pph23_amount_fx"}
 rules:
+  - name: po_same_vendor
+    on: save
+    check: purchase_order == '' || purchase_order.vendor == vendor
+    message: {id: Pesanan pembelian harus dari pemasok yang sama}
+  - name: receipt_same_vendor
+    on: save
+    check: goods_receipt == '' || goods_receipt.vendor == vendor
+    message: {id: Penerimaan barang harus dari pemasok yang sama}
   - name: tax_valid
     on: save
     check: dpp_den > 0 && dpp_num > 0 && dpp_num <= dpp_den && tax_rate >= 0 && tax_rate <= 100
