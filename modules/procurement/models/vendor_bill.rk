@@ -1,0 +1,116 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/model.json
+name: vendor_bill
+label: {id: Tagihan pemasok, en: Vendor bill}
+icon: invoice
+is_submittable: true
+naming: BILL-{YYYY}-{#####}
+title_field: bill_no
+on_submit: [procurement.post_payable]
+on_cancel: [procurement.reverse_payable]
+fields:
+  - name: vendor
+    type: link
+    to: vendor
+    label: {id: Pemasok}
+    required: true
+    in_list: true
+    peek: [outstanding, payment_days, npwp]
+  - name: purchase_order
+    type: link
+    to: purchase_order
+    label: {id: Pesanan pembelian}
+  - name: goods_receipt
+    type: link
+    to: goods_receipt
+    label: {id: Penerimaan barang}
+  - name: bill_no
+    type: data
+    label: {id: No. faktur pemasok}
+    required: true
+    in_list: true
+  - name: bill_date
+    type: date
+    label: {id: Tanggal faktur}
+    required: true
+    in_list: true
+  - name: due_date
+    type: date
+    label: {id: Jatuh tempo}
+    default: bill_date + duration(vendor.payment_days)
+    relative_to: bill_date
+    in_list: true
+  - name: items
+    type: table
+    of: vendor_bill_item
+    label: {id: Barang/jasa}
+    min_rows: 1
+  - name: subtotal
+    type: currency
+    label: {id: Subtotal}
+    compute: items.map(i, i.amount).sum()
+  - name: ppn_applies
+    type: check
+    label: {id: Kena PPN}
+    default: 'false'
+  - name: ppn
+    type: currency
+    label: {id: PPN (tarif 12% x DPP nilai lain 11/12)}
+    compute: "ppn_applies ? round(subtotal * 11 / 12 * 12 / 100) : 0"
+  - name: grand_total
+    type: currency
+    label: {id: Total}
+    compute: subtotal + ppn
+    in_list: true
+  - name: pph23_amount
+    type: currency
+    label: {id: PPh 23 yang kami potong}
+    help: {id: 'Dipotong dari pembayaran ke pemasok jasa; bukti potong kami terbitkan'}
+    default: '0'
+  - name: amount_due
+    type: currency
+    label: {id: Tagihan bersih}
+    compute: grand_total - pph23_amount
+    in_list: true
+  - name: paid_amount
+    type: currency
+    label: {id: Sudah dibayar}
+    read_only: true
+  - name: outstanding
+    type: currency
+    label: {id: Sisa tagihan}
+    compute: amount_due - paid_amount
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: due_after_bill
+    on: save
+    check: due_date == '' || due_date >= bill_date
+    message: {id: Jatuh tempo tidak boleh sebelum tanggal faktur}
+  - name: pph23_within_total
+    on: save
+    check: pph23_amount >= 0 && pph23_amount <= grand_total
+    message: {id: PPh 23 tidak boleh negatif atau melebihi total}
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+views:
+  list:
+    columns: [name, vendor, bill_no, bill_date, due_date, status, amount_due, outstanding]
+    sort: -bill_date
+  form:
+    layout:
+      - section: {id: Pemasok}
+        columns:
+          - [vendor, bill_no, purchase_order, goods_receipt]
+          - [bill_date, due_date]
+      - section: {id: Barang/jasa}
+        fields: [items]
+      - section: {id: Pajak & potongan}
+        columns:
+          - [subtotal, ppn_applies, ppn, grand_total]
+          - [pph23_amount, amount_due, paid_amount, outstanding]
+      - section: {id: Catatan}
+        fields: [notes]

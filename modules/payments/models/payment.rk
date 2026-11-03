@@ -85,7 +85,6 @@ rules:
     on: save
     check: direction != 'receive' || customer != ''
     message: {id: Pilih pelanggan}
-  # Procurement (Task 7) extends this with the vendor_bill link; until then direction pay only needs the vendor.
   - name: pay_needs_vendor
     on: save
     check: direction != 'pay' || vendor != ''
@@ -109,10 +108,11 @@ rules:
     on: save
     check: "allocations.map(a, a.amount + a.withheld > a.outstanding ? 1 : 0).sum() == 0"
     message: {id: Alokasi melebihi sisa tagihan}
+  # receive allocates to a sales_invoice, pay to a vendor_bill; a row must name its own kind and only that kind.
   - name: allocation_has_target
     on: save
-    check: "direction != 'receive' || allocations.map(a, a.sales_invoice == '' ? 1 : 0).sum() == 0"
-    message: {id: Pilih faktur untuk setiap baris alokasi}
+    check: "allocations.map(a, (direction == 'receive' ? a.sales_invoice == '' || a.vendor_bill != '' : a.vendor_bill == '' || a.sales_invoice != '') ? 1 : 0).sum() == 0"
+    message: {id: Pilih faktur penjualan (terima) atau tagihan pemasok (bayar) untuk setiap baris alokasi}
 views:
   list:
     columns: [name, direction, customer, payment_date, status, amount, unallocated]

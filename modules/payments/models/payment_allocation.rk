@@ -7,10 +7,14 @@ fields:
     type: link
     to: sales_invoice
     label: {id: Faktur penjualan}
+  - name: vendor_bill
+    type: link
+    to: vendor_bill
+    label: {id: Tagihan pemasok}
   - name: outstanding
     type: currency
     label: {id: Sisa tagihan saat input}
-    default: "sales_invoice != '' ? sales_invoice.outstanding : 0"
+    default: "sales_invoice != '' ? sales_invoice.outstanding : (vendor_bill != '' ? vendor_bill.outstanding : 0)"
     read_only: true
   - name: pph23_applies
     type: check
