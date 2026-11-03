@@ -41,7 +41,7 @@
   <tr><td>Subtotal</td><td class="num">{{rupiah .Doc.subtotal}}</td></tr>
   {{if .Doc.discount_amount}}<tr><td>Diskon</td><td class="num">-{{rupiah .Doc.discount_amount}}</td></tr>{{end}}
   <tr><td>DPP</td><td class="num">{{rupiah .Doc.dpp}}</td></tr>
-  {{if .Doc.tax_rate}}<tr><td>PPN {{number .Doc.tax_rate}}% (DPP nilai lain {{.Doc.dpp_num}}/{{.Doc.dpp_den}})</td><td class="num">{{rupiah .Doc.ppn}}</td></tr>{{end}}
+  {{if taxrate .Doc .Tax}}<tr><td>PPN {{number (taxrate .Doc .Tax)}}% (DPP nilai lain {{.Doc.dpp_num}}/{{.Doc.dpp_den}})</td><td class="num">{{rupiah .Doc.ppn}}</td></tr>{{end}}
   <tr class="grand"><td>Total</td><td class="num">{{rupiah .Doc.grand_total}}</td></tr>
 </table>
 <p class="note"><strong>Terbilang:</strong> {{terbilang .Doc.grand_total}}</p>

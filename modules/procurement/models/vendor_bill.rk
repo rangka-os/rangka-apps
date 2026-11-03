@@ -58,7 +58,7 @@ fields:
   - name: tax_rate
     type: percent
     label: {id: Tarif PPN}
-    help: {id: 'Dari pesanan pembelian bila ada, else dari config tax.ppn_rate; 0 bila pemasok bukan PKP. Tersimpan di dokumen.'}
+    help: {id: 'Dari pesanan pembelian bila ada, bila tidak dari config tax.ppn_rate; 0 bila pemasok bukan PKP. Tersimpan di dokumen.'}
     default: "purchase_order != '' ? purchase_order.tax_rate : (vendor.pkp ? tax.ppn_rate : 0)"
   # Not read_only: a generic amend zeroes read-only fields, and a zero dpp_den would break ppn (kernel follow-up).
   - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: "purchase_order != '' ? purchase_order.dpp_num : tax.dpp_num"}
