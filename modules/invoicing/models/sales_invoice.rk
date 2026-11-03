@@ -159,6 +159,18 @@ fields:
   - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, compute: "pph23_applies ? round(dpp_fx * pph23_rate / 100, 2) : 0"}
   - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - retention_amount_fx - pph23_amount_fx"}
 rules:
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: rate_not_negative
+    on: save
+    check: "items.map(i, i.rate < 0 || i.rate_fx < 0 ? 1 : 0).sum() == 0"
+    message: {id: Harga tidak boleh negatif}
+  - name: line_discount_range
+    on: save
+    check: "items.map(i, i.discount < 0 || i.discount > 100 ? 1 : 0).sum() == 0"
+    message: {id: Diskon baris antara 0 dan 100 persen}
   - name: foreign_needs_rate
     on: save
     check: currency == '' || currency == 'IDR' || exchange_rate > 1

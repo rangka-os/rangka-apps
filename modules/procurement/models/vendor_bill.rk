@@ -138,6 +138,10 @@ rules:
     on: save
     check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
     message: {id: Jumlah barang harus lebih dari 0}
+  - name: rate_not_negative
+    on: save
+    check: "items.map(i, i.rate < 0 || i.rate_fx < 0 ? 1 : 0).sum() == 0"
+    message: {id: Harga tidak boleh negatif}
 views:
   list:
     columns: [name, vendor, bill_no, bill_date, due_date, status, amount_due, outstanding]
