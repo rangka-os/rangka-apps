@@ -11,6 +11,7 @@ permissions:
   - {role: project_admin, read: true, create: true, write: true, print: true}
   - {role: head_office, read: true, create: true, write: true, print: true}
   - {role: outlet_staff, read: true}
+  - {role: sales_rep, read: true}
 fields:
   - name: item_name
     type: data
