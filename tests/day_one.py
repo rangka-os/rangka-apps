@@ -13,6 +13,7 @@ import argparse
 import atexit
 import json
 import os
+import secrets
 import socket
 import subprocess
 import sys
@@ -121,6 +122,16 @@ class Kernel:
                 time.sleep(0.2)
         sys.exit("serve did not become ready")
 
+    def user_add(self, email, role, org, name, outlets="", record="", password=""):
+        """`rangka user add`: a member of `org` with `role` (and the outlets of contract 0010). Returns (exit code, output)."""
+        cmd = [self.binary, "user", "add", email, "--org", org, "--role", role, "--name", name, "--db", self.db]
+        if outlets:
+            cmd += ["--outlets", outlets]
+        if record:
+            cmd += ["--record", record]
+        r = subprocess.run(cmd, capture_output=True, text=True, env=dict(os.environ, RANGKA_USER_PASSWORD=password))
+        return r.returncode, (r.stdout + r.stderr).strip()
+
     def stop(self):
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
@@ -136,12 +147,54 @@ class Kernel:
 # ---------- REST client
 
 class Api:
-    def __init__(self, base):
+    def __init__(self, base, cookie=""):
         self.base = base
+        self.cookie = cookie  # "rk_session=..." of a signed-in person; empty in dev-open mode (the owner)
+
+    @classmethod
+    def login(cls, base, email, password):
+        """A client signed in as `email` (POST /auth/login), or None when the login is refused."""
+        req = urllib.request.Request(base + "/auth/login", data=json.dumps({"email": email, "password": password}).encode(),
+                                     method="POST", headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                for c in r.headers.get_all("Set-Cookie") or []:
+                    if c.startswith("rk_session="):
+                        return cls(base, c.split(";")[0])
+        except urllib.error.HTTPError:
+            pass
+        return None
+
+    def headers(self, extra=None):
+        h = dict(extra or {})
+        if self.cookie:
+            h["Cookie"] = self.cookie
+        return h
+
+    def upload(self, path, fields, filename, content):
+        """POST multipart/form-data with form `fields` and the file part `file`."""
+        boundary = "----rk" + secrets.token_hex(8)
+        parts = []
+        for k, v in fields.items():
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode())
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\nContent-Type: text/csv\r\n\r\n'.encode()
+                     + content + b"\r\n")
+        parts.append(f"--{boundary}--\r\n".encode())
+        req = urllib.request.Request(self.base + path, data=b"".join(parts), method="POST",
+                                     headers=self.headers({"Content-Type": f"multipart/form-data; boundary={boundary}"}))
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return r.status, json.loads(r.read() or b"null")
+        except urllib.error.HTTPError as e:
+            raw = e.read()
+            try:
+                return e.code, json.loads(raw)
+            except Exception:
+                return e.code, {"error": {"code": "non_json", "message": raw.decode(errors="replace")[:200]}}
 
     def call(self, method, path, body=None):
         data = None if body is None and method == "GET" else json.dumps(body or {}).encode()
-        req = urllib.request.Request(self.base + path, data=data, method=method, headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(self.base + path, data=data, method=method, headers=self.headers({"Content-Type": "application/json"}))
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 raw = r.read()
@@ -174,8 +227,12 @@ class Api:
         return self.call("POST", f"/api/v1/r/{model}/{self.q(name)}/actions/{action}", body or {})
 
     def list(self, model, **q):
-        qs = "&".join(f"{k}={v}" for k, v in q.items())
+        qs = "&".join(f"{k}={urllib.parse.quote(str(v), safe='')}" for k, v in q.items())
         return self.call("GET", f"/api/v1/r/{model}" + ("?" + qs if qs else ""))[1]["data"]
+
+    def find(self, model, where, **q):
+        """Records of `model` matching a CEL filter, e.g. find("stock_balance", "outlet == 'OUT-02'") (up to 200)."""
+        return self.list(model, filter=where, limit=200, **q)
 
     def audit(self, kind):
         return self.call("GET", f"/api/v1/system/audit?kind={kind}&limit=200")[1]["data"]
@@ -1016,10 +1073,426 @@ def scenario_procurement(api):
         check("purchase_order print answers 200", st == 200, st)
 
 
+# ---------- scenarios: multi-branch F&B (demo-fnb): stock and outlet sales
+
+KG, PORSI = "UOM-001", "UOM-006"
+HO, DAGO, BRAGA = "OUT-01", "OUT-02", "OUT-03"
+FIXTURES = os.path.join(ROOT, "examples", "fixtures", "demo-fnb")
+CTX = {}   # kernel, org and the signed-in clients, set by main() for demo-fnb
+
+
+def eqf(name, got, want):
+    """Float equality for quantities (0.1 kg steps)."""
+    check(name, isinstance(got, (int, float)) and abs(got - want) < 1e-9, f"got {got!r}, want {want!r}")
+
+
+def new_outlet(api, label):
+    st, o = api.create("outlet", {"outlet_name": label, "code": label.upper().replace(" ", "-")[:16]})
+    check(f"create outlet {label}", st == 201, o)
+    return o["name"]
+
+
+def balance(api, outlet, item):
+    rows = api.find("stock_balance", f"outlet == '{outlet}' && item == '{item}'")
+    return rows[0] if rows else None
+
+
+def check_balance(name, api, outlet, item, qty, value, avg):
+    b = balance(api, outlet, item)
+    got = (b["qty"], b["value"], b["avg_cost"]) if b else None
+    check(name, b is not None and abs(b["qty"] - qty) < 1e-9 and b["value"] == value and b["avg_cost"] == avg, f"got (qty, value, avg) {got}, want {(qty, value, avg)}")
+    return b
+
+
+def moves_of(api, voucher):
+    return sorted(api.find("stock_move", f"voucher == '{voucher}'"), key=lambda m: m["name"])
+
+
+def submit_doc(api, model, name, label):
+    st, resp = api.verb(model, name, "submit")
+    check(label, st == 200, (st, resp))
+    return resp.get("name", name) if st == 200 else None
+
+
+def receive(api, outlet, lines, label, vendor="VND-0001"):
+    """Create and submit a goods receipt; returns its numbered name."""
+    st, gr = api.create("goods_receipt", {"vendor": vendor, "outlet": outlet, "items": lines})
+    if not check(f"create {label}", st == 201, gr):
+        return None
+    return submit_doc(api, "goods_receipt", gr["name"], f"submit {label}")
+
+
+def scenario_fnb_fixtures(api):
+    outlets = api.list("outlet")
+    check("fixtures: 3 outlets, one head office", len(outlets) == 3 and [o["name"] for o in outlets if o.get("is_head_office") in (True, "true")] == [HO], outlets)
+    eq("fixtures: uoms Kg, Gram, Karung, Liter, Pcs, Porsi", sorted(u["uom_name"] for u in api.list("uom")), ["Gram", "Karung", "Kg", "Liter", "Pcs", "Porsi"])
+    items = api.list("item")
+    eq("fixtures: 6 materials and 4 products", (len([i for i in items if i["kind"] == "material"]), len([i for i in items if i["kind"] == "product"])), (6, 4))
+    recipes = api.list("recipe", children=1)
+    eq("fixtures: one active recipe per product (4)", sorted(r["product"] for r in recipes if r["active"] in (True, "true")), ["BRG-0007", "BRG-0008", "BRG-0009", "BRG-0010"])
+    eq("fixtures: recipe line counts [4, 4, 3, 3]", [len(r["lines"]) for r in sorted(recipes, key=lambda r: r["name"])], [4, 4, 3, 3])
+    conv = api.get("uom_conversion", "KONV-0001")
+    eq("fixtures: Karung -> Kg factor 50 (tepung bumbu)", (conv["uom"], conv["factor"], api.get("item", conv["item"])["stock_uom"]), ("UOM-003", 50, "UOM-001"))
+    eq("fixtures: 2 vendors", len(api.list("vendor")), 2)
+    eq("fixtures: users with roles head_office and outlet_staff", sorted(u["role"] for u in api.list("user")), ["head_office", "outlet_staff", "outlet_staff"])
+
+
+def scenario_stock(api):
+    # Materials and products of its own, so the brief's numbers are exact whatever the fixtures hold.
+    st, mat = api.create("item", {"item_name": "Tahu uji (Kg)", "kind": "material", "stock_uom": KG, "sku": "UJI-TAHU"})
+    st, prod = api.create("item", {"item_name": "Porsi uji", "kind": "product", "stock_uom": PORSI, "sales_uom": PORSI, "sku": "UJI-POR", "rate": 20000})
+    st, rec = api.create("recipe", {"product": prod["name"], "recipe_name": "Porsi uji", "yield_qty": 1, "lines": [{"material": mat["name"], "qty": 0.1}]})
+    check("create recipe: 0.1 kg per portion", st == 201, rec)
+    m, p = mat["name"], prod["name"]
+
+    # recipe and document rules
+    st, resp = api.create("recipe", {"product": m, "lines": [{"material": m, "qty": 1}]})
+    check("recipe for a material -> 422 'Resep hanya untuk barang berjenis produk jadi'", st == 422 and any("produk jadi" in x for x in messages(resp)), (st, resp))
+    st, resp = api.create("recipe", {"product": p, "yield_qty": 0, "lines": [{"material": m, "qty": 1}]})
+    check("recipe with yield 0 -> 422", st == 422, (st, resp))
+    st, resp = api.create("stock_transfer", {"from_outlet": DAGO, "to_outlet": DAGO, "items": [{"item": m, "qty": 1}]})
+    check("transfer to the same outlet -> 422 'Outlet asal dan tujuan tidak boleh sama'", st == 422 and any("tidak boleh sama" in x for x in messages(resp)), (st, resp))
+    st, resp = api.create("stock_adjustment", {"outlet": DAGO, "reason": "waste", "items": [{"item": m, "qty": 0}]})
+    check("adjustment qty 0 -> 422 'Jumlah barang harus lebih dari 0'", st == 422 and any("lebih dari 0" in x for x in messages(resp)), (st, resp))
+    st, resp = api.create("stock_count", {"outlet": DAGO, "items": [{"item": m, "counted_qty": -1}]})
+    check("count below 0 -> 422", st == 422, (st, resp))
+
+    # receipt 100 kg at 12.000 -> avg 12.000
+    g1 = receive(api, DAGO, [{"item": m, "qty": 100, "rate": 12000}], "receipt 100 kg at 12.000")
+    check_balance("receipt 100 kg at 12.000: balance 100 kg, value 1.200.000, avg 12.000", api, DAGO, m, 100, 1_200_000, 12_000)
+    mv = moves_of(api, g1)
+    check("receipt makes one move (receipt, +100, value 1.200.000, not negative)",
+          len(mv) == 1 and mv[0]["reason"] == "receipt" and mv[0]["qty"] == 100 and mv[0]["value"] == 1_200_000 and not mv[0]["negative"]
+          and mv[0]["voucher_type"] == "goods_receipt" and mv[0]["outlet"] == DAGO and mv[0]["item"] == m, mv)
+
+    # receipt 50 kg at 15.000 -> avg 13.000, value 1.950.000
+    receive(api, DAGO, [{"item": m, "qty": 50, "rate": 15000}], "receipt 50 kg at 15.000")
+    check_balance("receipt 50 kg at 15.000: 150 kg, value 1.950.000, avg 13.000", api, DAGO, m, 150, 1_950_000, 13_000)
+
+    # transfer 30 kg Dago -> Braga
+    st, tr = api.create("stock_transfer", {"from_outlet": DAGO, "to_outlet": BRAGA, "items": [{"item": m, "qty": 30}]})
+    check("create transfer 30 kg", st == 201, tr)
+    trn = submit_doc(api, "stock_transfer", tr["name"], "submit transfer 30 kg")
+    check_balance("transfer 30 kg: from-outlet 120 kg at 13.000", api, DAGO, m, 120, 1_560_000, 13_000)
+    check_balance("transfer 30 kg: to-outlet 30 kg at 13.000", api, BRAGA, m, 30, 390_000, 13_000)
+    mv = moves_of(api, trn)
+    check("transfer makes transfer_out -30 / -390.000 and transfer_in +30 / +390.000",
+          sorted((x["reason"], x["qty"], x["value"], x["outlet"]) for x in mv) == [("transfer_in", 30, 390_000, BRAGA), ("transfer_out", -30, -390_000, DAGO)], mv)
+
+    # sale of 300 portions on an outlet holding 20 kg (recipe 0.1 kg per portion)
+    neg = new_outlet(api, "Outlet uji minus")
+    receive(api, neg, [{"item": m, "qty": 20, "rate": 13000}], "receipt 20 kg at 13.000")
+    check_balance("outlet holds 20 kg at 13.000", api, neg, m, 20, 260_000, 13_000)
+    st, sale = api.create("outlet_sales", {"outlet": neg, "date": "2026-11-02", "lines": [{"item": p, "qty": 300}]})
+    check("create sale of 300 portions (gross defaults to qty x item rate = 6.000.000)", st == 201 and sale["gross_total"] == 6_000_000, (st, sale))
+    st, resp = api.verb("outlet_sales", sale["name"], "submit")
+    check("sale that pushes stock below zero submits (never blocked)", st == 200, (st, resp))
+    sn = resp.get("name", sale["name"]) if st == 200 else sale["name"]
+    s2 = api.get("outlet_sales", sn)
+    eq("sale line cogs 390.000 (30 kg x 13.000)", [l["cogs"] for l in s2["lines"]], [390_000])
+    eq("sale cogs_total 390.000", s2["cogs_total"], 390_000)
+    eq("sale margin = net_total - cogs_total = 5.610.000", s2["margin"], 5_610_000)
+    b = check_balance("balance -10 kg (value -130.000, avg stays 13.000)", api, neg, m, -10, -130_000, 13_000)
+    check("stock_balance.negative is true", bool(b and b["negative"] is True), b)
+    mv = [x for x in moves_of(api, sn)]
+    check("sale move: reason sale, qty -30, value -390.000, balance_qty -10, negative true",
+          len(mv) == 1 and mv[0]["reason"] == "sale" and mv[0]["qty"] == -30 and mv[0]["value"] == -390_000 and mv[0]["balance_qty"] == -10 and mv[0]["negative"] is True, mv)
+    listed = api.find("stock_balance", "negative == true")
+    check("head office list 'Stok minus' (filter negative == true) holds the balance", any(r["outlet"] == neg and r["item"] == m for r in listed), listed)
+    check("a positive balance is not in the 'Stok minus' list", not any(r["outlet"] == DAGO and r["item"] == m for r in listed), listed)
+    # the alert flow: runs when handed the move, but nothing hands it over yet
+    alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
+    if not alerts:
+        gap("stock_negative_alert notifies head_office when a move turns negative", "kernel (record events -> flows)",
+            "no notify.in_app audit entry: the kernel does not fire `on: stock_move.created` flows (S8c finding)")
+    else:
+        ok("stock_negative_alert notified head_office on its own")
+    st, resp = api.call("POST", "/api/v1/flows/stock_negative_alert/run", {"event": mv[0]} if mv else {})
+    alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
+    check("stock_negative_alert, run with the move as its event, notifies 'Stok <item> di <outlet> minus (-10)'",
+          st == 200 and any(f"Stok {m} di {neg} minus (-10)" in e.get("summary", "") for e in alerts), (st, resp, alerts[-1:]))
+    st, resp = api.call("POST", "/api/v1/flows/stock_negative_alert/run", {"event": dict(mv[0], negative=False)} if mv else {})
+    check("stock_negative_alert is silent for a move that is not negative", len([e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]) == len(alerts), resp)
+    # cancel restores
+    st, resp = api.verb("outlet_sales", sn, "cancel")
+    check("cancel the sale", st == 200, (st, resp))
+    check_balance("cancelling the sale restores 20 kg / 260.000 / 13.000", api, neg, m, 20, 260_000, 13_000)
+
+    # count: counted 18 on system 20 -> -2
+    cnt = new_outlet(api, "Outlet uji opname")
+    receive(api, cnt, [{"item": m, "qty": 20, "rate": 13000}], "receipt 20 kg for the count")
+    st, sc = api.create("stock_count", {"outlet": cnt, "items": [{"item": m, "counted_qty": 18}]})
+    check("create stock count (18 counted)", st == 201, sc)
+    scn = submit_doc(api, "stock_count", sc["name"], "submit stock count")
+    d = api.get("stock_count", scn)
+    eq("count line system_qty 20 and difference -2 are written back", [(l["system_qty"], l["difference"]) for l in d["items"]], [(20, -2)])
+    mv = moves_of(api, scn)
+    check("count move: reason count, qty -2, value -26.000", len(mv) == 1 and mv[0]["reason"] == "count" and mv[0]["qty"] == -2 and mv[0]["value"] == -26_000, mv)
+    check_balance("balance after the count: 18 kg, value 234.000", api, cnt, m, 18, 234_000, 13_000)
+
+    # waste 1 kg
+    st, adj = api.create("stock_adjustment", {"outlet": cnt, "reason": "waste", "items": [{"item": m, "qty": 1}]})
+    check("create waste adjustment 1 kg", st == 201, adj)
+    adn = submit_doc(api, "stock_adjustment", adj["name"], "submit waste adjustment")
+    mv = moves_of(api, adn)
+    check("waste move: reason waste, qty -1, value -13.000", len(mv) == 1 and mv[0]["reason"] == "waste" and mv[0]["qty"] == -1 and mv[0]["value"] == -13_000, mv)
+    check_balance("balance after waste: 17 kg, value 221.000", api, cnt, m, 17, 221_000, 13_000)
+
+    # PO 2 Karung x 50 -> +100 kg through the receive action
+    pkg = new_outlet(api, "Outlet uji kemasan")
+    conv, tepung = "KONV-0001", "BRG-0006"
+    st, po = api.create("purchase_order", {"vendor": "VND-0001", "outlet": pkg, "items": [{"item": tepung, "qty": 2, "packing": conv, "rate": 600_000}]})
+    check("create PO: 2 Karung at 600.000", st == 201 and po["items"][0]["stock_qty"] == 100, (st, po))
+    pon = submit_doc(api, "purchase_order", po["name"], "submit PO")
+    st, resp = api.action("purchase_order", pon, "receive", {})
+    check("receive opens a draft goods receipt", st == 200 and resp.get("open", {}).get("model") == "goods_receipt", (st, resp))
+    if st == 200:
+        grn = submit_doc(api, "goods_receipt", resp["open"]["name"], "submit goods receipt of the PO")
+        check_balance("PO 2 Karung x 50 -> +100 kg at 12.000 (value 1.200.000)", api, pkg, tepung, 100, 1_200_000, 12_000)
+        pod = api.get("purchase_order", pon)
+        check("PO received_qty 2 Karung, received_pct 100", pod["items"][0]["received_qty"] == 2 and pod["received_pct"] == 100, pod)
+        st, resp = api.verb("goods_receipt", grn, "cancel")
+        check("cancel the PO's goods receipt", st == 200, (st, resp))
+        check_balance("cancelling it takes the 100 kg off again", api, pkg, tepung, 0, 0, 12_000)
+        eq("and takes received_qty off the PO", api.get("purchase_order", pon)["items"][0]["received_qty"], 0)
+
+    # cancelling a receipt restores value and avg exactly
+    can = new_outlet(api, "Outlet uji batal")
+    receive(api, can, [{"item": m, "qty": 100, "rate": 12000}], "receipt 1 (100 kg at 12.000)")
+    g2 = receive(api, can, [{"item": m, "qty": 50, "rate": 15000}], "receipt 2 (50 kg at 15.000)")
+    check_balance("before the cancel: 150 kg / 1.950.000 / avg 13.000", api, can, m, 150, 1_950_000, 13_000)
+    st, resp = api.verb("goods_receipt", g2, "cancel")
+    check("cancel receipt 2", st == 200, (st, resp))
+    check_balance("cancelling receipt 2 restores 100 kg / 1.200.000 / avg 12.000 exactly", api, can, m, 100, 1_200_000, 12_000)
+    rv = [x for x in moves_of(api, g2) if x["reason"] == "reversal"]
+    check("the cancel wrote one reversal move (-50 kg, -750.000)", len(rv) == 1 and rv[0]["qty"] == -50 and rv[0]["value"] == -750_000, rv)
+
+
+def scenario_stock_access(api):
+    """Permissions: stock_move and stock_balance are written only by hooks; outlet_staff sees only its outlets (contract 0010)."""
+    org, k = CTX["org"], CTX["kernel"]
+    hq, dago = CTX.get("hq"), CTX.get("staff_dago")
+    m = api.find("item", "sku == 'UJI-TAHU'")[0]["name"]
+    all_bal = api.find("stock_balance", "item == '%s'" % m)
+    check("setup: the stock scenario left balances at several outlets", len({b["outlet"] for b in all_bal}) >= 3, all_bal)
+    if hq is None or dago is None:
+        gap("outlet_staff row scope check (list own outlet, 403 on another)", "harness", f"could not sign in as a non-owner: {CTX.get('login_error')}")
+        return
+    move = api.find("stock_move", "item == '%s'" % m)[0]
+    bal_dago = balance(api, DAGO, m)
+    bal_braga = balance(api, BRAGA, m)
+
+    # outlet_staff at Dago
+    mine = dago.find("stock_balance", "item == '%s'" % m)
+    check("outlet_staff (Dago) lists only Dago's stock_balance", bool(mine) and all(r["outlet"] == DAGO for r in mine), mine)
+    eq("outlet_staff (Dago) lists all rows of its own outlet", len(mine), len([b for b in all_bal if b["outlet"] == DAGO]))
+    st, resp = dago.call("GET", f"/api/v1/r/stock_balance/{Api.q(bal_braga['name'])}")
+    check("outlet_staff (Dago) reads Braga's stock_balance -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+    st, resp = dago.call("GET", f"/api/v1/r/stock_balance/{Api.q(bal_dago['name'])}")
+    check("outlet_staff (Dago) reads Dago's stock_balance -> 200", st == 200, (st, resp))
+    st, resp = dago.call("GET", f"/api/v1/r/outlet/{BRAGA}")
+    check("outlet_staff (Dago) reads the outlet record of Braga -> 403", st == 403, (st, resp))
+    eq("outlet_staff (Dago) lists only its own outlet", [o["name"] for o in dago.list("outlet")], [DAGO])
+    moves = dago.find("stock_move", "item == '%s'" % m)
+    check("outlet_staff (Dago) lists only Dago's stock_move", bool(moves) and all(x["outlet"] == DAGO for x in moves), moves)
+    # nobody but owner writes moves or balances
+    for who, cl in (("outlet_staff", dago), ("head_office", hq)):
+        st, resp = cl.create("stock_move", {"outlet": DAGO, "item": m, "qty": 5})
+        check(f"{who} cannot create a stock_move -> 403", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+        st, resp = cl.create("stock_balance", {"outlet": DAGO, "item": m, "qty": 5})
+        check(f"{who} cannot create a stock_balance -> 403", st == 403, (st, resp))
+        st, resp = cl.patch("stock_balance", bal_dago["name"], {"qty": 1})
+        check(f"{who} cannot change a stock_balance -> 403", st == 403, (st, resp))
+        st, resp = cl.call("DELETE", f"/api/v1/r/stock_move/{Api.q(move['name'])}")
+        check(f"{who} cannot delete a stock_move -> 403", st == 403, (st, resp))
+    # head office sees everything, and the negative exception
+    seen = {b["outlet"] for b in hq.find("stock_balance", "item == '%s'" % m)}
+    check("head_office lists the stock_balance of every outlet", {DAGO, BRAGA} <= seen and len(seen) == len({b["outlet"] for b in all_bal}), seen)
+
+    # an outlet_staff document: the hook writes moves although the role may not create them
+    st, sc = dago.create("stock_count", {"outlet": DAGO, "items": [{"item": m, "counted_qty": 118}]})
+    check("outlet_staff (Dago) creates a stock_count for Dago", st == 201, (st, sc))
+    if st == 201:
+        scn = submit_doc(dago, "stock_count", sc["name"], "outlet_staff submits its stock_count")
+        mv = moves_of(api, scn)
+        check("the stock hook wrote the count move for the staff's submit (-2 kg)", len(mv) == 1 and mv[0]["qty"] == -2 and mv[0]["reason"] == "count", mv)
+    st, resp = dago.create("stock_count", {"outlet": BRAGA, "items": [{"item": m, "counted_qty": 1}]})
+    check("outlet_staff (Dago) creates a stock_count for Braga -> 403", st == 403, (st, resp))
+    st, resp = dago.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-05", "lines": [{"item": "BRG-0007", "qty": 1}]})
+    check("outlet_staff (Dago) creates outlet_sales for Braga -> 403", st == 403, (st, resp))
+
+
+def read_sample(name):
+    with open(os.path.join(FIXTURES, name), "rb") as f:
+        return f.read()
+
+
+def preview(cl, imp, filename, content, outlet):
+    return cl.upload(f"/api/v1/imports/{imp}", {"outlet": outlet}, filename, content)
+
+
+def scenario_outlet_sales(api):
+    hq, dago = CTX.get("hq") or api, CTX.get("staff_dago")
+    st, meta = api.call("GET", "/api/v1/meta")
+    imps = (meta or {}).get("imports", {})
+    check("meta lists the imports moka_item_details and daily_form on outlet_sales",
+          st == 200 and all(imps.get(n, {}).get("model") == "outlet_sales" and imps[n].get("per") == "outlet" for n in ("moka_item_details", "daily_form")), imps)
+    if not imps:
+        gap("Moka import: upload, preview, commit, duplicates", "kernel (S7 imports)", "no imports in /meta: the imports stream has not merged into this kernel")
+        return
+
+    # stock to sell from: Dago receives the fixture materials
+    lines = [{"item": "BRG-0001", "qty": 100, "rate": 12000}, {"item": "BRG-0002", "qty": 50, "rate": 18000}, {"item": "BRG-0003", "qty": 5, "rate": 9000},
+             {"item": "BRG-0004", "qty": 5, "rate": 60000}, {"item": "BRG-0005", "qty": 100, "rate": 800}, {"item": "BRG-0006", "qty": 20, "rate": 12000}]
+    receive(api, DAGO, lines, "opening receipt of the fixture materials at Dago")
+
+    moka = read_sample("moka-sample.csv")
+    # a staff member may not import (import permission is head office's)
+    if dago is not None:
+        st, resp = preview(dago, "moka_item_details", "moka-sample.csv", moka, DAGO)
+        check("outlet_staff may not import: 403 permission_denied", st == 403, (st, resp))
+    # an unknown SKU is reported per row, in Bahasa Indonesia
+    bad = moka.replace(b"TH-ISI", b"TH-XX")
+    st, resp = preview(hq, "moka_item_details", "bad.csv", bad, DAGO)
+    check("unknown SKU: preview reports 'Item dengan sku \"TH-XX\" tidak ditemukan' on row 4",
+          st == 200 and any(e["row"] == 4 and "TH-XX" in e["message"] for e in resp["errors"]), (st, resp))
+    if st == 200:
+        st, c = hq.call("POST", f"/api/v1/imports/moka_item_details/{resp['id']}/commit")
+        check("a preview with errors cannot be committed: 422 import_errors", st == 422 and c["error"]["code"] == "import_errors", (st, c))
+
+    # upload -> preview
+    st, pv = preview(hq, "moka_item_details", "moka-sample.csv", moka, DAGO)
+    check("upload the Moka sample: preview 6 rows, no errors, not a duplicate", st == 200 and pv["rows"] == 6 and pv["errors"] == [] and pv["skipped"] == 0 and pv["duplicate"] is False, (st, pv))
+    if st != 200:
+        return
+    prev = pv["preview"]
+    check("preview: one outlet_sales record for 02/11/2026 with 6 lines, source moka, outlet Dago",
+          len(prev) == 1 and len(prev[0]["lines"]) == 6 and prev[0]["date"] == "2026-11-02" and prev[0]["source"] == "moka" and prev[0]["outlet"] == DAGO, prev)
+    st, c = hq.call("POST", f"/api/v1/imports/moka_item_details/{pv['id']}/commit")
+    check("commit creates the draft outlet_sales", st == 200 and len(c.get("records", [])) == 1, (st, c))
+    if st != 200:
+        return
+    sales = api.get("outlet_sales", c["records"][0])
+    check("imported record is a draft (docstatus 0, no stock moved yet)", sales["docstatus"] == 0 and not moves_of(api, sales["name"]), sales)
+    eq("imported totals: gross 259.000, discount 16.000, refund 15.000", (sales["gross_total"], sales["discount_total"], sales["refund_total"]), (259_000, 16_000, 15_000))
+    eq("imported net_total 228.000 (= Moka's Net Sales)", sales["net_total"], 228_000)
+    eq("imported qty_total 13", sales["qty_total"], 13)
+    eq("imported lines match items by sku", [l["item"] for l in sales["lines"]], ["BRG-0007", "BRG-0008", "BRG-0009", "BRG-0008", "BRG-0007", "BRG-0010"])
+
+    # the same file again
+    st, pv2 = preview(hq, "moka_item_details", "moka-sample.csv", moka, DAGO)
+    check("the same file again: duplicate true (skipped rows 6)", st == 200 and pv2["duplicate"] is True and pv2["skipped"] == 6, (st, pv2))
+    st, c2 = hq.call("POST", f"/api/v1/imports/moka_item_details/{pv2['id']}/commit")
+    check("committing the duplicate -> 409 already_imported", st == 409 and c2["error"]["code"] == "already_imported", (st, c2))
+    eq("still one imported record", len(api.find("outlet_sales", "source == 'moka' && outlet == '%s'" % DAGO)), 1)
+
+    # an overlapping export: only the new rows
+    st, pv3 = preview(hq, "moka_item_details", "moka-sample-overlap.csv", read_sample("moka-sample-overlap.csv"), DAGO)
+    check("overlapping file (1 old row, 3 new): skipped 1, 2 records previewed (02/11 and 03/11), not a duplicate",
+          st == 200 and pv3["rows"] == 4 and pv3["skipped"] == 1 and pv3["duplicate"] is False and sorted(r["date"] for r in pv3["preview"]) == ["2026-11-02", "2026-11-03"], (st, pv3))
+    st, c3 = hq.call("POST", f"/api/v1/imports/moka_item_details/{pv3['id']}/commit")
+    check("commit of the overlapping file creates only the new rows", st == 200 and len(c3.get("records", [])) == 2, (st, c3))
+    if st == 200:
+        got = sorted((r["date"], len(r["lines"])) for r in (api.get("outlet_sales", n) for n in c3["records"]))
+        eq("new records: 02/11 with 2 lines, 03/11 with 1 line", got, [("2026-11-02", 2), ("2026-11-03", 1)])
+    # the same Moka file for another outlet is not a duplicate (scope is per outlet)
+    st, pvb = preview(hq, "moka_item_details", "moka-sample.csv", moka, BRAGA)
+    check("the same file for another outlet is not a duplicate", st == 200 and pvb["duplicate"] is False and pvb["skipped"] == 0 and pvb["errors"] == [], (st, pvb))
+
+    # submit: stock moves through the recipes, cogs, margin
+    sn = submit_doc(api, "outlet_sales", sales["name"], "submit the imported sales record")
+    s2 = api.get("outlet_sales", sn)
+    eq("recipes explode: line cogs [3.396, 2.280, 7.740, 4.560, 1.698, 15.680]", [l["cogs"] for l in s2["lines"]], [3396, 2280, 7740, 4560, 1698, 15680])
+    eq("cogs_total 35.354", s2["cogs_total"], 35_354)
+    eq("margin = net 228.000 - cogs 35.354 = 192.646", s2["margin"], 192_646)
+    mv = moves_of(api, sn)
+    check("moves: one per line and material (6 lines -> 22 moves), all reason sale, none negative",
+          len(mv) == 22 and all(x["reason"] == "sale" and not x["negative"] for x in mv), [(x["item"], x["qty"]) for x in mv])
+    b = balance(api, DAGO, "BRG-0001")
+    eqf("tahu mentah at Dago: 100 - 1,85 = 98,15 kg", b["qty"], 98.15)
+    eq("tahu mentah value = 1.200.000 - 22.200 (1,85 kg at 12.000)", b["value"], 1_177_800)
+    b = balance(api, DAGO, "BRG-0005")
+    eqf("kemasan: 100 - 4 = 96 pcs (BWP has the box in its recipe)", b["qty"], 96)
+    st, resp = api.verb("outlet_sales", sn, "cancel")
+    check("cancel the sales record", st == 200, (st, resp))
+    eqf("cancel restores tahu mentah to 100 kg", balance(api, DAGO, "BRG-0001")["qty"], 100)
+
+    # Review Focus: sales that push stock below zero still import and submit
+    st, c = hq.call("POST", f"/api/v1/imports/moka_item_details/{pvb['id']}/commit")
+    check("Braga (no stock at all): the Moka import commits", st == 200 and len(c.get("records", [])) == 1, (st, c))
+    if st == 200:
+        bsn = submit_doc(api, "outlet_sales", c["records"][0], "Braga's sales record submits although it holds nothing")
+        s3 = api.get("outlet_sales", bsn)
+        eq("negative sale: cogs falls back to the items' standard_cost (same 35.354)", s3["cogs_total"], 35_354)
+        b = balance(api, BRAGA, "BRG-0001")
+        eqf("tahu mentah at Braga: balance -1,85 kg", b["qty"], -1.85)
+        check("stock_balance.negative is true", b["negative"] is True, b)
+        negs = hq.find("stock_balance", "negative == true && outlet == '%s'" % BRAGA)
+        check("head office lists all 6 negative balances of Braga ('Stok minus')", sorted(r["item"] for r in negs) == [f"BRG-000{i}" for i in (1, 2, 3, 4, 5, 6)], negs)
+        check("negative moves are flagged", all(x["negative"] is True for x in moves_of(api, bsn)), moves_of(api, bsn)[:3])
+        # fnb dashboard "Stok minus" list: Task 10 (a dashboard widget)
+
+    # the daily form: created by REST with 2 lines, then imported
+    st, df = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [
+        {"item": "BRG-0007", "qty": 40, "gross": 600_000}, {"item": "BRG-0008", "qty": 25, "gross": 450_000, "discount": 15_000}]})
+    check("daily form created via REST with 2 lines", st == 201, (st, df))
+    if st != 201:
+        return
+    eq("daily form: source form by default, net_total 1.035.000 (600.000 + 450.000 - 15.000)", (df["source"], df["net_total"]), ("form", 1_035_000))
+    eq("daily form: net per line [600.000, 435.000]", [l["net"] for l in df["lines"]], [600_000, 435_000])
+    dfn = submit_doc(api, "outlet_sales", df["name"], "submit the daily form")
+    dd = api.get("outlet_sales", dfn)
+    eq("daily form cogs: 40 ORI + 25 PDS through the recipes", dd["cogs_total"], 40 * 1698 + 25 * 2280)
+    st, pvf = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), DAGO)
+    check("daily_form import: preview 3 rows, one record, no errors", st == 200 and pvf["rows"] == 3 and pvf["errors"] == [] and len(pvf["preview"]) == 1, (st, pvf))
+    if st == 200:
+        st, cf = hq.call("POST", f"/api/v1/imports/daily_form/{pvf['id']}/commit")
+        check("daily_form commit creates a draft (source form)", st == 200 and len(cf.get("records", [])) == 1, (st, cf))
+        if st == 200:
+            rec = api.get("outlet_sales", cf["records"][0])
+            eq("imported form: gross 1.290.000, discount 15.000, net 1.275.000", (rec["gross_total"], rec["discount_total"], rec["net_total"]), (1_290_000, 15_000, 1_275_000))
+            st, resp = api.verb("outlet_sales", rec["name"], "submit")
+            check("a second submitted daily form for the same outlet and day -> 409 duplicate_sales",
+                  st == 409 and resp["error"]["code"] == "duplicate_sales", (st, resp))
+    st, again = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), DAGO)
+    check("the daily form file again: duplicate true", st == 200 and again["duplicate"] is True, (st, again))
+    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1, "discount": 99_999_999}]})
+    check("discount above gross -> 422 'Diskon tidak boleh melebihi penjualan kotor'", st == 422 and any("Diskon tidak boleh" in x for x in messages(resp)), (st, resp))
+    st, resp = api.create("outlet_sales", {"date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
+    check("outlet_sales without an outlet -> 422", st == 422, (st, resp))
+    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": []})
+    if st == 201:
+        gap("min_rows 1: an outlet_sales without lines is refused", "kernel (S1)", "201: min_rows is not enforced on create")
+    else:
+        check("outlet_sales without lines -> 422", st == 422, (st, resp))
+
+
+def setup_demo_fnb(api, k):
+    """Members for the access checks: head office, and outlet staff of Dago and Braga (rangka user add, contract 0010 §7)."""
+    st, me = api.call("GET", "/auth/me")
+    org = ((me or {}).get("org") or {}).get("id") or (me or {}).get("user", {}).get("org") or "kopi-senja"
+    CTX.update(kernel=k, org=org)
+    pw = secrets.token_urlsafe(18)   # a throwaway password for this run's throwaway database
+    people = [("hq", "rina@tahucontoh.test", "head_office", "", "USR-001", "Rina Contoh"),
+              ("staff_dago", "yusuf.dago@tahucontoh.test", "outlet_staff", DAGO, "USR-002", "Yusuf Contoh"),
+              ("staff_braga", "sinta.braga@tahucontoh.test", "outlet_staff", BRAGA, "USR-003", "Sinta Contoh")]
+    for key, email, role, outlets, rec, name in people:
+        code, out = k.user_add(email, role, org, name, outlets=outlets, record=rec, password=pw)
+        if code != 0:
+            CTX["login_error"] = f"rangka user add {email} failed: {out}"
+            return
+        cl = Api.login(k.base, email, pw)
+        if cl is None:
+            CTX["login_error"] = f"login as {email} refused"
+            return
+        CTX[key] = cl
+
+
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing],
     "demo-jasa": [scenario_quotation, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement],
-    # Task 10 adds "demo-fnb" here and completes demo-jasa; Task 11 extends both with the day-one flows.
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales],
+    # Task 10 completes demo-jasa and demo-fnb; Task 11 extends both with the day-one flows.
 }
 
 
@@ -1035,6 +1508,8 @@ def main():
     atexit.register(k.stop)
     k.start()
     api = Api(k.base)
+    if a.site == "demo-fnb":
+        setup_demo_fnb(api, k)
     for sc in SCENARIOS[a.site]:
         try:
             sc(api)
