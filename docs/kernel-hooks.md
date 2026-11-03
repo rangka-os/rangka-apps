@@ -55,6 +55,37 @@ rolls the whole submit/cancel back. Money is whole rupiah and no hook consults a
   submit hook must refuse when the sum of `dp_deduction` over submitted invoices naming the same `dp_invoice` exceeds its `dpp_base`
   (`409 dp_over_deducted`). Likewise one `retention_of` may be billed once (`409 retention_billed`).
 
+## payments
+
+Both hooks run in the payment's submit/cancel transaction. They work per allocation row, in `idx` order, on the
+`sales_invoice` (direction `receive`) or, once procurement exists, the `vendor_bill` (direction `pay`).
+
+### `payments.allocate` (`payment.on_submit`)
+- **Reads:** the payment (`direction`, `customer`/`vendor`, `amount`, `currency`/`exchange_rate` when the money sidecar is live) and its allocation rows (`sales_invoice`, `amount`, `withheld`).
+- **Locks:** each target `for update`, then reloads its **stored** `outstanding` (the row's `outstanding` is only an entry-time snapshot).
+- **Refuses (409):** `not_submitted` (target docstatus is not 1); `wrong_party` (target belongs to another customer/vendor than the payment);
+  `over_allocation`, message "Alokasi melebihi sisa tagihan <name>", when `applied + withheld > stored outstanding`;
+  `over_payment` when the rows' `amount` add up to more than `payment.amount`.
+- **Writes:** per row `target.paid_amount += applied + withheld` (so `outstanding` recomputes and `status`/paid state follows);
+  `customer.outstanding -= applied + withheld` (`vendor.outstanding` for pay); `applied_idr = applied` on the allocation row.
+  `applied` is `amount` for an IDR payment; for a foreign payment it is `round(amount x exchange_rate)` half away from zero
+  (the kernel's `_idr` twin rule, contract 0013). Receivables are tracked in IDR, so `withheld` is IDR.
+- **Idempotency:** once per submit.
+
+### `payments.unallocate` (`payment.on_cancel`)
+- The exact inverse: for each row `target.paid_amount -= applied_idr + withheld` and `party.outstanding += applied_idr + withheld`. It reads the stored `applied_idr`, never recomputes from a rate.
+- **Refuses:** nothing. Cancelling a payment is always allowed; an invoice cancelled meanwhile is refused by `invoicing.reverse_receivable` (`has_payments`), so the order of cancellation is payment first.
+
+### Not checkable in a rule
+- The rules compare each row's entry-time `outstanding` snapshot; two payments drafted against the same invoice both pass their rules, and the second one to submit is refused by `over_allocation` here.
+- `withholding` (bukti potong) is a record only: it does not move money. The deduction itself is the allocation row's `withheld`.
+- `vendor_bill` allocation (direction `pay`) activates with procurement: the payments sidecar `experimental/payment_allocation.rk` adds the link.
+
+### Kernel gap for S3 (print helper `aging`)
+Contract 0008's `aging` helper buckets `grand_total - paid_amount`. For an invoice with PPh 23 or retention that is more than the amount
+the customer still owes, which is `outstanding` (`amount_due - paid_amount`). The statement format therefore sums its buckets in the template from `outstanding`.
+S3 should make `aging` use `outstanding` when the model has that field.
+
 ## quotation
 
 ### `quotation.revise` (action `new_revision` on `quotation`)
