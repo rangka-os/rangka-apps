@@ -51,7 +51,10 @@ fields:
   - name: subtotal
     type: currency
     label: {id: Subtotal}
-    compute: items.map(i, i.amount).sum()
+    # Foreign-currency document (currency is not IDR): the rupiah subtotal is the IDR twin of subtotal_fx (contract 0013),
+    # so dpp_base, PPN (assessed in rupiah), grand_total, retention, PPh 23 and amount_due stay IDR computes from it.
+    # Lines are entered with rate_fx; the IDR line `amount` (qty x rate) cannot see the parent's currency, so the header ignores it.
+    compute: "currency != '' && currency != 'IDR' ? subtotal_fx_idr : items.map(i, i.amount).sum()"
   - name: discount_amount
     type: currency
     label: {id: Diskon}
@@ -143,8 +146,6 @@ approvals:
     approvers: [sales_manager]
     label: {id: Persetujuan manajer, en: Manager approval}
 
-# S4, contract 0009: the "quotation" series. `revision` counts amendments of the same quotation; the number stays
-# QUO-YYYY-NNNNN and the print shows "Rev. n" next to it.
 views:
   list:
     columns: [name, customer, subject, quotation_date, revision, status, grand_total, outcome]
