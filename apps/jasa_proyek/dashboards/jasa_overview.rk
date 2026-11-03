@@ -1,0 +1,121 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: jasa_overview
+label: {id: Ringkasan jasa proyek, en: Project services overview}
+default_period: 30
+cache: 5m
+widgets:
+  - name: open_quotations
+    type: number
+    label: {id: Penawaran terbuka}
+    description: {id: 'Sudah dikirim, belum ada hasil'}
+    model: quotation
+    filter: docstatus == 1 && outcome == 'open'
+    span: 3
+  - name: quotations_won
+    type: number
+    label: {id: Penawaran menang}
+    model: quotation
+    filter: docstatus == 1 && outcome == 'accepted'
+    period: quotation_date
+    span: 3
+  - name: quotations_lost
+    type: number
+    label: {id: Penawaran kalah}
+    model: quotation
+    filter: docstatus == 1 && outcome == 'lost'
+    period: quotation_date
+    good_when: down
+    span: 3
+  - name: invoices_issued
+    type: number
+    label: {id: Faktur terbit}
+    description: {id: 'Total faktur yang sudah diajukan pada periode ini'}
+    model: sales_invoice
+    aggregate: sum
+    field: grand_total
+    filter: docstatus == 1
+    period: posting_date
+    compact: true
+    span: 3
+  - name: outstanding_ar
+    type: number
+    label: {id: Piutang berjalan}
+    description: {id: Sisa tagihan semua faktur yang belum lunas}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0
+    good_when: down
+    compact: true
+    span: 3
+  - name: overdue_count
+    type: number
+    label: {id: Faktur lewat jatuh tempo}
+    model: sales_invoice
+    filter: docstatus == 1 && outstanding > 0 && due_date < today()
+    good_when: down
+    span: 3
+  - name: active_projects
+    type: number
+    label: {id: Proyek aktif}
+    description: {id: Direncanakan atau berjalan}
+    model: project
+    filter: state == 'planned' || state == 'running'
+    span: 3
+  - name: active_workers
+    type: number
+    label: {id: Tenaga kerja aktif}
+    model: worker
+    filter: active
+    span: 3
+  - name: quotation_outcomes
+    type: chart
+    chart: donut
+    label: {id: Hasil penawaran}
+    model: quotation
+    group_by: outcome
+    filter: docstatus == 1
+    period: quotation_date
+    span: 4
+  - name: invoices_by_week
+    type: chart
+    chart: line
+    label: {id: Faktur terbit per minggu}
+    model: sales_invoice
+    group_by: posting_date
+    grain: week
+    aggregate: sum
+    field: grand_total
+    filter: docstatus == 1
+    period: posting_date
+    span: 8
+  - name: overdue_invoices
+    type: list
+    label: {id: Faktur lewat jatuh tempo}
+    model: sales_invoice
+    filter: docstatus == 1 && outstanding > 0 && due_date < today()
+    sort: due_date
+    limit: 10
+    columns: [name, customer, due_date, amount_due, outstanding]
+    span: 12
+  - name: running_projects
+    type: list
+    label: {id: Proyek aktif}
+    model: project
+    filter: state == 'planned' || state == 'running'
+    sort: start_date
+    limit: 10
+    columns: [name, project_name, customer, site, state, end_date]
+    span: 7
+  # Certification expiry cannot be a widget: `expired` lives on child rows (certification) and is a stored compute that goes
+  # stale once expires_on passes. The closest honest view is the list of active workers; open one to see its certifications.
+  - name: workers_certifications
+    type: list
+    label: {id: Tenaga kerja aktif}
+    description: {id: Buka satu untuk melihat masa berlaku sertifikasinya}
+    model: worker
+    filter: active
+    sort: worker_name
+    limit: 10
+    columns: [name, worker_name, role_title, day_rate]
+    span: 5

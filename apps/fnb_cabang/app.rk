@@ -1,10 +1,10 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
-# Interim app for the multi-branch F&B pilot (demo-fnb): the modules so far and a flat menu of their models.
-# Task 10 completes it (dashboards, home, onboarding, roles).
 name: fnb_cabang
-version: 0.1.0
+version: 1.0.0
 title: {id: F&B multi cabang, en: Multi-branch F&B}
 label: {id: Rangka F&B Cabang, en: Rangka Multi-branch F&B}
+summary:
+  id: Penjualan harian, stok bahan baku, transfer, opname dan pembelian untuk beberapa outlet.
 rangka: '>=0.5'
 modules:
   contacts: ^1.0
@@ -16,6 +16,10 @@ modules:
   procurement: ^1.0
   payments: ^1.0
   invoicing: ^1.0
+dashboards: [fnb_overview, stock_recap]
+roles: [head_office, outlet_staff]
+home: {dashboard: fnb_overview}
+# invoicing is only here because payments requires it; sales_invoice has no menu entry.
 menu:
   - group: {id: Penjualan outlet}
     items: [outlet_sales]
@@ -24,4 +28,12 @@ menu:
   - group: {id: Pembelian}
     items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment]
   - group: {id: Data induk}
-    items: [outlet, item, uom, uom_conversion, vendor, user]
+    items: [outlet, item, uom, uom_conversion, vendor]
+onboarding:
+  - ask: {id: 'Berapa outlet kamu?'}
+    sets: seed.outlets
+  - ask: {id: 'Outlet mana yang pakai Moka?'}
+    sets: imports.moka_item_details.outlets
+  - ask: {id: 'Satuan apa yang kamu pakai untuk bahan baku?'}
+    options: [kg, gram, liter, pcs]
+    sets: item.stock_uom
