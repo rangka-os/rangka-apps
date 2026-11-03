@@ -93,10 +93,6 @@ fields:
   # Not read_only: a generic amend zeroes read-only fields, and a zero dpp_den would break ppn (kernel follow-up).
   - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num'}
   - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den'}
-  # Compat twins: the kernel hook ledger.post_receivable (ledger.go:72,74) still reads dp_deduction and dpp_base.
-  # The documented names are down_payment and dpp; drop the twins when the hook reads those (docs/kernel-hooks.md).
-  - {name: dp_deduction, type: currency, read_only: true, label: {id: Potongan uang muka (alias)}, compute: down_payment}
-  - {name: dpp_base, type: currency, read_only: true, label: {id: DPP (alias)}, compute: dpp}
   - name: ppn
     type: currency
     label: {id: PPN (DPP x rasio DPP nilai lain x tarif)}
