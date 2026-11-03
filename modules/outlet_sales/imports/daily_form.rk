@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# The daily sales sheet an outlet fills in when it has no Moka export: one row per item sold, one file per day.
+name: daily_form
+label: {id: Formulir penjualan harian, en: Daily sales form}
+model: outlet_sales
+source: csv
+header_row: 1
+per: outlet
+key: [Tanggal, SKU]
+group: [Tanggal]
+map:
+  date: Tanggal
+  source: "='form'"
+lines:
+  field: lines
+  map:
+    item: {value: SKU, match: sku}
+    qty: Jumlah
+    gross: Penjualan kotor
+    discount: Diskon
