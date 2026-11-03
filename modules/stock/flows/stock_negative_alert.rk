@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: stock_negative_alert
+label: {id: Peringatan stok minus}
+# The kernel passes the stock_move record as `event` (name, outlet, item, qty, balance_qty, negative, ...). It does not
+# yet dispatch `<model>.created` events to flows (S8c finding), so head office also sees the "Stok minus" list.
+on: stock_move.created
+if: event.negative == true
+steps:
+  - notify: head_office
+    channel: in_app
+    template: {id: 'Stok {event.item} di {event.outlet} minus ({event.balance_qty})'}

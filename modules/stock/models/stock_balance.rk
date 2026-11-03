@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: stock_balance
+label: {id: Saldo stok, en: Stock balance}
+icon: stock
+naming: SB-{######}
+# One row per outlet and item, created and updated only by the stock hooks. A balance below zero is the
+# negative-stock exception: `negative` is true and head office sees it in the "Stok minus" list.
+permissions:
+  - {role: head_office, read: true, export: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, read_only: true, in_list: true}
+  - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
+  - {name: qty, type: float, label: {id: Qty}, read_only: true, in_list: true}
+  - {name: value, type: currency, label: {id: Nilai}, read_only: true, in_list: true}
+  - {name: avg_cost, type: currency, label: {id: Rata-rata biaya}, read_only: true, in_list: true}
+  - {name: negative, type: check, label: {id: Stok minus}, compute: qty < 0, in_list: true}
+  - {name: last_move, type: data, label: {id: Mutasi terakhir}, read_only: true}
+views:
+  list:
+    columns: [outlet, item, qty, value, avg_cost, negative]
+    filters: [outlet, item, negative]
+    sort: outlet
