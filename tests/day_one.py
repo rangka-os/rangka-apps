@@ -436,7 +436,7 @@ def scenario_masters_jasa(api):
     eq("fixtures: 2 customers, 2 vendors, 6 items, 3 workers each with a certification",
        (len(api.list("customer")), len(api.list("vendor")), len(api.list("item")), len(api.list("worker", children=1))), (2, 2, 6, 3))
     check("fixtures: every worker has a certification", all(w.get("certifications") for w in api.list("worker", children=1)), "")
-    eq("fixtures: currencies IDR and USD, tax codes PPN and PPh 23", (sorted(c["code"] for c in api.list("currency")), sorted(t["kind"] for t in api.list("tax_code"))), (["IDR", "USD"], ["ppn", "pph23"]))
+    eq("fixtures: currencies IDR and USD, tax codes PPN and PPh 23", (sorted(c["code"] for c in api.list("currency")), sorted(t["kind"] for t in api.list("tax_code"))), (["IDR", "USD"], ["pph23", "ppn"]))
     eq("fixtures: users with the four owner-led roles", sorted(u["role"] for u in api.list("user")), ["finance_manager", "project_admin", "purchasing_manager", "sales_manager"])
     st, pl = api.create("price_list", {"list_name": "Harga inspeksi 2026", "customer": "CUST-0001", "valid_from": "2026-01-01", "valid_until": "2026-12-31",
                                         "items": [{"item": "BRG-0001", "uom": "UOM-004", "rate": 1_400_000}, {"item": "BRG-0002", "uom": "UOM-001", "rate": 80_000}]})
