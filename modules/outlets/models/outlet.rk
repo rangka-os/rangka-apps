@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: outlet
+naming: OUT-{##}
+label: {id: Outlet}
+icon: store
+title_field: outlet_name
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, print: true}
+  - {role: purchasing_manager, read: true, create: true, write: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
+  - {role: sales_rep, read: true}
+fields:
+  - name: outlet_name
+    type: data
+    label: {id: Nama outlet}
+    required: true
+    in_list: true
+  - name: code
+    type: data
+    label: {id: Kode}
+    in_list: true
+    unique: true
+  - name: city
+    type: data
+    label: {id: Kota}
+    in_list: true
+  - name: address
+    type: text
+    label: {id: Alamat}
+  - name: is_head_office
+    type: check
+    label: {id: Kantor pusat}
+  - name: active
+    type: check
+    label: {id: Aktif}
+    default: 'true'

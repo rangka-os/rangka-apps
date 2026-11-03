@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for the project-services pilot: two fictional PTs under one installation (contract 0010).
+# `orgs:` holds each PT's own settings (`org:` identity, `tax:` deep-merged over the site's, so an org only sets `pkp`).
+# Document numbers use `{ORG}`, the org's code (contract 0009).
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+# Site defaults, used by any org created later in the database that has no entry below.
+org: {legal_name: PT Contoh Jasa Teknik, npwp: '00.000.000.0-000.000'}
+tax: {ppn_rate: 12, dpp_ratio: 11/12}
+numbering:
+  invoice: {pattern: "INV/{ORG}/{YY}/{####}", reset: yearly}
+  purchase_order: {pattern: "PO/{ORG}/{YY}{MM}/{###}", reset: monthly}
+orgs:
+  pt_contoh_inspeksi:
+    name: PT Contoh Inspeksi
+    code: CIN
+    config:
+      org: {legal_name: PT Contoh Inspeksi, npwp: '00.000.000.0-000.001'}
+      tax: {pkp: true}
+      numbering:
+        invoice: {pattern: "INV/{ORG}/{YY}/{####}", reset: yearly}
+        purchase_order: {pattern: "PO/{ORG}/{YY}{MM}/{###}", reset: monthly}
+  cv_contoh_pelatihan:
+    name: CV Contoh Pelatihan
+    code: CPL
+    config:
+      org: {legal_name: CV Contoh Pelatihan, npwp: '00.000.000.0-000.002'}
+      tax: {pkp: false}
+      numbering:
+        invoice: {pattern: "KW-{ORG}-{YY}{MM}-{###}", reset: monthly}
+        purchase_order: {pattern: "PO-{ORG}-{YY}-{###}", reset: yearly}
+apps: [jasa_proyek]
+plan: tumbuh
+sso: {domains: [contohjasa.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, sales_manager]}

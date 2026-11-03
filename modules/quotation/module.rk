@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: quotation
+version: 1.0.0
+title: {id: Penawaran, en: Quotation}
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0}
+optional: {tax_id: ^1.0, currency: ^1.0}
+# Semantics fixed in docs/kernel-hooks.md. orders.from_quotation is declared here because the make_order action lives
+# on quotation; the hook is implemented with the orders module.
+hooks: [quotation.revise, quotation.mark_outcome, orders.from_quotation]

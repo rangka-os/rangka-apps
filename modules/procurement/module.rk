@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: procurement
+version: 1.0.0
+title: {id: Pembelian, en: Procurement}
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0}
+optional: {outlets: ^1.0, currency: ^1.0, stock: ^1.0}
+# Semantics fixed in docs/kernel-hooks.md (section procurement). stock.post_moves is a core hook (goods_receipt.on_submit);
+# stock.reverse_moves (goods_receipt.on_cancel) is declared here too, since stock is optional for procurement (a no-op without it).
+hooks: [procurement.make_po, procurement.receive, procurement.post_payable, procurement.reverse_payable, stock.reverse_moves]

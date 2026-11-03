@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: goods_receipt_item
+is_child: true
+fields:
+  - name: item
+    type: link
+    to: item
+    label: {id: Barang}
+    required: true
+  - name: description
+    type: text
+    label: {id: Uraian}
+    default: item.item_name
+  - name: qty
+    type: float
+    label: {id: Qty}
+    required: true
+  - name: uom
+    type: link
+    to: uom
+    label: {id: Satuan}
+    default: "packing != '' ? packing.uom : item.stock_uom"
+  - name: packing
+    type: link
+    to: uom_conversion
+    label: {id: Kemasan}
+  - name: stock_qty
+    type: float
+    label: {id: Qty stok}
+    compute: "packing == '' ? qty : qty * packing.factor"
+  - name: rate
+    type: currency
+    label: {id: Harga satuan}
+    required: true
+  - name: amount
+    type: currency
+    label: {id: Jumlah}
+    compute: round(qty * rate)
+  - name: unit_cost
+    type: currency
+    label: {id: Biaya per satuan stok}
+    compute: "stock_qty > 0 ? round(amount / stock_qty) : 0"

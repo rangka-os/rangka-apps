@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: tax_code
+label: {id: Kode pajak}
+icon: invoice
+naming: PJK-{##}
+title_field: tax_name
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, print: true}
+  - {role: purchasing_manager, read: true, create: true, write: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - name: code
+    type: data
+    label: {id: Kode}
+    required: true
+    unique: true
+    in_list: true
+  - name: tax_name
+    type: data
+    label: {id: Nama pajak}
+    required: true
+    in_list: true
+  - name: kind
+    type: select
+    label: {id: Jenis}
+    in_list: true
+    options:
+      - {value: ppn, label: {id: PPN}}
+      - {value: pph23, label: {id: PPh Pasal 23}}
+  - name: rate
+    type: percent
+    label: {id: Tarif}
+    required: true
+    in_list: true
+  - name: dpp_ratio
+    type: data
+    label: {id: 'Rasio DPP (pembilang/penyebut)'}
+  - name: active
+    type: check
+    label: {id: Aktif}
+    default: 'true'
+rules:
+  - name: rate_range
+    on: save
+    check: rate >= 0 && rate <= 100
+    message: {id: Tarif harus antara 0 dan 100 persen}

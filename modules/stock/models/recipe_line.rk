@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: recipe_line
+is_child: true
+fields:
+  - name: material
+    type: link
+    to: item
+    label: {id: Bahan}
+    required: true
+  - name: description
+    type: text
+    label: {id: Uraian}
+    default: material.item_name
+  - name: qty
+    type: float
+    label: {id: Qty per resep}
+    help: {id: 'Dalam satuan stok bahan'}
+    required: true
+  - name: uom
+    type: link
+    to: uom
+    label: {id: Satuan}
+    default: material.stock_uom
+    read_only: true

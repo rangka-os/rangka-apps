@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: currency
+label: {id: Mata uang}
+icon: card
+# Named by ISO code (ruling): naming has no field source in schema 0.5 (contract 0009), so fixtures set name = code (IDR, USD)
+# and documents' `currency` holds the code; a currency added in the UI gets CUR-nnn until the kernel can name from a field.
+naming: CUR-{###}
+title_field: code
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, print: true}
+  - {role: purchasing_manager, read: true, create: true, write: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - name: code
+    type: data
+    label: {id: Kode ISO}
+    required: true
+    unique: true
+    in_list: true
+  - name: currency_name
+    type: data
+    label: {id: Nama}
+    in_list: true
+  - name: symbol
+    type: data
+    label: {id: Simbol}
+rules:
+  - name: iso_code
+    on: save
+    check: size(code) == 3
+    message: {id: Kode mata uang terdiri dari 3 huruf (ISO 4217)}

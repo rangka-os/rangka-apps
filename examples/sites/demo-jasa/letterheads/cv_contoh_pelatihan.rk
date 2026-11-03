@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+legal_name: CV Contoh Pelatihan
+tagline: Pelatihan dan sertifikasi tenaga teknik
+address: |
+  Jl. Contoh Pendidikan No. 5
+  Serang 42100
+phone: '+62 254 000 0002'
+email: halo@contohpelatihan.test
+website: contohpelatihan.test
+npwp: '00.000.000.0-000.002'
+bank:
+  - {bank: Bank Contoh, account: '222 000 0002', holder: CV Contoh Pelatihan, branch: Serang}
+signatory: {name: Sinta Penandatangan, title: Direktur}
+footer: {id: Terima kasih sudah belajar bersama kami}

@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: timesheet
+label: {id: Timesheet}
+icon: calendar
+is_submittable: true
+naming: TS-{YYYY}-{#####}
+title_field: worker
+permissions:
+  - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true}
+  - {role: finance_manager, read: true}
+fields:
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+    required: true
+    in_list: true
+  - name: worker
+    type: link
+    to: worker
+    label: {id: Tenaga kerja}
+    required: true
+    in_list: true
+  - name: assignment
+    type: link
+    to: assignment
+    label: {id: Penugasan}
+  - name: work_date
+    type: date
+    label: {id: Tanggal kerja}
+    required: true
+    in_list: true
+  - name: days
+    type: float
+    label: {id: Hari kerja}
+    default: '1'
+    in_list: true
+  - name: hours
+    type: float
+    label: {id: Jam}
+  - name: description
+    type: text
+    label: {id: Uraian pekerjaan}
+    required: true
+  - name: evidence
+    type: attach
+    label: {id: Bukti kerja}
+  - name: billable
+    type: check
+    label: {id: Dapat ditagih}
+    default: 'true'
+  - name: day_rate
+    type: currency
+    label: {id: Tarif per hari}
+    default: assignment.day_rate
+  - name: amount
+    type: currency
+    label: {id: Jumlah}
+    compute: round(days * day_rate)
+    in_list: true
+rules:
+  - name: days_range
+    on: save
+    check: days > 0 && days <= 1.5
+    message: {id: 'Hari kerja harus lebih dari 0 dan paling banyak 1,5'}
+views:
+  list:
+    columns: [name, project, worker, work_date, days, status, amount]
+    sort: -work_date
+  form:
+    layout:
+      - section: {id: Timesheet}
+        columns:
+          - [project, worker, assignment]
+          - [work_date, days, hours]
+      - section: {id: Pekerjaan}
+        columns:
+          - [description, evidence]
+      - section: {id: Tagihan}
+        columns:
+          - [billable, day_rate, amount]

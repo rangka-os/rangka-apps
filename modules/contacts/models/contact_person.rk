@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: contact_person
+label: {id: Kontak person}
+is_child: true
+fields:
+  - name: person_name
+    type: data
+    label: {id: Nama}
+    required: true
+  - name: position
+    type: data
+    label: {id: Jabatan}
+  - name: phone
+    type: phone
+    label: {id: Telepon}
+  - name: email
+    type: data
+    label: {id: Email}
+  - name: is_primary
+    type: check
+    label: {id: Kontak utama}

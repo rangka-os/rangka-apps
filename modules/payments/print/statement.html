@@ -1,0 +1,55 @@
+{{define "style"}}
+.meta { width: 100%; margin: 12px 0; border-collapse: collapse; }
+.meta td { padding: 2px 6px 2px 0; vertical-align: top; }
+.items { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.92em; }
+.items th, .items td { border-bottom: 1px solid #d6d3d1; padding: 5px 6px; text-align: left; }
+.items th { background: #f6ede6; }
+.items tr.total td { border-top: 2px solid #1c1917; font-weight: 700; }
+.num { text-align: right !important; font-variant-numeric: tabular-nums; }
+.note { margin-top: 14px; font-size: 0.9em; }
+{{end}}
+{{template "letterhead" .}}
+<h1>Laporan tagihan / Statement of account</h1>
+<table class="meta">
+  <tr><td>Pelanggan</td><td>: {{.Doc.customer_name}}</td><td>Per tanggal</td><td>: {{date .Printed}}</td></tr>
+  <tr><td>Alamat</td><td>: {{.Doc.address}}</td><td>NPWP</td><td>: {{.Doc.npwp}}</td></tr>
+</table>
+{{/* Open amounts use the invoice's own `outstanding` (amount_due - paid_amount), not grand_total - paid_amount:
+     PPh 23 and retention make the two differ. Aging buckets are summed here for the same reason (see docs/kernel-hooks.md). */}}
+{{/* `sub $x (sub 0 n)` is x + n: the helper set has sub but no add. */}}
+{{$cur := 0}}{{$d30 := 0}}{{$d60 := 0}}{{$d90 := 0}}{{$o90 := 0}}
+<table class="items">
+  <thead><tr><th>No. faktur</th><th>Tanggal</th><th>Jatuh tempo</th><th class="num">Tagihan</th><th class="num">Dibayar</th><th class="num">Sisa</th><th class="num">Umur (hari)</th></tr></thead>
+  <tbody>
+  {{range $inv := .Related.invoices}}
+  {{if $inv.outstanding}}
+  {{$age := overdue $inv.due_date}}
+  <tr>
+    <td>{{$inv.name}}</td>
+    <td>{{date $inv.posting_date}}</td>
+    <td>{{date $inv.due_date}}</td>
+    <td class="num">{{rupiah $inv.amount_due}}</td>
+    <td class="num">{{rupiah $inv.paid_amount}}</td>
+    <td class="num">{{rupiah $inv.outstanding}}</td>
+    <td class="num">{{$age}}</td>
+  </tr>
+  {{if le $age 0}}{{$cur = sub $cur (sub 0 $inv.outstanding)}}
+  {{else if le $age 30}}{{$d30 = sub $d30 (sub 0 $inv.outstanding)}}
+  {{else if le $age 60}}{{$d60 = sub $d60 (sub 0 $inv.outstanding)}}
+  {{else if le $age 90}}{{$d90 = sub $d90 (sub 0 $inv.outstanding)}}
+  {{else}}{{$o90 = sub $o90 (sub 0 $inv.outstanding)}}{{end}}
+  {{end}}
+  {{end}}
+  <tr class="total"><td colspan="5">Total sisa tagihan</td><td class="num">{{rupiah (sum .Related.invoices "outstanding")}}</td><td></td></tr>
+  </tbody>
+</table>
+<h2>Umur piutang</h2>
+<table class="items">
+  <thead><tr><th class="num">Belum jatuh tempo</th><th class="num">1-30 hari</th><th class="num">31-60 hari</th><th class="num">61-90 hari</th><th class="num">&gt; 90 hari</th></tr></thead>
+  <tbody><tr>
+    <td class="num">{{rupiah $cur}}</td><td class="num">{{rupiah $d30}}</td><td class="num">{{rupiah $d60}}</td><td class="num">{{rupiah $d90}}</td><td class="num">{{rupiah $o90}}</td>
+  </tr></tbody>
+</table>
+{{if .Truncated.invoices}}<p class="note"><strong>Daftar dipotong:</strong> hanya 1.000 tagihan terlama yang ditampilkan, jadi total dan umur piutang di atas lebih kecil dari yang sebenarnya.</p>{{end}}
+<p class="note">Faktur yang sudah lunas tidak ditampilkan. Bila ada selisih dengan catatan kamu, mohon hubungi kami.</p>
+{{template "bank_accounts" .}}

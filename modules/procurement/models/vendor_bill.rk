@@ -1,0 +1,166 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: vendor_bill
+label: {id: Tagihan pemasok, en: Vendor bill}
+icon: invoice
+is_submittable: true
+naming: BILL-{YYYY}-{#####}
+title_field: bill_no
+on_submit: [procurement.post_payable]
+on_cancel: [procurement.reverse_payable]
+permissions:
+  - {role: purchasing_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true, submit: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+fields:
+  - name: vendor
+    type: link
+    to: vendor
+    label: {id: Pemasok}
+    required: true
+    in_list: true
+    peek: [outstanding, payment_days, npwp]
+  - name: purchase_order
+    type: link
+    to: purchase_order
+    label: {id: Pesanan pembelian}
+  - name: goods_receipt
+    type: link
+    to: goods_receipt
+    label: {id: Penerimaan barang}
+  - name: bill_no
+    type: data
+    label: {id: No. faktur pemasok}
+    required: true
+    in_list: true
+  - name: bill_date
+    type: date
+    label: {id: Tanggal faktur}
+    required: true
+    in_list: true
+  - name: due_date
+    type: date
+    label: {id: Jatuh tempo}
+    default: bill_date + duration(vendor.payment_days)
+    relative_to: bill_date
+    in_list: true
+  - name: items
+    type: table
+    of: vendor_bill_item
+    label: {id: Barang/jasa}
+    min_rows: 1
+  - name: subtotal
+    type: currency
+    label: {id: Subtotal}
+    # Foreign-currency document (currency is not IDR): the rupiah subtotal is the IDR twin of subtotal_fx (contract 0013),
+    # so dpp, PPN (assessed in rupiah), grand_total, retention, PPh 23 and amount_due stay IDR computes from it.
+    # Lines are entered with rate_fx; the IDR line `amount` (qty x rate) cannot see the parent's currency, so the header ignores it.
+    compute: "currency != '' && currency != 'IDR' ? subtotal_fx_idr : items.map(i, i.amount).sum()"
+  - name: dpp
+    type: currency
+    label: {id: DPP}
+    compute: subtotal
+  - name: tax_rate
+    type: percent
+    label: {id: Tarif PPN}
+    help: {id: 'Dari pesanan pembelian bila ada, bila tidak dari config tax.ppn_rate; 0 bila pemasok bukan PKP. Tersimpan di dokumen.'}
+    default: "purchase_order != '' ? purchase_order.tax_rate : (vendor.pkp ? tax.ppn_rate : 0)"
+  # Not read_only: a generic amend zeroes read-only fields, and a zero dpp_den would break ppn (kernel follow-up).
+  - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: "purchase_order != '' ? purchase_order.dpp_num : tax.dpp_num"}
+  - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: "purchase_order != '' ? purchase_order.dpp_den : tax.dpp_den"}
+  - name: ppn
+    type: currency
+    label: {id: PPN (DPP x rasio DPP nilai lain x tarif)}
+    compute: "round(dpp * dpp_num / dpp_den * tax_rate / 100)"
+  - name: grand_total
+    type: currency
+    label: {id: Total}
+    compute: dpp + ppn
+    in_list: true
+  - name: pph23_amount
+    type: currency
+    label: {id: PPh 23 yang kami potong}
+    help: {id: 'Dipotong dari pembayaran ke pemasok jasa; bukti potong kami terbitkan'}
+    default: '0'
+  - name: amount_due
+    type: currency
+    label: {id: Tagihan bersih}
+    compute: grand_total - pph23_amount
+    in_list: true
+  - name: paid_amount
+    type: currency
+    label: {id: Sudah dibayar}
+    read_only: true
+  - name: outstanding
+    type: currency
+    label: {id: Sisa tagihan}
+    compute: amount_due - paid_amount
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+  - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
+  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency
+  - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
+  - {name: dpp_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "subtotal_fx"}
+  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "round(dpp_fx * dpp_num / dpp_den * tax_rate / 100, 2)"}
+  - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_fx + ppn_fx"}
+  - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "currency != '' && currency != 'IDR' ? round(grand_total_fx - pph23_amount / exchange_rate, 2) : 0"}  # pph23_amount is entered in rupiah only
+rules:
+  - name: foreign_needs_rate
+    on: save
+    check: currency == '' || currency == 'IDR' || exchange_rate > 1
+    message: {id: Dokumen valas wajib diisi kursnya (rupiah per 1 unit mata uang asing)}
+  - name: po_same_vendor
+    on: save
+    check: purchase_order == '' || purchase_order.vendor == vendor
+    message: {id: Pesanan pembelian harus dari pemasok yang sama}
+  - name: receipt_same_vendor
+    on: save
+    check: goods_receipt == '' || goods_receipt.vendor == vendor
+    message: {id: Penerimaan barang harus dari pemasok yang sama}
+  - name: tax_valid
+    on: save
+    check: dpp_den > 0 && dpp_num > 0 && dpp_num <= dpp_den && tax_rate >= 0 && tax_rate <= 100
+    message: {id: Tarif PPN atau faktor DPP tidak valid}
+  - name: ppn_needs_pkp
+    on: save
+    check: "tax_rate == 0 || (purchase_order != '' ? purchase_order.tax_rate > 0 : vendor.pkp)"
+    message: {id: Pemasok bukan PKP (atau PO tanpa PPN) tidak boleh dikenai PPN (tarif PPN harus 0)}
+  - name: due_after_bill
+    on: save
+    check: due_date == '' || due_date >= bill_date
+    message: {id: Jatuh tempo tidak boleh sebelum tanggal faktur}
+  - name: pph23_within_total
+    on: save
+    check: pph23_amount >= 0 && pph23_amount <= grand_total
+    message: {id: PPh 23 tidak boleh negatif atau melebihi total}
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: rate_not_negative
+    on: save
+    check: "items.map(i, i.rate < 0 || i.rate_fx < 0 ? 1 : 0).sum() == 0"
+    message: {id: Harga tidak boleh negatif}
+views:
+  list:
+    columns: [name, vendor, bill_no, bill_date, due_date, status, amount_due, outstanding]
+    sort: -bill_date
+  form:
+    layout:
+      - section: {id: Pemasok}
+        columns:
+          - [vendor, bill_no, purchase_order, goods_receipt]
+          - [bill_date, due_date]
+      - section: {id: Barang/jasa}
+        fields: [items]
+      - section: {id: Pajak & potongan}
+        columns:
+          - [subtotal, dpp, tax_rate, dpp_num, dpp_den, ppn, grand_total]
+          - [pph23_amount, amount_due, paid_amount, outstanding]
+      - section: {id: Catatan}
+        fields: [notes]
+      - section: {id: Mata uang asing}
+        columns:
+          - [currency, exchange_rate, subtotal_fx]
+          - [grand_total_fx, amount_due_fx]

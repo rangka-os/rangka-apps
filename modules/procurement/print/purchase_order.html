@@ -1,0 +1,120 @@
+{{/* Pesanan pembelian (purchase order). Reference layout, contract 0008 §6; "Kirim ke" reads the outlet link. */}}
+{{define "style"}}
+.doc-title{font-size:15pt;margin:0 0 4mm}
+.fields{width:auto;margin-bottom:5mm}
+.fields th,.fields td{border:0;padding:.4mm 4mm .4mm 0}
+.fields th{font-weight:400;color:#57534E;white-space:nowrap}
+.parties{display:flex;gap:10mm;margin-bottom:5mm}
+.parties>div{flex:1}
+.parties .name{font-weight:600}
+.pre{white-space:pre-line}
+.items{margin:3mm 0}
+.items thead th{border-bottom:1px solid #1C1917}
+.items .no{width:9mm}
+.items tr,.totals tr{break-inside:avoid}
+.totals{width:95mm;margin-left:auto}
+.totals th{font-weight:400}
+.totals .grand th,.totals .grand td{font-weight:600;border-top:1px solid #1C1917;border-bottom:0}
+.terbilang{margin:3mm 0 4mm}
+.note{margin:0 0 2mm}
+.approval{margin-top:8mm;width:60mm;break-inside:avoid}
+.approval .space{height:18mm}
+{{end}}
+{{template "letterhead" .}}
+{{$fx := and .Doc.currency (ne .Doc.currency "IDR")}}
+<h1 class="doc-title">Pesanan pembelian</h1>
+<table class="fields">
+  <tr><th>Nomor</th><td>{{.Doc.name}}</td></tr>
+  <tr><th>Tanggal</th><td>{{date .Doc.order_date}}</td></tr>
+  {{- with .Doc.delivery_date}}
+  <tr><th>Tanggal kirim</th><td>{{date .}}</td></tr>
+  {{- end}}
+  {{- with .Doc.payment_terms}}
+  <tr><th>Syarat pembayaran</th><td>{{.}}</td></tr>
+  {{- end}}
+</table>
+
+<div class="parties">
+  <div>
+    <div class="muted">Kepada (pemasok)</div>
+    {{- with .Links.vendor}}
+    <div class="name">{{.vendor_name}}</div>
+    {{- with .address}}
+    <div class="pre">{{.}}</div>
+    {{- end}}
+    {{- with .npwp}}
+    <div>NPWP {{.}}</div>
+    {{- end}}
+    {{- else}}
+    <div class="name">{{.Doc.vendor}}</div>
+    {{- end}}
+  </div>
+  <div>
+    <div class="muted">Kirim ke</div>
+    {{- with .Links.outlet}}
+    <div class="name">{{.outlet_name}}</div>
+    {{- with .address}}
+    <div class="pre">{{.}}</div>
+    {{- end}}
+    {{- else}}
+    <div class="pre">{{.Letterhead.address}}</div>
+    {{- end}}
+  </div>
+</div>
+
+<p>Mohon dikirimkan barang berikut sesuai harga dan syarat di bawah ini:</p>
+
+<table class="items">
+  <thead>
+    <tr><th class="no">No</th><th>Uraian</th><th class="num">Qty</th><th>Satuan</th><th class="num">Harga satuan</th><th class="num">Jumlah</th></tr>
+  </thead>
+  <tbody>
+    {{- range $i, $row := .Doc.items}}
+    <tr>
+      <td>{{sub $i -1}}</td>
+      <td class="pre">{{or $row.description $row.item}}</td>
+      <td class="num">{{number $row.qty}}</td>
+      <td>{{$row.uom}}</td>
+      <td class="num">{{if $fx}}{{money $row.rate_fx $.Doc.currency}}{{else}}{{rupiah $row.rate}}{{end}}</td>
+      <td class="num">{{if $fx}}{{money $row.amount_fx $.Doc.currency}}{{else}}{{rupiah $row.amount}}{{end}}</td>
+    </tr>
+    {{- end}}
+  </tbody>
+</table>
+
+{{- if $fx}}
+<table class="totals">
+  <tr><th>Subtotal</th><td class="num">{{money .Doc.subtotal_fx .Doc.currency}}</td></tr>
+  {{- if taxrate .Doc .Tax}}
+  <tr><th>PPN {{number (taxrate .Doc .Tax)}}%</th><td class="num">{{money .Doc.ppn_fx .Doc.currency}}</td></tr>
+  {{- end}}
+  <tr class="grand"><th>Total</th><td class="num">{{money .Doc.grand_total_fx .Doc.currency}}</td></tr>
+</table>
+<p class="note">Kurs: 1 {{.Doc.currency}} = {{rupiah .Doc.exchange_rate}}. Setara rupiah (PPN dihitung dalam rupiah):</p>
+{{- end}}
+<table class="totals">
+  <tr><th>Subtotal</th><td class="num">{{rupiah .Doc.subtotal}}</td></tr>
+  {{- if taxrate .Doc .Tax}}
+  <tr><th>DPP</th><td class="num">{{rupiah .Doc.dpp}}</td></tr>
+  <tr><th>PPN {{number (taxrate .Doc .Tax)}}% (DPP nilai lain {{.Doc.dpp_num}}/{{.Doc.dpp_den}})</th><td class="num">{{rupiah .Doc.ppn}}</td></tr>
+  {{- end}}
+  <tr class="grand"><th>Total</th><td class="num">{{rupiah .Doc.grand_total}}</td></tr>
+</table>
+<p class="terbilang"><em>Terbilang: {{terbilang .Doc.grand_total}}</em></p>
+{{- with .Doc.notes}}
+<p class="note pre">{{.}}</p>
+{{- end}}
+<p class="note">Mohon cantumkan nomor pesanan ini pada surat jalan dan faktur.</p>
+
+<div class="approval">
+  <div>Disetujui oleh,</div>
+  <div class="space"></div>
+  {{- with .Letterhead.signatory}}
+  <div>{{.name}}</div>
+  {{- with .title}}
+  <div class="muted">{{.}}</div>
+  {{- end}}
+  {{- else}}
+  <div>{{.Letterhead.legal_name}}</div>
+  {{- end}}
+</div>

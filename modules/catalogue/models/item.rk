@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: item
+label: {id: Barang}
+icon: stock
+naming: BRG-{####}
+title_field: item_name
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, print: true}
+  - {role: purchasing_manager, read: true, create: true, write: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
+  - {role: sales_rep, read: true}
+fields:
+  - name: item_name
+    type: data
+    label: {id: Nama barang}
+    required: true
+    in_list: true
+  - name: sku
+    type: data
+    label: {id: SKU}
+    in_list: true
+    unique: true
+  - name: kind
+    type: select
+    label: {id: Jenis}
+    required: true
+    in_list: true
+    default: "'good'"
+    options:
+      - {value: service, label: {id: Jasa}}
+      - {value: good, label: {id: Barang}}
+      - {value: material, label: {id: Bahan baku}}
+      - {value: product, label: {id: Produk jadi}}
+  - name: stock_uom
+    type: link
+    to: uom
+    label: {id: Satuan stok}
+    required: true
+    in_list: true
+  - name: sales_uom
+    type: link
+    to: uom
+    label: {id: Satuan jual}
+  - name: rate
+    type: currency
+    label: {id: Harga jual}
+    in_list: true
+  - name: standard_cost
+    type: currency
+    label: {id: Harga pokok standar}
+  - name: stock
+    type: float
+    label: {id: Stok}
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}

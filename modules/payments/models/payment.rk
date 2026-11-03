@@ -1,0 +1,154 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: payment
+label: {id: Pembayaran, en: Payment}
+icon: card
+is_submittable: true
+naming: PAY-{YYYY}-{#####}
+title_field: reference
+on_submit: [payments.allocate]
+on_cancel: [payments.unallocate]
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  # head office records vendor payments only
+  - {role: head_office, read: true, create: true, write: true, submit: true, print: true, if: direction == 'pay'}
+fields:
+  - name: direction
+    type: select
+    label: {id: Arah}
+    default: "'receive'"
+    required: true
+    in_list: true
+    chip: true
+    options:
+      - {value: receive, label: {id: Terima dari pelanggan}}
+      - {value: pay, label: {id: Bayar ke pemasok}}
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    depends_on: direction == 'receive'
+    in_list: true
+  - name: vendor
+    type: link
+    to: vendor
+    label: {id: Pemasok}
+    depends_on: direction == 'pay'
+  - name: payment_date
+    type: date
+    label: {id: Tanggal pembayaran}
+    default: today()
+    required: true
+    in_list: true
+  - name: method
+    type: select
+    label: {id: Metode}
+    default: "'transfer'"
+    options:
+      - {value: transfer, label: {id: Transfer}}
+      - {value: cash, label: {id: Tunai}}
+      - {value: giro, label: {id: Giro}}
+      - {value: other, label: {id: Lainnya}}
+  - name: reference
+    type: data
+    label: {id: No. bukti/transfer}
+  - name: amount
+    type: currency
+    label: {id: Jumlah uang}
+    required: true
+    # A foreign-currency payment is converted once, here: amount = round(amount_fx x exchange_rate) (half away from zero, as the
+    # twin amount_fx_idr; a default cannot read the twin, which is settled after defaults). An IDR payment is typed in rupiah. Allocation rows are always IDR.
+    default: "currency != 'IDR' ? round(amount_fx * exchange_rate) : 0"
+    in_list: true
+  - name: allocations
+    type: table
+    of: payment_allocation
+    label: {id: Alokasi ke tagihan}
+  - name: allocated_total
+    type: currency
+    label: {id: Total alokasi}
+    compute: allocations.map(a, a.amount).sum()
+  - name: withheld_total
+    type: currency
+    label: {id: Total PPh 23 dipotong}
+    compute: allocations.map(a, a.withheld).sum()
+  - name: unallocated
+    type: currency
+    label: {id: Belum dialokasikan}
+    compute: amount - allocated_total
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+  - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
+  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency
+  - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah uang (valas)}, default: '0'}
+rules:
+  - name: foreign_needs_rate
+    on: save
+    check: currency == '' || currency == 'IDR' || exchange_rate > 1
+    message: {id: Dokumen valas wajib diisi kursnya (rupiah per 1 unit mata uang asing)}
+  - name: amount_positive
+    on: save
+    check: amount > 0
+    message: {id: Jumlah pembayaran harus lebih dari 0}
+  - name: allocated_within_amount
+    on: save
+    check: allocated_total <= amount
+    message: {id: Alokasi melebihi jumlah pembayaran}
+  - name: fx_amount_matches
+    on: save
+    check: "currency == 'IDR' || amount == round(amount_fx * exchange_rate)"
+    message: {id: Jumlah rupiah harus sama dengan jumlah valas x kurs}
+  - name: receive_needs_customer
+    on: save
+    check: direction != 'receive' || customer != ''
+    message: {id: Pilih pelanggan}
+  - name: pay_needs_vendor
+    on: save
+    check: direction != 'pay' || vendor != ''
+    message: {id: Pilih pemasok}
+  - name: row_amount_positive
+    on: save
+    check: "allocations.map(a, a.amount <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah alokasi harus lebih dari 0}
+  - name: row_not_negative
+    on: save
+    check: "allocations.map(a, a.amount < 0 || a.withheld < 0 ? 1 : 0).sum() == 0"
+    message: {id: Alokasi dan PPh 23 dipotong tidak boleh negatif}
+  # amount_due of a PPh 23 invoice already nets the tax (the bukti potong is a `withholding` record), so `withheld`
+  # is only for invoices where pph23_applies is false but the customer withheld anyway.
+  - name: no_double_pph23
+    on: save
+    check: "allocations.map(a, a.withheld > 0 && a.pph23_applies ? 1 : 0).sum() == 0"
+    message: {id: PPh 23 sudah dipotong di faktur ini}
+  # `all` is not in the validators' CEL subset yet (map and sum only), so "every row" is "no violating row".
+  - name: allocation_within_outstanding
+    on: save
+    check: "allocations.map(a, a.amount + a.withheld > a.outstanding ? 1 : 0).sum() == 0"
+    message: {id: Alokasi melebihi sisa tagihan}
+  # receive allocates to a sales_invoice, pay to a vendor_bill; a row must name its own kind and only that kind.
+  - name: allocation_has_target
+    on: save
+    check: "allocations.map(a, (direction == 'receive' ? a.sales_invoice == '' || a.vendor_bill != '' : a.vendor_bill == '' || a.sales_invoice != '') ? 1 : 0).sum() == 0"
+    message: {id: Pilih faktur penjualan (terima) atau tagihan pemasok (bayar) untuk setiap baris alokasi}
+views:
+  list:
+    columns: [name, direction, customer, payment_date, status, amount, unallocated]
+    sort: -payment_date
+  form:
+    layout:
+      - section: {id: Pembayaran}
+        columns:
+          - [direction, customer, vendor, payment_date]
+          - [method, reference, amount]
+      - section: {id: Alokasi}
+        fields: [allocations]
+      - section: {id: Ringkasan}
+        columns:
+          - [allocated_total, withheld_total, unallocated]
+      - section: {id: Catatan}
+        fields: [notes]
+      - section: {id: Mata uang asing}
+        columns:
+          - [currency, exchange_rate, amount_fx]

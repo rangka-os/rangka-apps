@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+# Site letterhead: used by an org that has no letterheads/<org>.rk. Fictional data.
+legal_name: PT Contoh Jasa Teknik
+tagline: Jasa teknik dan tenaga kerja
+address: |
+  Jl. Contoh Raya No. 10
+  Cilegon 42400
+phone: '+62 254 000 0000'
+email: halo@contohjasa.test
+website: contohjasa.test
+npwp: '00.000.000.0-000.000'
+bank:
+  - {bank: Bank Contoh, account: '000 000 0000', holder: PT Contoh Jasa Teknik, branch: Cilegon}
+signatory: {name: Nama Penandatangan, title: Direktur}
+footer: {id: Terima kasih atas kepercayaan kamu}

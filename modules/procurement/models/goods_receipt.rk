@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: goods_receipt
+label: {id: Penerimaan barang, en: Goods receipt}
+icon: stock
+is_submittable: true
+naming: GR-{YYYY}-{#####}
+title_field: vendor
+# stock.post_moves is a core hook: also adds the received qty to the PO lines' received_qty and sets received_pct.
+on_submit: [stock.post_moves]
+on_cancel: [stock.reverse_moves]
+permissions:
+  - {role: purchasing_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: outlet_staff, read: true, create: true, write: true, submit: true}
+fields:
+  - name: purchase_order
+    type: link
+    to: purchase_order
+    label: {id: Pesanan pembelian}
+    in_list: true
+  - name: vendor
+    type: link
+    to: vendor
+    label: {id: Pemasok}
+    required: true
+    in_list: true
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Diterima di}
+    required: true
+    in_list: true
+  - name: received_on
+    type: date
+    label: {id: Tanggal terima}
+    default: today()
+    required: true
+    in_list: true
+  - name: items
+    type: table
+    of: goods_receipt_item
+    label: {id: Barang diterima}
+    min_rows: 1
+  - name: total_value
+    type: currency
+    label: {id: Nilai penerimaan}
+    compute: items.map(i, i.amount).sum()
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: po_same_vendor
+    on: save
+    check: purchase_order == '' || purchase_order.vendor == vendor
+    message: {id: Pesanan pembelian harus dari pemasok yang sama}
+  - name: po_same_outlet
+    on: save
+    check: purchase_order == '' || purchase_order.outlet == '' || purchase_order.outlet == outlet
+    message: {id: Barang harus diterima di outlet tujuan pesanan pembelian}
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: rate_not_negative
+    on: save
+    check: "items.map(i, i.rate < 0 ? 1 : 0).sum() == 0"
+    message: {id: Harga tidak boleh negatif}
+views:
+  list:
+    columns: [name, vendor, outlet, received_on, status, total_value]
+    sort: -received_on
+  form:
+    layout:
+      - section: {id: Penerimaan}
+        columns:
+          - [purchase_order, vendor]
+          - [outlet, received_on]
+      - section: {id: Barang diterima}
+        fields: [items]
+      - section: {id: Ringkasan}
+        columns:
+          - [total_value]
+      - section: {id: Catatan}
+        fields: [notes]

@@ -1,0 +1,65 @@
+{{define "style"}}
+.meta { width: 100%; margin: 12px 0; border-collapse: collapse; }
+.meta td { padding: 2px 6px 2px 0; vertical-align: top; }
+.items { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.items th, .items td { border-bottom: 1px solid #d6d3d1; padding: 6px 8px; text-align: left; vertical-align: top; }
+.items th { background: #f6ede6; }
+.num { text-align: right !important; font-variant-numeric: tabular-nums; }
+.totals { width: 50%; margin: 12px 0 0 auto; border-collapse: collapse; }
+.totals td { padding: 3px 8px; }
+.totals tr.grand td { border-top: 2px solid #1c1917; font-weight: 700; }
+.note { margin-top: 14px; font-size: 0.9em; }
+.terms { margin-top: 14px; border-collapse: collapse; }
+.terms td { padding: 2px 8px 2px 0; vertical-align: top; }
+{{end}}
+{{template "letterhead" .}}
+{{$fx := and .Doc.currency (ne .Doc.currency "IDR")}}
+<h1>Surat Penawaran Harga</h1>
+<table class="meta">
+  <tr><td>Nomor</td><td>: {{.Doc.name}} Rev.{{printf "%02d" .Doc.revision}}</td><td>Kepada Yth.</td><td>: {{.Links.customer.customer_name}}</td></tr>
+  <tr><td>Tanggal</td><td>: {{date .Doc.quotation_date}}</td><td>Alamat</td><td>: {{.Links.customer.address}}</td></tr>
+  <tr><td>Perihal</td><td>: {{.Doc.subject}}</td><td>Up.</td><td>: {{.Doc.contact_person}}</td></tr>
+  {{if .Doc.rfq_ref}}<tr><td>Ref. RFQ</td><td>: {{.Doc.rfq_ref}}{{if .Doc.rfq_date}} ({{date .Doc.rfq_date}}){{end}}</td><td></td><td></td></tr>{{end}}
+</table>
+<p>Dengan hormat, bersama ini kami sampaikan penawaran harga sebagai berikut.</p>
+<table class="items">
+  <thead><tr><th>No</th><th>Uraian</th><th class="num">Qty</th><th>Satuan</th><th class="num">Harga satuan</th><th class="num">Diskon</th><th class="num">Jumlah</th></tr></thead>
+  <tbody>
+  {{range $i, $row := .Doc.items}}
+  <tr>
+    <td>{{sub $i -1}}</td>
+    <td>{{if $row.description}}{{$row.description}}{{else}}{{$row.item}}{{end}}</td>
+    <td class="num">{{number $row.qty}}</td>
+    <td>{{$row.uom}}</td>
+    <td class="num">{{if $fx}}{{money $row.rate_fx $.Doc.currency}}{{else}}{{rupiah $row.rate}}{{end}}</td>
+    <td class="num">{{if $row.discount}}{{number $row.discount}}%{{end}}</td>
+    <td class="num">{{if $fx}}{{money $row.amount_fx $.Doc.currency}}{{else}}{{rupiah $row.amount}}{{end}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{if $fx}}
+<table class="totals">
+  <tr><td>Subtotal</td><td class="num">{{money .Doc.subtotal_fx .Doc.currency}}</td></tr>
+  {{if taxrate .Doc .Tax}}<tr><td>PPN {{number (taxrate .Doc .Tax)}}%</td><td class="num">{{money .Doc.ppn_fx .Doc.currency}}</td></tr>{{end}}
+  <tr class="grand"><td>Total</td><td class="num">{{money .Doc.grand_total_fx .Doc.currency}}</td></tr>
+</table>
+<p class="note">Kurs: 1 {{.Doc.currency}} = {{rupiah .Doc.exchange_rate}}. Setara rupiah (PPN dihitung dalam rupiah):</p>
+{{end}}
+<table class="totals">
+  <tr><td>Subtotal</td><td class="num">{{rupiah .Doc.subtotal}}</td></tr>
+  <tr><td>DPP</td><td class="num">{{rupiah .Doc.dpp}}</td></tr>
+  {{if taxrate .Doc .Tax}}<tr><td>PPN {{number (taxrate .Doc .Tax)}}% (DPP nilai lain {{.Doc.dpp_num}}/{{.Doc.dpp_den}})</td><td class="num">{{rupiah .Doc.ppn}}</td></tr>{{end}}
+  <tr class="grand"><td>Total</td><td class="num">{{rupiah .Doc.grand_total}}</td></tr>
+</table>
+<p class="note"><strong>Terbilang:</strong> {{terbilang .Doc.grand_total}}</p>
+<table class="terms">
+  <tr><td><strong>Syarat</strong></td><td></td></tr>
+  <tr><td>Masa berlaku</td><td>: sampai {{date .Doc.valid_until}}</td></tr>
+  {{if .Doc.payment_terms}}<tr><td>Pembayaran</td><td>: {{.Doc.payment_terms}}</td></tr>{{end}}
+  {{if .Doc.delivery_terms}}<tr><td>Waktu pelaksanaan</td><td>: {{.Doc.delivery_terms}}</td></tr>{{end}}
+</table>
+{{if .Doc.notes}}<p class="note">{{.Doc.notes}}</p>{{end}}
+<p class="note">Demikian penawaran ini kami sampaikan. Atas perhatian dan kerja samanya kami ucapkan terima kasih.</p>
+<p class="note">Hormat kami,</p>
+{{template "signature" .}}

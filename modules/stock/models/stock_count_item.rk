@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: stock_count_item
+is_child: true
+fields:
+  - name: item
+    type: link
+    to: item
+    label: {id: Barang}
+    required: true
+  - name: description
+    type: text
+    label: {id: Uraian}
+    default: item.item_name
+  - name: counted_qty
+    type: float
+    label: {id: Hasil hitung}
+    required: true
+    stock: true
+  - name: uom
+    type: link
+    to: uom
+    label: {id: Satuan}
+    default: item.stock_uom
+    read_only: true
+  - name: system_qty
+    type: float
+    label: {id: Qty sistem}
+    help: {id: 'Diisi sistem saat opname diajukan'}
+    read_only: true
+  - name: difference
+    type: float
+    label: {id: Selisih}
+    read_only: true

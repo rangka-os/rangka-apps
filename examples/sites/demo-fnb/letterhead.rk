@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+# Letterhead of the fictional Tahu Contoh group (printed on purchase orders to suppliers).
+legal_name: PT Tahu Contoh Nusantara
+tagline: Tahu goreng dan olahan tahu
+address: |
+  Jl. Contoh Dago No. 1
+  Bandung 40135
+phone: '+62 22 000 0000'
+email: halo@tahucontoh.test
+website: tahucontoh.test
+npwp: '00.000.000.0-000.003'
+bank:
+  - {bank: Bank Contoh, account: '333 000 0003', holder: PT Tahu Contoh Nusantara, branch: Bandung}
+signatory: {name: Rina Contoh, title: Kepala kantor pusat}
+footer: {id: Terima kasih sudah berjualan bersama kami}

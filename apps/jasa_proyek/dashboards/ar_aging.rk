@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: ar_aging
+label: {id: Umur piutang, en: Receivables aging}
+description: {id: Sisa tagihan faktur menurut umur lewat jatuh tempo}
+default_period: 30
+cache: 5m
+# Buckets match the statement of account (print format `statement`): not yet due, then days past due_date.
+widgets:
+  - name: total_outstanding
+    type: number
+    label: {id: Total piutang}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0
+    good_when: down
+    compact: true
+    span: 12
+  - name: not_due
+    type: number
+    label: {id: Belum jatuh tempo}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && due_date >= today()
+    compact: true
+    span: 3
+  - name: past_1_30
+    type: number
+    label: {id: Lewat 1-30 hari}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && due_date < today() && due_date >= today() - duration(30)
+    good_when: down
+    compact: true
+    span: 3
+  - name: past_31_60
+    type: number
+    label: {id: Lewat 31-60 hari}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && due_date < today() - duration(30) && due_date >= today() - duration(60)
+    good_when: down
+    compact: true
+    span: 2
+  - name: past_61_90
+    type: number
+    label: {id: Lewat 61-90 hari}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && due_date < today() - duration(60) && due_date >= today() - duration(90)
+    good_when: down
+    compact: true
+    span: 2
+  - name: past_over_90
+    type: number
+    label: {id: Lewat lebih dari 90 hari}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && due_date < today() - duration(90)
+    good_when: down
+    compact: true
+    span: 2
+  - name: outstanding_by_customer
+    type: chart
+    chart: bar
+    label: {id: Piutang per pelanggan}
+    model: sales_invoice
+    group_by: customer
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0
+    sort: -value
+    limit: 10
+    span: 12
+  - name: overdue_invoices
+    type: list
+    label: {id: Faktur lewat jatuh tempo}
+    model: sales_invoice
+    filter: docstatus == 1 && outstanding > 0 && due_date < today()
+    sort: due_date
+    limit: 20
+    columns: [name, customer, due_date, amount_due, outstanding]
+    span: 12

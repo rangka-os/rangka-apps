@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: customer_order_item
+is_child: true
+fields:
+  - name: item
+    type: link
+    to: item
+    label: {id: Barang/jasa}
+    required: true
+  - name: description
+    type: text
+    label: {id: Uraian}
+    default: item.item_name
+  - name: qty
+    type: float
+    label: {id: Qty}
+    default: '1'
+  - name: uom
+    type: link
+    to: uom
+    label: {id: Satuan}
+    default: "item.sales_uom != '' ? item.sales_uom : item.stock_uom"
+  - name: rate
+    type: currency
+    label: {id: Harga}
+    default: item.rate
+  - name: amount
+    type: currency
+    label: {id: Jumlah}
+    compute: round(qty * rate)

@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: worker
+label: {id: Tenaga kerja, en: Worker}
+icon: user
+naming: WRK-{####}
+title_field: worker_name
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, print: true}
+  - {role: purchasing_manager, read: true, create: true, write: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - name: worker_name
+    type: data
+    label: {id: Nama}
+    required: true
+    in_list: true
+  - name: employee_no
+    type: data
+    label: {id: No. pegawai}
+    unique: true
+  - name: role_title
+    type: data
+    label: {id: Jabatan}
+    in_list: true
+  - name: phone
+    type: phone
+    label: {id: Nomor WhatsApp}
+  - name: day_rate
+    type: currency
+    label: {id: Tarif per hari}
+    in_list: true
+  - name: active
+    type: check
+    label: {id: Aktif}
+    default: 'true'
+  - name: certifications
+    type: table
+    of: certification
+    label: {id: Sertifikasi}
+views:
+  list:
+    columns: [name, worker_name, role_title, day_rate, active]
+  form:
+    layout:
+      - section: {id: Identitas}
+        columns:
+          - [worker_name, employee_no, role_title]
+          - [phone, day_rate, active]
+      - section: {id: Sertifikasi}
+        fields: [certifications]

@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: vendor
+label: {id: Pemasok}
+icon: store
+naming: VND-{####}
+title_field: vendor_name
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, print: true}
+  - {role: purchasing_manager, read: true, create: true, write: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - name: vendor_name
+    type: data
+    label: {id: Nama pemasok}
+    required: true
+    in_list: true
+  - name: city
+    type: data
+    label: {id: Kota}
+    in_list: true
+  - name: address
+    type: text
+    label: {id: Alamat}
+  - name: phone
+    type: phone
+    label: {id: Telepon}
+  - name: email
+    type: data
+    label: {id: Email}
+  - name: npwp
+    type: npwp
+    label: {id: NPWP}
+  - name: pkp
+    type: check
+    label: {id: Pemasok PKP}
+    help: {id: 'PPN pembelian dari pemasok ini dihitung bila PKP'}
+    default: 'false'
+  - name: payment_days
+    type: int
+    label: {id: Tempo (hari)}
+    default: '30'
+  - name: outstanding
+    type: currency
+    label: {id: Utang}
+    read_only: true
+    in_list: true
+  - name: contacts
+    type: table
+    of: contact_person
+    label: {id: Kontak person}
+rules:
+  - name: npwp_16
+    on: save
+    check: npwp == '' || size(npwp) == 16
+    message: {id: NPWP harus 16 angka}
+views:
+  form:
+    layout:
+      - section: {id: Identitas}
+        columns:
+          - [vendor_name, city, address]
+          - [npwp, phone, email]
+      - section: {id: Pembayaran}
+        columns:
+          - [payment_days]
+          - [outstanding]
+      - section: {id: Kontak person}
+        fields: [contacts]

@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+name: purchase_order
+model: purchase_order
+label: {id: Pesanan pembelian, en: Purchase order}
+paper: A4
+template: purchase_order.html
+default: true

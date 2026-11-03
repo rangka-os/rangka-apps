@@ -1,8 +1,0 @@
-# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/app.json
-name: core
-version: 1.0.0
-title: {id: Inti, en: Core}
-requires: {rangka: '>=0.4'}
-menu:
-  - group: {id: Data induk}
-    items: [customer, item, outlet, user]

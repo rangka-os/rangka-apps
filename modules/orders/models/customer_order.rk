@@ -1,0 +1,100 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: customer_order
+label: {id: Pesanan pelanggan, en: Customer order}
+icon: card
+is_submittable: true
+naming: SO-{YYYY}-{#####}
+title_field: po_number
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, submit: true}
+  - {role: finance_manager, read: true, print: true}
+fields:
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    required: true
+    in_list: true
+  - name: quotation
+    type: link
+    to: quotation
+    label: {id: Penawaran}
+    in_list: true
+  - name: po_number
+    type: data
+    label: {id: No. PO pelanggan}
+    required: true
+    in_list: true
+  - name: po_date
+    type: date
+    label: {id: Tanggal PO}
+    required: true
+  - name: work_order
+    type: data
+    label: {id: No. work order}
+  - name: site
+    type: data
+    label: {id: Lokasi kerja}
+  - name: start_date
+    type: date
+    label: {id: Mulai}
+  - name: end_date
+    type: date
+    label: {id: Selesai}
+  - name: items
+    type: table
+    of: customer_order_item
+    label: {id: Barang/jasa}
+    min_rows: 1
+  - name: subtotal
+    type: currency
+    label: {id: Nilai pesanan (sebelum PPN)}
+    compute: items.map(i, i.amount).sum()
+    in_list: true
+  - name: invoiced_amount
+    type: currency
+    label: {id: Sudah ditagih}
+    read_only: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: quotation_same_customer
+    on: save
+    check: quotation == '' || quotation.customer == customer
+    message: {id: Penawaran harus milik pelanggan yang sama}
+  # orders.from_quotation copies the IDR line rate and the order has no currency (kernel gap S8c follow-up: conversions drop
+  # the currency), so an order from a foreign quotation would carry wrong amounts: refused until the hooks carry it.
+  - name: quotation_in_rupiah
+    on: save
+    check: quotation == '' || quotation.currency == '' || quotation.currency == 'IDR'
+    message: {id: Pesanan dari penawaran valas belum didukung; buat faktur valas langsung dari penawaran}
+  - name: end_after_start
+    on: save
+    check: start_date == '' || end_date == '' || end_date >= start_date
+    message: {id: Tanggal selesai tidak boleh sebelum tanggal mulai}
+actions:
+  - name: make_invoice
+    label: {id: Buat faktur, en: Create invoice}
+    icon: invoice
+    primary: true
+    hook: invoicing.from_order
+    if: docstatus == 1 && app_installed('invoicing')
+views:
+  list:
+    columns: [name, customer, po_number, po_date, status, subtotal, invoiced_amount]
+    sort: -po_date
+  form:
+    layout:
+      - section: {id: Pesanan}
+        columns:
+          - [customer, quotation, po_number, po_date]
+          - [work_order, site, start_date, end_date]
+      - section: {id: Barang/jasa}
+        fields: [items]
+      - section: {id: Ringkasan}
+        columns:
+          - [subtotal, invoiced_amount]
+      - section: {id: Catatan}
+        fields: [notes]

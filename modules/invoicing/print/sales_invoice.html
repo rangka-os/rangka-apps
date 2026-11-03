@@ -1,0 +1,63 @@
+{{define "style"}}
+.meta { width: 100%; margin: 12px 0; border-collapse: collapse; }
+.meta td { padding: 2px 6px 2px 0; vertical-align: top; }
+.items { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.items th, .items td { border-bottom: 1px solid #d6d3d1; padding: 6px 8px; text-align: left; }
+.items th { background: #f6ede6; }
+.num { text-align: right !important; font-variant-numeric: tabular-nums; }
+.totals { width: 50%; margin: 12px 0 0 auto; border-collapse: collapse; }
+.totals td { padding: 3px 8px; }
+.totals tr.grand td { border-top: 2px solid #1c1917; font-weight: 700; }
+.note { margin-top: 14px; font-size: 0.9em; }
+{{end}}
+{{template "letterhead" .}}
+{{$fx := and .Doc.currency (ne .Doc.currency "IDR")}}
+<h1>Faktur / Invoice</h1>
+<table class="meta">
+  <tr><td>No. faktur</td><td>: {{.Doc.name}}</td><td>Kepada Yth.</td><td>: {{.Links.customer.customer_name}}</td></tr>
+  <tr><td>Tanggal</td><td>: {{date .Doc.posting_date}}</td><td>Alamat</td><td>: {{.Links.customer.address}}</td></tr>
+  <tr><td>Jatuh tempo</td><td>: {{date .Doc.due_date}}</td><td>NPWP</td><td>: {{.Links.customer.npwp}}</td></tr>
+  {{if .Doc.po_number}}<tr><td>No. PO pelanggan</td><td>: {{.Doc.po_number}}</td><td></td><td></td></tr>{{end}}
+</table>
+<table class="items">
+  <thead><tr><th>Uraian</th><th class="num">Qty</th><th>Satuan</th><th class="num">Harga satuan</th><th class="num">Diskon</th><th class="num">Jumlah</th></tr></thead>
+  <tbody>
+  {{range $row := .Doc.items}}
+  <tr>
+    <td>{{if $row.description}}{{$row.description}}{{else}}{{$row.item}}{{end}}</td>
+    <td class="num">{{number $row.qty}}</td>
+    <td>{{$row.uom}}</td>
+    <td class="num">{{if $fx}}{{money $row.rate_fx $.Doc.currency}}{{else}}{{rupiah $row.rate}}{{end}}</td>
+    <td class="num">{{if $row.discount}}{{number $row.discount}}%{{end}}</td>
+    <td class="num">{{if $fx}}{{money $row.amount_fx $.Doc.currency}}{{else}}{{rupiah $row.amount}}{{end}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{if $fx}}
+<table class="totals">
+  <tr><td>Subtotal</td><td class="num">{{money .Doc.subtotal_fx .Doc.currency}}</td></tr>
+  <tr><td>DPP</td><td class="num">{{money .Doc.dpp_fx .Doc.currency}}</td></tr>
+  {{if taxrate .Doc .Tax}}<tr><td>PPN {{number (taxrate .Doc .Tax)}}%</td><td class="num">{{money .Doc.ppn_fx .Doc.currency}}</td></tr>{{end}}
+  <tr class="grand"><td>Total</td><td class="num">{{money .Doc.grand_total_fx .Doc.currency}}</td></tr>
+  {{if or .Doc.retention_amount .Doc.pph23_amount}}<tr class="grand"><td>Tagihan bersih</td><td class="num">{{money .Doc.amount_due_fx .Doc.currency}}</td></tr>{{end}}
+</table>
+<p class="note">Kurs: 1 {{.Doc.currency}} = {{rupiah .Doc.exchange_rate}}. Setara rupiah (PPN dihitung dalam rupiah):</p>
+{{end}}
+<table class="totals">
+  <tr><td>Subtotal</td><td class="num">{{rupiah .Doc.subtotal}}</td></tr>
+  {{if .Doc.discount_amount}}<tr><td>Diskon</td><td class="num">-{{rupiah .Doc.discount_amount}}</td></tr>{{end}}
+  {{if .Doc.down_payment}}<tr><td>Uang muka</td><td class="num">-{{rupiah .Doc.down_payment}}</td></tr>{{end}}
+  <tr><td>DPP</td><td class="num">{{rupiah .Doc.dpp}}</td></tr>
+  {{if taxrate .Doc .Tax}}<tr><td>PPN {{number (taxrate .Doc .Tax)}}% (DPP nilai lain {{.Doc.dpp_num}}/{{.Doc.dpp_den}})</td><td class="num">{{rupiah .Doc.ppn}}</td></tr>{{end}}
+  <tr class="grand"><td>Total</td><td class="num">{{rupiah .Doc.grand_total}}</td></tr>
+  {{if .Doc.retention_amount}}<tr><td>Retensi {{number .Doc.retention_percent}}% ditahan</td><td class="num">-{{rupiah .Doc.retention_amount}}</td></tr>{{end}}
+  {{if .Doc.pph23_amount}}<tr><td>PPh 23 dipotong pelanggan</td><td class="num">-{{rupiah .Doc.pph23_amount}}</td></tr>{{end}}
+  {{if or .Doc.retention_amount .Doc.pph23_amount}}<tr class="grand"><td>Tagihan bersih</td><td class="num">{{rupiah .Doc.amount_due}}</td></tr>{{end}}
+</table>
+<p class="note"><strong>Terbilang:</strong> {{terbilang .Doc.grand_total}}</p>
+{{if .Doc.notes}}<p class="note">{{.Doc.notes}}</p>{{end}}
+<p class="note">Bila pembayaran dipotong PPh Pasal 23, mohon kirimkan bukti potongnya kepada kami.</p>
+{{template "bank_accounts" .}}
+{{if taxrate .Doc .Tax}}<p class="note">Faktur pajak (e-Faktur) diterbitkan terpisah.</p>{{end}}
+{{template "signature" .}}

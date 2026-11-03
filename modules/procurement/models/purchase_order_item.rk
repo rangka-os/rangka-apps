@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: purchase_order_item
+is_child: true
+fields:
+  - name: item
+    type: link
+    to: item
+    label: {id: Barang}
+    required: true
+  - name: description
+    type: text
+    label: {id: Uraian}
+    default: item.item_name
+  - name: qty
+    type: float
+    label: {id: Qty}
+    required: true
+  - name: uom
+    type: link
+    to: uom
+    label: {id: Satuan}
+    default: "packing != '' ? packing.uom : item.stock_uom"
+  - name: packing
+    type: link
+    to: uom_conversion
+    label: {id: Kemasan}
+    help: {id: 'Isi bila qty dalam kemasan (mis. karung); faktornya menentukan qty stok'}
+  - name: stock_qty
+    type: float
+    label: {id: Qty stok}
+    compute: "packing == '' ? qty : qty * packing.factor"
+  - name: rate
+    type: currency
+    label: {id: Harga satuan}
+    required: true
+  - name: amount
+    type: currency
+    label: {id: Jumlah}
+    compute: round(qty * rate)
+  - name: received_qty
+    type: float
+    label: {id: Sudah diterima}
+    read_only: true
+
+  - {name: rate_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Harga (valas)}, default: '0'}
+  - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah (valas)}, compute: "round(qty * rate_fx, 2)"}

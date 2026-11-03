@@ -1,0 +1,67 @@
+# Synthetic demo data for Tahu Contoh, a fictional multi-branch tofu restaurant. No real people or businesses.
+uom:
+  - {name: UOM-001, uom_name: Kg}
+  - {name: UOM-002, uom_name: Gram}
+  - {name: UOM-003, uom_name: Karung}
+  - {name: UOM-004, uom_name: Liter}
+  - {name: UOM-005, uom_name: Pcs}
+  - {name: UOM-006, uom_name: Porsi}
+outlet:
+  - {name: OUT-01, outlet_name: Kantor pusat Tahu Contoh, code: HO, city: Bandung, is_head_office: true, active: true}
+  - {name: OUT-02, outlet_name: Outlet Dago, code: DGO, city: Bandung, address: Jl. Contoh Dago No. 1, active: true}
+  - {name: OUT-03, outlet_name: Outlet Braga, code: BRG, city: Bandung, address: Jl. Contoh Braga No. 2, active: true}
+item:
+  - {name: BRG-0001, item_name: Tahu mentah, kind: material, stock_uom: UOM-001, sku: MAT-TAHU, standard_cost: 12000}
+  - {name: BRG-0002, item_name: Minyak goreng, kind: material, stock_uom: UOM-004, sku: MAT-MINYAK, standard_cost: 18000}
+  - {name: BRG-0003, item_name: Garam, kind: material, stock_uom: UOM-001, sku: MAT-GARAM, standard_cost: 9000}
+  - {name: BRG-0004, item_name: Cabai rawit, kind: material, stock_uom: UOM-001, sku: MAT-CABAI, standard_cost: 60000}
+  - {name: BRG-0005, item_name: Kotak kemasan, kind: material, stock_uom: UOM-005, sku: MAT-KOTAK, standard_cost: 800}
+  - {name: BRG-0006, item_name: Tepung bumbu, kind: material, stock_uom: UOM-001, sku: MAT-TEPUNG, standard_cost: 12000}
+  - {name: BRG-0007, item_name: Tahu goreng original, kind: product, stock_uom: UOM-006, sales_uom: UOM-006, sku: TH-ORI, rate: 15000}
+  - {name: BRG-0008, item_name: Tahu goreng pedas, kind: product, stock_uom: UOM-006, sales_uom: UOM-006, sku: TH-PDS, rate: 18000}
+  - {name: BRG-0009, item_name: Tahu isi sayur, kind: product, stock_uom: UOM-006, sales_uom: UOM-006, sku: TH-ISI, rate: 20000}
+  - {name: BRG-0010, item_name: Tahu bawa pulang (kotak), kind: product, stock_uom: UOM-006, sales_uom: UOM-006, sku: TH-BWP, rate: 25000}
+uom_conversion:
+  - {name: KONV-0001, item: BRG-0006, uom: UOM-003, factor: 50}
+recipe:
+  - name: RSP-0001
+    product: BRG-0007
+    recipe_name: Tahu goreng original
+    yield_qty: 1
+    lines:
+      - {material: BRG-0001, qty: 0.1}
+      - {material: BRG-0002, qty: 0.02}
+      - {material: BRG-0003, qty: 0.002}
+      - {material: BRG-0006, qty: 0.01}
+  - name: RSP-0002
+    product: BRG-0008
+    recipe_name: Tahu goreng pedas
+    yield_qty: 1
+    lines:
+      - {material: BRG-0001, qty: 0.1}
+      - {material: BRG-0002, qty: 0.02}
+      - {material: BRG-0004, qty: 0.01}
+      - {material: BRG-0006, qty: 0.01}
+  - name: RSP-0003
+    product: BRG-0009
+    recipe_name: Tahu isi sayur (10 porsi per adonan)
+    yield_qty: 10
+    lines:
+      - {material: BRG-0001, qty: 1.5}
+      - {material: BRG-0002, qty: 0.3}
+      - {material: BRG-0006, qty: 0.2}
+  - name: RSP-0004
+    product: BRG-0010
+    recipe_name: Tahu bawa pulang
+    yield_qty: 1
+    lines:
+      - {material: BRG-0001, qty: 0.2}
+      - {material: BRG-0002, qty: 0.04}
+      - {material: BRG-0005, qty: 1}
+vendor:
+  - {name: VND-0001, vendor_name: CV Contoh Tahu Segar, city: Lembang, pkp: false, payment_days: 7, npwp: '0000000000000000'}
+  - {name: VND-0002, vendor_name: PT Contoh Bahan Dapur, city: Bandung, pkp: true, payment_days: 14, npwp: '0000000000000000'}
+user:
+  - {name: USR-001, full_name: Rina Contoh, role: head_office, email: rina@tahucontoh.test}
+  - {name: USR-002, full_name: Yusuf Contoh, role: outlet_staff, email: yusuf.dago@tahucontoh.test}
+  - {name: USR-003, full_name: Sinta Contoh, role: outlet_staff, email: sinta.braga@tahucontoh.test}

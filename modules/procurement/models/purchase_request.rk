@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: purchase_request
+label: {id: Permintaan pembelian, en: Purchase request}
+icon: cart
+is_submittable: true
+naming: PR-{YYYY}-{#####}
+title_field: purpose
+permissions:
+  - {role: purchasing_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, submit: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: outlet_staff, read: true, create: true, write: true, submit: true}
+fields:
+  - name: requested_by
+    type: link
+    to: user
+    label: {id: Pemohon}
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    in_list: true
+  - name: needed_by
+    type: date
+    label: {id: Dibutuhkan tanggal}
+    required: true
+    in_list: true
+  - name: purpose
+    type: text
+    label: {id: Keperluan}
+  - name: items
+    type: table
+    of: purchase_request_item
+    label: {id: Barang}
+    min_rows: 1
+  - name: estimated_total
+    type: currency
+    label: {id: Perkiraan total}
+    compute: items.map(i, i.amount).sum()
+    in_list: true
+  - name: state
+    type: select
+    label: {id: Status permintaan}
+    default: "'open'"
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: open, label: {id: Terbuka}}
+      - {value: ordered, label: {id: Sudah dipesan}}
+      - {value: closed, label: {id: Ditutup}}
+rules:
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+actions:
+  # Needs the vendor in the call body: {vendor}. See docs/kernel-hooks.md (procurement.make_po).
+  - name: make_po
+    label: {id: Buat pesanan pembelian, en: Create purchase order}
+    icon: cart
+    primary: true
+    hook: procurement.make_po
+    if: docstatus == 1 && (state == 'open' || state == '')
+views:
+  list:
+    columns: [name, outlet, needed_by, status, estimated_total, state]
+    sort: -needed_by
+  form:
+    layout:
+      - section: {id: Permintaan}
+        columns:
+          - [requested_by, outlet]
+          - [needed_by, state]
+      - section: {id: Barang}
+        fields: [items]
+      - section: {id: Ringkasan}
+        columns:
+          - [estimated_total]
+      - section: {id: Keperluan}
+        fields: [purpose]

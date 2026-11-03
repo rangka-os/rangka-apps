@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+name: quotation
+model: quotation
+label: {id: Surat penawaran harga, en: Quotation}
+paper: A4
+template: quotation.html
+default: true

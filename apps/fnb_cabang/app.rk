@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: fnb_cabang
+version: 1.0.0
+title: {id: F&B multi cabang, en: Multi-branch F&B}
+label: {id: Rangka F&B Cabang, en: Rangka Multi-branch F&B}
+summary:
+  id: Penjualan harian, stok bahan baku, transfer, opname dan pembelian untuk beberapa outlet.
+rangka: '>=0.5'
+modules:
+  contacts: ^1.0
+  catalogue: ^1.0
+  outlets: ^1.0
+  users: ^1.0
+  stock: ^1.0
+  outlet_sales: ^1.0
+  procurement: ^1.0
+  payments: ^1.0
+  invoicing: ^1.0
+dashboards: [fnb_overview, stock_recap]
+roles: [head_office, outlet_staff]
+home: {dashboard: fnb_overview}
+# invoicing is only here because payments requires it; sales_invoice has no menu entry.
+menu:
+  - group: {id: Penjualan outlet}
+    items: [outlet_sales]
+  - group: {id: Stok}
+    items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment, recipe]
+  - group: {id: Pembelian}
+    items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment]
+  - group: {id: Data induk}
+    items: [outlet, item, uom, uom_conversion, vendor]
+onboarding:
+  - ask: {id: 'Berapa outlet kamu?'}
+    sets: seed.outlets
+  - ask: {id: 'Outlet mana yang pakai Moka?'}
+    sets: imports.moka_item_details.outlets
+  # Stock units are kg, liter or pcs: average cost is whole rupiah per stock unit, so a gram unit would round the cost of cheap
+  # materials (Rp 12,4/gram -> Rp 12). Grams and sacks enter as uom_conversion packings (Kernel gaps in docs/kernel-hooks.md).
+  - ask: {id: 'Satuan stok apa yang kamu pakai untuk bahan baku? (gram dan karung diisi sebagai kemasan)'}
+    options: [kg, liter, pcs]
+    sets: item.stock_uom

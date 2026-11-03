@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: pipeline
+version: 1.0.0
+title: {id: Pipeline penjualan, en: Sales pipeline}
+requires: {rangka: '>=0.5', contacts: ^1.0, users: ^1.0}
+optional: {invoicing: ^1.0}
+hooks: [crm.convert_lead, crm.mark_won]

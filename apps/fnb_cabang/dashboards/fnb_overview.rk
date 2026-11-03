@@ -1,0 +1,80 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: fnb_overview
+label: {id: Ringkasan outlet, en: Outlet overview}
+default_period: 30
+cache: 5m
+widgets:
+  - name: net_today
+    type: number
+    label: {id: Penjualan bersih hari ini}
+    model: outlet_sales
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1 && date == today()
+    compact: true
+    span: 3
+  - name: net_period
+    type: number
+    label: {id: Penjualan bersih}
+    description: {id: Pada periode yang dipilih}
+    model: outlet_sales
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    compact: true
+    span: 3
+  - name: margin_period
+    type: number
+    label: {id: Margin}
+    description: {id: Penjualan bersih dikurangi harga pokok bahan}
+    model: outlet_sales
+    aggregate: sum
+    field: margin
+    filter: docstatus == 1
+    period: date
+    compact: true
+    span: 3
+  - name: negative_count
+    type: number
+    label: {id: Stok minus}
+    description: {id: Saldo stok di bawah nol}
+    model: stock_balance
+    filter: negative == true
+    good_when: down
+    span: 3
+  - name: net_by_outlet
+    type: chart
+    chart: bar
+    label: {id: Penjualan bersih per outlet}
+    model: outlet_sales
+    group_by: outlet
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    sort: -value
+    span: 6
+  - name: net_by_day
+    type: chart
+    chart: line
+    label: {id: Penjualan bersih per hari}
+    model: outlet_sales
+    group_by: date
+    grain: day
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    span: 6
+  # The negative-stock exception for head office: a sale may push a balance below zero, it is never refused.
+  - name: negative_stock
+    type: list
+    label: {id: Stok minus}
+    description: {id: 'Saldo stok di bawah nol, perlu dicek kantor pusat'}
+    model: stock_balance
+    filter: negative == true
+    sort: qty
+    limit: 20
+    columns: [outlet, item, qty, value, avg_cost]
+    span: 12

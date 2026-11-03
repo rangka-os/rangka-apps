@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: stock
+version: 1.0.0
+title: {id: Stok, en: Stock}
+requires: {rangka: '>=0.5', users: ^1.0, catalogue: ^1.0, outlets: ^1.0}
+# Semantics fixed in docs/kernel-hooks.md (section stock). stock.post_moves is a core hook on the on_submit of
+# goods_receipt, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment and outlet_sales; stock.reverse_moves is declared here.
+hooks: [stock.reverse_moves]

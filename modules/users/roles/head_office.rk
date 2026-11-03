@@ -1,0 +1,4 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: head_office
+label: {id: Kantor pusat}
+description: {id: 'Melihat semua outlet: stok, penjualan, transfer, opname dan stok minus'}
