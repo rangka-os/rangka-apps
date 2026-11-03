@@ -5,8 +5,9 @@
 
 Starts a throwaway Postgres (rangka-os/kernel/scripts/pgtemp.sh), runs `rangka migrate`, `seed` and
 `serve --dev-open` on a free port, waits for /api/v1/system/status, runs the scenarios of the site, and stops everything.
-Each check is ok(name), fail(name, detail) or gap(name, owner, reason). A gap is a feature whose kernel stream has not
-merged: a hook that returns 501 or is recorded as hook.skipped, or an endpoint that answers 404 not_found.
+Each check is ok(name), fail(name, detail) or gap(name, owner, reason). A gap is a genuine kernel limitation that no merged stream
+covers, named with its owner (docs/kernel-hooks.md, Kernel gaps). A setup failure, or a hook or endpoint of a stream merged on rangka-os
+main (S2 approvals, S3 prints, S7 imports, S8a money, S8c/S8d/S8e hooks) answering 501, hook.skipped or 404, is a fail.
 Exit 1 on any fail, and on any gap with --strict. The last line reads `N ok · M gaps · K failed`.
 """
 import argparse
@@ -436,14 +437,14 @@ def scenario_invoicing(api):
     submitted = resp.get("name", name)
     after = api.get("customer", customer)["outstanding"]
     if skipped(api, "ledger.post_receivable", f"sales_invoice/{submitted}"):
-        gap("ledger.post_receivable adds amount_due to customer.outstanding", "kernel (S8c hooks)", "hook.skipped in the audit log")
+        fail("ledger.post_receivable adds amount_due to customer.outstanding", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
     else:
         eq("ledger.post_receivable adds 11.100.000 to outstanding", after - before, 11_100_000)
     st, resp = api.verb("sales_invoice", submitted, "cancel")
     check("cancel invoice", st == 200, resp)
     final = api.get("customer", customer)["outstanding"]
     if skipped(api, "invoicing.reverse_receivable", f"sales_invoice/{submitted}"):
-        gap("invoicing.reverse_receivable subtracts amount_due on cancel", "kernel (S8c hooks)", "hook.skipped in the audit log")
+        fail("invoicing.reverse_receivable subtracts amount_due on cancel", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
     else:
         eq("cancel restores customer.outstanding", final, before)
 
@@ -525,7 +526,7 @@ def scenario_quotation(api):
         accepted_by_patch = False
         st, resp = api.action("quotation", name, "mark_outcome", {"outcome": "accepted"})
         if st == 501:
-            gap("quotation.mark_outcome", "kernel (S8c hooks)", "501 hook_not_implemented")
+            fail("quotation.mark_outcome", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
         else:
             check("action mark_outcome sets outcome", st == 200 and api.get("quotation", name)["outcome"] == "accepted", (st, resp))
 
@@ -543,7 +544,7 @@ def scenario_quotation(api):
             check("orders.from_quotation without PO -> 422 po_required", st2 == 422 and resp2["error"]["code"] == "po_required", (st2, resp2))
     else:
         check("make_order refused while outcome is open", st == 409 and resp["error"]["code"] == "action_not_allowed", (st, resp))
-        gap("orders.from_quotation creates a draft customer_order", "kernel (S8c hooks; needs mark_outcome first)", "mark_outcome is 501, so no quotation can reach accepted")
+        fail("orders.from_quotation creates a draft customer_order", "kernel (S8c hooks; needs mark_outcome first) is merged on main: " + str("mark_outcome is 501, so no quotation can reach accepted"))
 
     # a generic amend zeroes read-only fields, so the amended draft has outcome '' which counts as open (not stuck)
     def amended_submitted(subject):
@@ -580,7 +581,7 @@ def scenario_quotation(api):
     old = resp.get("name", q2["name"])
     st, resp = api.action("quotation", old, "new_revision")
     if st == 501:
-        gap("quotation.revise creates a draft with revision + 1", "kernel (S8c hooks)", "501 hook_not_implemented")
+        fail("quotation.revise creates a draft with revision + 1", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
         return
     check("quotation.revise answers 200 with the new draft", st == 200 and resp.get("open", {}).get("model") == "quotation", (st, resp))
     if st != 200:
@@ -755,7 +756,7 @@ def scenario_orders(api):
 
     st, resp = api.action("customer_order", name, "make_invoice")
     if st == 501:
-        gap("invoicing.from_order creates a draft sales_invoice", "kernel (S8c hooks)", "501 hook_not_implemented")
+        fail("invoicing.from_order creates a draft sales_invoice", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
     else:
         check("invoicing.from_order creates a draft invoice", st == 200, (st, resp))
 
@@ -900,9 +901,9 @@ def scenario_payments(api):
     check("submit payment passes the rules", st == 200, (st, resp))
     pname = resp.get("name", p["name"])
     if skipped(api, "payments.allocate", f"payment/{pname}"):
-        gap("payments.allocate pays both invoices", "kernel (S8c hooks)", "hook.skipped in the audit log")
-        gap("payments.unallocate restores on cancel", "kernel (S8c hooks)", "hook.skipped in the audit log")
-        gap("payments.allocate refuses the second payment (409 over_allocation)", "kernel (S8c hooks)", "hook.skipped in the audit log")
+        fail("payments.allocate pays both invoices", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
+        fail("payments.unallocate restores on cancel", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
+        fail("payments.allocate refuses the second payment (409 over_allocation)", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
         api.verb("payment", pname, "cancel")
     else:
         i1, i2 = api.get("sales_invoice", inv1), api.get("sales_invoice", inv2)
@@ -953,7 +954,7 @@ def scenario_payments(api):
             st2, r2 = api.verb("payment", resp["name"], "submit")
             bypass = r2.get("name", resp["name"]) if st2 == 200 else resp["name"]
             if st2 == 200 and skipped(api, "payments.allocate", f"payment/{bypass}"):
-                gap("payments.allocate refuses withheld on a pph23 invoice (409 pph23_already_deducted)", "kernel (S8c hooks)", "hook.skipped in the audit log")
+                fail("payments.allocate refuses withheld on a pph23 invoice (409 pph23_already_deducted)", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
             else:
                 check("hook refuses the bypassed row: 409 pph23_already_deducted", st2 == 409 and r2["error"]["code"] == "pph23_already_deducted", (st2, r2))
             if st2 == 200:
@@ -988,13 +989,13 @@ def scenario_payments(api):
         if st == 200 and not skipped(api, "payments.allocate", f"payment/{resp.get('name', p3['name'])}"):
             eq("cash + withheld clears the invoice: outstanding 0", api.get("sales_invoice", inv4)["outstanding"], 0)
         elif st == 200:
-            gap("cash + withheld clears a non-pph23 invoice", "kernel (S8c hooks)", "hook.skipped in the audit log")
+            fail("cash + withheld clears a non-pph23 invoice", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
 
     # USD payment: conversion happens once at the header (amount = round(amount_fx x exchange_rate)); rows are IDR
     inv5 = submitted_invoice(10_000_000)
     st, usd = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 16000, "amount_fx": 1000, "amount": 16_000_000})
     if st != 201 or "amount_fx" not in usd:
-        gap("USD 1.000 at 16.000 gives payment.amount 16.000.000", "kernel (S8a money)", f"money field amount_fx not served ({st})")
+        fail("USD 1.000 at 16.000 gives payment.amount 16.000.000", "kernel (S8a money) is merged on main: " + str(f"money field amount_fx not served ({st})"))
     else:
         eq("USD 1.000 at 16.000 -> amount 16.000.000", usd["amount"], 16_000_000)
         st, resp = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 16000, "amount_fx": 1000,
@@ -1071,8 +1072,8 @@ def scenario_procurement(api):
     # make_po: vendor comes from the call body
     st, resp = api.action("purchase_request", prn, "make_po", {})
     if st == 501:
-        gap("procurement.make_po creates the draft PO from the request", "kernel (S8c hooks)", "501 hook_not_implemented")
-        gap("procurement.make_po without vendor -> 422 vendor_required", "kernel (S8c hooks)", "501 hook_not_implemented")
+        fail("procurement.make_po creates the draft PO from the request", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
+        fail("procurement.make_po without vendor -> 422 vendor_required", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
     else:
         check("make_po without vendor -> 422 vendor_required", st == 422 and resp.get("error", {}).get("code") == "vendor_required", (st, resp))
         st, resp = api.action("purchase_request", prn, "make_po", {"vendor": vendor})
@@ -1146,7 +1147,7 @@ def scenario_procurement(api):
     st, sub = api.verb("purchase_order", noout["name"], "submit")
     st, resp = api.action("purchase_order", sub.get("name", noout["name"]), "receive", {})
     if st == 501:
-        gap("procurement.receive on a PO without outlet -> 422 outlet_required", "kernel (S8c hooks)", "501 hook_not_implemented")
+        fail("procurement.receive on a PO without outlet -> 422 outlet_required", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
     else:
         check("receive on a PO without outlet -> 422 outlet_required 'Outlet tujuan wajib diisi di PO sebelum barang diterima'",
               st == 422 and resp.get("error", {}).get("code") == "outlet_required" and "Outlet tujuan wajib diisi" in resp["error"]["message"], (st, resp))
@@ -1154,7 +1155,7 @@ def scenario_procurement(api):
     # receive action: draft goods receipt with the remainder per line
     st, resp = api.action("purchase_order", pon, "receive", {})
     if st == 501:
-        gap("procurement.receive creates the draft goods receipt", "kernel (S8c hooks)", "501 hook_not_implemented")
+        fail("procurement.receive creates the draft goods receipt", "kernel (S8c hooks) is merged on main: " + str("501 hook_not_implemented"))
     else:
         check("receive opens a draft goods_receipt", st == 200 and resp.get("open", {}).get("model") == "goods_receipt", (st, resp))
         if st == 200:
@@ -1181,10 +1182,10 @@ def scenario_procurement(api):
     grn = resp.get("name", gr["name"])
     if not installed(api, "stock_move"):
         # S8c's stock.post_moves answers with a message and writes nothing while the stock module is not installed
-        gap("stock.post_moves posts the receipt and updates PO received_qty/received_pct", "stock module (not installed on this site)", "no stock_move/stock_balance models; the hook is a no-op (stock is optional for procurement; demo-fnb covers it)")
+        # stock is optional for procurement and not installed here (demo-fnb covers the moves): the hooks are no-ops
+        eq("stock.post_moves is a no-op without the stock module: the receipt submits, PO received_pct stays 0", api.get("purchase_order", pon)["received_pct"], 0)
         st, resp = api.verb("goods_receipt", grn, "cancel")
-        check("cancel goods receipt", st == 200, (st, resp))
-        gap("stock.reverse_moves reverses the receipt", "stock module (not installed on this site)", "no stock models; the hook is a no-op (demo-fnb covers it)")
+        check("stock.reverse_moves is a no-op without the stock module: the receipt cancels", st == 200, (st, resp))
     else:
         pod = api.get("purchase_order", pon)
         eq("PO received_pct 100 after the receipt", pod["received_pct"], 100)
@@ -1218,8 +1219,8 @@ def scenario_procurement(api):
     vbn = resp.get("name", vb["name"])
     posted = api.get("vendor", vendor)["outstanding"]
     if skipped(api, "procurement.post_payable", f"vendor_bill/{vbn}"):
-        gap("procurement.post_payable adds amount_due to vendor.outstanding", "kernel (S8c hooks)", "hook.skipped in the audit log")
-        gap("procurement.reverse_payable subtracts on cancel", "kernel (S8c hooks)", "hook.skipped in the audit log")
+        fail("procurement.post_payable adds amount_due to vendor.outstanding", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
+        fail("procurement.reverse_payable subtracts on cancel", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
         hooked = False
     else:
         eq("vendor outstanding += amount_due (2.255.500)", posted, vendor_before + 2_255_500)
@@ -1257,7 +1258,7 @@ def scenario_procurement(api):
     check("submit payment to vendor", st == 200, (st, resp))
     pn = resp.get("name", p["name"])
     if skipped(api, "payments.allocate", f"payment/{pn}"):
-        gap("payments.allocate pays the vendor bill (direction pay)", "kernel (S8c hooks)", "hook.skipped in the audit log")
+        fail("payments.allocate pays the vendor bill (direction pay)", "kernel (S8c hooks) is merged on main: " + str("hook.skipped in the audit log"))
         api.verb("payment", pn, "cancel")
     else:
         b = api.get("vendor_bill", vbn)
@@ -1291,6 +1292,7 @@ def setup_demo_jasa(api, k):
         cl = Api.login(k.base, email, pw, org=CTX["org"]) if code == 0 else None
         if cl is None:
             CTX["login_error"] = f"{email}: " + (out if code else "login refused")
+            fail("setup: add and sign in the members", CTX["login_error"])
             return
         CTX[key] = cl
 
@@ -1302,7 +1304,7 @@ def decide(cl, approval_id, verb="approve", reason=""):
 def scenario_roles_jasa(api):
     sm, fm, pm, pa = (CTX.get(x) for x in ("sm", "fm", "pm", "pa"))
     if not all((sm, fm, pm, pa)):
-        gap("members per role on demo-jasa", "harness", f"could not sign in as non-owners: {CTX.get('login_error')}")
+        fail("members per role on demo-jasa", "harness is merged on main: " + str(f"could not sign in as non-owners: {CTX.get('login_error')}"))
         return
     ndt = services(api)[0]["name"]
     customer = "CUST-0001"
@@ -1472,6 +1474,7 @@ def setup_kopi_senja(api, k):
         cl = Api.login(k.base, email, pw) if code == 0 else None
         if cl is None:
             CTX["login_error"] = f"{email}: " + (out if code else "login refused")
+            fail("setup: add and sign in the members", CTX["login_error"])
             return
         CTX[key] = cl
 
@@ -1687,7 +1690,7 @@ def scenario_prints_jasa(api):
     check("SOA: submit the payment of the current invoice", st == 200, (st, resp))
     paid = api.get("sales_invoice", open_ids["current"])["outstanding"] == 0
     if not paid:
-        gap("SOA: payments.allocate settles the invoice", "kernel (S8c hooks)", "hook did not run; the statement lists the invoice as open")
+        fail("SOA: payments.allocate settles the invoice", "kernel (S8c hooks) is merged on main: " + str("hook did not run; the statement lists the invoice as open"))
     soa = check_print("statement (customer)", api, "customer", cust["name"], "statement",
                       ["PT Contoh Piutang", open_ids["d30"], open_ids["d60"], "Umur piutang", "Total sisa tagihan"])
     cells = aging_cells(soa)
@@ -2143,7 +2146,7 @@ def scenario_stock(api):
     braga = CTX.get("staff_braga") or api   # without a session the receipts are made by owner so the numbers below still hold; staff-only checks are skipped
     dago_staff = CTX.get("staff_dago")
     if not has_staff:
-        gap("outlet_staff receive transfers and are refused elsewhere (staff sessions)", "harness", f"could not sign in as a non-owner: {CTX.get('login_error')}")
+        fail("outlet_staff receive transfers and are refused elsewhere (staff sessions)", "harness is merged on main: " + str(f"could not sign in as a non-owner: {CTX.get('login_error')}"))
     leftovers = []   # draft receipts that stay after refusals; removed at the end of the block
     st, tr = api.create("stock_transfer", {"from_outlet": DAGO, "to_outlet": BRAGA, "items": [{"item": m, "qty": 30}]})
     check("create transfer 30 kg", st == 201, tr)
@@ -2310,7 +2313,7 @@ def scenario_stock(api):
     # the alert flow: runs when handed the move, but nothing hands it over yet
     alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
     if not alerts:
-        gap("stock_negative_alert notifies head_office when a move turns negative", "kernel (unowned: record events -> flows)",
+        gap("stock_negative_alert notifies head_office when a move turns negative", "kernel, unassigned (record events -> flows; ask integrator)",
             "no notify.in_app audit entry: the kernel does not fire `on: stock_move.created` flows (S8c finding)")
     else:
         ok("stock_negative_alert notified head_office on its own")
@@ -2388,7 +2391,7 @@ def scenario_stock_access(api):
     all_bal = api.find("stock_balance", "item == '%s'" % m)
     check("setup: the stock scenario left balances at several outlets", len({b["outlet"] for b in all_bal}) >= 3, all_bal)
     if hq is None or dago is None:
-        gap("outlet_staff row scope check (list own outlet, 403 on another)", "harness", f"could not sign in as a non-owner: {CTX.get('login_error')}")
+        fail("outlet_staff row scope check (list own outlet, 403 on another)", "harness is merged on main: " + str(f"could not sign in as a non-owner: {CTX.get('login_error')}"))
         return
     move = api.find("stock_move", "item == '%s'" % m)[0]
     bal_dago = balance(api, DAGO, m)
@@ -2467,7 +2470,7 @@ def scenario_outlet_sales(api):
     check("meta lists the imports moka_item_details and daily_form on outlet_sales",
           st == 200 and all(imps.get(n, {}).get("model") == "outlet_sales" and imps[n].get("per") == "outlet" for n in ("moka_item_details", "daily_form")), imps)
     if not imps:
-        gap("Moka import: upload, preview, commit, duplicates", "kernel (S7 imports)", "no imports in /meta: the imports stream has not merged into this kernel")
+        fail("Moka import: upload, preview, commit, duplicates", "kernel (S7 imports) is merged on main: " + str("no imports in /meta: the imports stream has not merged into this kernel"))
         return
 
     # stock to sell from: Dago receives the fixture materials
@@ -2609,10 +2612,12 @@ def setup_demo_fnb(api, k):
         code, out = k.user_add(email, role, org, name, outlets=outlets, record=rec, password=pw)
         if code != 0:
             CTX["login_error"] = f"rangka user add {email} failed: {out}"
+            fail("setup: add and sign in the members", CTX["login_error"])
             return
         cl = Api.login(k.base, email, pw)
         if cl is None:
             CTX["login_error"] = f"login as {email} refused"
+            fail("setup: add and sign in the members", CTX["login_error"])
             return
         CTX[key] = cl
 
