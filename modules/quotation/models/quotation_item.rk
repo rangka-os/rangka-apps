@@ -31,3 +31,6 @@ fields:
     type: currency
     label: {id: Jumlah}
     compute: round(qty * rate * (1 - discount / 100))
+
+  - {name: rate_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Harga (valas)}, default: '0'}
+  - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah (valas)}, compute: "round(qty * rate_fx * (1 - discount / 100), 2)"}

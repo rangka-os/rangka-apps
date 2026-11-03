@@ -1,6 +1,0 @@
-# Sidecar for the line model: the foreign-currency twins of rate and amount (S8a, contract 0013).
-model: vendor_bill_item
-stream: [S8a]
-fields:
-  - {name: rate_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Harga (valas)}, default: '0'}
-  - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah (valas)}, compute: "round(qty * rate_fx, 2)"}

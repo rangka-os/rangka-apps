@@ -3,7 +3,7 @@ name: sales_invoice
 label: {id: Faktur penjualan}
 icon: invoice
 is_submittable: true
-naming: INV-{YYYY}-{#####}
+naming: {series: invoice, pattern: "INV-{YYYY}-{#####}"}
 title_field: customer
 on_submit: [ledger.post_receivable]
 on_cancel: [invoicing.reverse_receivable]
@@ -141,6 +141,17 @@ fields:
   - name: notes
     type: text
     label: {id: Catatan untuk pelanggan}
+  - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
+  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency; line `rate` stays the unit price
+  - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
+  - {name: discount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Diskon (valas)}, default: '0'}
+  - {name: dp_deduction_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Potongan uang muka (valas)}, default: '0'}
+  - {name: dpp_base_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "subtotal_fx - discount_fx - dp_deduction_fx"}
+  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "ppn_applies ? round(dpp_base_fx * 11 / 12 * tax_rate / 100, 2) : 0"}
+  - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_base_fx + ppn_fx"}
+  - {name: retention_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Retensi ditahan (valas)}, compute: "round(dpp_base_fx * retention_percent / 100, 2)"}
+  - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, compute: "pph23_applies ? round(dpp_base_fx * pph23_rate / 100, 2) : 0"}
+  - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - retention_amount_fx - pph23_amount_fx"}
 rules:
   - name: due_after_posting
     on: save
@@ -187,6 +198,14 @@ rules:
     on: save
     check: dpp_base >= 0
     message: {id: DPP tidak boleh negatif; kurangi potongan atau diskon}
+approvals:
+  - name: big_invoice
+    on: submit
+    when: grand_total > 100000000
+    approvers: [finance_manager]
+    label: {id: Persetujuan keuangan untuk faktur besar, en: Finance approval for large invoices}
+
+# S4, contract 0009: the "invoice" series; kopi-senja keeps its own string override in config.rk.
 views:
   list:
     columns: [name, customer, kind, posting_date, status, grand_total, outstanding]
@@ -209,3 +228,7 @@ views:
           - [amount_due, paid_amount, outstanding]
       - section: {id: Catatan}
         fields: [notes]
+      - section: {id: Mata uang asing}
+        columns:
+          - [currency, exchange_rate, subtotal_fx]
+          - [grand_total_fx, amount_due_fx]

@@ -1,37 +1,9 @@
-# Sidecar for sales_invoice: keys the kernel does not read yet (checked by scripts/check_experimental.py).
+# Sidecar for sales_invoice: the one thing that still waits for a kernel stream (checked by scripts/check_experimental.py).
 model: sales_invoice
-stream: [S2, S4, S5, S8a]   # S2 approvals, S4 number series, S5 org settings in CEL, S8a money
+stream: [S5]
 
-# S2, contract 0007: an invoice above Rp 100.000.000 needs a finance_manager's approval to submit.
-approvals:
-  - name: big_invoice
-    on: submit
-    when: grand_total > 100000000
-    approvers: [finance_manager]
-    label: {id: Persetujuan keuangan untuk faktur besar, en: Finance approval for large invoices}
-
-# S4, contract 0009: the "invoice" series; kopi-senja keeps its own string override in config.rk.
-naming: {series: invoice, pattern: "INV-{YYYY}-{#####}"}
-
-# Defaults that need a kernel feature.
 defaults:
-  # S5: CEL cannot read the org's settings yet. config.rk `orgs.<id>.pkp` decides; until then the model's
-  # own default is the constant 'true' and sites with a non-PKP org untick the box (or use an overlay).
+  # S5: CEL has no `org` variable yet, so the org's `pkp` (config.rk `org.pkp` / `orgs.<id>.config.org.pkp`) cannot
+  # decide. Until then the model's own default is the constant 'true'; a site with a non-PKP org unticks the box or
+  # uses an overlay default.
   ppn_applies: org.pkp
-
-fields:
-  # S8a, contract 0013: foreign-currency invoices. `currency` holds the ISO code (data, not a link, because
-  # record names of the currency module are CUR-nnn); a site with the currency module installed picks from it.
-  # For a foreign invoice the `*_fx` fields are the source of truth and the kernel adds the `*_fx_idr` twins;
-  # reports of foreign invoices read those twins. IDR invoices leave currency at 'IDR' and never use them.
-  - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
-  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency; line `rate` stays the unit price
-  - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
-  - {name: discount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Diskon (valas)}, default: '0'}
-  - {name: dp_deduction_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Potongan uang muka (valas)}, default: '0'}
-  - {name: dpp_base_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "subtotal_fx - discount_fx - dp_deduction_fx"}
-  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "ppn_applies ? round(dpp_base_fx * 11 / 12 * tax_rate / 100, 2) : 0"}
-  - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_base_fx + ppn_fx"}
-  - {name: retention_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Retensi ditahan (valas)}, compute: "round(dpp_base_fx * retention_percent / 100, 2)"}
-  - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, compute: "pph23_applies ? round(dpp_base_fx * pph23_rate / 100, 2) : 0"}
-  - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - retention_amount_fx - pph23_amount_fx"}

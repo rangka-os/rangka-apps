@@ -64,6 +64,11 @@ fields:
   - name: notes
     type: text
     label: {id: Catatan}
+  - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
+  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency
+  - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
+  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "ppn_applies ? round(subtotal_fx * 11 / 12 * 12 / 100, 2) : 0"}
+  - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "subtotal_fx + ppn_fx"}
 rules:
   - name: delivery_after_order
     on: save
@@ -84,6 +89,12 @@ actions:
     primary: true
     hook: procurement.receive
     if: docstatus == 1 && received_pct < 100
+approvals:
+  - name: po_approval
+    on: submit
+    when: "grand_total > 5000000"
+    approvers: [purchasing_manager]
+    label: {id: Persetujuan pembelian, en: Purchasing approval}
 views:
   list:
     columns: [name, vendor, outlet, order_date, status, grand_total, received_pct]
@@ -103,3 +114,7 @@ views:
         fields: [payment_terms]
       - section: {id: Catatan}
         fields: [notes]
+      - section: {id: Mata uang asing}
+        columns:
+          - [currency, exchange_rate, subtotal_fx]
+          - [grand_total_fx]
