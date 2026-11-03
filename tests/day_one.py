@@ -1123,6 +1123,148 @@ def scenario_procurement(api):
         eq("cancel restores vendor outstanding", api.get("vendor", vendor)["outstanding"], vendor_before)
 
 
+# ---------- scenarios: roles and approvals on demo-jasa (non-owner members, contract 0007)
+
+def setup_demo_jasa(api, k):
+    """One member per jasa role in PT Contoh Inspeksi (rangka user add), signed in: the owner self-approves, so only these can show a held approval."""
+    CTX.update(kernel=k, org=k.orgs[0][0])
+    pw = secrets.token_urlsafe(18)   # throwaway password of a throwaway database
+    people = [("sm", "dewi@contohjasa.test", "sales_manager", "USR-001", "Dewi Contoh"),
+              ("fm", "hendra@contohjasa.test", "finance_manager", "USR-002", "Hendra Contoh"),
+              ("pm", "lina@contohjasa.test", "purchasing_manager", "USR-003", "Lina Contoh"),
+              ("pa", "agus@contohjasa.test", "project_admin", "USR-004", "Agus Contoh")]
+    for key, email, role, rec, name in people:
+        code, out = k.user_add(email, role, CTX["org"], name, record=rec, password=pw)
+        cl = Api.login(k.base, email, pw, org=CTX["org"]) if code == 0 else None
+        if cl is None:
+            CTX["login_error"] = f"{email}: " + (out if code else "login refused")
+            return
+        CTX[key] = cl
+
+
+def decide(cl, approval_id, verb="approve", reason=""):
+    return cl.call("POST", f"/api/v1/approvals/{approval_id}/{verb}", {"reason": reason} if verb == "reject" else {})
+
+
+def scenario_roles_jasa(api):
+    sm, fm, pm, pa = (CTX.get(x) for x in ("sm", "fm", "pm", "pa"))
+    if not all((sm, fm, pm, pa)):
+        gap("members per role on demo-jasa", "harness", f"could not sign in as non-owners: {CTX.get('login_error')}")
+        return
+    ndt = services(api)[0]["name"]
+    customer = "CUST-0001"
+    st, me = pa.call("GET", "/auth/me")
+    eq("project_admin member signs in with its role", [r for r in ((me or {}).get("org") or {}).get("roles", [])], ["project_admin"])
+
+    # A2: a quotation by a non-approver is held (202) until a sales_manager approves
+    def quote(subject):
+        st, q = pa.create("quotation", {"customer": customer, "subject": subject, "items": [{"item": ndt, "qty": 2, "rate": 1_000_000}]})
+        check(f"project_admin creates quotation {subject!r}", st == 201, (st, q))
+        return q["name"]
+    q1 = quote("Ditahan untuk persetujuan")
+    st, resp = pa.verb("quotation", q1, "submit")
+    check("project_admin submits a quotation: held, 202 with a pending manager_approval for sales_manager",
+          st == 202 and resp["approval"]["state"] == "pending" and resp["approval"]["policy"] == "manager_approval" and resp["approval"]["approvers"] == ["sales_manager"], (st, resp))
+    if st != 202:
+        return
+    aid = resp["approval"]["id"]
+    eq("held quotation is still a draft", api.get("quotation", q1)["docstatus"], 0)
+    st, resp = decide(pa, aid)
+    check("project_admin cannot approve its own request -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+    st, resp = decide(fm, aid)
+    check("finance_manager cannot approve a quotation -> 403", st == 403, (st, resp))
+    st, resp = decide(sm, aid)
+    check("sales_manager approves: the quotation is submitted", st == 200 and resp.get("record", {}).get("docstatus") == 1, (st, resp))
+    sub1 = resp.get("record", {}).get("name", q1)
+    check("approved quotation is numbered QUO-... and was created by the project_admin", sub1.startswith("QUO-") and api.get("quotation", sub1)["created_by"] == "agus@contohjasa.test",
+          api.get("quotation", sub1).get("created_by"))
+    q2 = quote("Ditolak manajer")
+    st, resp = pa.verb("quotation", q2, "submit")
+    st, resp = decide(sm, resp["approval"]["id"], "reject", "Harga belum sesuai")
+    check("sales_manager rejects: the request is rejected and the quotation stays a draft", st == 200 and resp.get("state", resp.get("approval", {}).get("state")) == "rejected" and api.get("quotation", q2)["docstatus"] == 0, (st, resp))
+
+    # B-side of A5: a big invoice (> 100.000.000) is held for finance_manager
+    st, inv = pa.create("sales_invoice", invoice_body(customer, ndt, rate=100_000_000))
+    check("project_admin creates a big invoice (111.000.000)", st == 201 and inv["grand_total"] == 111_000_000, (st, inv))
+    st, resp = pa.verb("sales_invoice", inv["name"], "submit", {"force": True})
+    check("big invoice by a non-approver: held, 202, policy big_invoice for finance_manager",
+          st == 202 and resp["approval"]["policy"] == "big_invoice" and resp["approval"]["approvers"] == ["finance_manager"], (st, resp))
+    if st == 202:
+        st2, r2 = decide(sm, resp["approval"]["id"])
+        check("sales_manager cannot approve a big invoice -> 403", st2 == 403, (st2, r2))
+        st2, r2 = decide(fm, resp["approval"]["id"])
+        check("finance_manager approves the big invoice: submitted", st2 == 200 and r2.get("record", {}).get("docstatus") == 1, (st2, r2))
+        big = r2.get("record", {}).get("name")
+        # finance_manager's main job: record the customer's payment against it
+        st3, pay = fm.create("payment", {"direction": "receive", "customer": customer, "amount": 11_100_000, "allocations": [{"sales_invoice": big, "amount": 11_100_000}]})
+        check("finance_manager creates a payment against the invoice", st3 == 201, (st3, pay))
+        if st3 == 201:
+            st3, resp3 = fm.verb("payment", pay["name"], "submit")
+            check("finance_manager submits the payment", st3 == 200, (st3, resp3))
+            eq("the invoice's outstanding fell by the payment (111.000.000 - 11.100.000)", api.get("sales_invoice", big)["outstanding"], 99_900_000)
+
+    # held new_revision: the site overlay makes cancelling a submitted quotation need a sales_manager (custom/quotation.rk)
+    st, resp = pa.action("quotation", sub1, "new_revision")
+    check("project_admin revises a submitted open quotation: {held: true} and nothing is amended",
+          st in (200, 202) and resp.get("held") is True and api.get("quotation", sub1)["docstatus"] == 1, (st, resp))
+    pend = [a for a in approvals_of(api, "quotation", sub1) if a.get("state") == "pending"]
+    check("the held revise left a pending cancel_approval for sales_manager", len(pend) == 1 and pend[0]["verb"] == "cancel" and pend[0]["approvers"] == ["sales_manager"], pend)
+    if len(pend) == 1:
+        st, resp = decide(sm, pend[0]["id"])
+        check("sales_manager approves the cancel: the quotation is cancelled", st == 200 and api.get("quotation", sub1)["docstatus"] == 2, (st, resp))
+        st, resp = pa.action("quotation", sub1, "new_revision")
+        check("revise again on the cancelled quotation opens a draft", st == 200 and resp.get("open", {}).get("model") == "quotation", (st, resp))
+        if st == 200:
+            d = api.get("quotation", resp["open"]["name"])
+            eq("the revision is a draft with revision 1, outcome open, amended from the original", (d["docstatus"], d["revision"], d["outcome"], d.get("amended_from")), (0, 1, "open", sub1))
+            st, resp = pa.verb("quotation", d["name"], "submit")
+            check("the revision is held again for the manager (a new submit approval)", st == 202 and resp["approval"]["policy"] == "manager_approval", (st, resp))
+
+    # sales_manager's main job: own quotation submits at once (self-approval), then record the outcome
+    st, q = sm.create("quotation", {"customer": customer, "subject": "Oleh manajer", "items": [{"item": ndt, "qty": 1, "rate": 1_500_000}]})
+    st, resp = sm.verb("quotation", q["name"], "submit")
+    check("sales_manager submits its own quotation: self-approved, 200", st == 200, (st, resp))
+    qn = resp.get("name", q["name"])
+    st, resp = sm.action("quotation", qn, "mark_outcome", {"outcome": "accepted"})
+    check("sales_manager records the outcome accepted", st == 200 and api.get("quotation", qn)["outcome"] == "accepted", (st, resp))
+
+    # project_admin's main job: project, assignment and timesheet
+    worker = next(w for w in api.list("worker") if w["worker_name"] == "Andi Contoh")["name"]
+    st, p = pa.create("project", {"project_name": "Proyek oleh admin", "customer": customer, "site": "Cilegon"})
+    check("project_admin creates a project", st == 201, (st, p))
+    if st == 201:
+        st, a = pa.create("assignment", {"project": p["name"], "worker": worker, "start_date": "2026-11-10", "end_date": "2026-11-20"})
+        check("project_admin creates an assignment", st == 201, (st, a))
+        st, t = pa.create("timesheet", {"project": p["name"], "worker": worker, "assignment": a["name"], "work_date": "2026-11-10", "days": 1, "description": "Inspeksi"})
+        check("project_admin creates a timesheet of 1.500.000", st == 201 and t["amount"] == 1_500_000, (st, t))
+        if st == 201:
+            st, resp = pa.verb("timesheet", t["name"], "submit")
+            check("project_admin submits the timesheet", st == 200, (st, resp))
+
+    # purchasing_manager: a PO above 5.000.000 by a non-approver is held, the purchasing_manager approves; under the limit needs nobody
+    def po(qty):
+        st, o = pa.create("purchase_order", {"vendor": "VND-0001", "order_date": "2026-11-03", "items": [{"item": "BRG-0004", "qty": qty, "rate": 85_000}]})
+        check(f"project_admin creates a purchase order of {qty} x 85.000", st == 201, (st, o))
+        return o["name"], o["grand_total"]
+    big_po, total = po(100)
+    eq("the big PO is 8.500.000 (above 5.000.000)", total, 8_500_000)
+    st, resp = pa.verb("purchase_order", big_po, "submit")
+    check("PO above 5.000.000 by a non-approver: held, policy po_approval for purchasing_manager",
+          st == 202 and resp["approval"]["policy"] == "po_approval" and resp["approval"]["approvers"] == ["purchasing_manager"], (st, resp))
+    if st == 202:
+        st2, r2 = decide(sm, resp["approval"]["id"])
+        check("sales_manager cannot approve a PO -> 403", st2 == 403, (st2, r2))
+        st2, r2 = decide(pm, resp["approval"]["id"])
+        check("purchasing_manager approves the PO above 5.000.000: submitted and numbered PO/CIN/...",
+              st2 == 200 and r2.get("record", {}).get("docstatus") == 1 and r2["record"]["name"].startswith("PO/CIN/"), (st2, r2))
+    small_po, total = po(10)
+    st, resp = pa.verb("purchase_order", small_po, "submit")
+    check("PO under the limit (850.000) is submitted by the project_admin without approval", st == 200 and not approvals_of(api, "purchase_order", resp.get("name", small_po)), (st, resp))
+    own_po, _ = po(100)
+    st, resp = pm.verb("purchase_order", own_po, "submit")
+    check("purchasing_manager submits a big PO of its own: self-approved, 200", st == 200, (st, resp))
+
+
 # ---------- scenarios: print formats (contract 0008), both PTs of demo-jasa
 
 import html as htmllib
@@ -1295,9 +1437,40 @@ def chart_map(w):
     return {p["key"]: round(p["value"]) for p in w.get("data", [])}
 
 
+# days past due_date -> the bucket it belongs to, at every edge of the buckets (not due, 1-30, 31-60, 61-90, over 90)
+AGING_EDGES = [(0, "not_due", 1_000_000), (30, "past_1_30", 2_000_000), (31, "past_31_60", 3_000_000),
+               (60, "past_31_60", 4_000_000), (61, "past_61_90", 5_000_000), (91, "past_over_90", 6_000_000)]
+
+
 def scenario_dashboards_jasa(api):
     today = kernel_today()
     import datetime
+    buckets = ["not_due", "past_1_30", "past_31_60", "past_61_90", "past_over_90"]
+
+    def bucket_sums():
+        out = dict.fromkeys(buckets, 0)
+        for i in api.find("sales_invoice", "docstatus == 1"):
+            if i["outstanding"] > 0:
+                d = (today - datetime.date.fromisoformat(i["due_date"])).days
+                out["not_due" if d <= 0 else "past_1_30" if d <= 30 else "past_31_60" if d <= 60 else "past_61_90" if d <= 90 else "past_over_90"] += i["outstanding"]
+        return out
+
+    # boundary data: one non-PKP invoice due exactly 0, 30, 31, 60, 61 and 91 days ago (today from the kernel's time zone, for data and expectations)
+    before = bucket_sums()
+    st, bc = api.create("customer", {"customer_name": "PT Contoh Batas Umur"})
+    check("aging edges: create the customer", st == 201, bc)
+    added = dict.fromkeys(buckets, 0)
+    for days, bucket, amount in AGING_EDGES:
+        due = today - datetime.timedelta(days=days)
+        st, i = api.create("sales_invoice", invoice_body(bc["name"], services(api)[0]["name"], rate=amount, ppn_applies=False,
+                                                          posting_date=(due - datetime.timedelta(days=30)).isoformat(), due_date=due.isoformat()))
+        st2, resp = api.verb("sales_invoice", i["name"], "submit", {"force": True}) if st == 201 else (st, i)
+        check(f"aging edges: invoice due {days} days ago submitted", st == 201 and st2 == 200, (st, st2, resp))
+        added[bucket] += amount
+    ws = dashboard(api, "ar_aging")
+    eq("ar_aging at the edges (0, 30, 31, 60, 61, 91 days): not due 1M | 1-30 2M | 31-60 3M+4M | 61-90 5M | over 90 6M (added on top of the others)",
+       {b: num(ws[b]) for b in buckets}, {b: before[b] + added[b] for b in buckets})
+    eq("ar_aging edge expectations as written out", added, {"not_due": 1_000_000, "past_1_30": 2_000_000, "past_31_60": 7_000_000, "past_61_90": 5_000_000, "past_over_90": 6_000_000})
     invs = [i for i in api.find("sales_invoice", "docstatus == 1") if i["outstanding"] > 0]
     want = {"not_due": 0, "past_1_30": 0, "past_31_60": 0, "past_61_90": 0, "past_over_90": 0}
     for i in invs:
@@ -1312,7 +1485,8 @@ def scenario_dashboards_jasa(api):
     by_customer = {}
     for i in invs:
         by_customer[i["customer"]] = by_customer.get(i["customer"], 0) + i["outstanding"]
-    eq("ar_aging outstanding by customer (chart)", chart_map(ws["outstanding_by_customer"]), by_customer if len(by_customer) <= 10 else chart_map(ws["outstanding_by_customer"]))
+    top10 = dict(sorted(by_customer.items(), key=lambda kv: -kv[1])[:10])   # the widget sorts by -value and limits to 10
+    eq("ar_aging outstanding by customer (chart) = the top 10 customers' outstanding, from the invoices", chart_map(ws["outstanding_by_customer"]), top10)
     overdue = [i for i in invs if i["due_date"] < today.isoformat()]
     eq("ar_aging overdue list holds the overdue invoices", ws["overdue_invoices"]["total"], len(overdue))
     check("ar_aging overdue list is sorted by due_date", [r["due_date"] for r in ws["overdue_invoices"]["rows"]] == sorted(r["due_date"] for r in ws["overdue_invoices"]["rows"]), ws["overdue_invoices"]["rows"][:3])
@@ -1841,9 +2015,8 @@ def setup_demo_fnb(api, k):
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_dashboards_jasa],
+                  scenario_prints_jasa, scenario_roles_jasa, scenario_dashboards_jasa],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb],
-    # Task 10 completes demo-jasa and demo-fnb; Task 11 extends both with the day-one flows.
 }
 
 
@@ -1863,6 +2036,8 @@ def main():
     CTX["kernel"] = k
     if a.site == "demo-fnb":
         setup_demo_fnb(api, k)
+    if a.site == "demo-jasa":
+        setup_demo_jasa(api, k)
     for sc in SCENARIOS[a.site]:
         if a.only and a.only not in sc.__name__:
             continue
