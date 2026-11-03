@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: true}
+numbering:
+  invoice: {pattern: "INV-{YYYY}-{#####}", reset: yearly}
+apps: [crm]
+plan: tumbuh
+theme: kopi_senja
+layout: crm_first
+sso: {domains: [kopisenja.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, sales_manager]}

@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: payment_allocation
+label: {id: Alokasi pembayaran}
+is_child: true
+fields:
+  - name: sales_invoice
+    type: link
+    to: sales_invoice
+    label: {id: Faktur penjualan}
+  - name: vendor_bill
+    type: link
+    to: vendor_bill
+    label: {id: Tagihan pemasok}
+  - name: outstanding
+    type: currency
+    label: {id: Sisa tagihan saat input}
+    default: "sales_invoice != '' ? sales_invoice.outstanding : (vendor_bill != '' ? vendor_bill.outstanding : 0)"
+    read_only: true
+  - name: pph23_applies
+    type: check
+    label: {id: Faktur sudah dipotong PPh 23}
+    default: "sales_invoice != '' ? sales_invoice.pph23_applies : false"
+    read_only: true
+  - name: amount
+    type: currency
+    label: {id: Uang diterapkan}
+    required: true
+  - name: withheld
+    type: currency
+    label: {id: PPh 23 dipotong pelanggan}
+    default: '0'
+  - name: applied_idr
+    type: int
+    label: {id: Diterapkan (Rp)}
+    read_only: true

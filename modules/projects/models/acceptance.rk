@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: acceptance
+label: {id: Berita acara, en: Acceptance report}
+icon: check
+is_submittable: true
+naming: BA-{YYYY}-{####}
+title_field: project
+permissions:
+  - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true}
+  - {role: finance_manager, read: true}
+fields:
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+    required: true
+    in_list: true
+  - name: customer_order
+    type: link
+    to: customer_order
+    label: {id: Pesanan pelanggan}
+  - name: accepted_on
+    type: date
+    label: {id: Tanggal serah terima}
+    required: true
+    in_list: true
+  - name: accepted_by
+    type: data
+    label: {id: Diterima oleh (PIC pelanggan)}
+    required: true
+  - name: period_from
+    type: date
+    label: {id: Periode dari}
+  - name: period_to
+    type: date
+    label: {id: Periode sampai}
+  - name: scope
+    type: text
+    label: {id: Lingkup pekerjaan yang diterima}
+    required: true
+  - name: amount
+    type: currency
+    label: {id: Nilai pekerjaan}
+    in_list: true
+  - name: document
+    type: attach
+    label: {id: Dokumen BA bertanda tangan}
+rules:
+  - name: period_order
+    on: save
+    check: period_from == '' || period_to == '' || period_to >= period_from
+    message: {id: Periode selesai tidak boleh sebelum periode mulai}
+views:
+  list:
+    columns: [name, project, accepted_on, accepted_by, status, amount]
+    sort: -accepted_on
+  form:
+    layout:
+      - section: {id: Serah terima}
+        columns:
+          - [project, customer_order, accepted_on]
+          - [accepted_by, period_from, period_to]
+      - section: {id: Lingkup}
+        fields: [scope]
+      - section: {id: Nilai}
+        columns:
+          - [amount, document]

@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: orders
+version: 1.0.0
+title: {id: Pesanan pelanggan, en: Customer orders}
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0}
+optional: {quotation: ^1.0}
+# Semantics fixed in docs/kernel-hooks.md. The make_invoice action lives on customer_order, so the hook is declared
+# here; it is implemented with the invoicing hooks and needs the invoicing module installed.
+hooks: [invoicing.from_order]

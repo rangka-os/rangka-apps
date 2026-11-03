@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: withholding
+label: {id: Bukti potong PPh 23, en: Withholding certificate}
+icon: invoice
+is_submittable: true
+naming: BP-{YYYY}-{#####}
+title_field: cert_no
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true, print: true}
+fields:
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    required: true
+    in_list: true
+  - name: sales_invoice
+    type: link
+    to: sales_invoice
+    label: {id: Faktur penjualan}
+    required: true
+    in_list: true
+  - name: payment
+    type: link
+    to: payment
+    label: {id: Pembayaran}
+  - name: cert_no
+    type: data
+    label: {id: No. bukti potong}
+    required: true
+    in_list: true
+  - name: cert_date
+    type: date
+    label: {id: Tanggal bukti potong}
+    required: true
+    in_list: true
+  - name: dpp
+    type: currency
+    label: {id: DPP}
+    default: sales_invoice.dpp
+  - name: rate
+    type: percent
+    label: {id: Tarif}
+    default: '2'
+  - name: amount
+    type: currency
+    label: {id: PPh 23 dipotong}
+    compute: round(dpp * rate / 100)
+    in_list: true
+  - name: document
+    type: attach
+    label: {id: Berkas bukti potong}
+rules:
+  - name: invoice_of_customer
+    on: save
+    check: sales_invoice.customer == customer
+    message: {id: Faktur bukan milik pelanggan ini}
+views:
+  list:
+    columns: [name, customer, sales_invoice, cert_no, cert_date, amount]
+    sort: -cert_date

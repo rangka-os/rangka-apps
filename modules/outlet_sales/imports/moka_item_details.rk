@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# Moka Backoffice "Export Item Details", one file per outlet and day (or several days). The headers are the English
+# Backoffice headers assumed in contract 0012; when the pilot's first real export arrives, fix them here, not in the kernel.
+# Same file twice -> duplicate (file hash). Overlapping exports -> only rows whose key is new. Records arrive as drafts.
+name: moka_item_details
+label: {id: Penjualan Moka (detail item), en: Moka sales (item details)}
+model: outlet_sales
+source: csv
+header_row: 1
+per: outlet
+key: [Date, Receipt Number, Item, Variant, Modifiers]
+group: [Date]
+map:
+  date: Date
+  source: "='moka'"
+  note: "='Moka ' + row['Date']"
+lines:
+  field: lines
+  map:
+    item: {value: SKU, match: sku}
+    qty: Quantity
+    gross: Gross Sales
+    discount: Discounts
+    refund: Refunds

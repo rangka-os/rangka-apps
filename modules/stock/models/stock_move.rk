@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: stock_move
+label: {id: Mutasi stok, en: Stock move}
+icon: stock
+naming: SM-{YYYY}-{######}
+# Written only by stock.post_moves and stock.reverse_moves. No role but owner may create, change or delete one.
+permissions:
+  - {role: head_office, read: true, export: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - {name: posting_date, type: date, label: {id: Tanggal}, read_only: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, read_only: true, in_list: true}
+  - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
+  - {name: qty, type: float, label: {id: 'Qty (+ masuk, - keluar)'}, read_only: true, in_list: true}
+  - {name: unit_cost, type: currency, label: {id: Biaya per satuan}, read_only: true}
+  - {name: value, type: currency, label: {id: Nilai}, read_only: true, in_list: true}
+  - {name: balance_qty, type: float, label: {id: Saldo qty}, read_only: true, in_list: true}
+  - {name: balance_value, type: currency, label: {id: Saldo nilai}, read_only: true}
+  - {name: avg_cost, type: currency, label: {id: Rata-rata biaya}, read_only: true}
+  - {name: negative, type: check, label: {id: Stok minus}, read_only: true, in_list: true}
+  - {name: voucher_type, type: data, label: {id: Jenis dokumen}, read_only: true, in_list: true}
+  - {name: voucher, type: data, label: {id: Dokumen}, read_only: true, in_list: true}
+  - name: reason
+    type: select
+    label: {id: Sebab}
+    read_only: true
+    in_list: true
+    options:
+      - {value: receipt, label: {id: Penerimaan}}
+      - {value: transfer_in, label: {id: Transfer masuk}}
+      - {value: transfer_out, label: {id: Transfer keluar}}
+      - {value: sale, label: {id: Penjualan}}
+      - {value: count, label: {id: Opname}}
+      - {value: waste, label: {id: Barang rusak}}
+      - {value: adjustment, label: {id: Penyesuaian}}
+      - {value: reversal, label: {id: Pembatalan}}
+views:
+  list:
+    columns: [name, posting_date, outlet, item, qty, value, balance_qty, negative, voucher_type, voucher, reason]
+    filters: [outlet, item, reason, negative]
+    sort: -name

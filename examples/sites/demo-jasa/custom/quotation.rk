@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
+# The firm's own rule (contract 0007 §1): cancelling a submitted quotation also needs a sales manager, so a revision
+# (quotation.revise cancels first) by someone else waits for approval.
+model: quotation
+approvals:
+  - name: cancel_approval
+    on: cancel
+    approvers: [sales_manager]
+    label: {id: Persetujuan manajer untuk membatalkan penawaran, en: Manager approval to cancel a quotation}

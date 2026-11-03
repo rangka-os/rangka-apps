@@ -1,0 +1,290 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: sales_invoice
+label: {id: Faktur penjualan}
+icon: invoice
+is_submittable: true
+naming: {series: invoice, pattern: "INV-{YYYY}-{#####}"}
+title_field: customer
+on_submit: [ledger.post_receivable]
+on_cancel: [invoicing.reverse_receivable]
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_rep, read: true}
+fields:
+  - name: kind
+    type: select
+    label: {id: Jenis faktur}
+    default: "'regular'"
+    in_list: true
+    chip: true
+    options:
+      - {value: regular, label: {id: Reguler}}
+      - {value: down_payment, label: {id: Uang muka (DP)}}
+      - {value: retention, label: {id: Retensi}}
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    required: true
+    in_list: true
+    peek: [outstanding, payment_days, npwp]
+  - name: customer_order
+    type: link
+    to: customer_order
+    label: {id: Pesanan pelanggan}
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+  - name: acceptance
+    type: link
+    to: acceptance
+    label: {id: Berita acara}
+  - name: po_number
+    type: data
+    label: {id: No. PO pelanggan}
+    default: customer_order.po_number
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+  - name: posting_date
+    type: date
+    label: {id: Tanggal faktur}
+    default: today()
+    required: true
+    in_list: true
+  - name: due_date
+    type: date
+    label: {id: Jatuh tempo}
+    default: posting_date + duration(customer.payment_days)
+    relative_to: posting_date
+  - name: items
+    type: table
+    of: sales_invoice_item
+    label: {id: Barang/jasa}
+    min_rows: 1
+  - name: subtotal
+    type: currency
+    label: {id: Subtotal}
+    # Foreign-currency document (currency is not IDR): the rupiah subtotal is the IDR twin of subtotal_fx (contract 0013),
+    # so dpp, PPN (assessed in rupiah), grand_total, retention, PPh 23 and amount_due stay IDR computes from it.
+    # Lines are entered with rate_fx; the IDR line `amount` (qty x rate) cannot see the parent's currency, so the header ignores it.
+    compute: "currency != '' && currency != 'IDR' ? subtotal_fx_idr : items.map(i, i.amount).sum()"
+  - name: discount_amount
+    type: currency
+    label: {id: Diskon}
+    default: '0'
+  - name: dp_invoice
+    type: link
+    to: sales_invoice
+    label: {id: Faktur uang muka}
+    depends_on: kind == 'regular'
+  - name: down_payment
+    type: currency
+    label: {id: Potongan uang muka}
+    default: '0'
+  - name: dpp
+    type: currency
+    label: {id: DPP}
+    compute: subtotal - discount_amount - down_payment
+  - name: tax_rate
+    type: percent
+    label: {id: Tarif PPN}
+    help: {id: 'Dari config tax.ppn_rate; 0 bila perusahaan bukan PKP atau faktur retensi (PPN sudah ditagih di faktur asal). Tersimpan di dokumen.'}
+    default: "kind == 'retention' ? 0 : (tax.pkp ? tax.ppn_rate : 0)"
+  # Not read_only: a generic amend zeroes read-only fields, and a zero dpp_den would break ppn (kernel follow-up).
+  - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num'}
+  - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den'}
+  - name: ppn
+    type: currency
+    label: {id: PPN (DPP x rasio DPP nilai lain x tarif)}
+    compute: "round(dpp * dpp_num / dpp_den * tax_rate / 100)"
+  - name: grand_total
+    type: currency
+    label: {id: Total}
+    compute: dpp + ppn
+    in_list: true
+  - name: retention_percent
+    type: percent
+    label: {id: Retensi %}
+    default: '0'
+  - name: retention_amount
+    type: currency
+    label: {id: Retensi ditahan}
+    compute: round(dpp * retention_percent / 100)
+  - name: retention_of
+    type: link
+    to: sales_invoice
+    label: {id: Retensi untuk faktur}
+    depends_on: kind == 'retention'
+  - name: pph23_applies
+    type: check
+    label: {id: Dipotong PPh 23}
+    default: 'false'
+  - name: pph23_rate
+    type: percent
+    label: {id: Tarif PPh 23}
+    default: '2'
+  - name: pph23_amount
+    type: currency
+    label: {id: PPh 23 dipotong pelanggan}
+    compute: "pph23_applies ? round(dpp * pph23_rate / 100) : 0"
+  - name: amount_due
+    type: currency
+    label: {id: Tagihan bersih}
+    compute: grand_total - retention_amount - pph23_amount
+    in_list: true
+  - name: paid_amount
+    type: currency
+    label: {id: Sudah dibayar}
+    read_only: true
+  - name: outstanding
+    type: currency
+    label: {id: Sisa tagihan}
+    compute: amount_due - paid_amount
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan untuk pelanggan}
+  - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
+  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency; line `rate` stays the unit price
+  - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
+  # Adjustments (discount_amount, down_payment) are entered in rupiah only, also on a foreign document: the ledger, the DP checks
+  # and PPN read the IDR fields. Their foreign twins are derived here (IDR / exchange_rate), never entered.
+  - {name: dpp_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "currency != '' && currency != 'IDR' ? round(subtotal_fx - (discount_amount + down_payment) / exchange_rate, 2) : 0"}
+  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "round(dpp_fx * dpp_num / dpp_den * tax_rate / 100, 2)"}
+  - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_fx + ppn_fx"}
+  - {name: retention_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Retensi ditahan (valas)}, compute: "round(dpp_fx * retention_percent / 100, 2)"}
+  - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, compute: "pph23_applies ? round(dpp_fx * pph23_rate / 100, 2) : 0"}
+  - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - retention_amount_fx - pph23_amount_fx"}
+rules:
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: rate_not_negative
+    on: save
+    check: "items.map(i, i.rate < 0 || i.rate_fx < 0 ? 1 : 0).sum() == 0"
+    message: {id: Harga tidak boleh negatif}
+  - name: line_discount_range
+    on: save
+    check: "items.map(i, i.discount < 0 || i.discount > 100 ? 1 : 0).sum() == 0"
+    message: {id: Diskon baris antara 0 dan 100 persen}
+  - name: foreign_needs_rate
+    on: save
+    check: currency == '' || currency == 'IDR' || exchange_rate > 1
+    message: {id: Dokumen valas wajib diisi kursnya (rupiah per 1 unit mata uang asing)}
+  # Every document this invoice points at belongs to the same customer (the idiom of project.rk order_same_customer).
+  - name: dp_invoice_same_customer
+    on: save
+    check: dp_invoice == '' || dp_invoice.customer == customer
+    message: {id: Faktur uang muka harus milik pelanggan yang sama}
+  - name: retention_of_same_customer
+    on: save
+    check: retention_of == '' || retention_of.customer == customer
+    message: {id: Faktur asal retensi harus milik pelanggan yang sama}
+  - name: order_same_customer
+    on: save
+    check: customer_order == '' || customer_order.customer == customer
+    message: {id: Pesanan pelanggan harus milik pelanggan yang sama}
+  - name: project_same_customer
+    on: save
+    check: project == '' || project.customer == customer
+    message: {id: Proyek harus milik pelanggan yang sama}
+  - name: acceptance_same_customer
+    on: save
+    check: acceptance == '' || acceptance.project.customer == customer
+    message: {id: Berita acara harus untuk proyek pelanggan yang sama}
+  - name: tax_valid
+    on: save
+    check: dpp_den > 0 && dpp_num > 0 && dpp_num <= dpp_den && tax_rate >= 0 && tax_rate <= 100
+    message: {id: Tarif PPN atau faktor DPP tidak valid}
+  - name: ppn_needs_pkp
+    on: save
+    check: tax.pkp || tax_rate == 0
+    message: {id: Perusahaan bukan PKP tidak boleh memungut PPN (tarif PPN harus 0)}
+  - name: due_after_posting
+    on: save
+    check: due_date >= posting_date
+    message: {id: Jatuh tempo tidak boleh sebelum tanggal faktur}
+  - name: credit_limit
+    on: submit
+    level: warn
+    check: customer.outstanding + amount_due <= customer.credit_limit
+    message: {id: Melebihi batas kredit pelanggan}
+  - name: discount_within_subtotal
+    on: save
+    check: discount_amount <= subtotal
+    message: {id: Diskon tidak boleh melebihi subtotal}
+  - name: down_payment_within_dp
+    on: save
+    check: dp_invoice == '' || down_payment <= dp_invoice.dpp
+    message: {id: Potongan uang muka melebihi nilai DPP faktur uang muka}
+  - name: dp_needs_invoice
+    on: save
+    check: down_payment == 0 || dp_invoice != ''
+    message: {id: Pilih faktur uang muka yang dipotong}
+  - name: dp_invoice_is_dp
+    on: save
+    check: dp_invoice == '' || (dp_invoice.kind == 'down_payment' && dp_invoice.docstatus == 1)
+    message: {id: Faktur uang muka harus berjenis uang muka dan sudah disubmit}
+  - name: dp_not_on_dp
+    on: save
+    check: kind != 'down_payment' || down_payment == 0
+    message: {id: Faktur uang muka tidak boleh memotong uang muka}
+  - name: retention_needs_origin
+    on: save
+    check: kind != 'retention' || retention_of != ''
+    message: {id: Faktur retensi harus menunjuk faktur asalnya}
+  - name: retention_origin_submitted
+    on: save
+    check: retention_of == '' || retention_of.docstatus == 1
+    message: {id: Faktur asal retensi harus sudah disubmit dan tidak dibatalkan}
+  # The retained amount was taxed on the original invoice: releasing it charges no PPN again and cannot exceed what was retained.
+  - name: retention_within_origin
+    on: save
+    check: kind != 'retention' || retention_of == '' || (tax_rate == 0 && dpp <= retention_of.retention_amount)
+    message: {id: Faktur retensi tanpa PPN dan DPP-nya tidak boleh melebihi retensi yang ditahan di faktur asal}
+  - name: retention_range
+    on: save
+    check: retention_percent >= 0 && retention_percent <= 20
+    message: {id: Retensi antara 0 dan 20 persen}
+  - name: dpp_not_negative
+    on: save
+    check: dpp >= 0
+    message: {id: DPP tidak boleh negatif; kurangi potongan atau diskon}
+approvals:
+  - name: big_invoice
+    on: submit
+    when: grand_total > 100000000
+    approvers: [finance_manager]
+    label: {id: Persetujuan keuangan untuk faktur besar, en: Finance approval for large invoices}
+
+views:
+  list:
+    columns: [name, customer, kind, posting_date, status, grand_total, outstanding]
+    sort: -posting_date
+  form:
+    layout:
+      - section: {id: Pelanggan}
+        columns:
+          - [kind, customer, po_number, customer_order, project]
+          - [posting_date, due_date, outlet, acceptance]
+      - section: {id: Barang/jasa}
+        fields: [items]
+      - section: {id: Pajak & potongan}
+        columns:
+          - [discount_amount, dp_invoice, down_payment, tax_rate, dpp_num, dpp_den, ppn]
+          - [pph23_applies, pph23_rate, pph23_amount, retention_percent, retention_of, retention_amount]
+      - section: {id: Ringkasan}
+        columns:
+          - [subtotal, dpp, grand_total]
+          - [amount_due, paid_amount, outstanding]
+      - section: {id: Catatan}
+        fields: [notes]
+      - section: {id: Mata uang asing}
+        columns:
+          - [currency, exchange_rate, subtotal_fx]
+          - [grand_total_fx, amount_due_fx]

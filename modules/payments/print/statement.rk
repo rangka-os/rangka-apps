@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+name: statement
+model: customer
+label: {id: Laporan tagihan (SOA), en: Statement of account}
+paper: A4
+template: statement.html
+related:
+  invoices:
+    model: sales_invoice
+    match: {customer: name}
+    filter: docstatus == 1 && outstanding > 0
+    sort: posting_date
+    limit: 1000

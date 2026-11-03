@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: uom_conversion
+label: {id: Konversi satuan}
+icon: stock
+naming: KONV-{####}
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, print: true}
+  - {role: purchasing_manager, read: true, create: true, write: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - name: item
+    type: link
+    to: item
+    label: {id: Barang}
+    required: true
+    in_list: true
+  - name: uom
+    type: link
+    to: uom
+    label: {id: Satuan}
+    required: true
+    in_list: true
+  - name: factor
+    type: float
+    label: {id: Faktor}
+    help: {id: '1 satuan ini sama dengan berapa satuan stok'}
+    required: true
+    in_list: true
+rules:
+  - name: factor_positive
+    on: save
+    check: factor > 0
+    message: {id: Faktor harus lebih dari 0}

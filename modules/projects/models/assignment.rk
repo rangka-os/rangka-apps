@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: assignment
+label: {id: Penugasan, en: Assignment}
+icon: user
+naming: ASG-{#####}
+title_field: worker
+permissions:
+  - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true}
+  - {role: finance_manager, read: true}
+fields:
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+    required: true
+    in_list: true
+  - name: worker
+    type: link
+    to: worker
+    label: {id: Tenaga kerja}
+    required: true
+    in_list: true
+    peek: [role_title, day_rate]
+  - name: site
+    type: data
+    label: {id: Lokasi}
+    default: project.site
+  - name: start_date
+    type: date
+    label: {id: Mulai}
+    required: true
+    in_list: true
+  - name: end_date
+    type: date
+    label: {id: Selesai}
+    required: true
+    in_list: true
+  - name: day_rate
+    type: currency
+    label: {id: Tarif per hari}
+    default: worker.day_rate
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: end_after_start
+    on: save
+    check: end_date >= start_date
+    message: {id: Tanggal selesai tidak boleh sebelum tanggal mulai}
+views:
+  list:
+    columns: [name, project, worker, start_date, end_date, day_rate]
+    sort: -start_date
+  form:
+    layout:
+      - section: {id: Penugasan}
+        columns:
+          - [project, worker, site]
+          - [start_date, end_date, day_rate]
+      - section: {id: Catatan}
+        fields: [notes]

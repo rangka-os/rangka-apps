@@ -3,3 +3,5 @@
 .pgtemp*/
 .pgtemp*
 __pycache__/
+build/
+.superpowers/

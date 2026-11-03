@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: uom
+label: {id: Satuan}
+icon: stock
+naming: UOM-{###}
+title_field: uom_name
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, print: true}
+  - {role: purchasing_manager, read: true, create: true, write: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - name: uom_name
+    type: data
+    label: {id: Nama satuan}
+    required: true
+    in_list: true
+    unique: true

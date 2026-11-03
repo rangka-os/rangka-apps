@@ -1,0 +1,4 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: project_admin
+label: {id: Admin proyek}
+description: {id: 'Mengatur proyek, penugasan tenaga kerja, timesheet dan berita acara'}

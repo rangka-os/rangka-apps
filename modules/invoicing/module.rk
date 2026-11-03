@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: invoicing
+version: 1.1.0
+title: {id: Faktur, en: Invoicing}
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0}
+optional: {outlets: ^1.0, tax_id: ^1.0, currency: ^1.0, orders: ^1.0, projects: ^1.0}
+# ledger.post_receivable is a core hook; this one is semantics fixed in docs/kernel-hooks.md.
+# invoicing.from_order is declared by the orders module, where the make_invoice action lives.
+hooks: [invoicing.reverse_receivable]

@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: price_list
+label: {id: Daftar harga}
+icon: stock
+naming: HRG-{###}
+title_field: list_name
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, print: true}
+  - {role: purchasing_manager, read: true, create: true, write: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - name: list_name
+    type: data
+    label: {id: Nama daftar harga}
+    required: true
+    in_list: true
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    help: {id: Kosongkan kalau berlaku untuk semua pelanggan}
+  - name: valid_from
+    type: date
+    label: {id: Berlaku dari}
+  - name: valid_until
+    type: date
+    label: {id: Berlaku sampai}
+  - name: items
+    type: table
+    of: price_list_item
+    label: {id: Harga}

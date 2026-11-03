@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: user
+label: {id: Pengguna}
+icon: user
+title_field: full_name
+naming: USR-{###}
+permissions:
+  - {role: sales_manager, read: true}
+  - {role: finance_manager, read: true}
+  - {role: purchasing_manager, read: true}
+  - {role: project_admin, read: true}
+  - {role: head_office, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: sales_rep, read: true}
+fields:
+  - name: full_name
+    type: data
+    label: {id: Nama}
+    required: true
+    in_list: true
+  - name: role
+    type: data
+    label: {id: Peran}
+    in_list: true
+  - name: email
+    type: data
+    label: {id: Email}

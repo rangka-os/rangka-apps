@@ -1,0 +1,201 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: quotation
+label: {id: Penawaran harga, en: Quotation}
+icon: invoice
+is_submittable: true
+naming: {series: quotation, pattern: "QUO-{YYYY}-{#####}"}
+title_field: subject
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, submit: true}
+  - {role: finance_manager, read: true, print: true}
+fields:
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    required: true
+    in_list: true
+    peek: [npwp, payment_days]
+  - name: contact_person
+    type: data
+    label: {id: Up. (PIC pelanggan)}
+  - name: subject
+    type: data
+    label: {id: Perihal}
+    required: true
+  - name: rfq_ref
+    type: data
+    label: {id: No. RFQ}
+  - name: rfq_date
+    type: date
+    label: {id: Tanggal RFQ}
+  - name: quotation_date
+    type: date
+    label: {id: Tanggal penawaran}
+    default: today()
+    required: true
+    in_list: true
+  - name: valid_until
+    type: date
+    label: {id: Berlaku sampai}
+    default: quotation_date + duration(30)
+    relative_to: quotation_date
+  - name: revision
+    type: int
+    label: {id: Revisi}
+    default: '0'
+    read_only: true
+    in_list: true
+  - name: items
+    type: table
+    of: quotation_item
+    label: {id: Barang/jasa}
+    min_rows: 1
+  - name: subtotal
+    type: currency
+    label: {id: Subtotal}
+    # Foreign-currency document (currency is not IDR): the rupiah subtotal is the IDR twin of subtotal_fx (contract 0013),
+    # so dpp, PPN (assessed in rupiah), grand_total, retention, PPh 23 and amount_due stay IDR computes from it.
+    # Lines are entered with rate_fx; the IDR line `amount` (qty x rate) cannot see the parent's currency, so the header ignores it.
+    compute: "currency != '' && currency != 'IDR' ? subtotal_fx_idr : items.map(i, i.amount).sum()"
+  # No header discount: a quotation discounts per line (quotation_item.discount), which the order and the invoice
+  # made from it carry as the net line rate. A lump sum is spread over the lines.
+  - name: dpp
+    type: currency
+    label: {id: DPP}
+    compute: subtotal
+  - name: tax_rate
+    type: percent
+    label: {id: Tarif PPN}
+    help: {id: 'Dari config tax.ppn_rate; 0 bila perusahaan bukan PKP. Tersimpan di dokumen.'}
+    default: "tax.pkp ? tax.ppn_rate : 0"
+  # Not read_only: a generic amend zeroes read-only fields, and a zero dpp_den would break ppn (kernel follow-up).
+  - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num'}
+  - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den'}
+  - name: ppn
+    type: currency
+    label: {id: PPN (DPP x rasio DPP nilai lain x tarif)}
+    compute: "round(dpp * dpp_num / dpp_den * tax_rate / 100)"
+  - name: grand_total
+    type: currency
+    label: {id: Total}
+    compute: dpp + ppn
+    in_list: true
+  - name: payment_terms
+    type: text
+    label: {id: Syarat pembayaran}
+  - name: delivery_terms
+    type: text
+    label: {id: Waktu pelaksanaan}
+  - name: outcome
+    type: select
+    label: {id: Hasil penawaran}
+    default: "'open'"
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: open, label: {id: Menunggu}}
+      - {value: accepted, label: {id: Diterima}}
+      - {value: lost, label: {id: Kalah}}
+  - name: lost_reason
+    type: text
+    label: {id: Alasan kalah}
+    read_only: true
+    depends_on: outcome == 'lost'
+  - name: notes
+    type: text
+    label: {id: Catatan}
+  - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
+  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}
+  - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
+  - {name: dpp_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "subtotal_fx"}
+  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "round(dpp_fx * dpp_num / dpp_den * tax_rate / 100, 2)"}
+  - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_fx + ppn_fx"}
+rules:
+  - name: foreign_needs_rate
+    on: save
+    check: currency == '' || currency == 'IDR' || exchange_rate > 1
+    message: {id: Dokumen valas wajib diisi kursnya (rupiah per 1 unit mata uang asing)}
+  - name: tax_valid
+    on: save
+    check: dpp_den > 0 && dpp_num > 0 && dpp_num <= dpp_den && tax_rate >= 0 && tax_rate <= 100
+    message: {id: Tarif PPN atau faktor DPP tidak valid}
+  - name: ppn_needs_pkp
+    on: save
+    check: tax.pkp || tax_rate == 0
+    message: {id: Perusahaan bukan PKP tidak boleh memungut PPN (tarif PPN harus 0)}
+  - name: valid_after_date
+    on: save
+    check: valid_until >= quotation_date
+    message: {id: Masa berlaku tidak boleh sebelum tanggal penawaran}
+  - name: draft_outcome_open
+    on: save
+    check: docstatus != 0 || outcome == 'open' || outcome == ''
+    message: {id: Penawaran yang belum disubmit harus berstatus menunggu}
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: rate_not_negative
+    on: save
+    check: "items.map(i, i.rate < 0 || i.rate_fx < 0 ? 1 : 0).sum() == 0"
+    message: {id: Harga tidak boleh negatif}
+  - name: line_discount_range
+    on: save
+    check: "items.map(i, i.discount < 0 || i.discount > 100 ? 1 : 0).sum() == 0"
+    message: {id: Diskon baris antara 0 dan 100 persen}
+actions:
+  - name: new_revision
+    label: {id: Buat revisi, en: New revision}
+    icon: edit
+    hook: quotation.revise
+    if: (docstatus == 1 || docstatus == 2) && (outcome == 'open' || outcome == '')
+  # Args come from the call body: {outcome: accepted|lost, lost_reason}. Needed because a submitted document
+  # cannot be edited, so `outcome` is changed only through this hook (docs/kernel-hooks.md).
+  - name: mark_outcome
+    label: {id: Catat hasil penawaran, en: Record outcome}
+    icon: check
+    hook: quotation.mark_outcome
+    if: docstatus == 1 && (outcome == 'open' || outcome == '')
+  - name: make_order
+    label: {id: Buat pesanan pelanggan, en: Create customer order}
+    icon: check
+    primary: true
+    hook: orders.from_quotation
+    if: docstatus == 1 && outcome == 'accepted'
+approvals:
+  - name: manager_approval
+    on: submit
+    approvers: [sales_manager]
+    label: {id: Persetujuan manajer, en: Manager approval}
+
+views:
+  list:
+    columns: [name, customer, subject, quotation_date, revision, status, grand_total, outcome]
+    sort: -quotation_date
+  form:
+    layout:
+      - section: {id: Penawaran}
+        columns:
+          - [customer, contact_person, subject, revision]
+          - [rfq_ref, rfq_date, quotation_date, valid_until]
+      - section: {id: Barang/jasa}
+        fields: [items]
+      - section: {id: Harga}
+        columns:
+          - [subtotal, dpp]
+          - [tax_rate, dpp_num, dpp_den, ppn, grand_total]
+      - section: {id: Syarat}
+        columns:
+          - [payment_terms, delivery_terms]
+      - section: {id: Hasil}
+        columns:
+          - [outcome, lost_reason]
+      - section: {id: Catatan}
+        fields: [notes]
+      - section: {id: Mata uang asing}
+        columns:
+          - [currency, exchange_rate, subtotal_fx]
+          - [grand_total_fx]

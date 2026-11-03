@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: project
+label: {id: Proyek, en: Project}
+icon: card
+naming: PRJ-{YYYY}-{####}
+title_field: project_name
+permissions:
+  - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true}
+  - {role: finance_manager, read: true}
+fields:
+  - name: project_name
+    type: data
+    label: {id: Nama proyek}
+    required: true
+    in_list: true
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    required: true
+    in_list: true
+  - name: customer_order
+    type: link
+    to: customer_order
+    label: {id: Pesanan pelanggan}
+    in_list: true
+  - name: site
+    type: data
+    label: {id: Lokasi}
+    in_list: true
+  - name: start_date
+    type: date
+    label: {id: Mulai}
+  - name: end_date
+    type: date
+    label: {id: Selesai}
+  - name: state
+    type: select
+    label: {id: Status proyek}
+    default: "'planned'"
+    in_list: true
+    chip: true
+    options:
+      - {value: planned, label: {id: Direncanakan}}
+      - {value: running, label: {id: Berjalan}}
+      - {value: done, label: {id: Selesai}}
+      - {value: closed, label: {id: Ditutup}}
+  - name: manager
+    type: link
+    to: user
+    label: {id: Penanggung jawab}
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: end_after_start
+    on: save
+    check: start_date == '' || end_date == '' || end_date >= start_date
+    message: {id: Tanggal selesai tidak boleh sebelum tanggal mulai}
+  - name: order_same_customer
+    on: save
+    check: customer_order == '' || customer_order.customer == customer
+    message: {id: Pesanan harus milik pelanggan yang sama}
+views:
+  list:
+    columns: [name, project_name, customer, site, state, start_date, end_date]
+    sort: -start_date
+  kanban:
+    group_by: state
+    title: project_name
+    card: [customer, site, start_date, end_date]
+  default: kanban
+  form:
+    layout:
+      - section: {id: Proyek}
+        columns:
+          - [project_name, customer, customer_order, site]
+          - [state, manager, start_date, end_date]
+      - section: {id: Catatan}
+        fields: [notes]

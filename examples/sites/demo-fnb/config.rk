@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for the multi-branch F&B pilot: one PT with three outlets (head office, Dago, Braga).
+# The outlets themselves are data (examples/fixtures/demo-fnb), not config.
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: PT Tahu Contoh Nusantara, npwp: '00.000.000.0-000.003'}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: false}
+numbering:
+  purchase_order: {pattern: "PO/{ORG}/{YY}{MM}/{###}", reset: monthly}
+orgs:
+  tahu_contoh:
+    name: PT Tahu Contoh Nusantara
+    code: TCN
+    config:
+      org: {legal_name: PT Tahu Contoh Nusantara, npwp: '00.000.000.0-000.003'}
+      tax: {pkp: false}
+apps: [fnb_cabang]
+plan: tumbuh
+sso: {domains: [tahucontoh.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, head_office]}

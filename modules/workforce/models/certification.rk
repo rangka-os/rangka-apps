@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: certification
+is_child: true
+fields:
+  - name: cert_name
+    type: data
+    label: {id: Nama sertifikat}
+    required: true
+  - name: cert_no
+    type: data
+    label: {id: No. sertifikat}
+  - name: issuer
+    type: data
+    label: {id: Penerbit}
+  - name: issued_on
+    type: date
+    label: {id: Terbit}
+  - name: expires_on
+    type: date
+    label: {id: Berlaku sampai}
+  # Computed at save: the value goes stale after expires_on passes. Kernel gap (computed-on-read or a scheduled
+  # recompute), noted in docs/kernel-hooks.md.
+  - name: expired
+    type: check
+    label: {id: Kedaluwarsa}
+    compute: "expires_on != '' && expires_on < today()"

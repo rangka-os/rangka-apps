@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: jasa_proyek
+version: 1.0.0
+title: {id: Jasa proyek, en: Project services}
+label: {id: Rangka Jasa Proyek, en: Rangka Project Services}
+summary:
+  id: Dari penawaran dan penugasan tenaga kerja sampai faktur, pembayaran dan piutang, untuk satu atau beberapa PT.
+rangka: '>=0.5'
+modules:
+  contacts: ^1.0
+  catalogue: ^1.0
+  users: ^1.0
+  outlets: ^1.0
+  tax_id: ^1.0
+  currency: ^1.0
+  invoicing: ^1.0
+  quotation: ^1.0
+  orders: ^1.0
+  workforce: ^1.0
+  projects: ^1.0
+  payments: ^1.0
+  procurement: ^1.0
+dashboards: [jasa_overview, ar_aging]
+roles: [sales_manager, finance_manager, purchasing_manager, project_admin]
+home: {dashboard: jasa_overview}
+menu:
+  - group: {id: Penjualan}
+    items: [quotation, customer_order, sales_invoice]
+  - group: {id: Proyek}
+    items: [project, assignment, timesheet, acceptance]
+  - group: {id: Tenaga kerja}
+    items: [worker]
+  - group: {id: Keuangan}
+    items: [payment, withholding, vendor_bill]
+  - group: {id: Pembelian}
+    items: [purchase_request, purchase_order]
+  - group: {id: Data induk}
+    items: [customer, vendor, item, uom, price_list, tax_code, currency]
+# Answers set the first defaults of a new installation (PKP decides tax_rate, the business line the sample items and terms).
+onboarding:
+  # tax.pkp is a boolean: the answers are its values (schema 0.5 options are strings, so they are quoted).
+  - ask: {id: 'Apakah perusahaan kamu PKP? (true = ya, false = tidak)'}
+    options: ['true', 'false']
+    sets: tax.pkp
+  - ask: {id: 'Apa bidang usaha kamu?'}
+    options: [manpower, inspeksi, rental, training]
+    sets: settings.business_line
+  - ask: {id: 'Berapa PT yang kamu kelola?'}
+    sets: seed.orgs

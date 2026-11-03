@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: stock_adjustment_item
+is_child: true
+fields:
+  - name: item
+    type: link
+    to: item
+    label: {id: Barang}
+    required: true
+  - name: description
+    type: text
+    label: {id: Uraian}
+    default: item.item_name
+  - name: qty
+    type: float
+    label: {id: Qty keluar}
+    help: {id: 'Jumlah positif yang dikurangi dari stok'}
+    required: true
+    stock: true
+  - name: uom
+    type: link
+    to: uom
+    label: {id: Satuan}
+    default: "packing != '' ? packing.uom : item.stock_uom"
+  - name: packing
+    type: link
+    to: uom_conversion
+    label: {id: Kemasan}
+  - name: stock_qty
+    type: float
+    label: {id: Qty stok}
+    compute: "packing == '' ? qty : qty * packing.factor"

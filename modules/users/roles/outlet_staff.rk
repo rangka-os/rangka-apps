@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: outlet_staff
+label: {id: Staf outlet}
+description: {id: 'Hanya melihat dan mengisi data outlet tempatnya bekerja'}
+# Contract 0010 §5: records whose outlet (or either side of a transfer) is one of the member's outlets.
+scope: {field: [outlet, from_outlet, to_outlet], from: user.outlets}

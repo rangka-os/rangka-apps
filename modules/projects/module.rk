@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: projects
+version: 1.0.0
+title: {id: Proyek, en: Projects}
+requires: {rangka: '>=0.5', contacts: ^1.0, users: ^1.0, workforce: ^1.0}
+optional: {orders: ^1.0}

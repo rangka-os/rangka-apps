@@ -1,0 +1,5 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: tax_id
+version: 1.0.0
+title: {id: Pajak Indonesia, en: Indonesian taxes}
+requires: {rangka: '>=0.5', users: ^1.0}

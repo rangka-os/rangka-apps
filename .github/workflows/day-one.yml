@@ -1,0 +1,68 @@
+# Validation and the day-one integration test on every push and pull request to main, against rangka-os main:
+# both validators over every example site (scripts/validate.sh), then tests/day_one.py on each demo site.
+# scripts/lib.sh finds rangka-os and rangka-connectors next to this repo, so all three are checked out side by side.
+name: day-one
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: day-one-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RANGKA_OS: ${{ github.workspace }}/rangka-os
+  CONNECTORS: ${{ github.workspace }}/rangka-connectors
+
+jobs:
+  test:
+    # Pinned: ubuntu-latest moved to 26.04, whose apt has no postgresql-16; 24.04 ships it.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: rangka-apps }
+      - uses: actions/checkout@v4
+        with: { repository: rangka-os/rangka-os, ref: main, path: rangka-os }
+      - uses: actions/checkout@v4
+        with: { repository: rangka-os/rangka-connectors, path: rangka-connectors }
+
+      - uses: actions/setup-go@v5
+        with: { go-version-file: rangka-os/kernel/go.mod }
+
+      # tests/day_one.py starts a throwaway cluster with rangka-os/kernel/scripts/pgtemp.sh from these binaries.
+      - name: Install PostgreSQL 16
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-16
+          echo "PGBIN=/usr/lib/postgresql/16/bin" >> "$GITHUB_ENV"
+
+      # tools/rangka_validate.py (the reference validator). setup-python gives a pip not blocked by the system Python (PEP 668).
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Install Python packages
+        run: python -m pip install jsonschema referencing pyyaml
+
+      - name: Build the kernel
+        run: make -C rangka-os/kernel build
+
+      - name: Validate (Python and Go, every example site)
+        working-directory: rangka-apps
+        env: { PYTHON: python }
+        run: scripts/validate.sh
+
+      # day_one.py exits 1 on any failed check (gaps are genuine kernel limitations and do not fail the job).
+      - name: day_one kopi-senja
+        working-directory: rangka-apps
+        run: python tests/day_one.py --site kopi-senja
+      - name: day_one demo-jasa
+        working-directory: rangka-apps
+        run: python tests/day_one.py --site demo-jasa
+      - name: day_one demo-fnb
+        working-directory: rangka-apps
+        run: python tests/day_one.py --site demo-fnb

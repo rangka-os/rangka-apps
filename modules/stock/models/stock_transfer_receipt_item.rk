@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: stock_transfer_receipt_item
+is_child: true
+fields:
+  - name: item
+    type: link
+    to: item
+    label: {id: Barang}
+    required: true
+  - name: description
+    type: text
+    label: {id: Uraian}
+    default: item.item_name
+  - name: qty
+    type: float
+    label: {id: Qty diterima}
+    help: {id: 'Dalam satuan stok barang'}
+    required: true

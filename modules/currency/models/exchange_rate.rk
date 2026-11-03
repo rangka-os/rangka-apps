@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: exchange_rate
+label: {id: Kurs}
+icon: card
+naming: KURS-{#####}
+title_field: currency
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, print: true}
+  - {role: purchasing_manager, read: true, create: true, write: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - name: currency
+    type: link
+    to: currency
+    label: {id: Mata uang}
+    required: true
+    in_list: true
+  - name: rate_date
+    type: date
+    label: {id: Tanggal}
+    required: true
+    in_list: true
+  - name: rate
+    type: float
+    label: {id: Kurs (Rp per 1 unit)}
+    required: true
+    in_list: true
+rules:
+  - name: rate_positive
+    on: save
+    check: rate > 0
+    message: {id: Kurs harus lebih dari 0}
+views:
+  list:
+    columns: [currency, rate_date, rate]
+    sort: -rate_date
