@@ -63,13 +63,18 @@ Both hooks run in the payment's submit/cancel transaction. They work per allocat
 ### `payments.allocate` (`payment.on_submit`)
 - **Reads:** the payment (`direction`, `customer`/`vendor`, `amount`, `currency`/`exchange_rate` when the money sidecar is live) and its allocation rows (`sales_invoice`, `amount`, `withheld`).
 - **Locks:** each target `for update`, then reloads its **stored** `outstanding` (the row's `outstanding` is only an entry-time snapshot).
-- **Refuses (409):** `not_submitted` (target docstatus is not 1); `wrong_party` (target belongs to another customer/vendor than the payment);
-  `over_allocation`, message "Alokasi melebihi sisa tagihan <name>", when `applied + withheld > stored outstanding`;
-  `over_payment` when the rows' `amount` add up to more than `payment.amount`.
-- **Writes:** per row `target.paid_amount += applied + withheld` (so `outstanding` recomputes and `status`/paid state follows);
-  `customer.outstanding -= applied + withheld` (`vendor.outstanding` for pay); `applied_idr = applied` on the allocation row.
-  `applied` is `amount` for an IDR payment; for a foreign payment it is `round(amount x exchange_rate)` half away from zero
-  (the kernel's `_idr` twin rule, contract 0013). Receivables are tracked in IDR, so `withheld` is IDR.
+- **Refuses (409):** `negative_allocation` (a row with `amount <= 0` or `withheld < 0`); `not_submitted` (target docstatus is not 1);
+  `wrong_party` (target belongs to another customer/vendor than the payment);
+  `over_allocation`, message "Alokasi melebihi sisa tagihan <name>", when `amount + withheld > stored outstanding` (checked row by row, so two rows
+  on the same invoice are caught as the running outstanding drops); `over_payment` when the rows' `amount` add up to more than `payment.amount`.
+- **Writes:** per row `target.paid_amount += amount + withheld` (so `outstanding` recomputes and `status`/paid state follows);
+  `customer.outstanding -= amount + withheld` (`vendor.outstanding` for pay); `applied_idr = amount` on the allocation row.
+- **Currency:** the hook converts nothing. Allocation rows (`amount`, `withheld`, `applied_idr`) and the live `payment.amount` are always IDR.
+  For a foreign payment the conversion happened once, at the header: `amount_fx` (money, source of truth) with `exchange_rate` gives
+  `amount = round(amount_fx x exchange_rate)` (half away from zero, contract 0013's `_idr` twin). Receivables are tracked in IDR.
+- **PPh 23:** an invoice with `pph23_applies` already nets the tax in `amount_due`, so cash `amount_due` settles it and the bukti potong is a
+  `withholding` record. A row's `withheld` is only for an invoice where `pph23_applies` is false but the customer withheld anyway; the model rule
+  `no_double_pph23` ("PPh 23 sudah dipotong di faktur ini") refuses `withheld > 0` on a PPh 23 invoice.
 - **Idempotency:** once per submit.
 
 ### `payments.unallocate` (`payment.on_cancel`)
@@ -77,7 +82,7 @@ Both hooks run in the payment's submit/cancel transaction. They work per allocat
 - **Refuses:** nothing. Cancelling a payment is always allowed; an invoice cancelled meanwhile is refused by `invoicing.reverse_receivable` (`has_payments`), so the order of cancellation is payment first.
 
 ### Not checkable in a rule
-- The rules compare each row's entry-time `outstanding` snapshot; two payments drafted against the same invoice both pass their rules, and the second one to submit is refused by `over_allocation` here.
+- The rules compare each row's entry-time `outstanding` snapshot. Two payments drafted against the same invoice, or two rows on the same invoice, each pass their rule alone; only this hook catches them (`over_allocation` on the one submitted second).
 - `withholding` (bukti potong) is a record only: it does not move money. The deduction itself is the allocation row's `withheld`.
 - `vendor_bill` allocation (direction `pay`) activates with procurement: the payments sidecar `experimental/payment_allocation.rk` adds the link.
 

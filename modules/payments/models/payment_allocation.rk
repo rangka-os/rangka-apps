@@ -12,6 +12,11 @@ fields:
     label: {id: Sisa tagihan saat input}
     default: "sales_invoice != '' ? sales_invoice.outstanding : 0"
     read_only: true
+  - name: pph23_applies
+    type: check
+    label: {id: Faktur sudah dipotong PPh 23}
+    default: "sales_invoice != '' ? sales_invoice.pph23_applies : false"
+    read_only: true
   - name: amount
     type: currency
     label: {id: Uang diterapkan}

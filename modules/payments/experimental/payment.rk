@@ -3,10 +3,11 @@ model: payment
 stream: [S8a]   # S8a money
 
 fields:
-  # S8a, contract 0013: a payment in a foreign currency. The live `amount` stays IDR. `currency` is a data field
-  # holding the ISO code; `amount_fx` is the source of truth for a foreign payment and the kernel generates the
-  # integer twin `amount_fx_idr`. payments.allocate applies each allocation row's `amount` converted at
-  # `exchange_rate` (the twin's rule: round half away from zero) and stores the IDR result in `applied_idr`.
+  # S8a, contract 0013: a payment in a foreign currency. Conversion happens once, at the header: `amount_fx` (money) is
+  # the source of truth and, once S8a lands, the live IDR `amount` is `round(amount_fx x exchange_rate)` (the kernel's
+  # integer twin `amount_fx_idr`, half away from zero). Until then the user types `amount` in IDR. Allocation rows
+  # (`amount`, `withheld`, `applied_idr`) and `payment.amount` are always IDR, so payments.allocate converts nothing.
+  # `currency` is a data field holding the ISO code; `exchange_rate` is IDR per 1 unit.
   - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
   - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency
   - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah uang (valas)}, default: '0'}

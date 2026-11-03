@@ -90,6 +90,20 @@ rules:
     on: save
     check: direction != 'pay' || vendor != ''
     message: {id: Pilih pemasok}
+  - name: row_amount_positive
+    on: save
+    check: "allocations.map(a, a.amount <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah alokasi harus lebih dari 0}
+  - name: row_not_negative
+    on: save
+    check: "allocations.map(a, a.amount < 0 || a.withheld < 0 ? 1 : 0).sum() == 0"
+    message: {id: Alokasi dan PPh 23 dipotong tidak boleh negatif}
+  # amount_due of a PPh 23 invoice already nets the tax (the bukti potong is a `withholding` record), so `withheld`
+  # is only for invoices where pph23_applies is false but the customer withheld anyway.
+  - name: no_double_pph23
+    on: save
+    check: "allocations.map(a, a.withheld > 0 && a.pph23_applies ? 1 : 0).sum() == 0"
+    message: {id: PPh 23 sudah dipotong di faktur ini}
   # `all` is not in the validators' CEL subset yet (map and sum only), so "every row" is "no violating row".
   - name: allocation_within_outstanding
     on: save
