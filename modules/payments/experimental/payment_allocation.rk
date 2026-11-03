@@ -1,0 +1,9 @@
+# Sidecar for payment_allocation: keys the kernel does not read yet (checked by scripts/check_experimental.py).
+model: payment_allocation
+stream: [S8-task7]   # moves into the model with procurement
+
+fields:
+  # moves into the model with procurement (Task 7): vendor_bill does not exist until then. With it, the model's
+  # `outstanding` default becomes `sales_invoice != '' ? sales_invoice.outstanding : vendor_bill.outstanding`
+  # and the allocation-target rule gains the `direction == 'pay' ? a.vendor_bill != ''` half.
+  - {name: vendor_bill, type: link, to: vendor_bill, label: {id: Tagihan pemasok}}
