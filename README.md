@@ -122,9 +122,9 @@ RANGKA_OS=../rangka-os PYTHON=python3 scripts/validate.sh
 python3 tests/day_one.py --site kopi-senja      # or demo-jasa, demo-fnb; add --only <text> for one scenario, --strict to fail on gaps
 ```
 
-Each check prints `OK`, `FAIL` or `GAP`; the last line reads `N ok · M gaps · K failed`. A `GAP` is something the kernel does not do yet
+Each check prints `OK`, `FAIL` or `GAP`; the last line reads `N ok · M gaps · K failed`. A `GAP` is a genuine kernel limitation no merged stream covers
 (named with its owning stream in [docs/kernel-hooks.md](docs/kernel-hooks.md#kernel-gaps)); it does not fail the run.
-Last run on rangka-os with S8c, S8d and S8e: `kopi-senja` 40 ok, `demo-jasa` 487 ok · 5 gaps, `demo-fnb` 296 ok · 2 gaps, 0 failed.
+Last run on rangka-os main 9c206b4: `kopi-senja` 59 ok, `demo-jasa` 595 ok · 3 gaps, `demo-fnb` 331 ok · 2 gaps, 0 failed.
 
 ## Kernel version
 
