@@ -37,3 +37,6 @@ fields:
     type: float
     label: {id: Sudah diterima}
     read_only: true
+
+  - {name: rate_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Harga (valas)}, default: '0'}
+  - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah (valas)}, compute: "round(qty * rate_fx, 2)"}

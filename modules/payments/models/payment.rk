@@ -72,6 +72,9 @@ fields:
   - name: notes
     type: text
     label: {id: Catatan}
+  - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
+  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency
+  - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah uang (valas)}, default: '0'}
 rules:
   - name: amount_positive
     on: save
@@ -130,3 +133,6 @@ views:
           - [allocated_total, withheld_total, unallocated]
       - section: {id: Catatan}
         fields: [notes]
+      - section: {id: Mata uang asing}
+        columns:
+          - [currency, exchange_rate, amount_fx]
