@@ -12,8 +12,8 @@ uom:
   - {name: UOM-011, uom_name: Pak}
   - {name: UOM-012, uom_name: Botol}
 outlet:
-  - {name: OUT-01, outlet_name: Kopi Senja · Kemang, code: KMG, city: Jakarta Selatan}
-  - {name: OUT-02, outlet_name: Kopi Senja · Bintaro, code: BTR, city: Tangerang Selatan}
+  - {name: OUT-01, code: KMG, city: Jakarta Selatan, outlet_name: Kopi Senja · Kemang}   # non-ASCII value last: Go and Python columns agree
+  - {name: OUT-02, code: BTR, city: Tangerang Selatan, outlet_name: Kopi Senja · Bintaro}
 customer:
   - name: CUST-0012
     customer_name: CV Maju Jaya
