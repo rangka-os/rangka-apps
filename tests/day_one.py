@@ -369,6 +369,9 @@ def scenario_invoicing(api):
     eq("retention amount_due 10.600.000", inv.get("amount_due"), 10_600_000)
     st, resp = api.create("sales_invoice", invoice_body(customer, item, retention_percent=25))
     check("retention above 20% rejected", st == 422, (st, resp))
+    for label, line in (("qty 0", {"qty": 0}), ("negative rate", {"rate": -1}), ("line discount above 100%", {"discount": 101}), ("negative line discount", {"discount": -5})):
+        st, resp = api.create("sales_invoice", {"customer": customer, "items": [dict({"item": item, "qty": 1, "rate": 1_000_000}, **line)]})
+        check(f"invoice line bounds: {label} -> 422", st == 422, (st, resp))
 
     # odd amounts round to whole rupiah
     st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=1_234_567))
@@ -1511,6 +1514,18 @@ def denied(st, resp):
     return st == 403 and isinstance(resp, dict) and resp.get("error", {}).get("code") == "permission_denied"
 
 
+def scenario_dashboards_crm(api):
+    """crm sales_overview: the receivable widget and the unpaid list read `outstanding` (part-paid invoices count only their rest)."""
+    ws = dashboard(api, "sales_overview", 3650)
+    if not ws:
+        return
+    open_ = [i for i in api.find("sales_invoice", "docstatus == 1 && outstanding > 0")]
+    check("setup: kopi-senja has open submitted invoices", bool(open_), open_)
+    eq("sales_overview receivable = sum of outstanding of submitted invoices", num(ws["receivable"]), sum(i["outstanding"] for i in open_))
+    rows = ws["unpaid"].get("rows") or ws["unpaid"].get("data") or []
+    check("sales_overview unpaid list shows outstanding", bool(rows) and all("outstanding" in r for r in rows), ws["unpaid"])
+
+
 def scenario_permissions(api):
     """Review item 2: /meta `can` of every model equals the matrix for each member, and each money model answers one allowed and one
     forbidden call per role with 2xx / 403 permission_denied."""
@@ -1823,6 +1838,8 @@ def scenario_tax_jasa(api):
     st, resp = api.create("purchase_order", {"vendor": "VND-0002", "tax_rate": 12, "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
     check("purchase_order from a non-PKP vendor with tax_rate 12 -> 422", st == 422 and any("bukan PKP" in m for m in messages(resp)), (st, resp))
     st, resp = api.create("vendor_bill", {"vendor": "VND-0002", "tax_rate": 12, "bill_no": "T-6", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
+    st, resp = api.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "T-8", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": -100_000}]})
+    check("vendor_bill with a negative line rate -> 422", st == 422 and any("Harga tidak boleh negatif" in m for m in messages(resp)), (st, resp))
     check("vendor_bill from a non-PKP vendor (no PO) with tax_rate 12 -> 422", st == 422 and any("bukan PKP" in m for m in messages(resp)), (st, resp))
     st, po0 = api.create("purchase_order", {"vendor": "VND-0001", "tax_rate": 0, "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
     st, resp = api.create("vendor_bill", {"vendor": "VND-0001", "purchase_order": po0["name"], "tax_rate": 12, "bill_no": "T-7", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
@@ -2623,7 +2640,7 @@ def setup_demo_fnb(api, k):
 
 
 SCENARIOS = {
-    "kopi-senja": [scenario_invoicing, scenario_permissions],
+    "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],

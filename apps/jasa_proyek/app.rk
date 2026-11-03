@@ -38,8 +38,9 @@ menu:
     items: [customer, vendor, item, uom, price_list, tax_code, currency]
 # Answers set the first defaults of a new installation (PKP decides tax_rate, the business line the sample items and terms).
 onboarding:
-  - ask: {id: 'Apakah perusahaan kamu PKP?'}
-    options: ['ya', 'tidak']
+  # tax.pkp is a boolean: the answers are its values (schema 0.5 options are strings, so they are quoted).
+  - ask: {id: 'Apakah perusahaan kamu PKP? (true = ya, false = tidak)'}
+    options: ['true', 'false']
     sets: tax.pkp
   - ask: {id: 'Apa bidang usaha kamu?'}
     options: [manpower, inspeksi, rental, training]

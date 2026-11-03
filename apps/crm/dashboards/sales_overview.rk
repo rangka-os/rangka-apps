@@ -18,8 +18,8 @@ widgets:
     label: {id: Piutang belum lunas}
     model: sales_invoice
     aggregate: sum
-    field: grand_total
-    filter: docstatus == 1 && paid_amount < grand_total
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0
     good_when: down
     compact: true
     span: 4
@@ -59,8 +59,8 @@ widgets:
     type: list
     label: {id: Faktur belum lunas}
     model: sales_invoice
-    filter: docstatus == 1 && paid_amount < grand_total
+    filter: docstatus == 1 && outstanding > 0
     sort: due_date
     limit: 5
-    columns: [name, customer, due_date, status, grand_total]
+    columns: [name, customer, due_date, status, outstanding]
     span: 12
