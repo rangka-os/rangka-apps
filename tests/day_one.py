@@ -482,8 +482,12 @@ def scenario_quotation(api):
 
     st, resp = api.create("quotation", {"customer": customer, "subject": "x", "valid_until": "2000-01-01", "items": [{"item": ndt}]})
     check("valid_until before quotation_date rejected", st == 422, (st, resp))
-    st, resp = api.create("quotation", {"customer": customer, "subject": "x", "discount_amount": 99_999_999_999, "items": [{"item": ndt}]})
-    check("discount above subtotal rejected", st == 422 and any("Diskon" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("quotation", {"customer": customer, "subject": "x", "discount_amount": 1_000_000, "items": [{"item": ndt, "qty": 1, "rate": 2_000_000}]})
+    check("quotation has no header discount: a discount_amount in the body is refused or ignored (dpp = subtotal)",
+          st >= 400 or (st == 201 and "discount_amount" not in resp and resp.get("dpp") == resp.get("subtotal") == 2_000_000), (st, resp))
+    for label, line in (("qty 0", {"qty": 0}), ("negative rate", {"rate": -1}), ("line discount above 100%", {"discount": 101}), ("negative line discount", {"discount": -5})):
+        st, resp = api.create("quotation", {"customer": customer, "subject": "x", "items": [dict({"item": ndt, "qty": 1, "rate": 1_000_000}, **line)]})
+        check(f"quotation line bounds: {label} -> 422", st == 422, (st, resp))
     st, resp = api.create("quotation", {"customer": customer, "subject": "x", "tax_rate": 0, "items": [{"item": ndt, "qty": 2, "rate": 1_000_000}]})
     eq("quotation without PPN: grand_total = dpp", (resp.get("ppn"), resp.get("grand_total")), (0, 2_000_000))
 
@@ -585,6 +589,34 @@ def scenario_quotation(api):
     st, resp = api.action("quotation", old, "new_revision")
     check("revise on the cancelled original after its amendment is submitted -> 409 already_revised",
           st == 409 and resp["error"]["code"] == "already_revised", (st, resp))
+
+
+def scenario_line_discount_chain(api):
+    """Review item 1: a quotation discounts per line only; the order and the invoice made from it carry the same DPP and total."""
+    customer = api.list("customer")[0]["name"]
+    ndt = services(api)[0]["name"]
+    st, q = api.create("quotation", {"customer": customer, "subject": "Diskon baris 10%", "items": [{"item": ndt, "qty": 10, "rate": 1_000_000, "discount": 10}]})
+    check("quotation with a 10% line discount: dpp 9.000.000, total 9.990.000", st == 201 and (q["dpp"], q["grand_total"]) == (9_000_000, 9_990_000), (st, q))
+    if st != 201:
+        return
+    st, resp = api.verb("quotation", q["name"], "submit")
+    qn = resp.get("name", q["name"])
+    st, resp = api.action("quotation", qn, "mark_outcome", {"outcome": "accepted"})
+    check("discount chain: quotation accepted", st == 200, (st, resp))
+    st, resp = api.action("quotation", qn, "make_order", {"po_number": "PO-DISKON-01", "po_date": "2026-11-03"})
+    check("discount chain: make_order opens a draft order", st == 200 and resp.get("open", {}).get("model") == "customer_order", (st, resp))
+    if st != 200:
+        return
+    order = api.get("customer_order", resp["open"]["name"])
+    eq("discount chain: order subtotal = quotation dpp (net line rate 900.000)", (order["subtotal"], order["items"][0]["rate"]), (9_000_000, 900_000))
+    st, resp = api.verb("customer_order", order["name"], "submit")
+    on = resp.get("name", order["name"])
+    st, resp = api.action("customer_order", on, "make_invoice")
+    check("discount chain: make_invoice opens a draft invoice", st == 200 and resp.get("open", {}).get("model") == "sales_invoice", (st, resp))
+    if st != 200:
+        return
+    inv = api.get("sales_invoice", resp["open"]["name"])
+    eq("discount chain: invoice dpp and grand_total equal the quotation's", (inv["dpp"], inv["grand_total"]), (q["dpp"], q["grand_total"]))
 
 
 def scenario_orders(api):
@@ -2302,7 +2334,7 @@ def setup_demo_fnb(api, k):
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing],
-    "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
+    "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_dashboards_jasa],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb],
 }
