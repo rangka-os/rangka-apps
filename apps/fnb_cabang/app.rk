@@ -34,6 +34,8 @@ onboarding:
     sets: seed.outlets
   - ask: {id: 'Outlet mana yang pakai Moka?'}
     sets: imports.moka_item_details.outlets
-  - ask: {id: 'Satuan apa yang kamu pakai untuk bahan baku?'}
-    options: [kg, gram, liter, pcs]
+  # Stock units are kg, liter or pcs: average cost is whole rupiah per stock unit, so a gram unit would round the cost of cheap
+  # materials (Rp 12,4/gram -> Rp 12). Grams and sacks enter as uom_conversion packings (Kernel gaps in docs/kernel-hooks.md).
+  - ask: {id: 'Satuan stok apa yang kamu pakai untuk bahan baku? (gram dan karung diisi sebagai kemasan)'}
+    options: [kg, liter, pcs]
     sets: item.stock_uom
