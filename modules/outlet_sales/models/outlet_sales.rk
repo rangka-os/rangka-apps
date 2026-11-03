@@ -1,0 +1,106 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: outlet_sales
+label: {id: Penjualan outlet harian, en: Daily outlet sales}
+icon: store
+is_submittable: true
+naming: SLS-{YYYY}-{#####}
+title_field: date
+# Created as a draft (by the daily form or by an import); stock moves only when head office or the outlet submits it.
+# stock.post_moves explodes each line through its active recipe, writes the line cogs and cogs_total, and refuses
+# a second submitted record for the same outlet and date when source is form (409 duplicate_sales).
+on_submit: [stock.post_moves]
+on_cancel: [stock.reverse_moves]
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, import: true, print: true}
+  - {role: outlet_staff, read: true, create: true, write: true, submit: true}
+fields:
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    required: true
+    in_list: true
+  - name: date
+    type: date
+    label: {id: Tanggal}
+    required: true
+    in_list: true
+  - name: source
+    type: select
+    label: {id: Sumber}
+    default: "'form'"
+    in_list: true
+    chip: true
+    options:
+      - {value: moka, label: {id: Moka}}
+      - {value: form, label: {id: Formulir harian}}
+  - name: note
+    type: data
+    label: {id: Catatan}
+  - name: lines
+    type: table
+    of: outlet_sales_line
+    label: {id: Barang terjual}
+    min_rows: 1
+  - name: qty_total
+    type: float
+    label: {id: Total qty}
+    compute: lines.map(l, l.qty).sum()
+  - name: gross_total
+    type: currency
+    label: {id: Penjualan kotor}
+    compute: lines.map(l, l.gross).sum()
+  - name: discount_total
+    type: currency
+    label: {id: Diskon}
+    compute: lines.map(l, l.discount).sum()
+  - name: refund_total
+    type: currency
+    label: {id: Retur}
+    compute: lines.map(l, l.refund).sum()
+  - name: net_total
+    type: currency
+    label: {id: Penjualan bersih}
+    compute: lines.map(l, l.net).sum()
+    in_list: true
+  - name: cogs_total
+    type: currency
+    label: {id: Harga pokok}
+    help: {id: 'Diisi sistem saat diajukan: bahan resep x rata-rata biaya'}
+    read_only: true
+    in_list: true
+  - name: margin
+    type: currency
+    label: {id: Margin}
+    compute: net_total - cogs_total
+    in_list: true
+rules:
+  - name: qty_not_negative
+    on: save
+    check: "lines.map(l, l.qty < 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah terjual tidak boleh negatif}
+  - name: discount_within_gross
+    on: save
+    check: "lines.map(l, l.discount > l.gross ? 1 : 0).sum() == 0"
+    message: {id: Diskon tidak boleh melebihi penjualan kotor}
+  - name: net_not_negative
+    on: save
+    check: "lines.map(l, l.net < 0 ? 1 : 0).sum() == 0"
+    message: {id: Penjualan bersih per baris tidak boleh negatif}
+views:
+  list:
+    columns: [name, outlet, date, source, status, net_total, cogs_total, margin]
+    filters: [outlet, source]
+    sort: -date
+  form:
+    layout:
+      - section: {id: Penjualan}
+        columns:
+          - [outlet, date, source]
+          - [note]
+      - section: {id: Barang terjual}
+        fields: [lines]
+      - section: {id: Ringkasan}
+        columns:
+          - [gross_total, discount_total, refund_total, net_total]
+          - [cogs_total, margin, qty_total]
