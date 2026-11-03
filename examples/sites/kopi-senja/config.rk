@@ -4,7 +4,7 @@ currency: IDR
 timezone: Asia/Jakarta
 tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: true}
 numbering:
-  sales_invoice: INV-{YYYY}-{#####}
+  invoice: {pattern: "INV-{YYYY}-{#####}", reset: yearly}
 apps: [crm]
 plan: tumbuh
 theme: kopi_senja

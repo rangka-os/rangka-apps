@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the experimental sidecars: modules/<m>/experimental/<model>.rk.
 
-A sidecar holds keys that the kernel does not read yet: {model, approvals, naming, fields, defaults}.
+A sidecar holds keys that the kernel cannot read yet: today only `defaults` (the org-PKP default, stream S5).
 Rules:
   - `model` equals the file stem and names a model in the same module (modules/<m>/models/<model>.rk)
   - every `fields[].name` is new to that model

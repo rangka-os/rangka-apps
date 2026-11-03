@@ -1,9 +1,12 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
-# Interim demo site for the project-services pilot: Task 10 completes it with the jasa_proyek app.
+# Interim demo site for the project-services pilot: Task 10 completes the jasa_proyek app it installs.
 locale: id-ID
 currency: IDR
 timezone: Asia/Jakarta
 tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: true}
+numbering:
+  invoice: {pattern: "INV/{ORG}/{YY}/{####}", reset: yearly}
+  purchase_order: {pattern: "PO/{ORG}/{YY}{MM}/{###}", reset: monthly}
 apps: [jasa_proyek]
 plan: tumbuh
 sso: {domains: [contohjasa.test], required: false}
