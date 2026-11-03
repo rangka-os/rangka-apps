@@ -5,14 +5,14 @@ Modules declare cross-record logic as **named hooks**. A hook is a Go function i
 automation's `do`) and lists its own hooks in `module.rk` `hooks:`. This file fixes what each hook must do, so
 the kernel implements it exactly and the modules can rely on it.
 
-Every hook named below is built in the kernel: S8c ([rangka-os#15](https://github.com/rangka-os/rangka-os/pull/15), merged) for the hooks, S8e ([rangka-os#24](https://github.com/rangka-os/rangka-os/pull/24), open) for two-step transfers and for reading `dpp`/`down_payment` in the ledger hooks. The `org` and `tax` CEL globals the modules rely on come from S8d ([rangka-os#20](https://github.com/rangka-os/rangka-os/pull/20), open). The code is `kernel/internal/engine/{ledger,conversions,stock,transfers}.go`. The kernel runs a hook inside the caller's transaction. A hook that is **not implemented** is handled like this:
+Every hook named below is built in the kernel: S8c ([rangka-os#15](https://github.com/rangka-os/rangka-os/pull/15), merged) for the hooks, S8e ([rangka-os#24](https://github.com/rangka-os/rangka-os/pull/24), merged) for two-step transfers and for reading `dpp`/`down_payment` in the ledger hooks. The `org` and `tax` CEL globals the modules rely on come from S8d ([rangka-os#20](https://github.com/rangka-os/rangka-os/pull/20), merged); all three are on rangka-os main 9c206b4, with S3 (prints render). The code is `kernel/internal/engine/{ledger,conversions,stock,transfers}.go`. The kernel runs a hook inside the caller's transaction. A hook that is **not implemented** is handled like this:
 
 - `on_submit` / `on_cancel`: the kernel records `hook.skipped` in the audit log (target `<model>/<name>`) and carries on,
   so the document is submitted without the side effect;
 - an action: the call returns `501 hook_not_implemented`;
 - an automation: `hook.skipped` in the audit log.
 
-`tests/day_one.py` reports each of these as a gap, not a failure. All hooks run in the document's transaction: an error
+On a kernel older than main 9c206b4 `tests/day_one.py` reports each of these as a failure: the streams are merged, so a skipped hook is a regression. All hooks run in the document's transaction: an error
 rolls the whole submit/cancel back. A refusal inside a hook is always `409` with the code named below, except the three argument checks that answer `422` (`po_required`, `vendor_required`, `outlet_required`). Money is whole rupiah and no hook consults an LLM.
 
 ## Foreign-currency documents
@@ -270,7 +270,7 @@ What the modules need that the kernel does not do yet. "Harness gap" is the chec
 | Prints get `.Links` for top-level link fields only, not for child rows | S3 | line `description` defaults to `item.item_name`, so prints show names; the line unit prints as its `uom` code (e.g. `UOM-004`) until child-row links reach templates | none |
 | Imports see only `row` in CEL (no `org`, no `tax`) | S7 | import rules cannot read the PPN rate or the org; the Moka and daily-form imports carry no tax logic | none (S7 is merged: a kernel without imports makes `Moka import: upload, preview, commit, duplicates` fail) |
 
-Only the rows above are `GAP` lines. `stock.post_moves` / `stock.reverse_moves` on `demo-jasa` (the `stock` module is optional for
+Only the rows above that name a harness gap are `GAP` lines. `stock.post_moves` / `stock.reverse_moves` on `demo-jasa` (the `stock` module is optional for
 `procurement` and not installed there) are checked as no-ops (`OK`); `demo-fnb` covers the moves. A setup failure, or a hook or endpoint of
 a stream merged on rangka-os main 9c206b4 (S2 approvals, S3 prints, S7 imports, S8a money, S8c/S8d/S8e hooks) that answers `501`,
 `hook.skipped` or `404`, is a `FAIL`, not a gap.
