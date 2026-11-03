@@ -91,8 +91,8 @@ fields:
   - name: tax_rate
     type: percent
     label: {id: Tarif PPN}
-    help: {id: 'Dari config tax.ppn_rate; 0 bila perusahaan bukan PKP. Tersimpan di dokumen.'}
-    default: "tax.pkp ? tax.ppn_rate : 0"
+    help: {id: 'Dari config tax.ppn_rate; 0 bila perusahaan bukan PKP atau faktur retensi (PPN sudah ditagih di faktur asal). Tersimpan di dokumen.'}
+    default: "kind == 'retention' ? 0 : (tax.pkp ? tax.ppn_rate : 0)"
   # Not read_only: a generic amend zeroes read-only fields, and a zero dpp_den would break ppn (kernel follow-up).
   - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num'}
   - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den'}
@@ -200,6 +200,11 @@ rules:
     on: save
     check: retention_of == '' || retention_of.docstatus == 1
     message: {id: Faktur asal retensi harus sudah disubmit dan tidak dibatalkan}
+  # The retained amount was taxed on the original invoice: releasing it charges no PPN again and cannot exceed what was retained.
+  - name: retention_within_origin
+    on: save
+    check: kind != 'retention' || retention_of == '' || (tax_rate == 0 && dpp <= retention_of.retention_amount)
+    message: {id: Faktur retensi tanpa PPN dan DPP-nya tidak boleh melebihi retensi yang ditahan di faktur asal}
   - name: retention_range
     on: save
     check: retention_percent >= 0 && retention_percent <= 20

@@ -411,8 +411,20 @@ def scenario_invoicing(api):
     st, draft = api.create("sales_invoice", invoice_body(customer, item))
     st, resp = api.create("sales_invoice", invoice_body(customer, item, kind="retention", retention_of=draft["name"]))
     check("retention_of a draft -> rule error", st == 422 and any("retensi" in m.lower() for m in messages(resp)), (st, resp))
-    st, resp = api.create("sales_invoice", invoice_body(customer, item, kind="retention", retention_of=dp_no))
-    check("retention_of a submitted invoice accepted", st == 201, (st, resp))
+    # review item 3: a retention invoice releases what the origin retained, without PPN again
+    st, base = api.create("sales_invoice", invoice_body(customer, item, retention_percent=5))
+    st, resp = api.verb("sales_invoice", base["name"], "submit", {"force": True})
+    origin = resp.get("name", base["name"])
+    eq("origin invoice retains 5% of 10.000.000", api.get("sales_invoice", origin)["retention_amount"], 500_000)
+    st, ret = api.create("sales_invoice", invoice_body(customer, item, rate=500_000, kind="retention", retention_of=origin))
+    check("retention invoice for the retained 500.000 accepted, tax_rate defaults to 0 and no PPN",
+          st == 201 and (ret["tax_rate"], ret["ppn"], ret["grand_total"]) == (0, 0, 500_000), (st, ret))
+    st, resp = api.create("sales_invoice", invoice_body(customer, item, rate=500_000, kind="retention", retention_of=origin, tax_rate=12))
+    check("retention invoice charging PPN again (tax_rate 12) -> 422", st == 422 and any("retensi" in m.lower() for m in messages(resp)), (st, resp))
+    st, resp = api.create("sales_invoice", invoice_body(customer, item, rate=50_000_000, kind="retention", retention_of=origin))
+    check("retention invoice of 100x the retained amount -> 422", st == 422 and any("melebihi retensi" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("sales_invoice", invoice_body(customer, item, rate=1_000, kind="retention", retention_of=dp_no))
+    check("retention invoice against an invoice that retained nothing -> 422", st == 422, (st, resp))
 
     # receivable hooks (core ledger hook and invoicing.reverse_receivable)
     before = api.get("customer", customer)["outstanding"]
