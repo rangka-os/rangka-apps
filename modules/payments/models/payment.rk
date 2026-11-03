@@ -1,0 +1,118 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/model.json
+name: payment
+label: {id: Pembayaran, en: Payment}
+icon: card
+is_submittable: true
+naming: PAY-{YYYY}-{#####}
+title_field: reference
+on_submit: [payments.allocate]
+on_cancel: [payments.unallocate]
+fields:
+  - name: direction
+    type: select
+    label: {id: Arah}
+    default: "'receive'"
+    required: true
+    in_list: true
+    chip: true
+    options:
+      - {value: receive, label: {id: Terima dari pelanggan}}
+      - {value: pay, label: {id: Bayar ke pemasok}}
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    depends_on: direction == 'receive'
+    in_list: true
+  - name: vendor
+    type: link
+    to: vendor
+    label: {id: Pemasok}
+    depends_on: direction == 'pay'
+  - name: payment_date
+    type: date
+    label: {id: Tanggal pembayaran}
+    default: today()
+    required: true
+    in_list: true
+  - name: method
+    type: select
+    label: {id: Metode}
+    default: "'transfer'"
+    options:
+      - {value: transfer, label: {id: Transfer}}
+      - {value: cash, label: {id: Tunai}}
+      - {value: giro, label: {id: Giro}}
+      - {value: other, label: {id: Lainnya}}
+  - name: reference
+    type: data
+    label: {id: No. bukti/transfer}
+  - name: amount
+    type: currency
+    label: {id: Jumlah uang}
+    required: true
+    in_list: true
+  - name: allocations
+    type: table
+    of: payment_allocation
+    label: {id: Alokasi ke tagihan}
+  - name: allocated_total
+    type: currency
+    label: {id: Total alokasi}
+    compute: allocations.map(a, a.amount).sum()
+  - name: withheld_total
+    type: currency
+    label: {id: Total PPh 23 dipotong}
+    compute: allocations.map(a, a.withheld).sum()
+  - name: unallocated
+    type: currency
+    label: {id: Belum dialokasikan}
+    compute: amount - allocated_total
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: amount_positive
+    on: save
+    check: amount > 0
+    message: {id: Jumlah pembayaran harus lebih dari 0}
+  - name: allocated_within_amount
+    on: save
+    check: allocated_total <= amount
+    message: {id: Alokasi melebihi jumlah pembayaran}
+  - name: receive_needs_customer
+    on: save
+    check: direction != 'receive' || customer != ''
+    message: {id: Pilih pelanggan}
+  # Procurement (Task 7) extends this with the vendor_bill link; until then direction pay only needs the vendor.
+  - name: pay_needs_vendor
+    on: save
+    check: direction != 'pay' || vendor != ''
+    message: {id: Pilih pemasok}
+  # `all` is not in the validators' CEL subset yet (map and sum only), so "every row" is "no violating row".
+  - name: allocation_within_outstanding
+    on: save
+    check: "allocations.map(a, a.amount + a.withheld > a.outstanding ? 1 : 0).sum() == 0"
+    message: {id: Alokasi melebihi sisa tagihan}
+  - name: allocation_has_target
+    on: save
+    check: "direction != 'receive' || allocations.map(a, a.sales_invoice == '' ? 1 : 0).sum() == 0"
+    message: {id: Pilih faktur untuk setiap baris alokasi}
+views:
+  list:
+    columns: [name, direction, customer, payment_date, status, amount, unallocated]
+    sort: -payment_date
+  form:
+    layout:
+      - section: {id: Pembayaran}
+        columns:
+          - [direction, customer, vendor, payment_date]
+          - [method, reference, amount]
+      - section: {id: Alokasi}
+        fields: [allocations]
+      - section: {id: Ringkasan}
+        columns:
+          - [allocated_total, withheld_total, unallocated]
+      - section: {id: Catatan}
+        fields: [notes]

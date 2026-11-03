@@ -2,12 +2,12 @@
 plans:
   - name: mulai
     label: {id: Mulai, en: Starter}
-    apps: [contacts, catalogue, users, outlets, tax_id, currency, invoicing, quotation, orders, workforce, projects]
+    apps: [contacts, catalogue, users, outlets, tax_id, currency, invoicing, quotation, orders, workforce, projects, payments]
     capabilities: [realtime, queue, scheduler, files, search, notify_email, api]
     limits: {users: 3, outlets: 1, storage_mb: 1024, ai_credits_month: 200}
   - name: tumbuh
     label: {id: Tumbuh, en: Growth}
     extends: mulai
-    apps: [contacts, catalogue, users, outlets, tax_id, currency, invoicing, quotation, orders, workforce, projects]
+    apps: [contacts, catalogue, users, outlets, tax_id, currency, invoicing, quotation, orders, workforce, projects, payments]
     capabilities: [realtime, queue, scheduler, files, search, notify_email, notify_whatsapp, api, mcp, ai, sso]
     limits: {users: 15, outlets: 5, storage_mb: 10240, ai_credits_month: 2000}
