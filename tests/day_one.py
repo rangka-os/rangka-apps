@@ -1481,7 +1481,7 @@ def scenario_tax_jasa(api):
         for label, extra in (("dpp_den 0", {"dpp_den": 0}), ("dpp_num above dpp_den", {"dpp_num": 13}), ("tax_rate 120", {"tax_rate": 120}), ("tax_rate -1", {"tax_rate": -1})):
             st, resp = api.create(model, dict(body, **extra))
             check(f"{model} with {label} -> 422 'Tarif PPN atau faktor DPP tidak valid'", st == 422 and any("faktor DPP tidak valid" in m for m in messages(resp)), (st, resp))
-    # ledger.post_receivable guard (reads the old twin names dp_deduction / dpp_base): two deductions of 2.000.000 from a 3.000.000 DP
+    # ledger.post_receivable guard (reads down_payment and dpp): two deductions of 2.000.000 from a 3.000.000 DP
     st, dp = api.create("sales_invoice", invoice_body(customer, ndt, rate=3_000_000, kind="down_payment"))
     st, resp = api.verb("sales_invoice", dp["name"], "submit", {"force": True})
     dpn = resp.get("name", dp["name"])
@@ -1516,15 +1516,16 @@ def ppn_rate_11_variant():
     """A site whose PKP org sets tax ppn_rate 11: documents get 11, ppn = round(10.000.000 x 11/12 x 11/100) = 1.008.333, the print shows 11%,
     and after the config goes back to 12 the submitted invoice keeps 11 while a new one gets 12."""
     import shutil
-    state = tempfile.mkdtemp(prefix="day-one-ppn11-")
-    site_dir = os.path.join(state, "site")
-    shutil.copytree(os.path.join(ROOT, "examples", "sites", "demo-jasa"), site_dir)
-    cfg = os.path.join(site_dir, "config.rk")
-    text = open(cfg).read()
-    assert "      tax: {pkp: true}" in text
-    open(cfg, "w").write(text.replace("      tax: {pkp: true}", "      tax: {pkp: true, ppn_rate: 11}"))
-    k = Kernel("demo-jasa", state, site_dir=site_dir)
+    state, k = None, None
     try:
+        state = tempfile.mkdtemp(prefix="day-one-ppn11-")
+        site_dir = os.path.join(state, "site")
+        shutil.copytree(os.path.join(ROOT, "examples", "sites", "demo-jasa"), site_dir)
+        cfg = os.path.join(site_dir, "config.rk")
+        text = open(cfg).read()
+        assert "      tax: {pkp: true}" in text
+        open(cfg, "w").write(text.replace("      tax: {pkp: true}", "      tax: {pkp: true, ppn_rate: 11}"))
+        k = Kernel("demo-jasa", state, site_dir=site_dir)
         k.start()
         api = Api(k.base)
         customer, ndt = "CUST-0001", services(api)[0]["name"]
@@ -1546,8 +1547,10 @@ def ppn_rate_11_variant():
         st, inv12 = api.create("sales_invoice", invoice_body(customer, ndt))
         eq("config back to 12: a new invoice gets 12", (inv12.get("tax_rate"), inv12.get("ppn")), (12, 1_100_000))
     finally:
-        k.stop()
-        shutil.rmtree(state, ignore_errors=True)
+        if k is not None:
+            k.stop()
+        if state is not None:
+            shutil.rmtree(state, ignore_errors=True)
 
 
 # ---------- scenarios: dashboards (computed by the kernel, compared with figures computed here from the records)
@@ -1818,15 +1821,85 @@ def scenario_stock(api):
     receive(api, DAGO, [{"item": m, "qty": 50, "rate": 15000}], "receipt 50 kg at 15.000")
     check_balance("receipt 50 kg at 15.000: 150 kg, value 1.950.000, avg 13.000", api, DAGO, m, 150, 1_950_000, 13_000)
 
-    # transfer 30 kg Dago -> Braga
+    # transfer 30 kg Dago -> Braga in two steps: head office sends, Braga's staff receive (20 kg, then 10 kg)
+    braga = CTX.get("staff_braga") or api
+    dago_staff = CTX.get("staff_dago") or api
+    if CTX.get("staff_braga") is None:
+        gap("Braga's staff receive the transfer (outlet_staff session)", "harness", f"could not sign in as a non-owner: {CTX.get('login_error')}")
     st, tr = api.create("stock_transfer", {"from_outlet": DAGO, "to_outlet": BRAGA, "items": [{"item": m, "qty": 30}]})
     check("create transfer 30 kg", st == 201, tr)
     trn = submit_doc(api, "stock_transfer", tr["name"], "submit transfer 30 kg")
-    check_balance("transfer 30 kg: from-outlet 120 kg at 13.000", api, DAGO, m, 120, 1_560_000, 13_000)
-    check_balance("transfer 30 kg: to-outlet 30 kg at 13.000", api, BRAGA, m, 30, 390_000, 13_000)
+    check_balance("transfer 30 kg sent: from-outlet 120 kg at 13.000", api, DAGO, m, 120, 1_560_000, 13_000)
+    check("transfer 30 kg sent: to-outlet holds nothing yet (goods in transit)", balance(api, BRAGA, m) is None, balance(api, BRAGA, m))
     mv = moves_of(api, trn)
-    check("transfer makes transfer_out -30 / -390.000 and transfer_in +30 / +390.000",
-          sorted((x["reason"], x["qty"], x["value"], x["outlet"]) for x in mv) == [("transfer_in", 30, 390_000, BRAGA), ("transfer_out", -30, -390_000, DAGO)], mv)
+    check("sending makes one move: transfer_out -30 / -390.000 at Dago", [(x["reason"], x["qty"], x["value"], x["outlet"]) for x in mv] == [("transfer_out", -30, -390_000, DAGO)], mv)
+    t = api.get("stock_transfer", trn)
+    check("transfer state in_transit, line unit_cost 13.000, received_qty 0",
+          t["state"] == "in_transit" and t["items"][0]["unit_cost"] == 13_000 and t["items"][0]["received_qty"] == 0, t)
+    st, resp = braga.call("GET", f"/api/v1/r/stock_transfer/{Api.q(trn)}")
+    check("Braga's staff read the incoming transfer (to_outlet is in scope)", st == 200, (st, resp))
+    st, r0 = braga.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": BRAGA, "items": [{"item": m, "qty": 31}]})
+    check("Braga's staff create a receipt of 31 kg", st == 201, (st, r0))
+    if st == 201:
+        st, resp = braga.verb("stock_transfer_receipt", r0["name"], "submit")
+        check("receiving 31 of 30 kg -> 409 over_receipt", st == 409 and resp["error"]["code"] == "over_receipt", (st, resp))
+    # receipt by the sending outlet's staff: outlet Dago is not the transfer's to_outlet
+    st, r1 = dago_staff.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": DAGO, "items": [{"item": m, "qty": 5}]})
+    check("Dago's staff create a receipt with outlet Dago (their own outlet)", st == 201, (st, r1))
+    if st == 201:
+        st, resp = dago_staff.verb("stock_transfer_receipt", r1["name"], "submit")
+        check("receipt by the sending outlet -> 409 wrong_outlet", st == 409 and resp["error"]["code"] == "wrong_outlet", (st, resp))
+    st, resp = dago_staff.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": BRAGA, "items": [{"item": m, "qty": 5}]})
+    check("Dago's staff create a receipt with outlet Braga -> 403 (row scope)", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+    st, r2 = braga.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": BRAGA, "items": [{"item": m, "qty": 20}]})
+    check("create receipt of 20 kg", st == 201, (st, r2))
+    rn1 = submit_doc(braga, "stock_transfer_receipt", r2["name"], "Braga's staff submit the receipt of 20 kg")
+    check_balance("after 20 kg received: Braga 20 kg / 260.000 at 13.000", api, BRAGA, m, 20, 260_000, 13_000)
+    t = api.get("stock_transfer", trn)
+    check("state partly_received, received_qty 20", t["state"] == "partly_received" and t["items"][0]["received_qty"] == 20, t)
+    st, r3 = braga.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": BRAGA, "items": [{"item": m, "qty": 10}]})
+    check("create receipt of 10 kg", st == 201, (st, r3))
+    rn2 = submit_doc(braga, "stock_transfer_receipt", r3["name"], "Braga's staff submit the receipt of 10 kg")
+    check_balance("after 10 kg more: Braga 30 kg / 390.000 at 13.000 (the brief's numbers hold after the receipt)", api, BRAGA, m, 30, 390_000, 13_000)
+    ins = [x for n in (rn1, rn2) for x in moves_of(api, n)]
+    check("receipts make transfer_in moves at Braga whose values add up to the out-value (390.000)",
+          sorted((x["reason"], x["qty"], x["outlet"]) for x in ins) == [("transfer_in", 10, BRAGA), ("transfer_in", 20, BRAGA)] and sum(x["value"] for x in ins) == 390_000, ins)
+    t = api.get("stock_transfer", trn)
+    check("state received, received_qty 30", t["state"] == "received" and t["items"][0]["received_qty"] == 30, t)
+    st, r4 = braga.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": BRAGA, "items": [{"item": m, "qty": 1}]})
+    if st == 201:
+        st, resp = braga.verb("stock_transfer_receipt", r4["name"], "submit")
+        check("a receipt after full receipt -> 409 not_in_transit", st == 409 and resp["error"]["code"] == "not_in_transit", (st, resp))
+    st, resp = api.verb("stock_transfer", trn, "cancel")
+    check("cancelling a transfer that has receipts -> 409 has_receipts", st == 409 and resp["error"]["code"] == "has_receipts", (st, resp))
+
+    # receipts and transfers cancel exactly, on outlets of their own
+    src, dst = new_outlet(api, "Outlet uji kirim"), new_outlet(api, "Outlet uji terima")
+    receive(api, src, [{"item": m, "qty": 100, "rate": 12000}], "receipt 100 kg at 12.000 (sender)")
+    st, tc = api.create("stock_transfer", {"from_outlet": src, "to_outlet": dst, "items": [{"item": m, "qty": 40}]})
+    tcn = submit_doc(api, "stock_transfer", tc["name"], "submit transfer 40 kg (cancel test)") if st == 201 else None
+    check_balance("sender holds 60 kg / 720.000 at 12.000", api, src, m, 60, 720_000, 12_000)
+    ra = rb = None
+    for qty in (25, 15):
+        st, rc = api.create("stock_transfer_receipt", {"stock_transfer": tcn, "outlet": dst, "items": [{"item": m, "qty": qty}]})
+        name = submit_doc(api, "stock_transfer_receipt", rc["name"], f"submit receipt of {qty} kg") if st == 201 else None
+        ra, rb = (name, rb) if ra is None else (ra, name)
+    check_balance("receiver holds 40 kg / 480.000 at 12.000", api, dst, m, 40, 480_000, 12_000)
+    st, resp = api.verb("stock_transfer_receipt", rb, "cancel")
+    check("cancel the second receipt", st == 200, (st, resp))
+    check_balance("receipt cancel is an exact reverse: receiver 25 kg / 300.000", api, dst, m, 25, 300_000, 12_000)
+    rv = [x for x in moves_of(api, rb) if x["reason"] == "reversal"]
+    check("the cancel wrote one reversal move (-15 kg, -180.000) at the receiver", len(rv) == 1 and rv[0]["qty"] == -15 and rv[0]["value"] == -180_000 and rv[0]["outlet"] == dst, rv)
+    t = api.get("stock_transfer", tcn)
+    check("state back to partly_received, received_qty 25", t["state"] == "partly_received" and t["items"][0]["received_qty"] == 25, t)
+    st, resp = api.verb("stock_transfer_receipt", ra, "cancel")
+    check("cancel the first receipt", st == 200, (st, resp))
+    check_balance("receiver back to 0 kg / 0", api, dst, m, 0, 0, 12_000)
+    t = api.get("stock_transfer", tcn)
+    check("state back to in_transit", t["state"] == "in_transit" and t["items"][0]["received_qty"] == 0, t)
+    st, resp = api.verb("stock_transfer", tcn, "cancel")
+    check("with no receipt left the transfer cancels", st == 200, (st, resp))
+    check_balance("sender restored to 100 kg / 1.200.000 at 12.000", api, src, m, 100, 1_200_000, 12_000)
 
     # sale of 300 portions on an outlet holding 20 kg (recipe 0.1 kg per portion)
     neg = new_outlet(api, "Outlet uji minus")
@@ -1975,15 +2048,15 @@ def scenario_stock_access(api):
     st, resp = dago.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-05", "lines": [{"item": "BRG-0007", "qty": 1}]})
     check("outlet_staff (Dago) creates outlet_sales for Braga -> 403", st == 403, (st, resp))
 
-    # transfer scope (contract 0010 §5): the scope lists [outlet, from_outlet, to_outlet]; reading needs one field in `from`, writing needs
-    # every field that holds a value in `from` (S5 scope-on-writes), so a Dago member can neither pull stock out of Braga nor push it into Braga
+    # transfers (contract 0010 §5): the scope lists [outlet, from_outlet, to_outlet], so outlets read transfers in and out of their outlet; only head
+    # office creates them (outlet_staff has read only), and outlets receive goods with a stock_transfer_receipt of their own outlet
     st, resp = dago.create("stock_transfer", {"from_outlet": BRAGA, "to_outlet": DAGO, "items": [{"item": m, "qty": 1}]})
     check("outlet_staff (Dago) creates a stock_transfer from Braga (to Dago) -> 403 permission_denied",
           st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
     st, resp = dago.create("stock_transfer", {"from_outlet": BRAGA, "to_outlet": HO, "items": [{"item": m, "qty": 1}]})
     check("outlet_staff (Dago) creates a stock_transfer from Braga to head office (neither side is Dago) -> 403", st == 403, (st, resp))
     st, resp = dago.create("stock_transfer", {"from_outlet": DAGO, "to_outlet": BRAGA, "items": [{"item": m, "qty": 1}]})
-    check("outlet_staff (Dago) creates a stock_transfer from Dago to Braga -> 403 permission_denied (every outlet field must be in scope)",
+    check("outlet_staff (Dago) creates a stock_transfer from Dago to Braga -> 403 permission_denied (outlet_staff has read only on transfers)",
           st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
     st, braga_sales = api.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
     check("setup: owner creates a draft outlet_sales for Braga", st == 201, (st, braga_sales))
