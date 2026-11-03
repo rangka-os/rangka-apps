@@ -58,7 +58,7 @@ rolls the whole submit/cancel back. Money is whole rupiah and no hook consults a
 ## payments
 
 Both hooks run in the payment's submit/cancel transaction. They work per allocation row, in `idx` order, on the
-`sales_invoice` (direction `receive`) or, once procurement exists, the `vendor_bill` (direction `pay`).
+`sales_invoice` (direction `receive`) or the `vendor_bill` (direction `pay`).
 
 ### `payments.allocate` (`payment.on_submit`)
 - **Reads:** the payment (`direction`, `customer`/`vendor`, `amount`, `currency`/`exchange_rate` when the money sidecar is live) and its allocation rows (`sales_invoice`, `amount`, `withheld`).
@@ -84,12 +84,59 @@ Both hooks run in the payment's submit/cancel transaction. They work per allocat
 ### Not checkable in a rule
 - The rules compare each row's entry-time `outstanding` snapshot. Two payments drafted against the same invoice, or two rows on the same invoice, each pass their rule alone; only this hook catches them (`over_allocation` on the one submitted second).
 - `withholding` (bukti potong) is a record only: it does not move money. The deduction itself is the allocation row's `withheld`.
-- `vendor_bill` allocation (direction `pay`) activates with procurement: the payments sidecar `experimental/payment_allocation.rk` adds the link.
+- `vendor_bill` allocation (direction `pay`) is live: `payment_allocation.vendor_bill` is a model field, the rule `allocation_has_target` makes a `receive` row name only a `sales_invoice` and a `pay` row only a `vendor_bill`, and the row's `outstanding` default reads the bill's. A site that installs payments must also install procurement, because the link needs the `vendor_bill` model.
 
 ### Kernel gap for S3 (print helper `aging`)
 Contract 0008's `aging` helper buckets `grand_total - paid_amount`. For an invoice with PPh 23 or retention that is more than the amount
 the customer still owes, which is `outstanding` (`amount_due - paid_amount`). The statement format therefore sums its buckets in the template from `outstanding`.
 S3 should make `aging` use `outstanding` when the model has that field.
+
+## procurement
+
+Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill` -> `payment` (direction `pay`). The money fields are IDR; the
+`currency`/`exchange_rate`/`*_fx` money twins sit in the sidecars `modules/procurement/experimental/` (S8a).
+
+### `procurement.post_payable` (`vendor_bill.on_submit`)
+- **Reads:** the bill (`vendor`, `amount_due`).
+- **Writes:** `vendor.outstanding += amount_due`. `paid_amount` stays 0 until `payments.allocate` runs for a `pay` payment.
+- **Refuses:** nothing beyond the model's rules (`bill_no` and a repeated `bill_no` for the same vendor are not checked here; see below).
+- **Idempotency:** once per submit.
+
+### `procurement.reverse_payable` (`vendor_bill.on_cancel`)
+- **Refuses:** `409 has_payments` when `paid_amount > 0` (cancel the payment first), as `invoicing.reverse_receivable` does.
+- **Writes:** `vendor.outstanding -= (amount_due - paid_amount)`, the exact inverse of `post_payable`.
+
+### `procurement.make_po` (action `make_po` on `purchase_request`; gate `docstatus == 1 && state == 'open'`)
+- **Args (call body):** `{vendor}`. **The hook leaves the vendor to the user, but `purchase_order.vendor` is required,** so a draft cannot exist
+  without it: the action takes the vendor from the call body, like `orders.from_quotation` takes the PO number, and answers
+  `422 vendor_required` when it is missing or names no vendor. The hook never picks a vendor.
+- **Reads:** the request and its lines.
+- **Writes:** a **draft** `purchase_order` with `vendor` (from the args), `purchase_request`, `outlet`, and one line per request line (`item`, `qty`,
+  `uom`, `packing`, `rate = est_rate`); sets the request's `state = ordered`. Returns `{open: {model: purchase_order, name}}`.
+- **Order of checks:** `vendor_required` first, then the reuse of a draft.
+- **Idempotency:** reuses an existing **draft** PO with `purchase_request = <request>` and returns it; once the state is `ordered` the gate answers
+  `409 action_not_allowed`. Cancelling the PO does not reopen the request (the user sets it back by amending the request).
+- **Refuses:** `422 vendor_required`; `409 not_open` past the gate.
+
+### `procurement.receive` (action `receive` on `purchase_order`; gate `docstatus == 1 && received_pct < 100`)
+- **Reads:** the PO and its lines (`qty`, `received_qty`).
+- **Writes:** a **draft** `goods_receipt` with `vendor`, `outlet`, `purchase_order` and, per line whose `received_qty < stock_qty`, the not-yet-received
+  remainder: `qty` is the remainder in the line's own unit (`(stock_qty - received_qty) / factor` when `packing` is set), `uom`, `packing`, `rate` as ordered.
+  Returns `{open: {model: goods_receipt, name}}`. `received_qty` and `received_pct` are written on goods_receipt **submit** by `stock.post_moves`, not here.
+- **Idempotency:** reuses an existing draft goods receipt for the PO.
+- **Refuses:** `409 nothing_to_receive` when every line is fully received; `409 order_not_submitted` past the gate.
+
+### `stock.post_moves` / `stock.reverse_moves` on `goods_receipt`
+- Declared by the model (`on_submit: [stock.post_moves]`, `on_cancel: [stock.reverse_moves]`) and implemented with the stock module (Task 8); the semantics of the
+  moves are in the stock section. For a goods receipt the hook also adds each line's `stock_qty` to the PO line's `received_qty` and sets the PO's
+  `received_pct = round(sum(received_qty) / sum(stock_qty) * 100)` (capped at 100). Reversal subtracts the same.
+  Until the stock module exists the kernel records `hook.skipped` and the receipt is only a document.
+- `stock.reverse_moves` is not a core hook, so `procurement/app.rk` lists it in `hooks:`.
+
+### Not checkable in a rule
+- A `packing` must belong to the line's `item` (`uom_conversion.item == item`): CEL does not evaluate link lookups inside `map`, so no model rule can check it. Suggested hardening, not in the S8c plan: the hooks that read the line (`stock.post_moves`, `procurement.receive`) refuse `422 packing_mismatch`.
+- A vendor's `bill_no` should be unique per vendor; suggested hardening, not in the S8c plan: `procurement.post_payable` refuses `409 duplicate_bill` when another submitted bill of the same vendor has it.
+- A receipt larger than the PO's remainder: `stock.post_moves` accepts it (over-delivery happens) but caps `received_pct` at 100.
 
 ## quotation
 

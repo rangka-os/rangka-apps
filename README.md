@@ -30,6 +30,7 @@ the menu, dashboards, home and onboarding. Apps define no models.
 | `orders` | contacts, catalogue (optional: quotation) | `customer_order` (+ `customer_order_item`): customer PO, action `make_invoice` |
 | `workforce` | none | `worker`, `certification` (expiry flag) |
 | `projects` | contacts, users, workforce (optional: orders) | `project`, `assignment`, `timesheet`, `acceptance` (berita acara); role `project_admin` |
+| `procurement` | contacts, catalogue (optional: outlets, users, currency, stock) | `purchase_request`, `purchase_order`, `goods_receipt`, `vendor_bill` (+ line models): approval above Rp 5.000.000 (sidecar), print *Pesanan pembelian*, actions `make_po` and `receive`; role `purchasing_manager` |
 | `pipeline` | contacts, users | `lead`, `deal`, `activity`, flows `whatsapp_to_lead` and `morning_follow_up`, roles `sales_rep` and `sales_manager` |
 
 | App | Modules | Also |
