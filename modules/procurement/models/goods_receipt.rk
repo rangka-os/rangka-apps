@@ -50,6 +50,14 @@ fields:
     type: text
     label: {id: Catatan}
 rules:
+  - name: po_same_vendor
+    on: save
+    check: purchase_order == '' || purchase_order.vendor == vendor
+    message: {id: Pesanan pembelian harus dari pemasok yang sama}
+  - name: po_same_outlet
+    on: save
+    check: purchase_order == '' || purchase_order.outlet == '' || purchase_order.outlet == outlet
+    message: {id: Barang harus diterima di outlet tujuan pesanan pembelian}
   - name: qty_positive
     on: save
     check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"

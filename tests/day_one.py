@@ -631,6 +631,47 @@ def scenario_line_discount_chain(api):
     eq("discount chain: invoice dpp and grand_total equal the quotation's", (inv["dpp"], inv["grand_total"]), (q["dpp"], q["grand_total"]))
 
 
+def scenario_cross_links(api):
+    """Review item 5: an invoice points only at documents of its own customer; a vendor bill and a goods receipt only at their vendor's PO."""
+    ndt = services(api)[0]["name"]
+    a, b = "CUST-0001", "CUST-0002"
+
+    def refused(label, model, body, word):
+        st, resp = api.create(model, body)
+        check(f"{label} -> 422", st == 422 and any(word in m for m in messages(resp)), (st, resp))
+
+    def submitted(body):
+        st, d = api.create("sales_invoice", body)
+        st, resp = api.verb("sales_invoice", d["name"], "submit", {"force": True})
+        return resp.get("name", d["name"])
+    dp_b = submitted(invoice_body(b, ndt, rate=3_000_000, kind="down_payment"))
+    refused("invoice of CUST-0001 deducting the DP of CUST-0002", "sales_invoice", invoice_body(a, ndt, dp_invoice=dp_b, down_payment=3_000_000), "Faktur uang muka harus milik")
+    ret_b = submitted(invoice_body(b, ndt, retention_percent=5))
+    refused("retention invoice of CUST-0001 for an invoice of CUST-0002", "sales_invoice", invoice_body(a, ndt, rate=500_000, kind="retention", retention_of=ret_b), "Faktur asal retensi harus milik")
+    st, so = api.create("customer_order", {"customer": b, "po_number": "PO-LAIN", "po_date": "2026-11-03", "items": [{"item": ndt}]})
+    refused("invoice of CUST-0001 on an order of CUST-0002", "sales_invoice", invoice_body(a, ndt, customer_order=so["name"]), "Pesanan pelanggan harus milik")
+    st, pj = api.create("project", {"project_name": "Proyek pelanggan lain", "customer": b, "site": "Serang"})
+    refused("invoice of CUST-0001 on a project of CUST-0002", "sales_invoice", invoice_body(a, ndt, project=pj["name"]), "Proyek harus milik")
+    st, ac = api.create("acceptance", {"project": pj["name"], "accepted_on": "2026-11-03", "accepted_by": "Pak Contoh", "scope": "Inspeksi tahap 1", "amount": 1_000_000})
+    check("setup: an acceptance on the project of CUST-0002", st == 201, (st, ac))
+    if st == 201:
+        refused("invoice of CUST-0001 on an acceptance of a CUST-0002 project", "sales_invoice", invoice_body(a, ndt, acceptance=ac["name"]), "Berita acara harus")
+        st, ok_inv = api.create("sales_invoice", invoice_body(b, ndt, project=pj["name"], acceptance=ac["name"], customer_order=so["name"]))
+        check("invoice of CUST-0002 on its own order, project and acceptance accepted", st == 201, (st, ok_inv))
+    # purchase side
+    st, po = api.create("purchase_order", {"vendor": "VND-0001", "outlet": "OUT-01", "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
+    refused("vendor_bill of VND-0002 against a PO of VND-0001", "vendor_bill",
+            {"vendor": "VND-0002", "purchase_order": po["name"], "bill_no": "X-1", "bill_date": "2026-11-03", "tax_rate": 0, "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]}, "pemasok yang sama")
+    refused("goods_receipt of VND-0002 against a PO of VND-0001", "goods_receipt",
+            {"vendor": "VND-0002", "purchase_order": po["name"], "outlet": "OUT-01", "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]}, "pemasok yang sama")
+    st, out2 = api.create("outlet", {"outlet_name": "Gudang uji lain", "code": "UJ2"})
+    refused("goods_receipt at another outlet than the PO's", "goods_receipt",
+            {"vendor": "VND-0001", "purchase_order": po["name"], "outlet": out2.get("name"), "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]}, "outlet tujuan")
+    st, gr = api.create("goods_receipt", {"vendor": "VND-0001", "outlet": "OUT-01", "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
+    refused("vendor_bill of VND-0002 on a goods receipt of VND-0001", "vendor_bill",
+            {"vendor": "VND-0002", "goods_receipt": gr["name"], "bill_no": "X-2", "bill_date": "2026-11-03", "tax_rate": 0, "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]}, "pemasok yang sama")
+
+
 def scenario_orders(api):
     customer, other = api.list("customer")[0]["name"], api.list("customer")[1]["name"]
     ndt = services(api)[0]["name"]
@@ -2520,7 +2561,7 @@ def setup_demo_fnb(api, k):
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_permissions],
-    "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
+    "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_permissions],
 }
