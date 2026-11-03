@@ -591,8 +591,8 @@ def scenario_payments(api):
     eq("payment unallocated 0", p["unallocated"], 0)
     check("allocation row snapshots outstanding", p["allocations"][0]["outstanding"] == 11_100_000, p["allocations"])
     # a second draft against the same invoice, created before either is submitted: each passes its rules alone
-    st, pb = pay(1_000_000, [(inv1, 1_000_000, 0)])
-    check("draft second payment against the same invoice passes its rules", st == 201, (st, pb))
+    st_pb, pb = pay(1_000_000, [(inv1, 1_000_000, 0)])
+    check("draft second payment against the same invoice passes its rules", st_pb == 201, (st_pb, pb))
     st, resp = api.verb("payment", p["name"], "submit")
     check("submit payment passes the rules", st == 200, (st, resp))
     pname = resp.get("name", p["name"])
@@ -611,7 +611,7 @@ def scenario_payments(api):
         eq("applied_idr written on the rows", [r["applied_idr"] for r in rows], [11_100_000, 3_900_000])
         if hooked:
             eq("customer outstanding dropped by 15.000.000", api.get("customer", customer)["outstanding"], cust_before - 15_000_000)
-        if st == 201 and isinstance(pb, dict):
+        if st_pb == 201:
             st, resp = api.verb("payment", pb["name"], "submit")
             check("second payment on the same invoice: 409 over_allocation 'Alokasi melebihi sisa tagihan'",
                   st == 409 and resp["error"]["code"] == "over_allocation" and "Alokasi melebihi sisa tagihan" in resp["error"]["message"], (st, resp))
@@ -633,6 +633,26 @@ def scenario_payments(api):
     st, resp = pay(10_900_000, [(inv3, 10_700_000, 200_000)])
     check("withheld on a pph23 invoice -> 422 'PPh 23 sudah dipotong di faktur ini'",
           st == 422 and any("PPh 23 sudah dipotong" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("payment", {"direction": "receive", "customer": customer, "amount": 10_900_000,
+                                      "allocations": [{"sales_invoice": inv3, "amount": 10_700_000, "withheld": 200_000, "pph23_applies": False}]})
+    if st == 201:
+        row = resp["allocations"][0]
+        stored = row.get("pph23_applies") in (True, "true")
+        if stored:
+            ok("client-supplied pph23_applies=false is ignored: row stores true")
+        else:
+            gap("client-supplied pph23_applies=false on a row is ignored", "kernel (read_only on child-row fields)",
+                "kernel stores the client value, so the row rule passes; payments.allocate must refuse with 409 pph23_already_deducted from the stored invoice")
+            st2, r2 = api.verb("payment", resp["name"], "submit")
+            if skipped(api, "payments.allocate", f"payment/{r2.get('name', resp['name'])}") if st2 == 200 else False:
+                gap("payments.allocate refuses withheld on a pph23 invoice (409 pph23_already_deducted)", "kernel (S8c hooks)", "hook.skipped in the audit log")
+            else:
+                check("hook refuses the bypassed row: 409 pph23_already_deducted", st2 == 409 and r2["error"]["code"] == "pph23_already_deducted", (st2, r2))
+                if st2 == 200:
+                    api.verb("payment", r2["name"], "cancel")
+    else:
+        check("client-supplied pph23_applies=false on a row does not bypass the rule -> 422 'PPh 23 sudah dipotong'",
+              st == 422 and any("PPh 23 sudah dipotong" in m for m in messages(resp)), (st, resp))
     st, p2 = pay(10_900_000, [(inv3, 10_900_000, 0)])
     check("payment of 10.900.000 cash on the pph23 invoice", st == 201, (st, p2))
     if st == 201:
@@ -666,8 +686,6 @@ def scenario_payments(api):
     # USD payment: conversion happens once at the header (amount = round(amount_fx x exchange_rate)); rows are IDR
     inv5 = submitted_invoice(10_000_000)
     st, usd = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 16000, "amount_fx": 1000, "amount": 16_000_000})
-    if st == 201 and usd.get("amount_fx_idr") is None and "amount_fx" not in usd:
-        st = 0
     if st != 201 or "amount_fx" not in usd:
         gap("USD 1.000 at 16.000 gives payment.amount 16.000.000", "kernel (S8a money)", f"money field amount_fx not served ({st})")
     else:

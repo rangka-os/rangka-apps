@@ -63,7 +63,7 @@ Both hooks run in the payment's submit/cancel transaction. They work per allocat
 ### `payments.allocate` (`payment.on_submit`)
 - **Reads:** the payment (`direction`, `customer`/`vendor`, `amount`, `currency`/`exchange_rate` when the money sidecar is live) and its allocation rows (`sales_invoice`, `amount`, `withheld`).
 - **Locks:** each target `for update`, then reloads its **stored** `outstanding` (the row's `outstanding` is only an entry-time snapshot).
-- **Refuses (409):** `negative_allocation` (a row with `amount <= 0` or `withheld < 0`); `not_submitted` (target docstatus is not 1);
+- **Refuses (409):** `pph23_already_deducted` (`withheld > 0` and the stored invoice has `pph23_applies` true; the hook re-reads the invoice and never trusts the row's `pph23_applies` snapshot); `negative_allocation` (a row with `amount <= 0` or `withheld < 0`); `not_submitted` (target docstatus is not 1);
   `wrong_party` (target belongs to another customer/vendor than the payment);
   `over_allocation`, message "Alokasi melebihi sisa tagihan <name>", when `amount + withheld > stored outstanding` (checked row by row, so two rows
   on the same invoice are caught as the running outstanding drops); `over_payment` when the rows' `amount` add up to more than `payment.amount`.
