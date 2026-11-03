@@ -55,14 +55,12 @@ fields:
     # so dpp, PPN (assessed in rupiah), grand_total, retention, PPh 23 and amount_due stay IDR computes from it.
     # Lines are entered with rate_fx; the IDR line `amount` (qty x rate) cannot see the parent's currency, so the header ignores it.
     compute: "currency != '' && currency != 'IDR' ? subtotal_fx_idr : items.map(i, i.amount).sum()"
-  - name: discount_amount
-    type: currency
-    label: {id: Diskon}
-    default: '0'
+  # No header discount: a quotation discounts per line (quotation_item.discount), which the order and the invoice
+  # made from it carry as the net line rate. A lump sum is spread over the lines.
   - name: dpp
     type: currency
     label: {id: DPP}
-    compute: subtotal - discount_amount
+    compute: subtotal
   - name: tax_rate
     type: percent
     label: {id: Tarif PPN}
@@ -108,8 +106,7 @@ fields:
   - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
   - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}
   - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
-  - {name: discount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Diskon (valas)}, default: '0'}
-  - {name: dpp_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "subtotal_fx - discount_fx"}
+  - {name: dpp_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "subtotal_fx"}
   - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "round(dpp_fx * dpp_num / dpp_den * tax_rate / 100, 2)"}
   - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_fx + ppn_fx"}
 rules:
@@ -125,10 +122,18 @@ rules:
     on: save
     check: docstatus != 0 || outcome == 'open' || outcome == ''
     message: {id: Penawaran yang belum disubmit harus berstatus menunggu}
-  - name: discount_within_subtotal
+  - name: qty_positive
     on: save
-    check: discount_amount <= subtotal
-    message: {id: Diskon tidak boleh melebihi subtotal}
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: rate_not_negative
+    on: save
+    check: "items.map(i, i.rate < 0 || i.rate_fx < 0 ? 1 : 0).sum() == 0"
+    message: {id: Harga tidak boleh negatif}
+  - name: line_discount_range
+    on: save
+    check: "items.map(i, i.discount < 0 || i.discount > 100 ? 1 : 0).sum() == 0"
+    message: {id: Diskon baris antara 0 dan 100 persen}
 actions:
   - name: new_revision
     label: {id: Buat revisi, en: New revision}
@@ -168,7 +173,7 @@ views:
         fields: [items]
       - section: {id: Harga}
         columns:
-          - [subtotal, discount_amount, dpp]
+          - [subtotal, dpp]
           - [tax_rate, dpp_num, dpp_den, ppn, grand_total]
       - section: {id: Syarat}
         columns:

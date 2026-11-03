@@ -26,7 +26,7 @@ the menu, dashboards, home and onboarding. Apps define no models.
 | `invoicing` | contacts, catalogue (optional: outlets, tax_id, currency) | `sales_invoice` (+ `sales_invoice_item`): PPN on/off, PPh 23, down payment, retention, discount; print format; finance approval above Rp 100.000.000; foreign-currency `*_fx` money fields; numbering series `invoice`; sidecar for the org-PKP default |
 | `tax_id` | none | `tax_code` |
 | `currency` | none | `currency`, `exchange_rate` |
-| `quotation` | contacts, catalogue (optional: tax_id, currency) | `quotation` (+ `quotation_item`): revisions, outcome, manager approval, numbering series `quotation`, foreign-currency `*_fx` fields (sidecar for the org-PKP default), print *Surat penawaran harga*; role `sales_manager` |
+| `quotation` | contacts, catalogue (optional: tax_id, currency) | `quotation` (+ `quotation_item`): line discounts only (no header discount), revisions, outcome, manager approval, numbering series `quotation`, foreign-currency `*_fx` fields (sidecar for the org-PKP default), print *Surat penawaran harga*; role `sales_manager` |
 | `orders` | contacts, catalogue (optional: quotation) | `customer_order` (+ `customer_order_item`): customer PO, action `make_invoice` |
 | `workforce` | none | `worker`, `certification` (expiry flag) |
 | `projects` | contacts, users, workforce (optional: orders) | `project`, `assignment`, `timesheet`, `acceptance` (berita acara); role `project_admin` |
