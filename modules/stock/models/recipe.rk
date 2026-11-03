@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: recipe
+label: {id: Resep, en: Recipe}
+icon: stock
+naming: RSP-{####}
+title_field: recipe_name
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - name: product
+    type: link
+    to: item
+    label: {id: Produk}
+    required: true
+    in_list: true
+  - name: recipe_name
+    type: data
+    label: {id: Nama resep}
+    in_list: true
+  - name: yield_qty
+    type: float
+    label: {id: Hasil per resep (porsi)}
+    help: {id: 'Satu resep menghasilkan berapa porsi; bahan di bawah dihitung per resep'}
+    default: '1'
+  - name: active
+    type: check
+    label: {id: Aktif}
+    default: 'true'
+    in_list: true
+  - name: lines
+    type: table
+    of: recipe_line
+    label: {id: Bahan}
+    min_rows: 1
+rules:
+  - name: product_is_product
+    on: save
+    check: product.kind == 'product'
+    message: {id: Resep hanya untuk barang berjenis produk jadi}
+  - name: yield_positive
+    on: save
+    check: yield_qty > 0
+    message: {id: Hasil per resep harus lebih dari 0}
+  - name: qty_positive
+    on: save
+    check: "lines.map(l, l.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah bahan harus lebih dari 0}
+views:
+  list:
+    columns: [name, product, recipe_name, yield_qty, active]
+    sort: product
+  form:
+    layout:
+      - section: {id: Resep}
+        columns:
+          - [product, recipe_name]
+          - [yield_qty, active]
+      - section: {id: Bahan}
+        fields: [lines]

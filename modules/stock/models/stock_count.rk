@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: stock_count
+label: {id: Stok opname, en: Stock count}
+icon: stock
+is_submittable: true
+naming: OPN-{YYYY}-{#####}
+on_submit: [stock.post_moves]
+on_cancel: [stock.reverse_moves]
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: outlet_staff, read: true, create: true, write: true, submit: true}
+fields:
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    required: true
+    in_list: true
+  - name: count_date
+    type: date
+    label: {id: Tanggal opname}
+    default: today()
+    required: true
+    in_list: true
+  - name: counted_by
+    type: link
+    to: user
+    label: {id: Dihitung oleh}
+  - name: items
+    type: table
+    of: stock_count_item
+    label: {id: Barang}
+    min_rows: 1
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: counted_not_negative
+    on: save
+    check: "items.map(i, i.counted_qty < 0 ? 1 : 0).sum() == 0"
+    message: {id: Hasil hitung tidak boleh negatif}
+views:
+  list:
+    columns: [name, outlet, count_date, counted_by, status]
+    sort: -count_date
+  form:
+    layout:
+      - section: {id: Opname}
+        columns:
+          - [outlet, count_date, counted_by]
+      - section: {id: Barang}
+        fields: [items]
+      - section: {id: Catatan}
+        fields: [notes]
