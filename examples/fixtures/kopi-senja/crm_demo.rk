@@ -1,12 +1,12 @@
 user:
-  - {name: USR-001, full_name: Dede Kurniawan, role: Pemilik}
+  - {name: USR-001, full_name: Sari Contoh, role: Pemilik}
   - {name: USR-002, full_name: Rina Wulandari, role: Sales}
   - {name: USR-003, full_name: Budi Santoso, role: Sales}
 lead:
   - name: LEAD-00031
     lead_name: Andi Pratama
     company_name: Kedai Kopi Andi
-    phone: '+6281234567890'
+    phone: '+620000000011'
     email: ""
     city: Bandung
     source: whatsapp
@@ -18,8 +18,8 @@ lead:
   - name: LEAD-00030
     lead_name: Sinta Maharani
     company_name: Toko Roti Sinta
-    phone: '+6285711122233'
-    email: sinta@contoh.id
+    phone: '+620000000012'
+    email: sinta@contoh.test
     city: Bogor
     source: instagram
     status: contacted
@@ -30,7 +30,7 @@ lead:
   - name: LEAD-00029
     lead_name: Pak Hendra
     company_name: Kantin PT Sejahtera
-    phone: '+6287788899900'
+    phone: '+620000000013'
     email: ""
     city: Cikarang
     source: referral
@@ -42,7 +42,7 @@ lead:
   - name: LEAD-00027
     lead_name: Lia
     company_name: ""
-    phone: '+6281399988877'
+    phone: '+620000000014'
     email: ""
     city: Depok
     source: walk_in
