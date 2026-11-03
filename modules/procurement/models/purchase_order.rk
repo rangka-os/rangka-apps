@@ -1,0 +1,105 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/model.json
+name: purchase_order
+label: {id: Pesanan pembelian, en: Purchase order}
+icon: cart
+is_submittable: true
+naming: PO-{YYYY}-{#####}
+title_field: vendor
+fields:
+  - name: vendor
+    type: link
+    to: vendor
+    label: {id: Pemasok}
+    required: true
+    in_list: true
+    peek: [payment_days, npwp]
+  - name: purchase_request
+    type: link
+    to: purchase_request
+    label: {id: Permintaan pembelian}
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Kirim ke}
+    in_list: true
+  - name: order_date
+    type: date
+    label: {id: Tanggal pesanan}
+    default: today()
+    required: true
+    in_list: true
+  - name: delivery_date
+    type: date
+    label: {id: Tanggal kirim}
+  - name: items
+    type: table
+    of: purchase_order_item
+    label: {id: Barang}
+    min_rows: 1
+  - name: subtotal
+    type: currency
+    label: {id: Subtotal}
+    compute: items.map(i, i.amount).sum()
+  - name: ppn_applies
+    type: check
+    label: {id: Kena PPN}
+    default: 'false'
+  - name: ppn
+    type: currency
+    label: {id: PPN (tarif 12% x DPP nilai lain 11/12)}
+    compute: "ppn_applies ? round(subtotal * 11 / 12 * 12 / 100) : 0"
+  - name: grand_total
+    type: currency
+    label: {id: Total}
+    compute: subtotal + ppn
+    in_list: true
+  - name: payment_terms
+    type: text
+    label: {id: Syarat pembayaran}
+  - name: received_pct
+    type: percent
+    label: {id: Diterima (%)}
+    read_only: true
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: delivery_after_order
+    on: save
+    check: delivery_date == '' || delivery_date >= order_date
+    message: {id: Tanggal kirim tidak boleh sebelum tanggal pesanan}
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: rate_not_negative
+    on: save
+    check: "items.map(i, i.rate < 0 ? 1 : 0).sum() == 0"
+    message: {id: Harga tidak boleh negatif}
+actions:
+  - name: receive
+    label: {id: Terima barang, en: Receive goods}
+    icon: check
+    primary: true
+    hook: procurement.receive
+    if: docstatus == 1 && received_pct < 100
+views:
+  list:
+    columns: [name, vendor, outlet, order_date, status, grand_total, received_pct]
+    sort: -order_date
+  form:
+    layout:
+      - section: {id: Pesanan}
+        columns:
+          - [vendor, purchase_request, outlet]
+          - [order_date, delivery_date, received_pct]
+      - section: {id: Barang}
+        fields: [items]
+      - section: {id: Harga}
+        columns:
+          - [subtotal, ppn_applies, ppn, grand_total]
+      - section: {id: Syarat}
+        fields: [payment_terms]
+      - section: {id: Catatan}
+        fields: [notes]

@@ -1,0 +1,13 @@
+# Sidecar for vendor_bill: keys the kernel does not read yet (checked by scripts/check_experimental.py).
+model: vendor_bill
+stream: [S8a]   # S8a money
+
+fields:
+  # S8a, contract 0013: a foreign-currency bill. Same shape as purchase_order; the line `rate` stays the unit price.
+  - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
+  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency
+  - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
+  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "ppn_applies ? round(subtotal_fx * 11 / 12 * 12 / 100, 2) : 0"}
+  - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "subtotal_fx + ppn_fx"}
+  - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, default: '0'}
+  - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - pph23_amount_fx"}
