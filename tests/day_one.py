@@ -510,8 +510,16 @@ def scenario_quotation(api):
     eq("revision draft has outcome open", new["outcome"], "open")
     check("revision draft keeps the same lines", [(r["item"], r["qty"], r["rate"]) for r in new["items"]] == [(r["item"], r["qty"], r["rate"]) for r in q2["items"]], new["items"])
     eq("old quotation is cancelled (docstatus 2)", api.get("quotation", old)["docstatus"], 2)
+    # the gate also admits the cancelled original (a held cancel is approved later): the second call reuses the draft,
+    # and once the amendment is submitted the original is refused with already_revised
+    draft = resp["open"]["name"]
     st, resp = api.action("quotation", old, "new_revision")
-    check("revising the cancelled quotation again is refused (action_not_allowed)", st == 409 and resp["error"]["code"] == "action_not_allowed", (st, resp))
+    check("revise on the cancelled original reuses the open draft", st == 200 and resp.get("open", {}).get("name") == draft, (st, resp))
+    st, resp = api.verb("quotation", draft, "submit")
+    check("submit the revision draft", st == 200, (st, resp))
+    st, resp = api.action("quotation", old, "new_revision")
+    check("revise on the cancelled original after its amendment is submitted -> 409 already_revised",
+          st == 409 and resp["error"]["code"] == "already_revised", (st, resp))
 
 
 def scenario_orders(api):
