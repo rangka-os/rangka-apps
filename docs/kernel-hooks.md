@@ -2,10 +2,10 @@
 
 Modules declare cross-record logic as **named hooks**. A hook is a Go function in the rangka-os kernel
 (`kernel/internal/engine/hooks.go`); a module only names it (`on_submit`, `on_cancel`, an action's `hook`, an
-automation's `do`) and lists its own hooks in `app.rk` `hooks:`. This file fixes what each hook must do, so
+automation's `do`) and lists its own hooks in `module.rk` `hooks:`. This file fixes what each hook must do, so
 the kernel implements it exactly and the modules can rely on it.
 
-Today's kernel runs a hook inside the caller's transaction. A hook that is **not implemented** is handled like this:
+Every hook named below is built in the kernel (stream S8c) except `stock.post_moves`/`stock.reverse_moves`, which do nothing until the stock module's models exist. The kernel runs a hook inside the caller's transaction. A hook that is **not implemented** is handled like this:
 
 - `on_submit` / `on_cancel`: the kernel records `hook.skipped` in the audit log (target `<model>/<name>`) and carries on,
   so the document is submitted without the side effect;
@@ -47,7 +47,7 @@ rolls the whole submit/cancel back. Money is whole rupiah and no hook consults a
 - **Idempotency:** each call creates a new draft containing only the remainder, so calling it twice before the first
   draft is submitted would produce two drafts for the same remainder: the hook reuses an existing draft for the order
   (same `customer_order`, `docstatus 0`) and returns it instead of creating another.
-- **Declared in:** `modules/orders/app.rk` `hooks:` (the action lives on `customer_order`); the semantics sit here because
+- **Declared in:** `modules/orders/module.rk` `hooks:` (the action lives on `customer_order`); the semantics sit here because
   the hook writes invoices.
 
 ### Not checkable in a rule (hook or kernel work)
@@ -61,7 +61,7 @@ Both hooks run in the payment's submit/cancel transaction. They work per allocat
 `sales_invoice` (direction `receive`) or the `vendor_bill` (direction `pay`).
 
 ### `payments.allocate` (`payment.on_submit`)
-- **Reads:** the payment (`direction`, `customer`/`vendor`, `amount`, `currency`/`exchange_rate` when the money sidecar is live) and its allocation rows (`sales_invoice`, `amount`, `withheld`).
+- **Reads:** the payment (`direction`, `customer`/`vendor`, `amount`, `currency`/`exchange_rate` (`amount_fx` is the source of truth for a foreign payment: `amount` is its IDR value)) and its allocation rows (`sales_invoice`, `amount`, `withheld`).
 - **Locks:** each target `for update`, then reloads its **stored** `outstanding` (the row's `outstanding` is only an entry-time snapshot).
 - **Refuses (409):** `pph23_already_deducted` (`withheld > 0` and the stored invoice has `pph23_applies` true; the hook re-reads the invoice and never trusts the row's `pph23_applies` snapshot); `negative_allocation` (a row with `amount <= 0` or `withheld < 0`); `not_submitted` (target docstatus is not 1);
   `wrong_party` (target belongs to another customer/vendor than the payment);
@@ -94,7 +94,7 @@ S3 should make `aging` use `outstanding` when the model has that field.
 ## procurement
 
 Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill` -> `payment` (direction `pay`). The money fields are IDR; the
-`currency`/`exchange_rate`/`*_fx` money twins sit in the sidecars `modules/procurement/experimental/` (S8a).
+`currency`/`exchange_rate`/`*_fx` money twins are `money` fields on `purchase_order`, `vendor_bill` and their lines (contract 0013).
 
 ### `procurement.post_payable` (`vendor_bill.on_submit`)
 - **Reads:** the bill (`vendor`, `amount_due`).
@@ -131,7 +131,7 @@ Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill`
   moves are in the stock section. For a goods receipt the hook also adds each line's `stock_qty` to the PO line's `received_qty` and sets the PO's
   `received_pct = round(sum(received_qty) / sum(stock_qty) * 100)` (capped at 100). Reversal subtracts the same.
   Until the stock module exists the kernel records `hook.skipped` and the receipt is only a document.
-- `stock.reverse_moves` is not a core hook, so `procurement/app.rk` lists it in `hooks:`.
+- `stock.reverse_moves` is not a core hook, so `modules/procurement/module.rk` lists it in `hooks:`.
 
 ### Not checkable in a rule
 - A `packing` must belong to the line's `item` (`uom_conversion.item == item`): CEL does not evaluate link lookups inside `map`, so no model rule can check it. Suggested hardening, not in the S8c plan: the hooks that read the line (`stock.post_moves`, `procurement.receive`) refuse `422 packing_mismatch`.
@@ -168,7 +168,7 @@ Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill`
 
 ## orders
 
-### `orders.from_quotation` (action `make_order` on `quotation`; declared in `modules/quotation/app.rk`, implemented with orders)
+### `orders.from_quotation` (action `make_order` on `quotation`; declared in `modules/quotation/module.rk`, implemented with orders)
 - **Trigger:** the action on a submitted quotation with `outcome == 'accepted'` (gate: `if: docstatus == 1 && outcome == 'accepted'`, so
   any other outcome, including `''`, answers `409 action_not_allowed` first). Args from the call body (same pattern as
   `mark_outcome`): `{po_number, po_date}`, the customer's PO.

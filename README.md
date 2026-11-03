@@ -4,7 +4,7 @@
 metadata: models, rules, dashboards, flows and roles. No application code — the Rangka kernel turns these files into a
 database, an API and screens.
 
-> **Status: v0 (November 2026).** Six modules, one app and one example site, laid out per
+> **Status: v0 (November 2026).** Fourteen modules, two apps and two example sites, laid out per
 > [contract 0001](https://github.com/rangka-os/rangka-os/blob/main/docs/contracts/0001-modules-and-apps.md).
 > All files pass both validators with 0 errors.
 
@@ -22,53 +22,56 @@ the menu, dashboards, home and onboarding. Apps define no models.
 | `contacts` | none | `customer`, `vendor`, `contact_person` |
 | `catalogue` | contacts | `item`, `uom`, `uom_conversion`, `price_list` (+ `price_list_item`) |
 | `outlets` | none | `outlet` |
-| `users` | none | `user` (interim: moves to the kernel when contract 0001 lands) |
-| `invoicing` | contacts, catalogue (optional: outlets, tax_id, currency) | `sales_invoice` (+ `sales_invoice_item`): PPN on/off, PPh 23, down payment, retention, discount; print format; sidecar for pending kernel streams |
+| `users` | none | `user` |
+| `invoicing` | contacts, catalogue (optional: outlets, tax_id, currency) | `sales_invoice` (+ `sales_invoice_item`): PPN on/off, PPh 23, down payment, retention, discount; print format; finance approval above Rp 100.000.000; foreign-currency `*_fx` money fields; numbering series `invoice`; sidecar for the org-PKP default |
 | `tax_id` | none | `tax_code` |
 | `currency` | none | `currency`, `exchange_rate` |
-| `quotation` | contacts, catalogue (optional: tax_id, currency) | `quotation` (+ `quotation_item`): revisions, outcome, manager approval (sidecar), print *Surat penawaran harga*; role `sales_manager` |
+| `quotation` | contacts, catalogue (optional: tax_id, currency) | `quotation` (+ `quotation_item`): revisions, outcome, manager approval, numbering series `quotation`, foreign-currency `*_fx` fields (sidecar for the org-PKP default), print *Surat penawaran harga*; role `sales_manager` |
 | `orders` | contacts, catalogue (optional: quotation) | `customer_order` (+ `customer_order_item`): customer PO, action `make_invoice` |
 | `workforce` | none | `worker`, `certification` (expiry flag) |
 | `projects` | contacts, users, workforce (optional: orders) | `project`, `assignment`, `timesheet`, `acceptance` (berita acara); role `project_admin` |
-| `procurement` | contacts, catalogue (optional: outlets, users, currency, stock) | `purchase_request`, `purchase_order`, `goods_receipt`, `vendor_bill` (+ line models): approval above Rp 5.000.000 (sidecar), print *Pesanan pembelian*, actions `make_po` and `receive`; role `purchasing_manager` |
+| `payments` | contacts, invoicing (optional: procurement, currency) | `payment` (+ `payment_allocation`), `withholding` (PPh 23 certificate); foreign-currency `amount_fx`; hooks `payments.allocate` and `payments.unallocate`; print *Statement* |
+| `procurement` | contacts, catalogue (optional: outlets, users, currency, stock) | `purchase_request`, `purchase_order`, `goods_receipt`, `vendor_bill` (+ line models): approval above Rp 5.000.000, foreign-currency `*_fx` fields, print *Pesanan pembelian*, actions `make_po` and `receive`; role `purchasing_manager` |
 | `pipeline` | contacts, users | `lead`, `deal`, `activity`, flows `whatsapp_to_lead` and `morning_follow_up`, roles `sales_rep` and `sales_manager` |
 
 | App | Modules | Also |
 | --- | --- | --- |
-| `crm` | contacts, pipeline, invoicing, outlets, users | Menu, dashboards `crm_overview` and `sales_overview`, onboarding in `template.rk` |
+| `crm` | contacts, catalogue, pipeline, invoicing, outlets, users | Menu, dashboards `crm_overview` and `sales_overview`, WhatsApp connector, home, onboarding |
+| `jasa_proyek` | contacts, catalogue, users, outlets, tax_id, currency, invoicing, quotation, orders, workforce, projects, payments, procurement | Interim: a flat menu of the models so far (Task 10 completes it) |
 
 ```
-modules/<m>/app.rk                  manifest (kind app for now: version, requires, hooks)
+modules/<m>/module.rk               manifest: name, version, title, requires, optional, hooks
 modules/<m>/models|roles|flows/     the module's metadata
-apps/<a>/app.rk, dashboards/        manifest with menu and dashboards
-apps/<a>/template.rk                roles, home, onboarding, connectors
-examples/sites/demo-jasa/            interim project-services site (quotation to acceptance); Task 10 adds the jasa_proyek app
-examples/sites/kopi-senja/          example installation: system.rk, features.rk, config.rk, themes/, layouts/
-examples/fixtures/kopi-senja/       its demo data
-scripts/                            catalogue.sh, validate.sh, check_experimental.py
+modules/<m>/print/                  print formats (inert until the kernel's print stream, S3, merges)
+modules/<m>/experimental/           sidecars: only what still waits for a kernel stream (see below)
+apps/<a>/app.rk, dashboards/        what a customer installs: modules, menu, dashboards, connectors, roles, home, onboarding
+examples/sites/<site>/              example installations: system.rk, features.rk, config.rk (+ themes/, layouts/)
+examples/fixtures/<site>/           their demo data
+scripts/                            validate.sh, check_experimental.py
 tests/day_one.py                    integration test against a live kernel (`python3 tests/day_one.py --site kopi-senja|demo-jasa`)
 docs/kernel-hooks.md                what each hook the modules declare must do
 ```
 
-The kernel and the validators read one flat directory of units, so `scripts/catalogue.sh` symlinks every module and
-app into `build/catalogue/` (git-ignored). A site's `config.apps` lists the app and every module it requires.
+The kernel and both validators read `apps/` and the `modules/` folder next to it, so there is nothing to build. A
+site's `config.apps` lists apps only; the kernel installs the modules each app names, and their `requires`.
+
+A sidecar `modules/<m>/experimental/<model>.rk` holds keys the kernel cannot read yet. Today there are two: the
+`ppn_applies` default from the org's `pkp` on `sales_invoice` and `quotation` (CEL has no `org` variable until stream S5).
 
 ## Try it
 
-Clone next to rangka-os and rangka-connectors, build the catalogue, then run the kernel on it with a Postgres 16
+Clone next to rangka-os and rangka-connectors, then run the kernel on it with a Postgres 16
 database (`$URL`):
 
 ```bash
 git clone git@github.com:rangka-os/rangka-os.git
 git clone git@github.com:rangka-os/rangka-apps.git
 git clone git@github.com:rangka-os/rangka-connectors.git
-cd rangka-apps && scripts/catalogue.sh
+cd rangka-apps
 K=../rangka-os/kernel/bin/rangka     # make -C ../rangka-os/kernel build
-A="--apps build/catalogue --site examples/sites/kopi-senja --db $URL"
+A="--apps apps --site examples/sites/kopi-senja --db $URL"
 $K migrate $A && $K seed $A --fixtures examples/fixtures/kopi-senja && $K serve $A --addr 127.0.0.1:8080 --dev-open
 ```
-
-(`make run-demo` in rangka-os still expects the old `apps/` layout until its Makefile is updated.)
 
 Validate after any change (Python 3 with `pyyaml` and `jsonschema` for the reference validator, plus the Go binary;
 `RANGKA_OS` points at the rangka-os checkout, found next to this repo by default):
@@ -87,7 +90,7 @@ Files are `.rk`: strict YAML whose first line names its schema, so VS Code (Red 
 checks as you type — `.vscode/settings.json` in this repo sets that up.
 
 ```yaml
-# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/dashboard.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
 name: crm_overview
 label: {id: Ringkasan CRM, en: CRM overview}
 cache: 5m
@@ -116,7 +119,7 @@ Rules worth knowing:
 
 The full format, CEL dialect and lifecycle are in
 [rangka-os/docs/contracts.md](https://github.com/rangka-os/rangka-os/blob/main/docs/contracts.md) and the schemas in
-[rangka-os/schema/0.4](https://github.com/rangka-os/rangka-os/tree/main/schema/0.4).
+[rangka-os/schema/0.5](https://github.com/rangka-os/rangka-os/tree/main/schema/0.5).
 
 ## Roadmap
 

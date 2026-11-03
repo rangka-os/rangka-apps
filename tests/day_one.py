@@ -19,6 +19,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -152,20 +153,25 @@ class Api:
             except Exception:
                 return e.code, {"error": {"code": "non_json", "message": raw.decode(errors="replace")[:200]}}
 
+    @staticmethod
+    def q(name):
+        """A record name as one path segment: numbers like INV/PTA/26/0012 contain slashes."""
+        return urllib.parse.quote(str(name), safe="")
+
     def patch(self, model, name, body):
-        return self.call("PATCH", f"/api/v1/r/{model}/{name}", body)
+        return self.call("PATCH", f"/api/v1/r/{model}/{self.q(name)}", body)
 
     def create(self, model, body):
         return self.call("POST", f"/api/v1/r/{model}", body)
 
     def get(self, model, name):
-        return self.call("GET", f"/api/v1/r/{model}/{name}")[1]
+        return self.call("GET", f"/api/v1/r/{model}/{self.q(name)}")[1]
 
     def verb(self, model, name, verb, body=None):
-        return self.call("POST", f"/api/v1/r/{model}/{name}/{verb}", body or {})
+        return self.call("POST", f"/api/v1/r/{model}/{self.q(name)}/{verb}", body or {})
 
     def action(self, model, name, action, body=None):
-        return self.call("POST", f"/api/v1/r/{model}/{name}/actions/{action}", body or {})
+        return self.call("POST", f"/api/v1/r/{model}/{self.q(name)}/actions/{action}", body or {})
 
     def list(self, model, **q):
         qs = "&".join(f"{k}={v}" for k, v in q.items())
@@ -173,6 +179,18 @@ class Api:
 
     def audit(self, kind):
         return self.call("GET", f"/api/v1/system/audit?kind={kind}&limit=200")[1]["data"]
+
+
+def approvals_of(api, model, name):
+    """The approval requests recorded for one record (contract 0007)."""
+    st, resp = api.call("GET", f"/api/v1/approvals?model={model}&name={Api.q(name)}")
+    return (resp or {}).get("data", []) if st == 200 else []
+
+
+def installed(api, model):
+    """True when the catalogue installed on the site defines `model` (GET /meta lists models by name)."""
+    st, meta = api.call("GET", "/api/v1/meta")
+    return st == 200 and model in (meta or {}).get("models", {})
 
 
 def messages(resp):
@@ -347,12 +365,13 @@ def scenario_quotation(api):
     st, resp = api.create("quotation", {"customer": customer, "subject": "x", "ppn_applies": False, "items": [{"item": ndt, "qty": 2, "rate": 1_000_000}]})
     eq("quotation without PPN: grand_total = dpp_base", (resp.get("ppn"), resp.get("grand_total")), (0, 2_000_000))
 
-    # submit (the approval policy is a sidecar until S2: the document submits straight away)
+    # submit (contract 0007: the owner caller self-approves, so the document submits at once and the request is recorded)
     st, resp = api.verb("quotation", q["name"], "submit")
     check("submit quotation", st == 200, resp)
     name = resp.get("name", q["name"])
-    if resp.get("approval"):
-        gap("quotation manager_approval", "kernel (S2 approvals)", "submit returned a pending approval")
+    reqs = [a for a in approvals_of(api, "quotation", name) if a.get("policy") == "manager_approval"]
+    check("quotation manager_approval: submit left a request for sales_manager (owner self-approved)",
+          len(reqs) == 1 and reqs[0].get("approvers") == ["sales_manager"] and reqs[0].get("state") == "approved", reqs)
     sub = api.get("quotation", name)
     check("submitted quotation is numbered QUO-<year>-nnnnn", sub["name"].startswith("QUO-"), sub["name"])
     eq("submitted quotation revision 0", sub["revision"], 0)
@@ -389,21 +408,28 @@ def scenario_quotation(api):
         gap("orders.from_quotation creates a draft customer_order", "kernel (S8c hooks; needs mark_outcome first)", "mark_outcome is 501, so no quotation can reach accepted")
 
     # a generic amend zeroes read-only fields, so the amended draft has outcome '' which counts as open (not stuck)
-    st, q3 = api.create("quotation", {"customer": customer, "subject": "Untuk amend", "items": [{"item": ndt, "qty": 1, "rate": 1_500_000}]})
-    st, resp = api.verb("quotation", q3["name"], "submit")
-    n3 = resp.get("name", q3["name"])
-    st, resp = api.verb("quotation", n3, "cancel")
-    check("cancel quotation before generic amend", st == 200, resp)
-    st, am = api.verb("quotation", n3, "amend")
-    check("generic amend creates a draft", st in (200, 201), (st, am))
-    if st in (200, 201):
+    def amended_submitted(subject):
+        st, qx = api.create("quotation", {"customer": customer, "subject": subject, "items": [{"item": ndt, "qty": 1, "rate": 1_500_000}]})
+        st, resp = api.verb("quotation", qx["name"], "submit")
+        nx = resp.get("name", qx["name"])
+        st, resp = api.verb("quotation", nx, "cancel")
+        check("cancel quotation before generic amend", st == 200, resp)
+        st, am = api.verb("quotation", nx, "amend")
+        check("generic amend creates a draft", st in (200, 201), (st, am))
+        if st not in (200, 201):
+            return None
         am_name = am.get("name") or am.get("data", {}).get("name")
         st, resp = api.verb("quotation", am_name, "submit")
         check("amended draft (outcome empty) submits", st == 200, (st, resp))
-        n4 = resp.get("name", am_name)
+        return resp.get("name", am_name)
+
+    n4 = amended_submitted("Untuk amend A")
+    if n4:
         st, resp = api.action("quotation", n4, "new_revision")
         check("empty outcome is open: new_revision passes the gate", st != 409, (st, resp))
-        st, resp = api.action("quotation", n4, "mark_outcome", {"outcome": "lost", "lost_reason": "uji"})
+    n5 = amended_submitted("Untuk amend B")
+    if n5:
+        st, resp = api.action("quotation", n5, "mark_outcome", {"outcome": "lost", "lost_reason": "uji"})
         check("empty outcome is open: mark_outcome passes the gate", st != 409, (st, resp))
 
     # revision flow on a separate submitted quotation whose outcome is still open: Rev.00 -> Rev.01
@@ -709,7 +735,7 @@ def scenario_payments(api):
     check("withholding of another customer's invoice -> 422", st == 422 and any("bukan milik" in m for m in messages(resp)), (st, resp))
 
     # SOA print on customer
-    st, _ = api.call("GET", f"/api/v1/r/customer/{customer}/print?format=statement")
+    st, _ = api.call("GET", f"/api/v1/r/customer/{Api.q(customer)}/print?format=statement")
     if st == 404:
         gap("statement print on customer", "kernel (S3 print)", "404: print endpoint or format not served yet")
     else:
@@ -761,7 +787,7 @@ def scenario_procurement(api):
             eq("request state ordered", api.get("purchase_request", prn)["state"], "ordered")
             st, again = api.action("purchase_request", prn, "make_po", {"vendor": vendor})
             check("make_po again is gated (state ordered): 409 action_not_allowed", st == 409, (st, again))
-            api.call("DELETE", f"/api/v1/r/purchase_order/{d['name']}")
+            api.call("DELETE", f"/api/v1/r/purchase_order/{Api.q(d['name'])}")
 
     # purchase order (manual create from the request's lines): line 2 is 2 Karung of 50 Kg
     po_lines = [{"item": liter_item, "qty": 10, "rate": 85_000}, {"item": mag_item, "qty": 2, "packing": conv, "rate": 600_000}]
@@ -795,10 +821,14 @@ def scenario_procurement(api):
     st, big = api.create("purchase_order", {"vendor": vendor, "items": [{"item": liter_item, "qty": 100, "rate": 85_000}]})
     eq("big PO grand_total 8.500.000", big.get("grand_total"), 8_500_000)
     st, resp = api.verb("purchase_order", big["name"], "submit")
-    if st == 200:
-        gap("po_approval: PO above 5.000.000 needs purchasing_manager before submit", "kernel (S2 approvals)", "submit succeeded without an approval; the sidecar is not read yet")
-    else:
-        check("po_approval holds a PO above 5.000.000 at submit", "approv" in json.dumps(resp).lower(), (st, resp))
+    # contract 0007: the dev-open caller is the owner, so the request is created and self-approved (200); a caller without an
+    # approver role would get 202 with the request pending. Either way the policy must have matched and left a request.
+    check("submit big purchase order", st in (200, 202), (st, resp))
+    bign = resp.get("name", big["name"]) if st == 200 else big["name"]
+    reqs = [a for a in approvals_of(api, "purchase_order", bign) if a.get("policy") == "po_approval"]
+    check("po_approval: a PO above 5.000.000 asks purchasing_manager at submit (request recorded)",
+          len(reqs) == 1 and reqs[0].get("approvers") == ["purchasing_manager"] and reqs[0].get("state") in ("approved", "pending"), reqs)
+    check("po_approval: the PO under the limit made no request", not approvals_of(api, "purchase_order", pon), approvals_of(api, "purchase_order", pon))
 
     # receive refuses a PO without an outlet (goods_receipt.outlet is required)
     st, noout = api.create("purchase_order", {"vendor": vendor, "items": po_lines})
@@ -821,7 +851,7 @@ def scenario_procurement(api):
             check("draft GR: vendor, outlet, purchase_order", d["vendor"] == vendor and d["outlet"] == outlet and d["purchase_order"] == pon, d)
             eq("draft GR lines: remainder per line", [(i["item"], i["qty"], i["packing"], i["rate"], i["stock_qty"]) for i in d["items"]],
                [(liter_item, 10, "", 85_000, 10), (mag_item, 2, conv, 600_000, 100)])
-            api.call("DELETE", f"/api/v1/r/goods_receipt/{d['name']}")
+            api.call("DELETE", f"/api/v1/r/goods_receipt/{Api.q(d['name'])}")
 
     # goods receipt: 12.000 per Kg
     st, gr = api.create("goods_receipt", {"purchase_order": pon, "vendor": vendor, "outlet": outlet,
@@ -838,12 +868,12 @@ def scenario_procurement(api):
     st, resp = api.verb("goods_receipt", gr["name"], "submit")
     check("submit goods receipt", st == 200, (st, resp))
     grn = resp.get("name", gr["name"])
-    if skipped(api, "stock.post_moves", f"goods_receipt/{grn}"):
-        gap("stock.post_moves posts the receipt and updates PO received_qty/received_pct", "kernel (S8c hooks, stock module Task 8)", "hook.skipped in the audit log")
+    if not installed(api, "stock_move"):
+        # S8c's stock.post_moves answers with a message and writes nothing while there are no stock models (Task 8)
+        gap("stock.post_moves posts the receipt and updates PO received_qty/received_pct", "stock module (Task 8)", "no stock_move/stock_balance models installed; the hook is a no-op")
         st, resp = api.verb("goods_receipt", grn, "cancel")
         check("cancel goods receipt", st == 200, (st, resp))
-        if skipped(api, "stock.reverse_moves", f"goods_receipt/{grn}"):
-            gap("stock.reverse_moves reverses the receipt", "kernel (S8c hooks, stock module Task 8)", "hook.skipped in the audit log")
+        gap("stock.reverse_moves reverses the receipt", "stock module (Task 8)", "no stock models installed; the hook is a no-op")
     else:
         pod = api.get("purchase_order", pon)
         eq("PO received_pct 100 after the receipt", pod["received_pct"], 100)
@@ -935,7 +965,7 @@ def scenario_procurement(api):
         eq("cancel restores vendor outstanding", api.get("vendor", vendor)["outstanding"], vendor_before)
 
     # PO print
-    st, _ = api.call("GET", f"/api/v1/r/purchase_order/{pon}/print?format=purchase_order")
+    st, _ = api.call("GET", f"/api/v1/r/purchase_order/{Api.q(pon)}/print?format=purchase_order")
     if st == 404:
         gap("purchase_order print", "kernel (S3 print)", "404: print endpoint or format not served yet")
     else:
