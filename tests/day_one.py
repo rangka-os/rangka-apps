@@ -729,6 +729,7 @@ def scenario_procurement(api):
     if st != 201:
         return
     eq("PR line est_rate defaults to the item's standard_cost", [i["est_rate"] for i in pr["items"]], [85_000, 12_000])
+    eq("PR line uom [Liter, Karung]", [i["uom"] for i in pr["items"]], ["UOM-009", "UOM-008"])
     eq("PR line amounts", [i["amount"] for i in pr["items"]], [850_000, 24_000])
     eq("PR estimated_total 874.000", pr["estimated_total"], 874_000)
     eq("PR state open", pr["state"], "open")
@@ -776,7 +777,7 @@ def scenario_procurement(api):
     eq("PO subtotal 2.050.000", po["subtotal"], 2_050_000)
     eq("PO ppn 225.500", po["ppn"], 225_500)
     eq("PO grand_total 2.275.500", po["grand_total"], 2_275_500)
-    eq("PO line uom defaults to the item's stock_uom", [i["uom"] for i in po["items"]], ["UOM-009", "UOM-007"])
+    eq("PO line uom: stock_uom without packing, the packing's uom (Karung) with it; stock_qty stays 100", [i["uom"] for i in po["items"]], ["UOM-009", "UOM-008"])
     eq("PO received_pct 0", po["received_pct"], 0)
     st, p2 = api.create("purchase_order", {"vendor": vendor, "items": po_lines})
     eq("PO without PPN: ppn 0, grand_total 2.050.000", (p2.get("ppn"), p2.get("grand_total")), (0, 2_050_000))
@@ -800,6 +801,16 @@ def scenario_procurement(api):
     else:
         check("po_approval holds a PO above 5.000.000 at submit", "approv" in json.dumps(resp).lower(), (st, resp))
 
+    # receive refuses a PO without an outlet (goods_receipt.outlet is required)
+    st, noout = api.create("purchase_order", {"vendor": vendor, "items": po_lines})
+    st, sub = api.verb("purchase_order", noout["name"], "submit")
+    st, resp = api.action("purchase_order", sub.get("name", noout["name"]), "receive", {})
+    if st == 501:
+        gap("procurement.receive on a PO without outlet -> 422 outlet_required", "kernel (S8c hooks)", "501 hook_not_implemented")
+    else:
+        check("receive on a PO without outlet -> 422 outlet_required 'Outlet tujuan wajib diisi di PO sebelum barang diterima'",
+              st == 422 and resp.get("error", {}).get("code") == "outlet_required" and "Outlet tujuan wajib diisi" in resp["error"]["message"], (st, resp))
+
     # receive action: draft goods receipt with the remainder per line
     st, resp = api.action("purchase_order", pon, "receive", {})
     if st == 501:
@@ -819,6 +830,7 @@ def scenario_procurement(api):
     check("create goods receipt", st == 201, gr)
     if st != 201:
         return
+    eq("GR line uom [Liter, Karung]", [i["uom"] for i in gr["items"]], ["UOM-009", "UOM-008"])
     eq("GR stock_qty [10, 100]", [i["stock_qty"] for i in gr["items"]], [10, 100])
     eq("GR unit_cost per stock unit [85.000, 12.000]", [i["unit_cost"] for i in gr["items"]], [85_000, 12_000])
     eq("GR total_value 2.050.000", gr["total_value"], 2_050_000)
@@ -842,8 +854,8 @@ def scenario_procurement(api):
 
     # vendor bill: amount_due = grand_total - pph23_amount
     bill_body = {"vendor": vendor, "purchase_order": pon, "goods_receipt": grn, "bill_no": "INV-CBU-0001", "bill_date": "2026-11-10",
-                 "ppn_applies": True, "pph23_amount": 20_000, "items": po_lines}
-    bill_body["items"] = [{"item": liter_item, "qty": 10, "rate": 85_000}, {"item": mag_item, "qty": 2, "rate": 600_000}]
+                 "ppn_applies": True, "pph23_amount": 20_000,
+                 "items": [{"item": liter_item, "qty": 10, "rate": 85_000}, {"item": mag_item, "qty": 2, "rate": 600_000}]}
     vendor_before = api.get("vendor", vendor)["outstanding"]
     st, vb = api.create("vendor_bill", bill_body)
     check("create vendor bill", st == 201, vb)

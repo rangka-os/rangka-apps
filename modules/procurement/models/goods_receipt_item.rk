@@ -15,7 +15,7 @@ fields:
     type: link
     to: uom
     label: {id: Satuan}
-    default: item.stock_uom
+    default: "packing != '' ? packing.uom : item.stock_uom"
   - name: packing
     type: link
     to: uom_conversion
