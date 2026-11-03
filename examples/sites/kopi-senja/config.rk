@@ -9,5 +9,5 @@ apps: [crm]
 plan: tumbuh
 theme: kopi_senja
 layout: crm_first
-sso: {domains: [kopisenja.id], required: false}
+sso: {domains: [kopisenja.test], required: false}
 ai: {enabled: true, auto_apply: never, approvers: [owner, sales_manager]}
