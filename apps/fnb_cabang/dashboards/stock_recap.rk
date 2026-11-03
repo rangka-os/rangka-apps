@@ -1,0 +1,129 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: stock_recap
+label: {id: Rekap stok dan penjualan, en: Stock and sales recap}
+default_period: 90
+cache: 5m
+# Per outlet and in total: number widgets are the totals, charts split by outlet or by month. The period (7/30/90 days)
+# applies to sales and moves; stock value and negative balances are the current balances.
+widgets:
+  - name: stock_value_total
+    type: number
+    label: {id: Nilai stok}
+    description: {id: 'Semua outlet, saldo saat ini'}
+    model: stock_balance
+    aggregate: sum
+    field: value
+    compact: true
+    span: 3
+  - name: net_total
+    type: number
+    label: {id: Penjualan bersih}
+    model: outlet_sales
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    compact: true
+    span: 3
+  - name: cogs_total
+    type: number
+    label: {id: Harga pokok}
+    model: outlet_sales
+    aggregate: sum
+    field: cogs_total
+    filter: docstatus == 1
+    period: date
+    compact: true
+    span: 3
+  - name: negative_total
+    type: number
+    label: {id: Saldo minus}
+    model: stock_balance
+    filter: negative == true
+    good_when: down
+    span: 3
+  - name: stock_value_by_outlet
+    type: chart
+    chart: bar
+    label: {id: Nilai stok per outlet}
+    model: stock_balance
+    group_by: outlet
+    aggregate: sum
+    field: value
+    sort: -value
+    span: 6
+  - name: moves_by_reason
+    type: chart
+    chart: donut
+    label: {id: Mutasi stok per sebab}
+    model: stock_move
+    group_by: reason
+    period: posting_date
+    span: 6
+  - name: net_by_month
+    type: chart
+    chart: bar
+    label: {id: Penjualan bersih per bulan}
+    model: outlet_sales
+    group_by: date
+    grain: month
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    span: 6
+  - name: cogs_by_month
+    type: chart
+    chart: bar
+    label: {id: Harga pokok per bulan}
+    model: outlet_sales
+    group_by: date
+    grain: month
+    aggregate: sum
+    field: cogs_total
+    filter: docstatus == 1
+    span: 6
+  - name: net_by_outlet
+    type: chart
+    chart: bar
+    label: {id: Penjualan bersih per outlet}
+    model: outlet_sales
+    group_by: outlet
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    sort: -value
+    span: 6
+  - name: cogs_by_outlet
+    type: chart
+    chart: bar
+    label: {id: Harga pokok per outlet}
+    model: outlet_sales
+    group_by: outlet
+    aggregate: sum
+    field: cogs_total
+    filter: docstatus == 1
+    period: date
+    sort: -value
+    span: 6
+  - name: waste_by_outlet
+    type: chart
+    chart: bar
+    label: {id: Barang rusak per outlet}
+    description: {id: Nilai bahan yang dibuang atau rusak}
+    model: stock_move
+    group_by: outlet
+    aggregate: sum
+    field: value
+    filter: reason == 'waste'
+    period: posting_date
+    span: 6
+  - name: negative_balances
+    type: list
+    label: {id: Saldo minus}
+    model: stock_balance
+    filter: negative == true
+    sort: qty
+    limit: 20
+    columns: [outlet, item, qty, value, avg_cost]
+    span: 6
