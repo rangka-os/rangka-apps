@@ -635,24 +635,28 @@ def scenario_payments(api):
           st == 422 and any("PPh 23 sudah dipotong" in m for m in messages(resp)), (st, resp))
     st, resp = api.create("payment", {"direction": "receive", "customer": customer, "amount": 10_900_000,
                                       "allocations": [{"sales_invoice": inv3, "amount": 10_700_000, "withheld": 200_000, "pph23_applies": False}]})
-    if st == 201:
+    if st == 422:
+        check("snapshot honoured: client pph23_applies=false does not bypass -> 422 'PPh 23 sudah dipotong'",
+              any("PPh 23 sudah dipotong" in m for m in messages(resp)), (st, resp))
+    elif st == 201:
         row = resp["allocations"][0]
-        stored = row.get("pph23_applies") in (True, "true")
-        if stored:
-            ok("client-supplied pph23_applies=false is ignored: row stores true")
+        if "pph23_applies" not in row:
+            fail("row serves pph23_applies", row)
+        elif row["pph23_applies"] in (True, "true"):
+            fail("rule no_double_pph23 did not fire", f"201 with stored pph23_applies true and withheld {row.get('withheld')}")
         else:
-            gap("client-supplied pph23_applies=false on a row is ignored", "kernel (read_only on child-row fields)",
+            gap("client-supplied pph23_applies=false on a row is ignored", "kernel (S1, read_only on child-row fields)",
                 "kernel stores the client value, so the row rule passes; payments.allocate must refuse with 409 pph23_already_deducted from the stored invoice")
             st2, r2 = api.verb("payment", resp["name"], "submit")
-            if skipped(api, "payments.allocate", f"payment/{r2.get('name', resp['name'])}") if st2 == 200 else False:
+            bypass = r2.get("name", resp["name"]) if st2 == 200 else resp["name"]
+            if st2 == 200 and skipped(api, "payments.allocate", f"payment/{bypass}"):
                 gap("payments.allocate refuses withheld on a pph23 invoice (409 pph23_already_deducted)", "kernel (S8c hooks)", "hook.skipped in the audit log")
             else:
                 check("hook refuses the bypassed row: 409 pph23_already_deducted", st2 == 409 and r2["error"]["code"] == "pph23_already_deducted", (st2, r2))
-                if st2 == 200:
-                    api.verb("payment", r2["name"], "cancel")
+            if st2 == 200:
+                api.verb("payment", bypass, "cancel")
     else:
-        check("client-supplied pph23_applies=false on a row does not bypass the rule -> 422 'PPh 23 sudah dipotong'",
-              st == 422 and any("PPh 23 sudah dipotong" in m for m in messages(resp)), (st, resp))
+        fail("client pph23_applies=false row", (st, resp))
     st, p2 = pay(10_900_000, [(inv3, 10_900_000, 0)])
     check("payment of 10.900.000 cash on the pph23 invoice", st == 201, (st, p2))
     if st == 201:
