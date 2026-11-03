@@ -1822,10 +1822,12 @@ def scenario_stock(api):
     check_balance("receipt 50 kg at 15.000: 150 kg, value 1.950.000, avg 13.000", api, DAGO, m, 150, 1_950_000, 13_000)
 
     # transfer 30 kg Dago -> Braga in two steps: head office sends, Braga's staff receive (20 kg, then 10 kg)
-    braga = CTX.get("staff_braga") or api
-    dago_staff = CTX.get("staff_dago") or api
-    if CTX.get("staff_braga") is None:
-        gap("Braga's staff receive the transfer (outlet_staff session)", "harness", f"could not sign in as a non-owner: {CTX.get('login_error')}")
+    has_staff = CTX.get("staff_braga") is not None and CTX.get("staff_dago") is not None
+    braga = CTX.get("staff_braga") or api   # without a session the receipts are made by owner so the numbers below still hold; staff-only checks are skipped
+    dago_staff = CTX.get("staff_dago")
+    if not has_staff:
+        gap("outlet_staff receive transfers and are refused elsewhere (staff sessions)", "harness", f"could not sign in as a non-owner: {CTX.get('login_error')}")
+    leftovers = []   # draft receipts that stay after refusals; removed at the end of the block
     st, tr = api.create("stock_transfer", {"from_outlet": DAGO, "to_outlet": BRAGA, "items": [{"item": m, "qty": 30}]})
     check("create transfer 30 kg", st == 201, tr)
     trn = submit_doc(api, "stock_transfer", tr["name"], "submit transfer 30 kg")
@@ -1836,21 +1838,25 @@ def scenario_stock(api):
     t = api.get("stock_transfer", trn)
     check("transfer state in_transit, line unit_cost 13.000, received_qty 0",
           t["state"] == "in_transit" and t["items"][0]["unit_cost"] == 13_000 and t["items"][0]["received_qty"] == 0, t)
-    st, resp = braga.call("GET", f"/api/v1/r/stock_transfer/{Api.q(trn)}")
-    check("Braga's staff read the incoming transfer (to_outlet is in scope)", st == 200, (st, resp))
+    if has_staff:
+        st, resp = braga.call("GET", f"/api/v1/r/stock_transfer/{Api.q(trn)}")
+        check("Braga's staff read the incoming transfer (to_outlet is in scope)", st == 200, (st, resp))
     st, r0 = braga.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": BRAGA, "items": [{"item": m, "qty": 31}]})
     check("Braga's staff create a receipt of 31 kg", st == 201, (st, r0))
     if st == 201:
+        leftovers.append(r0["name"])
         st, resp = braga.verb("stock_transfer_receipt", r0["name"], "submit")
         check("receiving 31 of 30 kg -> 409 over_receipt", st == 409 and resp["error"]["code"] == "over_receipt", (st, resp))
     # receipt by the sending outlet's staff: outlet Dago is not the transfer's to_outlet
-    st, r1 = dago_staff.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": DAGO, "items": [{"item": m, "qty": 5}]})
-    check("Dago's staff create a receipt with outlet Dago (their own outlet)", st == 201, (st, r1))
-    if st == 201:
-        st, resp = dago_staff.verb("stock_transfer_receipt", r1["name"], "submit")
-        check("receipt by the sending outlet -> 409 wrong_outlet", st == 409 and resp["error"]["code"] == "wrong_outlet", (st, resp))
-    st, resp = dago_staff.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": BRAGA, "items": [{"item": m, "qty": 5}]})
-    check("Dago's staff create a receipt with outlet Braga -> 403 (row scope)", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+    if has_staff:
+        st, r1 = dago_staff.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": DAGO, "items": [{"item": m, "qty": 5}]})
+        check("Dago's staff create a receipt with outlet Dago (their own outlet)", st == 201, (st, r1))
+        if st == 201:
+            leftovers.append(r1["name"])
+            st, resp = dago_staff.verb("stock_transfer_receipt", r1["name"], "submit")
+            check("receipt by the sending outlet -> 409 wrong_outlet", st == 409 and resp["error"]["code"] == "wrong_outlet", (st, resp))
+        st, resp = dago_staff.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": BRAGA, "items": [{"item": m, "qty": 5}]})
+        check("Dago's staff create a receipt with outlet Braga -> 403 (row scope)", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
     st, r2 = braga.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": BRAGA, "items": [{"item": m, "qty": 20}]})
     check("create receipt of 20 kg", st == 201, (st, r2))
     rn1 = submit_doc(braga, "stock_transfer_receipt", r2["name"], "Braga's staff submit the receipt of 20 kg")
@@ -1868,10 +1874,49 @@ def scenario_stock(api):
     check("state received, received_qty 30", t["state"] == "received" and t["items"][0]["received_qty"] == 30, t)
     st, r4 = braga.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": BRAGA, "items": [{"item": m, "qty": 1}]})
     if st == 201:
+        leftovers.append(r4["name"])
         st, resp = braga.verb("stock_transfer_receipt", r4["name"], "submit")
         check("a receipt after full receipt -> 409 not_in_transit", st == 409 and resp["error"]["code"] == "not_in_transit", (st, resp))
     st, resp = api.verb("stock_transfer", trn, "cancel")
     check("cancelling a transfer that has receipts -> 409 has_receipts", st == 409 and resp["error"]["code"] == "has_receipts", (st, resp))
+
+    if has_staff:
+        # outlet_staff may only read transfers: one negative per verb (the draft belongs to head office, the cancel is of a submitted transfer)
+        st, resp = braga.patch("stock_transfer", trn, {"notes": "diubah staf"})
+        check("Braga's staff PATCH a stock_transfer -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+        st, hd = api.create("stock_transfer", {"from_outlet": DAGO, "to_outlet": BRAGA, "items": [{"item": m, "qty": 1}]})
+        if check("setup: head office drafts another transfer", st == 201, (st, hd)):
+            st, resp = braga.verb("stock_transfer", hd["name"], "submit")
+            check("Braga's staff submit head office's draft transfer -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+            api.call("DELETE", f"/api/v1/r/stock_transfer/{Api.q(hd['name'])}")
+        st, resp = braga.verb("stock_transfer", trn, "cancel")
+        check("Braga's staff cancel a transfer -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+        # staff of another outlet against Braga's receipts: read, submit and cancel
+        st, resp = dago_staff.call("GET", f"/api/v1/r/stock_transfer_receipt/{Api.q(rn1)}")
+        check("Dago's staff read Braga's receipt -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+        st, bd = braga.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": BRAGA, "items": [{"item": m, "qty": 1}]})
+        if check("setup: Braga's staff draft a receipt", st == 201, (st, bd)):
+            leftovers.append(bd["name"])
+            st, resp = dago_staff.verb("stock_transfer_receipt", bd["name"], "submit")
+            check("Dago's staff submit Braga's draft receipt -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+        st, resp = dago_staff.verb("stock_transfer_receipt", rn2, "cancel")
+        check("Dago's staff cancel Braga's receipt -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+        check_balance("those refusals left Braga at 30 kg / 390.000", api, BRAGA, m, 30, 390_000, 13_000)
+        # positive: the receiving outlet's staff cancel their own receipt, an exact reverse; they then receive the 10 kg again
+        st, resp = braga.verb("stock_transfer_receipt", rn2, "cancel")
+        check("Braga's staff cancel their own receipt of 10 kg", st == 200, (st, resp))
+        check_balance("exact reverse: Braga back to 20 kg / 260.000 at 13.000", api, BRAGA, m, 20, 260_000, 13_000)
+        rv = [x for x in moves_of(api, rn2) if x["reason"] == "reversal"]
+        check("the cancel wrote one reversal move (-10 kg, -130.000) at Braga", len(rv) == 1 and rv[0]["qty"] == -10 and rv[0]["value"] == -130_000 and rv[0]["outlet"] == BRAGA, rv)
+        t = api.get("stock_transfer", trn)
+        check("state partly_received again, received_qty 20", t["state"] == "partly_received" and t["items"][0]["received_qty"] == 20, t)
+        st, r5 = braga.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": BRAGA, "items": [{"item": m, "qty": 10}]})
+        if st == 201:
+            submit_doc(braga, "stock_transfer_receipt", r5["name"], "Braga's staff receive the 10 kg again")
+        check_balance("Braga back to 30 kg / 390.000 at 13.000", api, BRAGA, m, 30, 390_000, 13_000)
+    for name in leftovers:
+        st, resp = api.call("DELETE", f"/api/v1/r/stock_transfer_receipt/{Api.q(name)}")
+        check(f"leftover draft receipt {name} removed", st in (200, 204), (st, resp))
 
     # receipts and transfers cancel exactly, on outlets of their own
     src, dst = new_outlet(api, "Outlet uji kirim"), new_outlet(api, "Outlet uji terima")
@@ -1900,6 +1945,29 @@ def scenario_stock(api):
     st, resp = api.verb("stock_transfer", tcn, "cancel")
     check("with no receipt left the transfer cancels", st == 200, (st, resp))
     check_balance("sender restored to 100 kg / 1.200.000 at 12.000", api, src, m, 100, 1_200_000, 12_000)
+
+    # value conservation with inexact values: the receipts' in-values add up to the transfer's out-value to the rupiah
+    def split_transfer(label, src_lots, qty, parts):
+        o1, o2 = new_outlet(api, f"{label} kirim"), new_outlet(api, f"{label} terima")
+        for q, rate in src_lots:
+            receive(api, o1, [{"item": m, "qty": q, "rate": rate}], f"{label}: receipt {q} kg at {rate}")
+        st, tx = api.create("stock_transfer", {"from_outlet": o1, "to_outlet": o2, "items": [{"item": m, "qty": qty}]})
+        txn = submit_doc(api, "stock_transfer", tx["name"], f"{label}: send {qty} kg") if st == 201 else None
+        out = -sum(x["value"] for x in moves_of(api, txn) if x["reason"] == "transfer_out")
+        rn = []
+        for q in parts:
+            st, rc = api.create("stock_transfer_receipt", {"stock_transfer": txn, "outlet": o2, "items": [{"item": m, "qty": q}]})
+            rn.append(submit_doc(api, "stock_transfer_receipt", rc["name"], f"{label}: receive {q} kg") if st == 201 else None)
+        ins = [x for n in rn for x in moves_of(api, n) if x["reason"] == "transfer_in"]
+        check(f"{label}: sum of the receipts' values == the out-value ({out}) to the rupiah", out > 0 and sum(x["value"] for x in ins) == out, (out, [(x["qty"], x["value"]) for x in ins]))
+        check(f"{label}: no receipt move has a positive qty with a negative value", not any(x["qty"] > 0 and x["value"] < 0 for x in ins), ins)
+        check_balance(f"{label}: receiver holds the whole value", api, o2, m, qty, out, round(out / qty))
+        eq(f"{label}: state received", api.get("stock_transfer", txn)["state"], "received")
+
+    # 100 kg at 10.000 and 1 kg at 10.001 -> value 1.010.001, avg 10.000 (a fractional average, rounded)
+    split_transfer("PIK 7 kg", [(100, 10000), (1, 10001)], 7, [3, 4])
+    # a quantity that does not divide: 1,5 kg at avg 3 is worth 4,5, in three receipts of 0,5 kg that round to 2 each on their own
+    split_transfer("PIK 1,5 kg", [(100, 3)], 1.5, [0.5, 0.5, 0.5])
 
     # sale of 300 portions on an outlet holding 20 kg (recipe 0.1 kg per portion)
     neg = new_outlet(api, "Outlet uji minus")
