@@ -16,6 +16,7 @@
 </table>
 {{/* Open amounts use the invoice's own `outstanding` (amount_due - paid_amount), not grand_total - paid_amount:
      PPh 23 and retention make the two differ. Aging buckets are summed here for the same reason (see docs/kernel-hooks.md). */}}
+{{/* `sub $x (sub 0 n)` is x + n: the helper set has sub but no add. */}}
 {{$cur := 0}}{{$d30 := 0}}{{$d60 := 0}}{{$d90 := 0}}{{$o90 := 0}}
 <table class="items">
   <thead><tr><th>No. faktur</th><th>Tanggal</th><th>Jatuh tempo</th><th class="num">Tagihan</th><th class="num">Dibayar</th><th class="num">Sisa</th><th class="num">Umur (hari)</th></tr></thead>

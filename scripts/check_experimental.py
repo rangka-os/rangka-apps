@@ -22,7 +22,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILTIN_ROLES = {"owner"}
-KNOWN_STREAMS = {"S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8a", "S8-task7", "S9", "S10"}
+KNOWN_STREAMS = {"S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8a", "S8", "S9", "S10"}
 
 
 class StrictLoader(yaml.SafeLoader):

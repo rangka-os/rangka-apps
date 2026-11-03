@@ -1,6 +1,6 @@
 # Sidecar for payment_allocation: keys the kernel does not read yet (checked by scripts/check_experimental.py).
 model: payment_allocation
-stream: [S8-task7]   # moves into the model with procurement
+stream: [S8]   # moves with procurement (Task 7)
 
 fields:
   # moves into the model with procurement (Task 7): vendor_bill does not exist until then. With it, the model's
