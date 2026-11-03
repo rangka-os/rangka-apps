@@ -105,7 +105,7 @@ Both hooks run in the payment's submit/cancel transaction. They work per allocat
 ### Not checkable in a rule
 - The rules compare each row's entry-time `outstanding` snapshot. Two payments drafted against the same invoice, or two rows on the same invoice, each pass their rule alone; only this hook catches them (`over_allocation` on the one submitted second).
 - `withholding` (bukti potong) is a record only: it does not move money. The deduction itself is the allocation row's `withheld`.
-- `vendor_bill` allocation (direction `pay`) is live: `payment_allocation.vendor_bill` is a model field, the rule `allocation_has_target` makes a `receive` row name only a `sales_invoice` and a `pay` row only a `vendor_bill`, and the row's `outstanding` default reads the bill's. A site that installs payments must also install procurement, because the link needs the `vendor_bill` model.
+- `vendor_bill` allocation (direction `pay`) is live: `payment_allocation.vendor_bill` is a model field, the rule `allocation_has_target` makes a `receive` row name only a `sales_invoice` and a `pay` row only a `vendor_bill`, and the row's `outstanding` default reads the bill's. The payments module therefore `requires` procurement (the link needs the `vendor_bill` model).
 
 ### Print helper `aging` (see Kernel gaps)
 Contract 0008's `aging` helper buckets `grand_total - paid_amount`. For an invoice with PPh 23 or retention that is more than the amount
