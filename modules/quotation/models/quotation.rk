@@ -67,10 +67,14 @@ fields:
     type: check
     label: {id: Kena PPN}
     default: 'true'
+  - name: tax_rate
+    type: percent
+    label: {id: Tarif PPN}
+    default: '12'
   - name: ppn
     type: currency
-    label: {id: PPN (tarif 12% x DPP nilai lain 11/12)}
-    compute: "ppn_applies ? round(dpp_base * 11 / 12 * 12 / 100) : 0"
+    label: {id: PPN (tarif x DPP nilai lain 11/12)}
+    compute: "ppn_applies ? round(dpp_base * 11 / 12 * tax_rate / 100) : 0"
   - name: grand_total
     type: currency
     label: {id: Total}
@@ -106,7 +110,7 @@ fields:
   - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
   - {name: discount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Diskon (valas)}, default: '0'}
   - {name: dpp_base_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "subtotal_fx - discount_fx"}
-  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "ppn_applies ? round(dpp_base_fx * 11 / 12 * 12 / 100, 2) : 0"}
+  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "ppn_applies ? round(dpp_base_fx * 11 / 12 * tax_rate / 100, 2) : 0"}
   - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_base_fx + ppn_fx"}
 rules:
   - name: valid_after_date
@@ -161,7 +165,7 @@ views:
       - section: {id: Harga}
         columns:
           - [subtotal, discount_amount, dpp_base]
-          - [ppn_applies, ppn, grand_total]
+          - [ppn_applies, tax_rate, ppn, grand_total]
       - section: {id: Syarat}
         columns:
           - [payment_terms, delivery_terms]
