@@ -4,7 +4,7 @@
 metadata: models, rules, dashboards, flows and roles. No application code — the Rangka kernel turns these files into a
 database, an API and screens.
 
-> **Status: v0 (November 2026).** Fourteen modules, two apps and two example sites, laid out per
+> **Status: v0 (November 2026).** Sixteen modules, three apps and three example sites, laid out per
 > [contract 0001](https://github.com/rangka-os/rangka-os/blob/main/docs/contracts/0001-modules-and-apps.md).
 > All files pass both validators with 0 errors.
 
@@ -32,23 +32,27 @@ the menu, dashboards, home and onboarding. Apps define no models.
 | `projects` | contacts, users, workforce (optional: orders) | `project`, `assignment`, `timesheet`, `acceptance` (berita acara); role `project_admin` |
 | `payments` | contacts, invoicing (optional: procurement, currency) | `payment` (+ `payment_allocation`), `withholding` (PPh 23 certificate); foreign-currency `amount_fx`; hooks `payments.allocate` and `payments.unallocate`; print *Statement* |
 | `procurement` | contacts, catalogue (optional: outlets, users, currency, stock) | `purchase_request`, `purchase_order`, `goods_receipt`, `vendor_bill` (+ line models): approval above Rp 5.000.000, foreign-currency `*_fx` fields, print *Pesanan pembelian*, actions `make_po` and `receive`; role `purchasing_manager` |
+| `stock` | catalogue, outlets (optional: users) | `recipe` (+ line), `stock_move`, `stock_balance`, `stock_transfer`, `stock_count`, `stock_adjustment` (+ line models): moving-average cost, recipes, negative stock allowed and flagged; roles `head_office` and `outlet_staff` (row scope by outlet); flow `stock_negative_alert` |
+| `outlet_sales` | outlets, catalogue, stock | `outlet_sales` (+ line): daily sales per outlet, submit posts stock through the recipes; imports `moka_item_details` and `daily_form` |
 | `pipeline` | contacts, users | `lead`, `deal`, `activity`, flows `whatsapp_to_lead` and `morning_follow_up`, roles `sales_rep` and `sales_manager` |
 
 | App | Modules | Also |
 | --- | --- | --- |
 | `crm` | contacts, catalogue, pipeline, invoicing, outlets, users | Menu, dashboards `crm_overview` and `sales_overview`, WhatsApp connector, home, onboarding |
+| `fnb_cabang` | contacts, catalogue, outlets, users, stock, outlet_sales, procurement, payments, invoicing | Interim: a flat menu of the models so far (Task 10 completes it) |
 | `jasa_proyek` | contacts, catalogue, users, outlets, tax_id, currency, invoicing, quotation, orders, workforce, projects, payments, procurement | Interim: a flat menu of the models so far (Task 10 completes it) |
 
 ```
 modules/<m>/module.rk               manifest: name, version, title, requires, optional, hooks
 modules/<m>/models|roles|flows/     the module's metadata
 modules/<m>/print/                  print formats (inert until the kernel's print stream, S3, merges)
+modules/<m>/imports/                spreadsheet imports (kind import, contract 0012)
 modules/<m>/experimental/           sidecars: only what still waits for a kernel stream (see below)
 apps/<a>/app.rk, dashboards/        what a customer installs: modules, menu, dashboards, connectors, roles, home, onboarding
 examples/sites/<site>/              example installations: system.rk, features.rk, config.rk (+ themes/, layouts/)
 examples/fixtures/<site>/           their demo data
 scripts/                            validate.sh, check_experimental.py
-tests/day_one.py                    integration test against a live kernel (`python3 tests/day_one.py --site kopi-senja|demo-jasa`)
+tests/day_one.py                    integration test against a live kernel (`python3 tests/day_one.py --site kopi-senja|demo-jasa|demo-fnb`)
 docs/kernel-hooks.md                what each hook the modules declare must do
 ```
 
