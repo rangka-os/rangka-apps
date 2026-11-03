@@ -672,6 +672,43 @@ def scenario_cross_links(api):
             {"vendor": "VND-0002", "goods_receipt": gr["name"], "bill_no": "X-2", "bill_date": "2026-11-03", "tax_rate": 0, "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]}, "pemasok yang sama")
 
 
+def scenario_fx_jasa(api):
+    """Review item 6: a foreign document needs its rate; adjustments are entered in rupiah and the foreign twins follow; prints show both."""
+    ndt = services(api)[0]["name"]
+    c = "CUST-0001"
+    usd = {"currency": "USD"}
+    bodies = {"quotation": dict(usd, customer=c, subject="Valas", items=[{"item": ndt, "qty": 1, "rate_fx": 1000}]),
+              "sales_invoice": dict(usd, customer=c, items=[{"item": ndt, "qty": 1, "rate_fx": 1000}]),
+              "purchase_order": dict(usd, vendor="VND-0001", items=[{"item": "BRG-0004", "qty": 1, "rate": 0, "rate_fx": 1000}]),
+              "vendor_bill": dict(usd, vendor="VND-0001", bill_no="FX-1", bill_date="2026-11-03", items=[{"item": "BRG-0004", "qty": 1, "rate": 0, "rate_fx": 1000}]),
+              "payment": dict(usd, direction="receive", customer=c, amount_fx=1000)}
+    for model, body in bodies.items():
+        st, resp = api.create(model, body)
+        check(f"USD {model} with exchange_rate left at the default 1 -> 422 (kurs wajib)", st == 422 and any("kursnya" in m for m in messages(resp)), (st, resp))
+    st, inv = api.create("sales_invoice", dict(bodies["sales_invoice"], exchange_rate=16000, discount_amount=1_600_000, discount_fx=100))
+    check("USD invoice at 16.000 with a rupiah discount of 1.600.000", st == 201, (st, inv))
+    if st == 201:
+        eq("USD invoice: discount entered in rupiah gives dpp 14.400.000 and ppn 1.584.000", (inv["dpp"], inv["ppn"]), (14_400_000, 1_584_000))
+        check("USD invoice: dpp_fx follows the rupiah discount (1.000 - 100 = 900); there is no discount_fx field",
+              float(inv["dpp_fx"]) == 900 and "discount_fx" not in inv and "down_payment_fx" not in inv, inv)
+        st, resp = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        n = resp.get("name", inv["name"])
+        check_print("USD invoice print shows USD lines, USD totals, the kurs and the rupiah equivalent", api, "sales_invoice", n, "",
+                    ["USD 1.000,00", "USD 900,00", "Kurs: 1 USD = Rp 16.000", "Rp 14.400.000", "Rp 15.984.000"], ["Rp 1.500.000"])
+    st, vb = api.create("vendor_bill", dict(bodies["vendor_bill"], exchange_rate=16000, pph23_amount=160_000))
+    check("USD vendor_bill with PPh 23 of 160.000 entered in rupiah: amount_due_fx = grand_total_fx - 10", st == 201 and "pph23_amount_fx" not in vb
+          and abs(float(vb["amount_due_fx"]) - (float(vb["grand_total_fx"]) - 10)) < 0.005, (st, vb))
+    st, q = api.create("quotation", dict(bodies["quotation"], exchange_rate=16000))
+    st, resp = api.verb("quotation", q["name"], "submit")
+    qn = resp.get("name", q["name"])
+    check_print("USD quotation print shows USD lines and the kurs", api, "quotation", qn, "", ["USD 1.000,00", "Kurs: 1 USD = Rp 16.000", "Rp 16.000.000"])
+    st, resp = api.create("customer_order", {"customer": c, "quotation": qn, "po_number": "PO-FX", "po_date": "2026-11-03", "items": [{"item": ndt}]})
+    check("order from a USD quotation -> 422 (conversions drop the currency: kernel gap S8c)", st == 422 and any("valas" in m for m in messages(resp)), (st, resp))
+    st, po = api.create("purchase_order", dict(bodies["purchase_order"], exchange_rate=16000))
+    st, resp = api.verb("purchase_order", po["name"], "submit")
+    check_print("USD purchase order print shows USD lines and the kurs", api, "purchase_order", resp.get("name", po["name"]), "", ["USD 1.000,00", "Kurs: 1 USD = Rp 16.000"])
+
+
 def scenario_orders(api):
     customer, other = api.list("customer")[0]["name"], api.list("customer")[1]["name"]
     ndt = services(api)[0]["name"]
@@ -950,10 +987,10 @@ def scenario_payments(api):
     st, resp = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 16000, "amount_fx": 1000, "amount": 15_000_000})
     check("USD payment whose amount disagrees with amount_fx x rate -> 422 'Jumlah rupiah harus sama'",
           st == 422 and any("Jumlah rupiah harus sama" in m for m in messages(resp)), (st, resp))
-    st, resp = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 1, "amount_fx": "0.5"})
-    check("USD 0.5 at rate 1 -> amount 1 (half away from zero)", st == 201 and resp.get("amount") == 1, (st, resp))
-    st, resp = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 1, "amount_fx": "0.5", "amount": 1})
-    check("USD 0.5 at rate 1 with amount 1 passes the rule", st == 201, (st, resp))
+    st, resp = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 3, "amount_fx": "0.5"})
+    check("USD 0.5 at rate 3 -> amount 2 (1,5 half away from zero)", st == 201 and resp.get("amount") == 2, (st, resp))
+    st, resp = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 3, "amount_fx": "0.5", "amount": 2})
+    check("USD 0.5 at rate 3 with amount 2 passes the rule", st == 201, (st, resp))
 
     # foreign-currency invoice: the IDR header comes from the converted subtotal (rupiah PPN), then a USD payment clears it
     usd_body = {"customer": customer, "currency": "USD", "exchange_rate": 16000,
@@ -2561,7 +2598,7 @@ def setup_demo_fnb(api, k):
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_permissions],
-    "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
+    "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_permissions],
 }

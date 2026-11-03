@@ -11,6 +11,7 @@
 .note { margin-top: 14px; font-size: 0.9em; }
 {{end}}
 {{template "letterhead" .}}
+{{$fx := and .Doc.currency (ne .Doc.currency "IDR")}}
 <h1>Faktur / Invoice</h1>
 <table class="meta">
   <tr><td>No. faktur</td><td>: {{.Doc.name}}</td><td>Kepada Yth.</td><td>: {{.Links.customer.customer_name}}</td></tr>
@@ -26,13 +27,23 @@
     <td>{{if $row.description}}{{$row.description}}{{else}}{{$row.item}}{{end}}</td>
     <td class="num">{{number $row.qty}}</td>
     <td>{{$row.uom}}</td>
-    <td class="num">{{rupiah $row.rate}}</td>
+    <td class="num">{{if $fx}}{{money $row.rate_fx $.Doc.currency}}{{else}}{{rupiah $row.rate}}{{end}}</td>
     <td class="num">{{if $row.discount}}{{number $row.discount}}%{{end}}</td>
-    <td class="num">{{rupiah $row.amount}}</td>
+    <td class="num">{{if $fx}}{{money $row.amount_fx $.Doc.currency}}{{else}}{{rupiah $row.amount}}{{end}}</td>
   </tr>
   {{end}}
   </tbody>
 </table>
+{{if $fx}}
+<table class="totals">
+  <tr><td>Subtotal</td><td class="num">{{money .Doc.subtotal_fx .Doc.currency}}</td></tr>
+  <tr><td>DPP</td><td class="num">{{money .Doc.dpp_fx .Doc.currency}}</td></tr>
+  {{if taxrate .Doc .Tax}}<tr><td>PPN {{number (taxrate .Doc .Tax)}}%</td><td class="num">{{money .Doc.ppn_fx .Doc.currency}}</td></tr>{{end}}
+  <tr class="grand"><td>Total</td><td class="num">{{money .Doc.grand_total_fx .Doc.currency}}</td></tr>
+  {{if or .Doc.retention_amount .Doc.pph23_amount}}<tr class="grand"><td>Tagihan bersih</td><td class="num">{{money .Doc.amount_due_fx .Doc.currency}}</td></tr>{{end}}
+</table>
+<p class="note">Kurs: 1 {{.Doc.currency}} = {{rupiah .Doc.exchange_rate}}. Setara rupiah (PPN dihitung dalam rupiah):</p>
+{{end}}
 <table class="totals">
   <tr><td>Subtotal</td><td class="num">{{rupiah .Doc.subtotal}}</td></tr>
   {{if .Doc.discount_amount}}<tr><td>Diskon</td><td class="num">-{{rupiah .Doc.discount_amount}}</td></tr>{{end}}
