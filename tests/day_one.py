@@ -202,6 +202,11 @@ def eq(name, got, want):
     check(name, got == want, f"got {got!r}, want {want!r}")
 
 
+def services(api):
+    """The fixture's service items in name order (stocked materials share the list on sites with procurement)."""
+    return sorted([i for i in api.list("item") if i.get("kind") == "service"], key=lambda i: i["name"])
+
+
 def scenario_invoicing(api):
     customer = api.list("customer")[0]["name"]
     item = api.list("item")[0]["name"]
@@ -318,7 +323,7 @@ def scenario_invoicing(api):
 
 def scenario_quotation(api):
     customer = api.list("customer")[0]["name"]
-    items = api.list("item")
+    items = services(api)
     ndt, ut = items[0]["name"], items[1]["name"]
 
     st, q = api.create("quotation", {"customer": customer, "subject": "Inspeksi NDT shutdown 2026", "rfq_ref": "RFQ-001",
@@ -429,7 +434,7 @@ def scenario_quotation(api):
 
 def scenario_orders(api):
     customer, other = api.list("customer")[0]["name"], api.list("customer")[1]["name"]
-    ndt = api.list("item")[0]["name"]
+    ndt = services(api)[0]["name"]
     st, q = api.create("quotation", {"customer": customer, "subject": "Untuk pesanan", "items": [{"item": ndt, "qty": 4, "rate": 1_500_000}]})
     st, o = api.create("customer_order", {"customer": customer, "quotation": q["name"], "po_number": "PO-CJT-0001", "po_date": "2026-11-02",
                                           "site": "Cilegon", "items": [{"item": ndt, "qty": 4, "rate": 1_500_000}, {"item": ndt, "qty": 1, "rate": 500_000}]})
@@ -523,14 +528,14 @@ def scenario_projects(api):
         st, resp = api.verb("acceptance", b["name"], "submit")
         check("submit acceptance", st == 200 and str(resp.get("name", "")).startswith("BA-"), resp)
         st, inv = api.create("sales_invoice", {"customer": customer, "project": p["name"], "acceptance": resp.get("name", b["name"]),
-                                               "items": [{"item": api.list("item")[0]["name"], "qty": 10, "rate": 1_500_000}]})
+                                               "items": [{"item": services(api)[0]["name"], "qty": 10, "rate": 1_500_000}]})
         check("sales_invoice accepts project and acceptance", st == 201, inv)
     st, resp = api.create("acceptance", {"project": p["name"], "accepted_on": "2026-11-21", "scope": "x"})
     check("acceptance without accepted_by rejected", st == 422, (st, resp))
 
 
 def scenario_payments(api):
-    item = api.list("item")[0]["name"]
+    item = services(api)[0]["name"]
     st, cust = api.create("customer", {"customer_name": "PT Contoh Bayar"})
     check("create customer for payments", st == 201, cust)
     customer = cust["name"]
@@ -712,9 +717,223 @@ def scenario_payments(api):
         check("statement print answers 200", st == 200, st)
 
 
+def scenario_procurement(api):
+    vendor = "VND-0001"
+    liter_item, mag_item, conv = "BRG-0004", "BRG-0005", "KONV-0001"   # BRG-0005 is stocked in Kg; 1 Karung = 50 Kg
+    outlet = api.list("outlet")[0]["name"]
+    lines = [{"item": liter_item, "qty": 10}, {"item": mag_item, "qty": 2, "packing": conv}]
+
+    # purchase request with 2 lines
+    st, pr = api.create("purchase_request", {"needed_by": "2026-12-01", "outlet": outlet, "purpose": "Bahan uji shutdown", "items": lines})
+    check("create purchase request with 2 lines", st == 201, pr)
+    if st != 201:
+        return
+    eq("PR line est_rate defaults to the item's standard_cost", [i["est_rate"] for i in pr["items"]], [85_000, 12_000])
+    eq("PR line amounts", [i["amount"] for i in pr["items"]], [850_000, 24_000])
+    eq("PR estimated_total 874.000", pr["estimated_total"], 874_000)
+    eq("PR state open", pr["state"], "open")
+    st, resp = api.create("purchase_request", {"needed_by": "2026-12-01", "items": [{"item": liter_item, "qty": 0}]})
+    check("PR line qty 0 -> 422 'Jumlah barang harus lebih dari 0'", st == 422 and any("Jumlah barang harus lebih dari 0" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("purchase_request", {"needed_by": "2026-12-01", "items": []})
+    if st == 201:
+        gap("min_rows 1: a purchase request without lines is refused", "kernel (S1)", "201: min_rows is not enforced on create")
+    else:
+        check("PR without lines -> 422", st == 422, (st, resp))
+    st, resp = api.verb("purchase_request", pr["name"], "submit")
+    check("submit purchase request", st == 200, resp)
+    prn = resp.get("name", pr["name"])
+
+    # make_po: vendor comes from the call body
+    st, resp = api.action("purchase_request", prn, "make_po", {})
+    if st == 501:
+        gap("procurement.make_po creates the draft PO from the request", "kernel (S8c hooks)", "501 hook_not_implemented")
+        gap("procurement.make_po without vendor -> 422 vendor_required", "kernel (S8c hooks)", "501 hook_not_implemented")
+    else:
+        check("make_po without vendor -> 422 vendor_required", st == 422 and resp.get("error", {}).get("code") == "vendor_required", (st, resp))
+        st, resp = api.action("purchase_request", prn, "make_po", {"vendor": vendor})
+        check("make_po with vendor opens a draft purchase_order", st == 200 and resp.get("open", {}).get("model") == "purchase_order", (st, resp))
+        if st == 200:
+            d = api.get("purchase_order", resp["open"]["name"])
+            check("draft PO: vendor, request, docstatus 0", d["vendor"] == vendor and d["purchase_request"] == prn and d["docstatus"] == 0, d)
+            eq("draft PO lines (item, qty, packing, rate = est_rate)", [(i["item"], i["qty"], i["packing"], i["rate"]) for i in d["items"]],
+               [(liter_item, 10, "", 85_000), (mag_item, 2, conv, 12_000)])
+            eq("draft PO line 2 stock_qty 100", d["items"][1]["stock_qty"], 100)
+            eq("request state ordered", api.get("purchase_request", prn)["state"], "ordered")
+            st, again = api.action("purchase_request", prn, "make_po", {"vendor": vendor})
+            check("make_po again is gated (state ordered): 409 action_not_allowed", st == 409, (st, again))
+            api.call("DELETE", f"/api/v1/r/purchase_order/{d['name']}")
+
+    # purchase order (manual create from the request's lines): line 2 is 2 Karung of 50 Kg
+    po_lines = [{"item": liter_item, "qty": 10, "rate": 85_000}, {"item": mag_item, "qty": 2, "packing": conv, "rate": 600_000}]
+    st, po = api.create("purchase_order", {"vendor": vendor, "purchase_request": prn, "outlet": outlet, "ppn_applies": True,
+                                           "payment_terms": "Tempo 30 hari", "items": po_lines})
+    check("create purchase order", st == 201, po)
+    if st != 201:
+        return
+    eq("PO line 1 stock_qty = qty (no packing)", po["items"][0]["stock_qty"], 10)
+    eq("PO line 2 (2 Karung, factor 50) stock_qty 100", po["items"][1]["stock_qty"], 100)
+    eq("PO line amounts", [i["amount"] for i in po["items"]], [850_000, 1_200_000])
+    eq("PO subtotal 2.050.000", po["subtotal"], 2_050_000)
+    eq("PO ppn 225.500", po["ppn"], 225_500)
+    eq("PO grand_total 2.275.500", po["grand_total"], 2_275_500)
+    eq("PO line uom defaults to the item's stock_uom", [i["uom"] for i in po["items"]], ["UOM-009", "UOM-007"])
+    eq("PO received_pct 0", po["received_pct"], 0)
+    st, p2 = api.create("purchase_order", {"vendor": vendor, "items": po_lines})
+    eq("PO without PPN: ppn 0, grand_total 2.050.000", (p2.get("ppn"), p2.get("grand_total")), (0, 2_050_000))
+    st, resp = api.create("purchase_order", {"items": po_lines})
+    check("PO without vendor -> 422", st == 422, (st, resp))
+    st, resp = api.create("purchase_order", {"vendor": vendor, "order_date": "2026-11-10", "delivery_date": "2026-11-01", "items": po_lines})
+    check("delivery before order -> 422 'Tanggal kirim tidak boleh sebelum tanggal pesanan'", st == 422 and any("Tanggal kirim" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("purchase_order", {"vendor": vendor, "items": [{"item": liter_item, "qty": 1, "rate": -1}]})
+    check("negative rate -> 422 'Harga tidak boleh negatif'", st == 422 and any("Harga tidak boleh negatif" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("purchase_order", {"vendor": vendor, "items": [{"item": liter_item, "qty": 0, "rate": 1}]})
+    check("qty 0 -> 422 'Jumlah barang harus lebih dari 0'", st == 422 and any("Jumlah barang harus lebih dari 0" in m for m in messages(resp)), (st, resp))
+
+    st, resp = api.verb("purchase_order", po["name"], "submit")
+    check("submit purchase order (2.275.500 is under the approval limit)", st == 200, (st, resp))
+    pon = resp.get("name", po["name"])
+    st, big = api.create("purchase_order", {"vendor": vendor, "items": [{"item": liter_item, "qty": 100, "rate": 85_000}]})
+    eq("big PO grand_total 8.500.000", big.get("grand_total"), 8_500_000)
+    st, resp = api.verb("purchase_order", big["name"], "submit")
+    if st == 200:
+        gap("po_approval: PO above 5.000.000 needs purchasing_manager before submit", "kernel (S2 approvals)", "submit succeeded without an approval; the sidecar is not read yet")
+    else:
+        check("po_approval holds a PO above 5.000.000 at submit", "approv" in json.dumps(resp).lower(), (st, resp))
+
+    # receive action: draft goods receipt with the remainder per line
+    st, resp = api.action("purchase_order", pon, "receive", {})
+    if st == 501:
+        gap("procurement.receive creates the draft goods receipt", "kernel (S8c hooks)", "501 hook_not_implemented")
+    else:
+        check("receive opens a draft goods_receipt", st == 200 and resp.get("open", {}).get("model") == "goods_receipt", (st, resp))
+        if st == 200:
+            d = api.get("goods_receipt", resp["open"]["name"])
+            check("draft GR: vendor, outlet, purchase_order", d["vendor"] == vendor and d["outlet"] == outlet and d["purchase_order"] == pon, d)
+            eq("draft GR lines: remainder per line", [(i["item"], i["qty"], i["packing"], i["rate"], i["stock_qty"]) for i in d["items"]],
+               [(liter_item, 10, "", 85_000, 10), (mag_item, 2, conv, 600_000, 100)])
+            api.call("DELETE", f"/api/v1/r/goods_receipt/{d['name']}")
+
+    # goods receipt: 12.000 per Kg
+    st, gr = api.create("goods_receipt", {"purchase_order": pon, "vendor": vendor, "outlet": outlet,
+                                          "items": [{"item": liter_item, "qty": 10, "rate": 85_000}, {"item": mag_item, "qty": 2, "packing": conv, "rate": 600_000}]})
+    check("create goods receipt", st == 201, gr)
+    if st != 201:
+        return
+    eq("GR stock_qty [10, 100]", [i["stock_qty"] for i in gr["items"]], [10, 100])
+    eq("GR unit_cost per stock unit [85.000, 12.000]", [i["unit_cost"] for i in gr["items"]], [85_000, 12_000])
+    eq("GR total_value 2.050.000", gr["total_value"], 2_050_000)
+    st, resp = api.create("goods_receipt", {"purchase_order": pon, "vendor": vendor, "items": [{"item": liter_item, "qty": 1, "rate": 1}]})
+    check("GR without outlet -> 422", st == 422, (st, resp))
+    st, resp = api.verb("goods_receipt", gr["name"], "submit")
+    check("submit goods receipt", st == 200, (st, resp))
+    grn = resp.get("name", gr["name"])
+    if skipped(api, "stock.post_moves", f"goods_receipt/{grn}"):
+        gap("stock.post_moves posts the receipt and updates PO received_qty/received_pct", "kernel (S8c hooks, stock module Task 8)", "hook.skipped in the audit log")
+        st, resp = api.verb("goods_receipt", grn, "cancel")
+        check("cancel goods receipt", st == 200, (st, resp))
+        if skipped(api, "stock.reverse_moves", f"goods_receipt/{grn}"):
+            gap("stock.reverse_moves reverses the receipt", "kernel (S8c hooks, stock module Task 8)", "hook.skipped in the audit log")
+    else:
+        pod = api.get("purchase_order", pon)
+        eq("PO received_pct 100 after the receipt", pod["received_pct"], 100)
+        eq("PO received_qty per line [10, 2]", [i["received_qty"] for i in pod["items"]], [10, 2])
+        st, resp = api.action("purchase_order", pon, "receive", {})
+        check("receive on a fully received PO is gated: 409", st == 409, (st, resp))
+
+    # vendor bill: amount_due = grand_total - pph23_amount
+    bill_body = {"vendor": vendor, "purchase_order": pon, "goods_receipt": grn, "bill_no": "INV-CBU-0001", "bill_date": "2026-11-10",
+                 "ppn_applies": True, "pph23_amount": 20_000, "items": po_lines}
+    bill_body["items"] = [{"item": liter_item, "qty": 10, "rate": 85_000}, {"item": mag_item, "qty": 2, "rate": 600_000}]
+    vendor_before = api.get("vendor", vendor)["outstanding"]
+    st, vb = api.create("vendor_bill", bill_body)
+    check("create vendor bill", st == 201, vb)
+    if st != 201:
+        return
+    eq("bill subtotal 2.050.000", vb["subtotal"], 2_050_000)
+    eq("bill ppn 225.500", vb["ppn"], 225_500)
+    eq("bill grand_total 2.275.500", vb["grand_total"], 2_275_500)
+    eq("bill amount_due = grand_total - pph23_amount = 2.255.500", vb["amount_due"], 2_255_500)
+    eq("bill outstanding = amount_due - paid_amount", vb["outstanding"], 2_255_500)
+    check("bill due_date defaults to bill_date + vendor payment_days (30)", vb["due_date"] == "2026-12-10", vb.get("due_date"))
+    st, resp = api.create("vendor_bill", dict(bill_body, pph23_amount=3_000_000))
+    check("pph23 above total -> 422 'PPh 23 tidak boleh negatif atau melebihi total'", st == 422 and any("PPh 23 tidak boleh" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("vendor_bill", dict(bill_body, due_date="2026-11-01"))
+    check("due before bill date -> 422 'Jatuh tempo tidak boleh sebelum tanggal faktur'", st == 422 and any("Jatuh tempo" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("vendor_bill", {k: v for k, v in bill_body.items() if k != "bill_no"})
+    check("bill without bill_no -> 422", st == 422, (st, resp))
+    st, resp = api.verb("vendor_bill", vb["name"], "submit")
+    check("submit vendor bill", st == 200, (st, resp))
+    vbn = resp.get("name", vb["name"])
+    posted = api.get("vendor", vendor)["outstanding"]
+    if skipped(api, "procurement.post_payable", f"vendor_bill/{vbn}"):
+        gap("procurement.post_payable adds amount_due to vendor.outstanding", "kernel (S8c hooks)", "hook.skipped in the audit log")
+        gap("procurement.reverse_payable subtracts on cancel", "kernel (S8c hooks)", "hook.skipped in the audit log")
+        hooked = False
+    else:
+        eq("vendor outstanding += amount_due (2.255.500)", posted, vendor_before + 2_255_500)
+        hooked = True
+
+    # payments to the bill (direction pay) and the allocation-target rule
+    def pay(amount, rows, **extra):
+        body = {"direction": "pay", "vendor": vendor, "amount": amount, "allocations": rows}
+        body.update(extra)
+        return api.create("payment", body)
+
+    st, resp = pay(3_000_000, [{"vendor_bill": vbn, "amount": 2_300_000}])
+    check("allocation 2.300.000 vs bill outstanding 2.255.500 -> 422 'Alokasi melebihi sisa tagihan'",
+          st == 422 and any("Alokasi melebihi sisa tagihan" in m for m in messages(resp)), (st, resp))
+    cust = api.list("customer")[0]["name"]
+    st, inv = api.create("sales_invoice", invoice_body(cust, services(api)[0]["name"]))
+    check("create a sales invoice to misuse", st == 201, inv)
+    st, resp = pay(1_000_000, [{"sales_invoice": inv["name"], "amount": 1_000_000}])
+    check("direction pay allocated to a sales_invoice -> 422 'Pilih faktur penjualan (terima) atau tagihan pemasok (bayar)'",
+          st == 422 and any("tagihan pemasok (bayar)" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("payment", {"direction": "receive", "customer": cust, "amount": 1_000_000, "allocations": [{"vendor_bill": vbn, "amount": 1_000_000}]})
+    check("direction receive allocated to a vendor_bill -> 422", st == 422 and any("tagihan pemasok (bayar)" in m for m in messages(resp)), (st, resp))
+    st, resp = pay(2_000_000, [{"sales_invoice": inv["name"], "vendor_bill": vbn, "amount": 1_000_000}])
+    check("row naming both a sales_invoice and a vendor_bill -> 422", st == 422, (st, resp))
+    st, resp = pay(1_000_000, [{"amount": 1_000_000}])
+    check("pay row without target -> 422", st == 422, (st, resp))
+
+    st, p = pay(2_255_500, [{"vendor_bill": vbn, "amount": 2_255_500}])
+    check("create payment (pay) allocated to the vendor bill", st == 201, (st, p))
+    if st != 201:
+        return
+    eq("allocation row snapshots the bill's outstanding (default uses vendor_bill)", p["allocations"][0]["outstanding"], 2_255_500)
+    eq("payment unallocated 0", p["unallocated"], 0)
+    st, resp = api.verb("payment", p["name"], "submit")
+    check("submit payment to vendor", st == 200, (st, resp))
+    pn = resp.get("name", p["name"])
+    if skipped(api, "payments.allocate", f"payment/{pn}"):
+        gap("payments.allocate pays the vendor bill (direction pay)", "kernel (S8c hooks)", "hook.skipped in the audit log")
+        api.verb("payment", pn, "cancel")
+    else:
+        b = api.get("vendor_bill", vbn)
+        eq("bill paid_amount 2.255.500", b["paid_amount"], 2_255_500)
+        eq("bill outstanding 0", b["outstanding"], 0)
+        if hooked:
+            eq("vendor outstanding back to start", api.get("vendor", vendor)["outstanding"], vendor_before)
+        st, resp = api.verb("vendor_bill", vbn, "cancel")
+        check("bill with payments cannot be cancelled (has_payments)", st == 409, (st, resp))
+        st, resp = api.verb("payment", pn, "cancel")
+        check("cancel payment", st == 200, (st, resp))
+        eq("cancel restores bill outstanding", api.get("vendor_bill", vbn)["outstanding"], 2_255_500)
+    st, resp = api.verb("vendor_bill", vbn, "cancel")
+    check("cancel vendor bill", st == 200, (st, resp))
+    if hooked:
+        eq("cancel restores vendor outstanding", api.get("vendor", vendor)["outstanding"], vendor_before)
+
+    # PO print
+    st, _ = api.call("GET", f"/api/v1/r/purchase_order/{pon}/print?format=purchase_order")
+    if st == 404:
+        gap("purchase_order print", "kernel (S3 print)", "404: print endpoint or format not served yet")
+    else:
+        check("purchase_order print answers 200", st == 200, st)
+
+
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing],
-    "demo-jasa": [scenario_quotation, scenario_orders, scenario_workforce, scenario_projects, scenario_payments],
+    "demo-jasa": [scenario_quotation, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement],
     # Task 10 adds "demo-fnb" here and completes demo-jasa; Task 11 extends both with the day-one flows.
 }
 
