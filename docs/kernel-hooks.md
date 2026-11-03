@@ -18,7 +18,7 @@ rolls the whole submit/cancel back. Money is whole rupiah and no hook consults a
 ## Foreign-currency documents
 
 Hooks read only the IDR fields (`amount_due`, `grand_total`, `outstanding`, `paid_amount`, allocation `amount`), never `*_fx`. For a
-document whose `currency` is not IDR, the model sets the IDR `subtotal` to the IDR twin of `subtotal_fx` (contract 0013); `dpp_base`,
+document whose `currency` is not IDR, the model sets the IDR `subtotal` to the IDR twin of `subtotal_fx` (contract 0013); `dpp`,
 PPN (assessed in rupiah), `grand_total`, retention, PPh 23 and `amount_due` stay IDR computes from it. Lines are entered with `rate_fx`; the
 IDR line `amount` (qty x rate) cannot see the parent's currency, so a foreign header ignores it. The `*_fx` header totals are
 informative. A foreign payment's IDR `amount` is `round(amount_fx x exchange_rate)`, so allocation rows stay IDR.
@@ -59,8 +59,8 @@ informative. A foreign payment's IDR `amount` is `round(amount_fx x exchange_rat
   the hook writes invoices.
 
 ### Not checkable in a rule (hook or kernel work)
-- A DP invoice deducted by two regular invoices: each rule checks `dp_deduction <= dp_invoice.dpp_base` alone. The
-  submit hook must refuse when the sum of `dp_deduction` over submitted invoices naming the same `dp_invoice` exceeds its `dpp_base`
+- A DP invoice deducted by two regular invoices: each rule checks `down_payment <= dp_invoice.dpp` alone. The
+  submit hook must refuse when the sum of `down_payment` over submitted invoices naming the same `dp_invoice` exceeds its `dpp`
   (`409 dp_over_deducted`). Likewise one `retention_of` may be billed once (`409 retention_billed`).
 
 ## payments
@@ -231,3 +231,10 @@ Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill`
 saved while valid stays `expired = false` after `expires_on` passes. The kernel needs either computed-on-read for
 date-dependent computes or a scheduled recompute (a flow with `schedule:` that touches rows crossing their date). Until then
 only a save of the worker refreshes it; `tests/day_one.py` asserts the value right after creation.
+
+## Field names the kernel hooks still read (follow-up)
+
+`ledger.post_receivable` (rangka-os `kernel/internal/engine/ledger.go:72` and `:74`) reads the old names `dp_deduction` (on each
+deducting invoice) and `dpp_base` (on the DP invoice). The documented names are `down_payment` and `dpp`. Until the hook is changed,
+`sales_invoice` keeps read-only computed twins `dp_deduction = down_payment` and `dpp_base = dpp`; delete them when the hook reads the
+new names. Nothing else in the modules uses the old names.

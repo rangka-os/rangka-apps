@@ -26,6 +26,11 @@ fields:
   - name: npwp
     type: npwp
     label: {id: NPWP}
+  - name: pkp
+    type: check
+    label: {id: Pemasok PKP}
+    help: {id: 'PPN pembelian dari pemasok ini dihitung bila PKP'}
+    default: 'false'
   - name: payment_days
     type: int
     label: {id: Tempo (hari)}

@@ -59,8 +59,8 @@ recipe:
       - {material: BRG-0002, qty: 0.04}
       - {material: BRG-0005, qty: 1}
 vendor:
-  - {name: VND-0001, vendor_name: CV Contoh Tahu Segar, city: Lembang, payment_days: 7, npwp: '0000000000000000'}
-  - {name: VND-0002, vendor_name: PT Contoh Bahan Dapur, city: Bandung, payment_days: 14, npwp: '0000000000000000'}
+  - {name: VND-0001, vendor_name: CV Contoh Tahu Segar, city: Lembang, pkp: false, payment_days: 7, npwp: '0000000000000000'}
+  - {name: VND-0002, vendor_name: PT Contoh Bahan Dapur, city: Bandung, pkp: true, payment_days: 14, npwp: '0000000000000000'}
 user:
   - {name: USR-001, full_name: Rina Contoh, role: head_office, email: rina@tahucontoh.test}
   - {name: USR-002, full_name: Yusuf Contoh, role: outlet_staff, email: yusuf.dago@tahucontoh.test}

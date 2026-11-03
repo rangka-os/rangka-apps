@@ -47,11 +47,10 @@ modules/<m>/module.rk               manifest: name, version, title, requires, op
 modules/<m>/models|roles|flows/     the module's metadata
 modules/<m>/print/                  print formats (inert until the kernel's print stream, S3, merges)
 modules/<m>/imports/                spreadsheet imports (kind import, contract 0012)
-modules/<m>/experimental/           sidecars: only what still waits for a kernel stream (see below)
 apps/<a>/app.rk, dashboards/        what a customer installs: modules, menu, dashboards, connectors, roles, home, onboarding
 examples/sites/<site>/              example installations: system.rk, features.rk, config.rk (+ letterhead.rk, letterheads/<org>.rk, themes/, layouts/)
 examples/fixtures/<dir>/            their demo data (`demo-jasa` seeds the first PT, `demo-jasa-pelatihan` the second; see below)
-scripts/                            validate.sh, check_experimental.py
+scripts/                            validate.sh
 tests/day_one.py                    integration test against a live kernel (`python3 tests/day_one.py --site kopi-senja|demo-jasa|demo-fnb`)
 docs/kernel-hooks.md                what each hook the modules declare must do
 ```
@@ -59,8 +58,13 @@ docs/kernel-hooks.md                what each hook the modules declare must do
 The kernel and both validators read `apps/` and the `modules/` folder next to it, so there is nothing to build. A
 site's `config.apps` lists apps only; the kernel installs the modules each app names, and their `requires`.
 
-A sidecar `modules/<m>/experimental/<model>.rk` holds keys the kernel cannot read yet. Today there are two: the
-`ppn_applies` default from the org's `pkp` on `sales_invoice` and `quotation` (CEL has no `org` variable until stream S5).
+### PPN
+
+No rate is written in a module. `tax` in `config.rk` (`ppn_rate`, `dpp_ratio`, `pkp`; an org's `orgs.<id>.tax` is deep-merged
+over the site's) reaches the models as the CEL global `tax` (`ppn_rate`, `dpp_num`, `dpp_den`, `pkp`). Every taxed document
+(`quotation`, `sales_invoice`, `purchase_order`, `vendor_bill`) stores `tax_rate`, `dpp_num` and `dpp_den` at creation (no `dpp_ratio` text field: `string()` is not in the CEL function set of either validator; prints join `dpp_num`/`dpp_den`), so a
+submitted document keeps its rate when the config changes later. Sales side `tax_rate` is `tax.pkp ? tax.ppn_rate : 0`; purchase side
+`vendor.pkp ? tax.ppn_rate : 0` (`vendor.pkp`). `ppn = round(dpp * dpp_num / dpp_den * tax_rate / 100)`; `tax_rate` 0 means no PPN.
 
 ### The demo sites
 

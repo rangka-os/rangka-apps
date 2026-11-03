@@ -83,8 +83,9 @@
 
 <table class="totals">
   <tr><th>Subtotal</th><td class="num">{{rupiah .Doc.subtotal}}</td></tr>
-  {{- if .Doc.ppn}}
-  <tr><th>PPN</th><td class="num">{{rupiah .Doc.ppn}}</td></tr>
+  {{- if .Doc.tax_rate}}
+  <tr><th>DPP</th><td class="num">{{rupiah .Doc.dpp}}</td></tr>
+  <tr><th>PPN {{number .Doc.tax_rate}}% (DPP nilai lain {{.Doc.dpp_num}}/{{.Doc.dpp_den}})</th><td class="num">{{rupiah .Doc.ppn}}</td></tr>
   {{- end}}
   <tr class="grand"><th>Total</th><td class="num">{{rupiah .Doc.grand_total}}</td></tr>
 </table>

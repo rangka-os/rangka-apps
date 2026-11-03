@@ -35,7 +35,7 @@ fields:
   - name: dpp
     type: currency
     label: {id: DPP}
-    default: sales_invoice.dpp_base
+    default: sales_invoice.dpp
   - name: rate
     type: percent
     label: {id: Tarif}
