@@ -529,9 +529,126 @@ def scenario_projects(api):
     check("acceptance without accepted_by rejected", st == 422, (st, resp))
 
 
+def scenario_payments(api):
+    item = api.list("item")[0]["name"]
+    st, cust = api.create("customer", {"customer_name": "PT Contoh Bayar"})
+    check("create customer for payments", st == 201, cust)
+    customer = cust["name"]
+
+    def submitted_invoice(rate, **extra):
+        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, **extra))
+        check(f"create invoice {rate}", st == 201, inv)
+        st, resp = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        check(f"submit invoice {rate}", st == 200, resp)
+        return resp.get("name", inv["name"])
+
+    inv1 = submitted_invoice(10_000_000)
+    inv2 = submitted_invoice(3_900_000, ppn_applies=False)
+    eq("invoice 1 outstanding 11.100.000", api.get("sales_invoice", inv1)["outstanding"], 11_100_000)
+    eq("invoice 2 outstanding 3.900.000", api.get("sales_invoice", inv2)["outstanding"], 3_900_000)
+    cust_before = api.get("customer", customer)["outstanding"]
+    hooked = cust_before == 15_000_000   # ledger.post_receivable is implemented
+
+    def pay(amount, rows, **extra):
+        body = {"direction": "receive", "customer": customer, "amount": amount,
+                "allocations": [{"sales_invoice": i, "amount": a, **({"withheld": w} if w else {})} for i, a, w in rows]}
+        body.update(extra)
+        return api.create("payment", body)
+
+    # rules
+    st, resp = pay(15_000_000, [(inv1, 12_000_000, 0)])
+    check("allocation 12.000.000 vs outstanding 11.100.000 -> 422 'Alokasi melebihi sisa tagihan'",
+          st == 422 and any("Alokasi melebihi sisa tagihan" in m for m in messages(resp)), (st, resp))
+    st, resp = pay(10_000_000, [(inv1, 6_000_000, 0), (inv2, 3_900_000, 0)])
+    check("allocated_total 9.900.000 <= amount ok", st == 201, (st, resp))
+    st, resp = pay(9_000_000, [(inv1, 6_000_000, 0), (inv2, 3_900_000, 0)])
+    check("allocated_total above amount -> 422 'Alokasi melebihi jumlah pembayaran'",
+          st == 422 and any("Alokasi melebihi jumlah pembayaran" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("payment", {"direction": "receive", "amount": 1000})
+    check("receive without customer -> 422", st == 422, (st, resp))
+    st, resp = api.create("payment", {"direction": "pay", "amount": 1000})
+    check("pay without vendor -> 422", st == 422, (st, resp))
+    st, resp = api.create("payment", {"direction": "receive", "customer": customer, "amount": 0})
+    check("amount 0 -> 422", st == 422, (st, resp))
+    st, resp = api.create("payment", {"direction": "receive", "customer": customer, "amount": 1000, "allocations": [{"amount": 1000}]})
+    check("allocation row without invoice -> 422", st == 422, (st, resp))
+
+    # one payment of 15.000.000 across both invoices: submit passes the rules
+    st, p = pay(15_000_000, [(inv1, 11_100_000, 0), (inv2, 3_900_000, 0)])
+    check("create payment 15.000.000 allocated 11.100.000 + 3.900.000", st == 201, (st, p))
+    if st != 201:
+        return
+    eq("payment allocated_total 15.000.000", p["allocated_total"], 15_000_000)
+    eq("payment unallocated 0", p["unallocated"], 0)
+    check("allocation row snapshots outstanding", p["allocations"][0]["outstanding"] == 11_100_000, p["allocations"])
+    st, resp = api.verb("payment", p["name"], "submit")
+    check("submit payment passes the rules", st == 200, (st, resp))
+    pname = resp.get("name", p["name"])
+    if skipped(api, "payments.allocate", f"payment/{pname}"):
+        gap("payments.allocate pays both invoices", "kernel (S8c hooks)", "hook.skipped in the audit log")
+        gap("payments.unallocate restores on cancel", "kernel (S8c hooks)", "hook.skipped in the audit log")
+        api.verb("payment", pname, "cancel")
+    else:
+        i1, i2 = api.get("sales_invoice", inv1), api.get("sales_invoice", inv2)
+        eq("invoice 1 paid_amount 11.100.000", i1["paid_amount"], 11_100_000)
+        eq("invoice 1 outstanding 0", i1["outstanding"], 0)
+        eq("invoice 2 outstanding 0", i2["outstanding"], 0)
+        check("both invoices status paid", i1.get("status") == "paid" and i2.get("status") == "paid", (i1.get("status"), i2.get("status")))
+        rows = api.get("payment", pname)["allocations"]
+        eq("applied_idr written on the rows", [r["applied_idr"] for r in rows], [11_100_000, 3_900_000])
+        if hooked:
+            eq("customer outstanding dropped by 15.000.000", api.get("customer", customer)["outstanding"], cust_before - 15_000_000)
+        # a second payment against a paid invoice is refused by the hook, not only by the rules snapshot
+        st, stale = api.create("payment", {"direction": "receive", "customer": customer, "amount": 1_000_000, "allocations": [{"sales_invoice": inv1, "amount": 1_000_000, "outstanding": 11_100_000}]})
+        if st == 201:
+            st, resp = api.verb("payment", stale["name"], "submit")
+            check("stale allocation refused: 409 over_allocation 'Alokasi melebihi sisa tagihan'",
+                  st == 409 and resp["error"]["code"] == "over_allocation" and "Alokasi melebihi sisa tagihan" in resp["error"]["message"], (st, resp))
+        st, resp = api.verb("sales_invoice", inv1, "cancel")
+        check("invoice with payments cannot be cancelled (has_payments)", st == 409, (st, resp))
+        st, resp = api.verb("payment", pname, "cancel")
+        check("cancel payment", st == 200, resp)
+        i1 = api.get("sales_invoice", inv1)
+        eq("cancel restores invoice 1 paid_amount 0", i1["paid_amount"], 0)
+        eq("cancel restores invoice 1 outstanding", i1["outstanding"], 11_100_000)
+        eq("cancel restores invoice 2 outstanding", api.get("sales_invoice", inv2)["outstanding"], 3_900_000)
+        if hooked:
+            eq("cancel restores customer outstanding", api.get("customer", customer)["outstanding"], cust_before)
+
+    # PPh 23 withheld: invoice with pph23, customer pays net + withheld
+    inv3 = submitted_invoice(10_000_000, pph23_applies=True)
+    i3 = api.get("sales_invoice", inv3)
+    eq("pph23 invoice amount_due 10.900.000", i3["amount_due"], 10_900_000)
+    st, p2 = pay(10_700_000, [(inv3, 10_700_000, 200_000)])
+    check("payment with withheld 200.000 (net 10.700.000)", st == 201, (st, p2))
+    if st == 201:
+        eq("withheld_total 200.000", p2["withheld_total"], 200_000)
+        st, resp = api.verb("payment", p2["name"], "submit")
+        check("submit payment with withholding", st == 200, resp)
+        if st == 200 and not skipped(api, "payments.allocate", f"payment/{resp.get('name', p2['name'])}"):
+            eq("invoice paid by cash + withheld: outstanding 0", api.get("sales_invoice", inv3)["outstanding"], 0)
+    st, bp = api.create("withholding", {"customer": customer, "sales_invoice": inv3, "cert_no": "BP-UJI-001", "cert_date": "2026-11-05", "payment": p2["name"] if st == 201 else ""})
+    check("create withholding for the invoice", st == 201, bp)
+    if st == 201:
+        eq("withholding dpp defaults to invoice dpp_base", bp["dpp"], 10_000_000)
+        eq("withholding amount = round(dpp x 2 / 100) = 200.000", bp["amount"], 200_000)
+        st, resp = api.verb("withholding", bp["name"], "submit")
+        check("submit withholding", st == 200 and str(resp.get("name", "")).startswith("BP-"), resp)
+    other = next(c["name"] for c in api.list("customer") if c["name"] != customer)
+    st, resp = api.create("withholding", {"customer": other, "sales_invoice": inv3, "cert_no": "BP-X", "cert_date": "2026-11-05"})
+    check("withholding of another customer's invoice -> 422", st == 422 and any("bukan milik" in m for m in messages(resp)), (st, resp))
+
+    # SOA print on customer
+    st, _ = api.call("GET", f"/api/v1/r/customer/{customer}/print?format=statement")
+    if st == 404:
+        gap("statement print on customer", "kernel (S3 print)", "404: print endpoint or format not served yet")
+    else:
+        check("statement print answers 200", st == 200, st)
+
+
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing],
-    "demo-jasa": [scenario_quotation, scenario_orders, scenario_workforce, scenario_projects],
+    "demo-jasa": [scenario_quotation, scenario_orders, scenario_workforce, scenario_projects, scenario_payments],
     # Task 10 adds "demo-fnb" here and completes demo-jasa; Task 11 extends both with the day-one flows.
 }
 
