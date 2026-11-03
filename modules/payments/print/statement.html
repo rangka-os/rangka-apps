@@ -50,5 +50,6 @@
     <td class="num">{{rupiah $cur}}</td><td class="num">{{rupiah $d30}}</td><td class="num">{{rupiah $d60}}</td><td class="num">{{rupiah $d90}}</td><td class="num">{{rupiah $o90}}</td>
   </tr></tbody>
 </table>
+{{if .Truncated.invoices}}<p class="note"><strong>Daftar dipotong:</strong> hanya 1.000 tagihan terlama yang ditampilkan, jadi total dan umur piutang di atas lebih kecil dari yang sebenarnya.</p>{{end}}
 <p class="note">Faktur yang sudah lunas tidak ditampilkan. Bila ada selisih dengan catatan kamu, mohon hubungi kami.</p>
 {{template "bank_accounts" .}}

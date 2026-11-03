@@ -8,6 +8,6 @@ related:
   invoices:
     model: sales_invoice
     match: {customer: name}
-    filter: docstatus == 1
+    filter: docstatus == 1 && outstanding > 0
     sort: posting_date
-    limit: 500
+    limit: 1000

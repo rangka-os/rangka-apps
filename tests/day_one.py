@@ -81,6 +81,15 @@ def free_port():
     return port
 
 
+# Orgs of each site and the fixtures directory (examples/fixtures/<dir>) seeded into each; the first org is the one the
+# server serves in dev-open mode. demo-jasa has two PTs (contract 0010); kopi-senja keeps the default org (the site name).
+SITE_ORGS = {
+    "kopi-senja": [(None, "kopi-senja")],
+    "demo-jasa": [("pt_contoh_inspeksi", "demo-jasa"), ("cv_contoh_pelatihan", "demo-jasa-pelatihan")],
+    "demo-fnb": [("tahu_contoh", "demo-fnb")],
+}
+
+
 class Kernel:
     """A temp Postgres plus `rangka serve` for one site."""
 
@@ -95,6 +104,9 @@ class Kernel:
         self.port = free_port()
         self.base = f"http://127.0.0.1:{self.port}"
         self.db = None
+        self.owner_email = "owner@contoh.test"      # the seeded owner of every org; a throwaway account of a throwaway database
+        self.owner_pw = secrets.token_urlsafe(18)
+        self.orgs = SITE_ORGS[site]
 
     def args(self):
         site_dir = os.path.join(ROOT, "examples", "sites", self.site)
@@ -105,11 +117,16 @@ class Kernel:
         if r.returncode != 0:
             sys.exit("pgtemp start failed: " + r.stderr)
         self.db = r.stdout.strip().split("\n")[-1]
-        for verb, extra in (("migrate", []), ("seed", ["--fixtures", os.path.join(ROOT, "examples", "fixtures", self.site)])):
+        steps = [("migrate", [])]
+        for org, fixtures in self.orgs:     # `seed --org` fills one org with its own fixtures
+            steps.append(("seed", ["--fixtures", os.path.join(ROOT, "examples", "fixtures", fixtures),
+                                   "--email", self.owner_email, "--password", self.owner_pw] + (["--org", org] if org else [])))
+        for verb, extra in steps:
             r = subprocess.run([self.binary, verb] + self.args() + extra, capture_output=True, text=True)
             if r.returncode != 0:
                 sys.exit(f"rangka {verb} failed:\n{r.stdout}\n{r.stderr}")
-        self.proc = subprocess.Popen([self.binary, "serve"] + self.args() + ["--dev-open", "--addr", f"127.0.0.1:{self.port}"],
+        first = self.orgs[0][0]
+        self.proc = subprocess.Popen([self.binary, "serve"] + self.args() + (["--org", first] if first else []) + ["--dev-open", "--addr", f"127.0.0.1:{self.port}"],
                                      stdout=self.log, stderr=subprocess.STDOUT)
         for _ in range(100):
             if self.proc.poll() is not None:
@@ -152,9 +169,12 @@ class Api:
         self.cookie = cookie  # "rk_session=..." of a signed-in person; empty in dev-open mode (the owner)
 
     @classmethod
-    def login(cls, base, email, password):
-        """A client signed in as `email` (POST /auth/login), or None when the login is refused."""
-        req = urllib.request.Request(base + "/auth/login", data=json.dumps({"email": email, "password": password}).encode(),
+    def login(cls, base, email, password, org=None):
+        """A client signed in as `email` (POST /auth/login) in `org` (default: the user's first membership), or None when refused."""
+        body = {"email": email, "password": password}
+        if org:
+            body["org"] = org
+        req = urllib.request.Request(base + "/auth/login", data=json.dumps(body).encode(),
                                      method="POST", headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
@@ -205,6 +225,19 @@ class Api:
                 return e.code, json.loads(raw)
             except Exception:
                 return e.code, {"error": {"code": "non_json", "message": raw.decode(errors="replace")[:200]}}
+
+    def html(self, path):
+        """GET a text page (print): (status, body text, content type)."""
+        req = urllib.request.Request(self.base + path, headers=self.headers())
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return r.status, r.read().decode("utf-8", "replace"), r.headers.get("Content-Type", "")
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode("utf-8", "replace"), e.headers.get("Content-Type", "")
+
+    def print_html(self, model, name, fmt=""):
+        """The HTML print of a record: GET /api/v1/r/{model}/{name}/print?as=html[&format=...]."""
+        return self.html(f"/api/v1/r/{model}/{self.q(name)}/print?as=html" + (f"&format={fmt}" if fmt else ""))
 
     @staticmethod
     def q(name):
@@ -832,13 +865,6 @@ def scenario_payments(api):
     st, resp = api.create("withholding", {"customer": other, "sales_invoice": inv3, "cert_no": "BP-X", "cert_date": "2026-11-05"})
     check("withholding of another customer's invoice -> 422", st == 422 and any("bukan milik" in m for m in messages(resp)), (st, resp))
 
-    # SOA print on customer
-    st, _ = api.call("GET", f"/api/v1/r/customer/{Api.q(customer)}/print?format=statement")
-    if st == 404:
-        gap("statement print on customer", "kernel (S3 print)", "404: print endpoint or format not served yet")
-    else:
-        check("statement print answers 200", st == 200, st)
-
 
 def scenario_procurement(api):
     vendor = "VND-0001"
@@ -1073,12 +1099,279 @@ def scenario_procurement(api):
     if hooked:
         eq("cancel restores vendor outstanding", api.get("vendor", vendor)["outstanding"], vendor_before)
 
-    # PO print
-    st, _ = api.call("GET", f"/api/v1/r/purchase_order/{Api.q(pon)}/print?format=purchase_order")
-    if st == 404:
-        gap("purchase_order print", "kernel (S3 print)", "404: print endpoint or format not served yet")
+
+# ---------- scenarios: print formats (contract 0008), both PTs of demo-jasa
+
+import html as htmllib
+import re
+
+
+def page_text(raw):
+    """Visible text of a print page: tags dropped, entities decoded, whitespace collapsed (so `Rp 11.100.000` can be matched)."""
+    body = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", raw)
+    body = re.sub(r"(?s)<[^>]+>", " ", body)
+    return re.sub(r"\s+", " ", htmllib.unescape(body)).replace("\xa0", " ")
+
+
+def check_print(label, api, model, name, fmt, must, must_not=()):
+    """GET the HTML print and assert status 200, HTML content type and the visible strings in `must` / not in `must_not`."""
+    st, raw, ctype = api.print_html(model, name, fmt)
+    if not check(f"{label}: print answers 200 text/html", st == 200 and ctype.startswith("text/html"), (st, ctype, raw[:200])):
+        return ""
+    text = page_text(raw)
+    for needle in must:
+        check(f"{label}: shows {needle!r}", needle in text, text[:600])
+    for needle in must_not:
+        check(f"{label}: does not show {needle!r}", needle not in text, needle)
+    return text
+
+
+def aging_cells(text):
+    """The five aging amounts of the statement (belum jatuh tempo, 1-30, 31-60, 61-90, > 90) as ints."""
+    m = re.search(r"> 90 hari ((?:-?Rp [\d.]+ ?){5})", text)
+    return [int(x.replace("Rp ", "").replace(".", "")) for x in re.findall(r"-?Rp [\d.]+", m.group(1))] if m else None
+
+
+def scenario_prints_jasa(api):
+    import datetime
+    org2 = Api.login(CTX["kernel"].base, CTX["kernel"].owner_email, CTX["kernel"].owner_pw, org="cv_contoh_pelatihan")
+    customer, ndt = "CUST-0001", services(api)[0]["name"]
+
+    # quotation (PKP org): PPN row from the document's own tax figures
+    st, q = api.create("quotation", {"customer": customer, "subject": "Inspeksi uji cetak", "items": [{"item": ndt, "qty": 10, "rate": 1_000_000}]})
+    check("print: create quotation", st == 201, q)
+    st, resp = api.verb("quotation", q["name"], "submit")
+    check("print: submit quotation", st == 200, resp)
+    qn = resp.get("name", q["name"])
+    check_print("quotation (PT Contoh Inspeksi)", api, "quotation", qn, "quotation",
+                [qn, "Surat Penawaran Harga", "Rp 10.000.000", "Rp 1.100.000", "Rp 11.100.000", "sebelas juta seratus ribu rupiah", "PPN 12%", "PT Contoh Inspeksi"])
+
+    # sales_invoice, PKP org: 10.000.000 + PPN 1.100.000
+    st, inv = api.create("sales_invoice", invoice_body(customer, ndt))
+    check("print: create PKP invoice", st == 201, inv)
+    st, resp = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+    check("print: submit PKP invoice", st == 200, resp)
+    invn = resp.get("name", inv["name"])
+    check("PKP invoice number follows INV/{ORG}/{YY}/{####} with the org code", re.fullmatch(r"INV/CIN/\d\d/\d{4}", invn) is not None, invn)
+    check_print("sales_invoice (PKP org)", api, "sales_invoice", invn, "",
+                [invn, "Rp 10.000.000", "PPN 12%", "Rp 1.100.000", "Rp 11.100.000", "sebelas juta seratus ribu rupiah", "PT Contoh Inspeksi", "00.000.000.0-000.001", "e-Faktur"])
+    # the rate and the DPP come from the document: an 11% invoice prints 11%, not a fixed 12%
+    st, inv11 = api.create("sales_invoice", invoice_body(customer, ndt, tax_rate=11))
+    check("print: create 11% invoice", st == 201, inv11)
+    eq("11% invoice ppn = round(10.000.000 x 11/12 x 11%)", inv11.get("ppn"), 1_008_333)
+    st, resp = api.verb("sales_invoice", inv11["name"], "submit", {"force": True})
+    n11 = resp.get("name", inv11["name"])
+    t11 = check_print("sales_invoice with tax_rate 11 (rate from the document)", api, "sales_invoice", n11, "",
+                      ["PPN 11%", "Rp 1.008.333", "Rp 11.008.333"], must_not=["PPN 12%"])
+    # a DP deduction lowers the DPP the invoice prints
+    st, dpi = api.create("sales_invoice", invoice_body(customer, ndt, rate=3_000_000, kind="down_payment"))
+    st, resp = api.verb("sales_invoice", dpi["name"], "submit", {"force": True})
+    dpn = resp.get("name", dpi["name"])
+    st, reg = api.create("sales_invoice", invoice_body(customer, ndt, dp_invoice=dpn, dp_deduction=3_000_000))
+    check("print: create invoice with DP deduction", st == 201, reg)
+    st, resp = api.verb("sales_invoice", reg["name"], "submit", {"force": True})
+    rn = resp.get("name", reg["name"])
+    check_print("sales_invoice with DP deduction (DPP 7.000.000)", api, "sales_invoice", rn, "",
+               ["Uang muka", "Rp 3.000.000", "Rp 7.000.000", "Rp 770.000", "Rp 7.770.000", "tujuh juta tujuh ratus tujuh puluh ribu rupiah"])
+
+    # purchase_order (the PO's own ppn and totals)
+    st, po = api.create("purchase_order", {"vendor": "VND-0001", "order_date": "2026-11-03", "payment_terms": "Net 30", "ppn_applies": True,
+                                           "items": [{"item": "BRG-0004", "qty": 20, "rate": 85_000}, {"item": "BRG-0005", "qty": 100, "rate": 12_000}]})
+    check("print: create purchase_order", st == 201, po)
+    if st == 201:
+        st, resp = api.verb("purchase_order", po["name"], "submit")
+        check("print: submit purchase_order", st == 200, resp)
+        pon = resp.get("name", po["name"])
+        check("PO number follows PO/{ORG}/{YY}{MM}/{###}", re.fullmatch(r"PO/CIN/\d{4}/\d{3}", pon) is not None, pon)
+        total = api.get("purchase_order", pon)["grand_total"]
+        check_print("purchase_order", api, "purchase_order", pon, "",
+                    [pon, "Pesanan pembelian", "PT Contoh Bahan Uji", "Rp 2.900.000", "Rp 319.000", "Rp 3.219.000", "tiga juta dua ratus sembilan belas ribu rupiah"])
+        eq("PO grand_total 3.219.000", total, 3_219_000)
+
+    # statement of account: three open invoices, one per aging bucket (belum jatuh tempo, 1-30, 31-60)
+    st, cust = api.create("customer", {"customer_name": "PT Contoh Piutang", "address": "Jl. Contoh Piutang 1", "payment_days": 30})
+    check("print: create SOA customer", st == 201, cust)
+    today = datetime.date.today()
+    open_ids = {}
+    for tag, days_past_due in (("current", -5), ("d30", 10), ("d60", 45)):
+        due = today - datetime.timedelta(days=days_past_due)
+        posted = due - datetime.timedelta(days=30)
+        st, i = api.create("sales_invoice", invoice_body(cust["name"], ndt, posting_date=posted.isoformat(), due_date=due.isoformat()))
+        check(f"SOA: create invoice {tag}", st == 201, i)
+        st, resp = api.verb("sales_invoice", i["name"], "submit", {"force": True})
+        check(f"SOA: submit invoice {tag}", st == 200, resp)
+        open_ids[tag] = resp.get("name", i["name"])
+    # settle the current one so the list shows open invoices only
+    st, pay = api.create("payment", {"direction": "receive", "customer": cust["name"], "amount": 11_100_000, "allocations": [{"sales_invoice": open_ids["current"], "amount": 11_100_000}]})
+    st, resp = api.verb("payment", pay["name"], "submit")
+    check("SOA: submit the payment of the current invoice", st == 200, (st, resp))
+    paid = api.get("sales_invoice", open_ids["current"])["outstanding"] == 0
+    if not paid:
+        gap("SOA: payments.allocate settles the invoice", "kernel (S8c hooks)", "hook did not run; the statement lists the invoice as open")
+    soa = check_print("statement (customer)", api, "customer", cust["name"], "statement",
+                      ["PT Contoh Piutang", open_ids["d30"], open_ids["d60"], "Umur piutang", "Total sisa tagihan"])
+    cells = aging_cells(soa)
+    if paid:
+        eq("SOA aging buckets [not due, 1-30, 31-60, 61-90, >90] after the payment", cells, [0, 11_100_000, 11_100_000, 0, 0])
+        check("SOA lists open invoices only (the paid one is not shown)", open_ids["current"] not in soa, open_ids["current"])
+        check("SOA total 22.200.000", "Total sisa tagihan Rp 22.200.000" in soa, soa[-500:])
     else:
-        check("purchase_order print answers 200", st == 200, st)
+        eq("SOA aging buckets [not due, 1-30, 31-60, 61-90, >90]", cells, [11_100_000, 11_100_000, 11_100_000, 0, 0])
+
+    # non-PKP org (CV Contoh Pelatihan): its own code, numbering and letterhead, and no PPN row
+    if org2 is None:
+        fail("sign in as the owner of CV Contoh Pelatihan", "login refused")
+        return
+    st, me = org2.call("GET", "/auth/me")
+    eq("owner belongs to both PTs", sorted(o["id"] for o in (me or {}).get("orgs", [])), ["cv_contoh_pelatihan", "pt_contoh_inspeksi"])
+    eq("current org is cv_contoh_pelatihan with code CPL", ((me or {}).get("org") or {}).get("code"), "CPL")
+    eq("CV org sees its own customer only", [c["customer_name"] for c in org2.list("customer")], ["PT Contoh Peserta Mandiri"])
+    st, _ = org2.call("GET", "/api/v1/r/sales_invoice/" + Api.q(invn))
+    check("an invoice of PT Contoh Inspeksi is 404 in CV Contoh Pelatihan (records never cross orgs)", st == 404, st)
+    item2 = org2.list("item")[0]["name"]
+    st, inv2 = org2.create("sales_invoice", invoice_body("CUST-0001", item2, ppn_applies=False))
+    check("print: create non-PKP invoice", st == 201, inv2)
+    eq("non-PKP invoice grand_total 10.000.000", inv2.get("grand_total"), 10_000_000)
+    st, resp = org2.verb("sales_invoice", inv2["name"], "submit", {"force": True})
+    check("print: submit non-PKP invoice", st == 200, resp)
+    inv2n = resp.get("name", inv2["name"])
+    check("non-PKP invoice number follows KW-{ORG}-{YY}{MM}-{###}", re.fullmatch(r"KW-CPL-\d{4}-\d{3}", inv2n) is not None, inv2n)
+    check_print("sales_invoice (non-PKP org)", org2, "sales_invoice", inv2n, "",
+                [inv2n, "Rp 10.000.000", "sepuluh juta rupiah", "CV Contoh Pelatihan", "00.000.000.0-000.002"],
+                must_not=["PPN", "e-Faktur", "Rp 11.100.000", "PT Contoh Inspeksi"])
+    st, q2 = org2.create("quotation", {"customer": "CUST-0001", "subject": "Pelatihan K3", "ppn_applies": False, "items": [{"item": item2, "qty": 1, "rate": 10_000_000}]})
+    st, resp = org2.verb("quotation", q2["name"], "submit")
+    q2n = resp.get("name", q2["name"])
+    check_print("quotation (non-PKP org)", org2, "quotation", q2n, "quotation", [q2n, "Rp 10.000.000", "sepuluh juta rupiah", "CV Contoh Pelatihan"], must_not=["PPN"])
+
+
+# ---------- scenarios: dashboards (computed by the kernel, compared with figures computed here from the records)
+
+def kernel_today():
+    import datetime
+    import zoneinfo
+    return datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Jakarta")).date()
+
+
+def dashboard(api, name, period=0):
+    """A dashboard as {widget name: widget}; every widget must have computed (no `error`)."""
+    st, resp = api.call("GET", f"/api/v1/dashboards/{name}" + (f"?period={period}" if period else ""))
+    if not check(f"dashboard {name} answers 200", st == 200, (st, resp)):
+        return {}
+    ws = {w["name"]: w for w in resp["widgets"]}
+    bad = {n: w["error"] for n, w in ws.items() if "error" in w}
+    check(f"dashboard {name}: all {len(ws)} widgets computed", not bad, bad)
+    return ws
+
+
+def num(w):
+    return round(w.get("value") or 0)
+
+
+def chart_map(w):
+    return {p["key"]: round(p["value"]) for p in w.get("data", [])}
+
+
+def scenario_dashboards_jasa(api):
+    today = kernel_today()
+    import datetime
+    invs = [i for i in api.find("sales_invoice", "docstatus == 1") if i["outstanding"] > 0]
+    want = {"not_due": 0, "past_1_30": 0, "past_31_60": 0, "past_61_90": 0, "past_over_90": 0}
+    for i in invs:
+        days = (today - datetime.date.fromisoformat(i["due_date"])).days
+        key = "not_due" if days <= 0 else "past_1_30" if days <= 30 else "past_31_60" if days <= 60 else "past_61_90" if days <= 90 else "past_over_90"
+        want[key] += i["outstanding"]
+    ws = dashboard(api, "ar_aging")
+    got = {k: num(ws[k]) for k in want if k in ws}
+    eq("ar_aging buckets (today() and duration() in the dashboard filter) match the invoices", got, want)
+    check("ar_aging has overdue and past-due amounts in at least two buckets (the SOA scenario made them)", sum(1 for v in want.values() if v) >= 2, want)
+    eq("ar_aging total_outstanding = sum of outstanding", num(ws["total_outstanding"]), sum(i["outstanding"] for i in invs))
+    by_customer = {}
+    for i in invs:
+        by_customer[i["customer"]] = by_customer.get(i["customer"], 0) + i["outstanding"]
+    eq("ar_aging outstanding by customer (chart)", chart_map(ws["outstanding_by_customer"]), by_customer if len(by_customer) <= 10 else chart_map(ws["outstanding_by_customer"]))
+    overdue = [i for i in invs if i["due_date"] < today.isoformat()]
+    eq("ar_aging overdue list holds the overdue invoices", ws["overdue_invoices"]["total"], len(overdue))
+    check("ar_aging overdue list is sorted by due_date", [r["due_date"] for r in ws["overdue_invoices"]["rows"]] == sorted(r["due_date"] for r in ws["overdue_invoices"]["rows"]), ws["overdue_invoices"]["rows"][:3])
+
+    ws = dashboard(api, "jasa_overview", 30)
+    eq("jasa_overview outstanding_ar", num(ws["outstanding_ar"]), sum(i["outstanding"] for i in invs))
+    eq("jasa_overview overdue_count", ws["overdue_count"]["value"], len(overdue))
+    since = (today - datetime.timedelta(days=30)).isoformat()
+    eq("jasa_overview invoices_issued counts the period only", num(ws["invoices_issued"]),
+       sum(i["grand_total"] for i in api.find("sales_invoice", "docstatus == 1") if i["posting_date"] >= since))
+    quotes = api.find("quotation", "docstatus == 1")
+    eq("jasa_overview open_quotations", ws["open_quotations"]["value"], len([q for q in quotes if q["outcome"] == "open"]))
+    eq("jasa_overview quotations_won (period)", ws["quotations_won"]["value"], len([q for q in quotes if q["outcome"] == "accepted" and q["quotation_date"] >= since]))
+    eq("jasa_overview quotations_lost (period)", ws["quotations_lost"]["value"], len([q for q in quotes if q["outcome"] == "lost" and q["quotation_date"] >= since]))
+    eq("jasa_overview active_projects", ws["active_projects"]["value"], len([p for p in api.list("project") if p["state"] in ("planned", "running")]))
+    eq("jasa_overview workers list (certification expiry: workers, not certificates)", ws["workers_certifications"]["total"], len([w for w in api.list("worker") if w["active"] in (True, "true")]))
+
+
+def scenario_dashboards_fnb(api):
+    import datetime
+    today = kernel_today()
+    sales = api.find("outlet_sales", "docstatus == 1")
+    check("setup: submitted outlet_sales exist for the dashboards", len(sales) >= 2, len(sales))
+    since30 = (today - datetime.timedelta(days=30)).isoformat()
+    since90 = (today - datetime.timedelta(days=90)).isoformat()
+    negs = api.find("stock_balance", "negative == true")
+
+    ws = dashboard(api, "fnb_overview", 30)
+    eq("fnb_overview net_period", num(ws["net_period"]), sum(x["net_total"] for x in sales if x["date"] >= since30))
+    eq("fnb_overview margin_period = net - cogs", num(ws["margin_period"]), sum(x["net_total"] - x["cogs_total"] for x in sales if x["date"] >= since30))
+    eq("fnb_overview net_today", num(ws["net_today"]), sum(x["net_total"] for x in sales if x["date"] == today.isoformat()))
+    by_outlet = {}
+    for x in sales:
+        if x["date"] >= since30:
+            by_outlet[x["outlet"]] = by_outlet.get(x["outlet"], 0) + x["net_total"]
+    eq("fnb_overview net by outlet (chart)", chart_map(ws["net_by_outlet"]), by_outlet)
+    by_day = {}
+    for x in sales:
+        if x["date"] >= since30:
+            by_day[x["date"]] = by_day.get(x["date"], 0) + x["net_total"]
+    eq("fnb_overview net by day (chart, grain day)", chart_map(ws["net_by_day"]), by_day)
+    eq("fnb_overview 'Stok minus' list = balances below zero", (ws["negative_stock"]["total"], sorted(r["name"] for r in ws["negative_stock"]["rows"])), (len(negs), sorted(r["name"] for r in negs)))
+    check("fnb_overview 'Stok minus' list is not empty (the stock scenario made a negative balance)", len(negs) >= 1, negs)
+    eq("fnb_overview negative_count", ws["negative_count"]["value"], len(negs))
+
+    ws = dashboard(api, "stock_recap", 90)
+    bal = api.list("stock_balance")
+    val = {}
+    for b in bal:
+        val[b["outlet"]] = val.get(b["outlet"], 0) + b["value"]
+    eq("stock_recap stock value by outlet", chart_map(ws["stock_value_by_outlet"]), val)
+    eq("stock_recap stock_value_total", num(ws["stock_value_total"]), sum(b["value"] for b in bal))
+    moves = [m for m in api.find("stock_move", "posting_date >= '%s'" % since90)]
+    reasons = {}
+    for m in moves:
+        reasons[m["reason"]] = reasons.get(m["reason"], 0) + 1
+    got = {p["key"]: p["count"] for p in ws["moves_by_reason"]["data"]}
+    eq("stock_recap moves by reason", got, reasons)
+    nm, cm = {}, {}
+    for x in sales:
+        nm[x["date"][:7]] = nm.get(x["date"][:7], 0) + x["net_total"]
+        cm[x["date"][:7]] = cm.get(x["date"][:7], 0) + x["cogs_total"]
+    eq("stock_recap net sales by month (total, all outlets)", chart_map(ws["net_by_month"]), nm)
+    eq("stock_recap cogs by month", chart_map(ws["cogs_by_month"]), cm)
+    eq("stock_recap net sales by outlet (period)", chart_map(ws["net_by_outlet"]),
+       {o: v for o, v in ((o, sum(x["net_total"] for x in sales if x["outlet"] == o and x["date"] >= since90)) for o in {x["outlet"] for x in sales}) if v})
+    eq("stock_recap negative balances", ws["negative_balances"]["total"], len(negs))
+
+
+def scenario_prints_fnb(api):
+    """Purchase order print on demo-fnb: the site letterhead and the PO number series with the org code."""
+    st, po = api.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "order_date": "2026-11-03", "items": [{"item": "BRG-0001", "qty": 10, "rate": 12_000}]})
+    check("print: create purchase_order for Dago", st == 201, po)
+    if st != 201:
+        return
+    st, resp = api.verb("purchase_order", po["name"], "submit")
+    check("print: submit purchase_order", st == 200, resp)
+    pon = resp.get("name", po["name"])
+    check("PO number follows PO/{ORG}/{YY}{MM}/{###} with the org code TCN", re.fullmatch(r"PO/TCN/\d{4}/\d{3}", pon) is not None, pon)
+    check_print("purchase_order (Tahu Contoh)", api, "purchase_order", pon, "",
+                [pon, "Pesanan pembelian", "PT Tahu Contoh Nusantara", "halo@tahucontoh.test", "CV Contoh Tahu Segar", "Outlet Dago",
+                 "Rp 120.000", "seratus dua puluh ribu rupiah"], must_not=["PPN"])
 
 
 # ---------- scenarios: multi-branch F&B (demo-fnb): stock and outlet sales
@@ -1217,8 +1510,13 @@ def scenario_stock(api):
         ok("stock_negative_alert notified head_office on its own")
     st, resp = api.call("POST", "/api/v1/flows/stock_negative_alert/run", {"event": mv[0]} if mv else {})
     alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
-    check("stock_negative_alert, run with the move as its event, notifies 'Stok <item> di <outlet> minus (-10)'",
-          st == 200 and any(f"Stok {m} di {neg} minus (-10)" in e.get("summary", "") for e in alerts), (st, resp, alerts[-1:]))
+    item_label, outlet_label = api.get("item", m)["item_name"], api.get("outlet", neg)["outlet_name"]
+    check("stock_negative_alert, run with the move as its event, names the item and the outlet (find steps), not their ids",
+          st == 200 and any(f"Stok {item_label} di {outlet_label} minus (-10)" in e.get("summary", "") for e in alerts), (st, resp, alerts[-1:]))
+    st, resp = api.call("POST", "/api/v1/flows/stock_negative_alert/run", {"event": dict(mv[0], item="BRG-9999", outlet="OUT-99")} if mv else {})
+    alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
+    check("stock_negative_alert falls back to the plain names when the records are not found",
+          st == 200 and any("Stok BRG-9999 di OUT-99 minus (-10)" in e.get("summary", "") for e in alerts), (st, resp, alerts[-1:]))
     st, resp = api.call("POST", "/api/v1/flows/stock_negative_alert/run", {"event": dict(mv[0], negative=False)} if mv else {})
     check("stock_negative_alert is silent for a move that is not negative", len([e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]) == len(alerts), resp)
     # cancel restores
@@ -1328,6 +1626,27 @@ def scenario_stock_access(api):
     check("outlet_staff (Dago) creates a stock_count for Braga -> 403", st == 403, (st, resp))
     st, resp = dago.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-05", "lines": [{"item": "BRG-0007", "qty": 1}]})
     check("outlet_staff (Dago) creates outlet_sales for Braga -> 403", st == 403, (st, resp))
+
+    # transfer scope (contract 0010 §5): the scope lists [outlet, from_outlet, to_outlet], so a Dago member may not pull stock out of Braga
+    st, resp = dago.create("stock_transfer", {"from_outlet": BRAGA, "to_outlet": DAGO, "items": [{"item": m, "qty": 1}]})
+    if st == 201:
+        gap("outlet_staff (Dago) creates a stock_transfer from Braga (to Dago) -> 403", "kernel (S5 row scope)",
+            f"201: with a list scope [outlet, from_outlet, to_outlet] a create passes when any one field is in scope, so a member can pull stock out of "
+            f"another outlet by naming its own outlet as the destination (draft {resp.get('name')} created); the check below expects 403 permission_denied")
+        api.call("DELETE", f"/api/v1/r/stock_transfer/{Api.q(resp['name'])}")
+    else:
+        check("outlet_staff (Dago) creates a stock_transfer from Braga (to Dago) -> 403 permission_denied",
+              st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+    st, resp = dago.create("stock_transfer", {"from_outlet": BRAGA, "to_outlet": HO, "items": [{"item": m, "qty": 1}]})
+    check("outlet_staff (Dago) creates a stock_transfer from Braga to head office (neither side is Dago) -> 403", st == 403, (st, resp))
+    st, resp = dago.create("stock_transfer", {"from_outlet": DAGO, "to_outlet": BRAGA, "items": [{"item": m, "qty": 1}]})
+    check("outlet_staff (Dago) creates a stock_transfer from Dago to Braga -> 201 (one side is its own outlet)", st == 201, (st, resp))
+    st, braga_sales = api.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
+    check("setup: owner creates a draft outlet_sales for Braga", st == 201, (st, braga_sales))
+    if st == 201:
+        st, resp = dago.call("GET", f"/api/v1/r/outlet_sales/{Api.q(braga_sales['name'])}")
+        check("outlet_staff (Dago) reads Braga's outlet_sales -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+        eq("outlet_staff (Dago) lists no outlet_sales of Braga", [x for x in dago.list("outlet_sales") if x["outlet"] == BRAGA], [])
 
 
 def read_sample(name):
@@ -1498,8 +1817,9 @@ def setup_demo_fnb(api, k):
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing],
-    "demo-jasa": [scenario_quotation, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement],
-    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales],
+    "demo-jasa": [scenario_quotation, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
+                  scenario_prints_jasa, scenario_dashboards_jasa],
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb],
     # Task 10 completes demo-jasa and demo-fnb; Task 11 extends both with the day-one flows.
 }
 
@@ -1508,6 +1828,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--site", default="kopi-senja", choices=["kopi-senja", "demo-jasa", "demo-fnb"])
     ap.add_argument("--strict", action="store_true", help="exit 1 on gaps too")
+    ap.add_argument("--only", default="", help="run only the scenarios whose function name contains this text (debugging)")
     a = ap.parse_args()
     if a.site not in SCENARIOS:
         sys.exit(f"no scenarios for site {a.site} yet")
@@ -1516,9 +1837,12 @@ def main():
     atexit.register(k.stop)
     k.start()
     api = Api(k.base)
+    CTX["kernel"] = k
     if a.site == "demo-fnb":
         setup_demo_fnb(api, k)
     for sc in SCENARIOS[a.site]:
+        if a.only and a.only not in sc.__name__:
+            continue
         try:
             sc(api)
         except Exception as e:  # a crashed scenario is a failure, not a silent pass
