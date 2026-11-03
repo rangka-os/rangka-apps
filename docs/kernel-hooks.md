@@ -121,10 +121,10 @@ Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill`
 ### `procurement.receive` (action `receive` on `purchase_order`; gate `docstatus == 1 && received_pct < 100`)
 - **Reads:** the PO and its lines (`qty`, `received_qty`).
 - **Writes:** a **draft** `goods_receipt` with `vendor`, `outlet`, `purchase_order` and, per line whose `received_qty < stock_qty`, the not-yet-received
-  remainder: `qty` is the remainder in the line's own unit (`(stock_qty - received_qty) / factor` when `packing` is set), `uom`, `packing`, `rate` as ordered.
+  remainder: `qty` is the remainder in the line's own unit (`(stock_qty - received_qty) / factor` when `packing` is set), `uom` (the packing's unit when `packing` is set), `packing`, `rate` as ordered.
   Returns `{open: {model: goods_receipt, name}}`. `received_qty` and `received_pct` are written on goods_receipt **submit** by `stock.post_moves`, not here.
 - **Idempotency:** reuses an existing draft goods receipt for the PO.
-- **Refuses:** `409 nothing_to_receive` when every line is fully received; `409 order_not_submitted` past the gate.
+- **Refuses:** `422 outlet_required`, "Outlet tujuan wajib diisi di PO sebelum barang diterima", when the PO has no `outlet` (`purchase_order.outlet` is optional, `goods_receipt.outlet` is required, and the hook copies it); `409 nothing_to_receive` when every line is fully received; `409 order_not_submitted` past the gate.
 
 ### `stock.post_moves` / `stock.reverse_moves` on `goods_receipt`
 - Declared by the model (`on_submit: [stock.post_moves]`, `on_cancel: [stock.reverse_moves]`) and implemented with the stock module (Task 8); the semantics of the
