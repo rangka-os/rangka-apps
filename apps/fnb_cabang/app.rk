@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+# Interim app for the multi-branch F&B pilot (demo-fnb): the modules so far and a flat menu of their models.
+# Task 10 completes it (dashboards, home, onboarding, roles).
+name: fnb_cabang
+version: 0.1.0
+title: {id: F&B multi cabang, en: Multi-branch F&B}
+label: {id: Rangka F&B Cabang, en: Rangka Multi-branch F&B}
+rangka: '>=0.5'
+modules:
+  contacts: ^1.0
+  catalogue: ^1.0
+  outlets: ^1.0
+  users: ^1.0
+  stock: ^1.0
+  outlet_sales: ^1.0
+  procurement: ^1.0
+  payments: ^1.0
+  invoicing: ^1.0
+menu:
+  - group: {id: Penjualan outlet}
+    items: [outlet_sales]
+  - group: {id: Stok}
+    items: [stock_balance, stock_move, stock_transfer, stock_count, stock_adjustment, recipe]
+  - group: {id: Pembelian}
+    items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment]
+  - group: {id: Data induk}
+    items: [outlet, item, uom, uom_conversion, vendor, user]

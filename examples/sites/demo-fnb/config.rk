@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Interim demo site for the multi-branch F&B pilot: Task 10 completes the fnb_cabang app it installs.
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: false}
+apps: [fnb_cabang]
+plan: tumbuh
+sso: {domains: [tahucontoh.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, head_office]}
