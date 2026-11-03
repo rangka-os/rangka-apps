@@ -424,14 +424,14 @@ def scenario_invoicing(api):
     submitted = resp.get("name", name)
     after = api.get("customer", customer)["outstanding"]
     if skipped(api, "ledger.post_receivable", f"sales_invoice/{submitted}"):
-        gap("ledger.post_receivable adds amount_due to customer.outstanding", "kernel (S5 ledger)", "hook.skipped in the audit log")
+        gap("ledger.post_receivable adds amount_due to customer.outstanding", "kernel (S8c hooks)", "hook.skipped in the audit log")
     else:
         eq("ledger.post_receivable adds 11.100.000 to outstanding", after - before, 11_100_000)
     st, resp = api.verb("sales_invoice", submitted, "cancel")
     check("cancel invoice", st == 200, resp)
     final = api.get("customer", customer)["outstanding"]
     if skipped(api, "invoicing.reverse_receivable", f"sales_invoice/{submitted}"):
-        gap("invoicing.reverse_receivable subtracts amount_due on cancel", "kernel (S8 hooks)", "hook.skipped in the audit log")
+        gap("invoicing.reverse_receivable subtracts amount_due on cancel", "kernel (S8c hooks)", "hook.skipped in the audit log")
     else:
         eq("cancel restores customer.outstanding", final, before)
 
@@ -637,7 +637,7 @@ def scenario_workforce(api):
     eq("certification without date -> expired false", certs[2].get("expired") in (True, "true"), False)
     fixtures = {x["worker_name"]: x for x in api.list("worker")}
     check("fixture has a worker with an expired certification", any(c.get("expired") in (True, "true") for c in api.get("worker", fixtures["Budi Contoh"]["name"])["certifications"]), fixtures.get("Budi Contoh"))
-    gap("certification.expired stays current after save", "kernel (computed-on-read or a scheduled recompute)", "computes run at save; the flag goes stale once expires_on passes")
+    gap("certification.expired stays current after save", "kernel (engine: computed-on-read or a scheduled recompute)", "computes run at save; the flag goes stale once expires_on passes")
 
 
 def yesterday():
@@ -918,7 +918,7 @@ def scenario_procurement(api):
     check("PR line qty 0 -> 422 'Jumlah barang harus lebih dari 0'", st == 422 and any("Jumlah barang harus lebih dari 0" in m for m in messages(resp)), (st, resp))
     st, resp = api.create("purchase_request", {"needed_by": "2026-12-01", "items": []})
     if st == 201:
-        gap("min_rows 1: a purchase request without lines is refused", "kernel (S1)", "201: min_rows is not enforced on create")
+        gap("min_rows 1: a purchase request without lines is refused", "kernel (S1/engine)", "201: min_rows is not enforced on create")
     else:
         check("PR without lines -> 422", st == 422, (st, resp))
     st, resp = api.verb("purchase_request", pr["name"], "submit")
@@ -1993,7 +1993,7 @@ def scenario_stock(api):
     # the alert flow: runs when handed the move, but nothing hands it over yet
     alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
     if not alerts:
-        gap("stock_negative_alert notifies head_office when a move turns negative", "kernel (record events -> flows)",
+        gap("stock_negative_alert notifies head_office when a move turns negative", "kernel (unowned: record events -> flows)",
             "no notify.in_app audit entry: the kernel does not fire `on: stock_move.created` flows (S8c finding)")
     else:
         ok("stock_negative_alert notified head_office on its own")
@@ -2274,7 +2274,7 @@ def scenario_outlet_sales(api):
     check("outlet_sales without an outlet -> 422", st == 422, (st, resp))
     st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": []})
     if st == 201:
-        gap("min_rows 1: an outlet_sales without lines is refused", "kernel (S1)", "201: min_rows is not enforced on create")
+        gap("min_rows 1: an outlet_sales without lines is refused", "kernel (S1/engine)", "201: min_rows is not enforced on create")
     else:
         check("outlet_sales without lines -> 422", st == 422, (st, resp))
 
