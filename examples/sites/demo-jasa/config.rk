@@ -4,7 +4,7 @@ locale: id-ID
 currency: IDR
 timezone: Asia/Jakarta
 tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: true}
-apps: [contacts, catalogue, users, outlets, tax_id, currency, invoicing, quotation, orders, workforce, projects, payments]
+apps: [contacts, catalogue, users, outlets, tax_id, currency, invoicing, quotation, orders, workforce, projects, payments, procurement]
 plan: tumbuh
 sso: {domains: [contohjasa.test], required: false}
 ai: {enabled: true, auto_apply: never, approvers: [owner, sales_manager]}

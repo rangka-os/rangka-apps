@@ -5,6 +5,9 @@ uom:
   - {name: UOM-004, uom_name: Orang-hari}
   - {name: UOM-005, uom_name: Unit}
   - {name: UOM-006, uom_name: Paket}
+  - {name: UOM-007, uom_name: Kg}
+  - {name: UOM-008, uom_name: Karung}
+  - {name: UOM-009, uom_name: Liter}
 customer:
   - name: CUST-0001
     customer_name: PT Contoh Energi Nusantara
@@ -26,6 +29,23 @@ item:
   - {name: BRG-0001, item_name: Inspeksi NDT (per orang-hari), kind: service, stock_uom: UOM-004, sales_uom: UOM-004, sku: JSA-NDT, rate: 1500000}
   - {name: BRG-0002, item_name: Pengujian ketebalan UT (per titik), kind: service, stock_uom: UOM-001, sku: JSA-UT, rate: 85000}
   - {name: BRG-0003, item_name: Mobilisasi dan demobilisasi, kind: service, stock_uom: UOM-006, sales_uom: UOM-006, sku: JSA-MOB, rate: 12000000}
+  - {name: BRG-0004, item_name: Cairan penetran contoh, kind: material, stock_uom: UOM-009, sku: MAT-PEN, standard_cost: 85000}
+  - {name: BRG-0005, item_name: Bubuk magnetik contoh, kind: material, stock_uom: UOM-007, sku: MAT-MAG, standard_cost: 12000}
+uom_conversion:
+  - {name: KONV-0001, item: BRG-0005, uom: UOM-008, factor: 50}
+outlet:
+  - {name: OUT-01, outlet_name: Kantor pusat contoh, code: HO, city: Cilegon, is_head_office: true, active: true}
+vendor:
+  - name: VND-0001
+    vendor_name: PT Contoh Bahan Uji
+    city: Tangerang
+    payment_days: 30
+    npwp: '0000000000000000'
+  - name: VND-0002
+    vendor_name: CV Contoh Jasa Angkut
+    city: Serang
+    payment_days: 14
+    npwp: '0000000000000000'
 worker:
   - name: WRK-0001
     worker_name: Andi Contoh
