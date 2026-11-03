@@ -428,6 +428,29 @@ def scenario_invoicing(api):
 
 # ---------- scenarios: project services (demo-jasa)
 
+def scenario_masters_jasa(api):
+    """Spec A1: customers with PIC contacts, vendors, and a price list of services per business unit (one price list per PT)."""
+    cust = api.get("customer", "CUST-0001")
+    prim = [c for c in cust["contacts"] if c.get("is_primary") in (True, "true")]
+    check("customer has a primary PIC contact", len(prim) == 1 and prim[0]["person_name"] == "Bambang Contoh", cust["contacts"])
+    eq("fixtures: 2 customers, 2 vendors, 6 items, 3 workers each with a certification",
+       (len(api.list("customer")), len(api.list("vendor")), len(api.list("item")), len(api.list("worker", children=1))), (2, 2, 6, 3))
+    check("fixtures: every worker has a certification", all(w.get("certifications") for w in api.list("worker", children=1)), "")
+    eq("fixtures: currencies IDR and USD, tax codes PPN and PPh 23", (sorted(c["code"] for c in api.list("currency")), sorted(t["kind"] for t in api.list("tax_code"))), (["IDR", "USD"], ["ppn", "pph23"]))
+    eq("fixtures: users with the four owner-led roles", sorted(u["role"] for u in api.list("user")), ["finance_manager", "project_admin", "purchasing_manager", "sales_manager"])
+    st, pl = api.create("price_list", {"list_name": "Harga inspeksi 2026", "customer": "CUST-0001", "valid_from": "2026-01-01", "valid_until": "2026-12-31",
+                                        "items": [{"item": "BRG-0001", "uom": "UOM-004", "rate": 1_400_000}, {"item": "BRG-0002", "uom": "UOM-001", "rate": 80_000}]})
+    check("create a price list with 2 services for a customer (PT Contoh Inspeksi)", st == 201 and len(pl["items"]) == 2, (st, pl))
+    org2 = Api.login(CTX["kernel"].base, CTX["kernel"].owner_email, CTX["kernel"].owner_pw, org="cv_contoh_pelatihan")
+    if org2 is None:
+        fail("sign in to CV Contoh Pelatihan", "login refused")
+        return
+    st, pl2 = org2.create("price_list", {"list_name": "Harga pelatihan 2026", "items": [{"item": "BRG-0001", "uom": "UOM-001", "rate": 9_500_000}]})
+    check("create a price list in CV Contoh Pelatihan", st == 201, (st, pl2))
+    eq("each PT sees only its own price list", ([p["list_name"] for p in api.list("price_list")], [p["list_name"] for p in org2.list("price_list")]),
+       (["Harga inspeksi 2026"], ["Harga pelatihan 2026"]))
+
+
 def scenario_quotation(api):
     customer = api.list("customer")[0]["name"]
     items = services(api)
@@ -1817,7 +1840,7 @@ def setup_demo_fnb(api, k):
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing],
-    "demo-jasa": [scenario_quotation, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
+    "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_dashboards_jasa],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb],
     # Task 10 completes demo-jasa and demo-fnb; Task 11 extends both with the day-one flows.
