@@ -1,8 +1,10 @@
-# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/app.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
 name: crm
 version: 1.0.0
 title: {id: CRM, en: CRM}
-requires: {rangka: '>=0.4', contacts: ^1.0, catalogue: ^1.0, pipeline: ^1.0, invoicing: ^1.0, outlets: ^1.0, users: ^1.0}
+label: {id: Rangka CRM, en: Rangka CRM}
+rangka: '>=0.5'
+modules: {contacts: ^1.0, catalogue: ^1.0, pipeline: ^1.0, invoicing: ^1.0, outlets: ^1.0, users: ^1.0}
 dashboards: [crm_overview, sales_overview]
 menu:
   - group: {id: CRM}
@@ -11,3 +13,30 @@ menu:
     items: [sales_invoice]
   - group: {id: Data induk}
     items: [customer, item, outlet, user]
+summary:
+  id: Kelola lead dari WhatsApp sampai closing, dengan pipeline yang bisa langsung jadi faktur.
+connectors:
+  - name: whatsapp_business
+    flow: pipeline/flows/whatsapp_to_lead.rk
+    required: false
+fixtures: []
+roles: [sales_rep, sales_manager]
+home: {model: deal, view: kanban}
+onboarding:
+  - ask: {id: 'Berapa orang tim sales kamu?'}
+    sets: seed.users
+  - ask: {id: 'Dari mana pelanggan biasanya datang?'}
+    options:
+      - whatsapp
+      - instagram
+      - referral
+      - walk_in
+      - website
+      - marketplace
+    sets: lead.source.options
+  - ask:
+      id: Tahap jualan kamu sama dengan Prospek → Kualifikasi → Penawaran → Negosiasi → Menang/Kalah?
+    sets: deal.stage.options
+  - ask:
+      id: Sambungkan WhatsApp Business supaya chat masuk otomatis jadi lead?
+    sets: connectors.whatsapp_business

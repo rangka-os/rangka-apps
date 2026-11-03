@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/theme.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/theme.json
 name: kopi_senja
 label: {id: Kopi Senja}
 extends: rangka/standard

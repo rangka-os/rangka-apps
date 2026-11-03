@@ -1,5 +1,0 @@
-# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/app.json
-name: catalogue
-version: 1.0.0
-title: {id: Katalog, en: Catalogue}
-requires: {rangka: '>=0.4', contacts: ^1.0}

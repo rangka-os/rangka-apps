@@ -1,8 +1,8 @@
-# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/app.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: payments
 version: 1.0.0
 title: {id: Pembayaran, en: Payments}
-requires: {rangka: '>=0.4', contacts: ^1.0, invoicing: ^1.0}
+requires: {rangka: '>=0.5', contacts: ^1.0, invoicing: ^1.0}
 optional: {procurement: ^1.0, currency: ^1.0}
 # Semantics fixed in docs/kernel-hooks.md (section payments).
 hooks: [payments.allocate, payments.unallocate]

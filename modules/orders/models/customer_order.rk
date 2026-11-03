@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/model.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
 name: customer_order
 label: {id: Pesanan pelanggan, en: Customer order}
 icon: card

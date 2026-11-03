@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/model.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
 name: vendor_bill
 label: {id: Tagihan pemasok, en: Vendor bill}
 icon: invoice
