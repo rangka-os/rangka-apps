@@ -168,7 +168,7 @@ Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill`
     header `cogs_total` the sum of the lines; `margin` is a compute.
 - **Never refuses for lack of stock:** a balance may go below zero. That is the negative-stock exception: the move and the balance carry `negative = true`, and head office
   reads them from a "Stok minus" list (`stock_balance` filtered on `negative`). The alert flow `stock_negative_alert` (`on: stock_move.created`) is not fired by the kernel
-  yet (no record-event to flow dispatch, S8c finding); run with a move as its `event` it notifies `head_office` with "Stok <item> di <outlet> minus (<balance_qty>)".
+  yet (no record-event to flow dispatch, S8c finding); run with a move as its `event` it notifies `head_office` with "Stok <item_name> di <outlet_name> minus (<balance_qty>)" (two `find` steps look the names up; the plain record names stand in when a record is not found).
 - **Refuses:** `409 duplicate_sales` when another submitted `outlet_sales` has the same `outlet`, `date` and `source = form`. A Moka import is protected by the import's key check instead (contract 0012).
 - **Reversal:** one `reversal` move per original move, opposite `qty` and `value`, at the original unit cost, dated the day of the cancel; the average is recomputed as
   `round(value / qty)` so cancelling a receipt restores value and average exactly. Line `cogs` and count `system_qty` are kept as history; a receipt's cancel takes its quantities off the PO.
@@ -176,21 +176,27 @@ Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill`
 ## quotation
 
 ### `quotation.revise` (action `new_revision` on `quotation`)
-- **Trigger:** the action on a submitted quotation whose outcome is open (`if: docstatus == 1 && (outcome == 'open' || outcome == '')`).
+- **Trigger:** the action on a submitted **or cancelled** quotation whose outcome is open (`if: (docstatus == 1 || docstatus == 2) && (outcome == 'open' || outcome == '')`).
   An empty `outcome` means open: a generic amend zeroes the read-only field, and such a quotation must not get stuck.
+  A cancelled one is allowed because the cancel can be held for approval (contract 0007): the hook then returns
+  `{held: true, approvals, message}` and changes nothing else; once the cancel is approved the quotation is cancelled
+  and the same action, run again, makes the revision.
 - **Reads:** the quotation and its lines.
-- **Writes:** cancels the submitted quotation and creates its amendment (cancel + amend, `amended_from` = the old one) as a
-  **draft** with the same header and lines, `revision = old revision + 1` and `outcome = open` (`lost_reason` cleared).
-  The kernel's amend zeroes every `read_only` field (`revision`, `outcome`, `lost_reason` are read-only), so the hook sets
+- **Writes:** for a submitted quotation, cancels it and creates its amendment (cancel + amend, `amended_from` = the old one) as a
+  **draft** with the same header and lines, `revision = old revision + 1` and `outcome = open` (`lost_reason` cleared); for a
+  cancelled one, only the amendment. The kernel's amend zeroes every `read_only` field (`revision`, `outcome`, `lost_reason` are read-only), so the hook sets
   `revision = old + 1` and `outcome = 'open'` explicitly on the new draft. The model's rule `draft_outcome_open` also
   accepts an empty `outcome` on a draft, so an amended draft saves even before the hook's values land.
   Returns `{open: {model: quotation, name}}`. The user edits the draft and submits it, which asks for the manager's
   approval again.
 - **Refuses:** the action `if` gate answers first: `409 action_not_allowed` for an accepted or lost quotation (make a new one) and
-  for a cancelled or draft one. The hook-level codes `409 not_open` and `409 already_cancelled` only apply when the hook is
+  for a draft one. `409 already_revised` ("Penawaran X sudah direvisi menjadi Y") once a **submitted** amendment of the cancelled
+  quotation exists. The hook-level codes `409 not_open` and `409 not_submitted` only apply when the hook is
   reached past the gate (a direct call from another hook or the queue); keep them as a second line of defence.
-- **Idempotency:** the old document is cancelled, so a second call finds it not submitted and is refused. Linked draft orders
-  keep pointing at the cancelled quotation until they are edited; submitting an order whose quotation is cancelled is not blocked here.
+- **Idempotency:** a second call on a cancelled quotation whose amendment is still a draft answers `200` with that draft
+  (`open` points at it, no second draft is made). Once the amendment is submitted the call is refused with `already_revised`.
+  Linked draft orders keep pointing at the cancelled quotation until they are edited; submitting an order whose quotation is
+  cancelled is not blocked here.
 
 ### `quotation.mark_outcome` (action `mark_outcome` on `quotation`)
 - **Why a hook:** a submitted document cannot be edited (`PATCH` answers `409`, verified in `tests/day_one.py`), but a sent

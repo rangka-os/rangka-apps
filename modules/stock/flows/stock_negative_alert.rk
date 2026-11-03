@@ -3,9 +3,13 @@ name: stock_negative_alert
 label: {id: Peringatan stok minus}
 # The kernel passes the stock_move record as `event` (name, outlet, item, qty, balance_qty, negative, ...). It does not
 # yet dispatch `<model>.created` events to flows (S8c finding), so head office also sees the "Stok minus" list.
+# The two find steps turn the record names into item and outlet names for the message; when a record cannot be found
+# (deleted, or outside the actor's scope) the text falls back to the plain names.
 on: stock_move.created
 if: event.negative == true
 steps:
+  - {find: item, where: name == event.item, as: stock_item}
+  - {find: outlet, where: name == event.outlet, as: stock_outlet}
   - notify: head_office
     channel: in_app
-    template: {id: 'Stok {event.item} di {event.outlet} minus ({event.balance_qty})'}
+    template: {id: 'Stok {stock_item != null ? stock_item.item_name : event.item} di {stock_outlet != null ? stock_outlet.outlet_name : event.outlet} minus ({event.balance_qty})'}
