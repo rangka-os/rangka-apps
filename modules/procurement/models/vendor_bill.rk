@@ -58,11 +58,11 @@ fields:
   - name: tax_rate
     type: percent
     label: {id: Tarif PPN}
-    help: {id: 'Dari config tax.ppn_rate; 0 bila pemasok bukan PKP. Tersimpan di dokumen.'}
-    default: "vendor.pkp ? tax.ppn_rate : 0"
+    help: {id: 'Dari pesanan pembelian bila ada, else dari config tax.ppn_rate; 0 bila pemasok bukan PKP. Tersimpan di dokumen.'}
+    default: "purchase_order != '' ? purchase_order.tax_rate : (vendor.pkp ? tax.ppn_rate : 0)"
   # Not read_only: a generic amend zeroes read-only fields, and a zero dpp_den would break ppn (kernel follow-up).
-  - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num'}
-  - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den'}
+  - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: "purchase_order != '' ? purchase_order.dpp_num : tax.dpp_num"}
+  - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: "purchase_order != '' ? purchase_order.dpp_den : tax.dpp_den"}
   - name: ppn
     type: currency
     label: {id: PPN (DPP x rasio DPP nilai lain x tarif)}
@@ -103,6 +103,10 @@ fields:
   - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, default: '0'}
   - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - pph23_amount_fx"}
 rules:
+  - name: tax_valid
+    on: save
+    check: dpp_den > 0 && dpp_num > 0 && dpp_num <= dpp_den && tax_rate >= 0 && tax_rate <= 100
+    message: {id: Tarif PPN atau faktor DPP tidak valid}
   - name: due_after_bill
     on: save
     check: due_date == '' || due_date >= bill_date

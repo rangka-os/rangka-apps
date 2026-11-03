@@ -1469,6 +1469,32 @@ def scenario_tax_jasa(api):
     eq("vendor_bill from a PKP vendor: tax_rate 12, ppn 110.000", (vb.get("tax_rate"), vb.get("dpp"), vb.get("ppn")), (12, 1_000_000, 110_000))
     st, vb = api.create("vendor_bill", {"vendor": "VND-0002", "bill_no": "T-2", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 10, "rate": 100_000}]})
     eq("vendor_bill from a non-PKP vendor: tax_rate 0, ppn 0", (vb.get("tax_rate"), vb.get("ppn")), (0, 0))
+    st, po = api.create("purchase_order", {"vendor": "VND-0001", "tax_rate": 5, "items": [{"item": "BRG-0004", "qty": 10, "rate": 100_000}]})
+    st, vb = api.create("vendor_bill", {"vendor": "VND-0001", "purchase_order": po["name"], "bill_no": "T-4", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 10, "rate": 100_000}]})
+    eq("vendor_bill linked to a purchase_order takes its tax_rate and DPP factor", (vb.get("tax_rate"), vb.get("dpp_num"), vb.get("dpp_den")), (5, po.get("dpp_num"), po.get("dpp_den")))
+    # bounds: the DPP factor and the rate cannot be set to nonsense on any taxed document
+    bad = {"quotation": {"customer": customer, "subject": "x", "items": [{"item": ndt, "qty": 1, "rate": 1_000_000}]},
+           "sales_invoice": invoice_body(customer, ndt),
+           "purchase_order": {"vendor": "VND-0001", "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]},
+           "vendor_bill": {"vendor": "VND-0001", "bill_no": "T-5", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]}}
+    for model, body in bad.items():
+        for label, extra in (("dpp_den 0", {"dpp_den": 0}), ("dpp_num above dpp_den", {"dpp_num": 13}), ("tax_rate 120", {"tax_rate": 120}), ("tax_rate -1", {"tax_rate": -1})):
+            st, resp = api.create(model, dict(body, **extra))
+            check(f"{model} with {label} -> 422 'Tarif PPN atau faktor DPP tidak valid'", st == 422 and any("faktor DPP tidak valid" in m for m in messages(resp)), (st, resp))
+    # ledger.post_receivable guard (reads the old twin names dp_deduction / dpp_base): two deductions of 2.000.000 from a 3.000.000 DP
+    st, dp = api.create("sales_invoice", invoice_body(customer, ndt, rate=3_000_000, kind="down_payment"))
+    st, resp = api.verb("sales_invoice", dp["name"], "submit", {"force": True})
+    dpn = resp.get("name", dp["name"])
+    names = []
+    for i in (1, 2):
+        st, reg = api.create("sales_invoice", invoice_body(customer, ndt, dp_invoice=dpn, down_payment=2_000_000))
+        check(f"DP guard: create regular invoice {i} deducting 2.000.000", st == 201, (st, reg))
+        names.append(reg.get("name"))
+    st, resp = api.verb("sales_invoice", names[0], "submit", {"force": True})
+    check("DP guard: the first deduction of 2.000.000 submits", st == 200, (st, resp))
+    st, resp = api.verb("sales_invoice", names[1], "submit", {"force": True})
+    check("DP guard: the second deduction (4.000.000 in total over a 3.000.000 DP) -> 409 dp_over_deducted",
+          st == 409 and resp["error"]["code"] == "dp_over_deducted", (st, resp))
     # non-PKP org (CV Contoh Pelatihan): tax.pkp false in its orgs entry
     if org2 is None:
         fail("sign in as the owner of CV Contoh Pelatihan", "login refused")
@@ -1515,11 +1541,13 @@ def ppn_rate_11_variant():
         k.stop_serve()
         open(cfg, "w").write(text)
         k.serve()
-        eq("config back to 12: the submitted invoice keeps tax_rate 11 and ppn 1.008.333", (api.get("sales_invoice", n11)["tax_rate"], api.get("sales_invoice", n11)["ppn"]), (11, 1_008_333))
+        kept = api.get("sales_invoice", n11)
+        eq("config back to 12: the submitted invoice keeps tax_rate 11, its DPP factor 11/12 and ppn 1.008.333", (kept["tax_rate"], kept["dpp_num"], kept["dpp_den"], kept["ppn"]), (11, 11, 12, 1_008_333))
         st, inv12 = api.create("sales_invoice", invoice_body(customer, ndt))
         eq("config back to 12: a new invoice gets 12", (inv12.get("tax_rate"), inv12.get("ppn")), (12, 1_100_000))
     finally:
         k.stop()
+        shutil.rmtree(state, ignore_errors=True)
 
 
 # ---------- scenarios: dashboards (computed by the kernel, compared with figures computed here from the records)
