@@ -1713,6 +1713,18 @@ def scenario_tax_jasa(api):
     eq("non-PKP org quotation: tax_rate 0, ppn 0", (q2.get("tax_rate"), q2.get("ppn")), (0, 0))
     st, vb2 = org2.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "T-3", "bill_date": "2026-11-10", "items": [{"item": item2, "qty": 1, "rate": 100_000}]})
     eq("non-PKP org, non-PKP vendor: vendor_bill tax_rate 0", (vb2.get("tax_rate"), vb2.get("ppn")), (0, 0))
+    # review item 4: a non-PKP seller cannot charge PPN, and a non-PKP vendor cannot be charged it
+    for model, body in (("sales_invoice", invoice_body("CUST-0001", item2, tax_rate=12)),
+                        ("quotation", {"customer": "CUST-0001", "subject": "Pajak", "tax_rate": 12, "items": [{"item": item2, "qty": 1, "rate": 1_000_000}]})):
+        st, resp = org2.create(model, body)
+        check(f"non-PKP org {model} with tax_rate 12 -> 422", st == 422 and any("bukan PKP" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("purchase_order", {"vendor": "VND-0002", "tax_rate": 12, "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
+    check("purchase_order from a non-PKP vendor with tax_rate 12 -> 422", st == 422 and any("bukan PKP" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("vendor_bill", {"vendor": "VND-0002", "tax_rate": 12, "bill_no": "T-6", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
+    check("vendor_bill from a non-PKP vendor (no PO) with tax_rate 12 -> 422", st == 422 and any("bukan PKP" in m for m in messages(resp)), (st, resp))
+    st, po0 = api.create("purchase_order", {"vendor": "VND-0001", "tax_rate": 0, "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
+    st, resp = api.create("vendor_bill", {"vendor": "VND-0001", "purchase_order": po0["name"], "tax_rate": 12, "bill_no": "T-7", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
+    check("vendor_bill with PPN against a PO without PPN -> 422", st == 422 and any("bukan PKP" in m for m in messages(resp)), (st, resp))
     check_org_letterhead(api, "pt_contoh_inspeksi", "VND-0001", customer, ndt)
     check_org_letterhead(org2, "cv_contoh_pelatihan", "VND-0001", "CUST-0001", item2)
     ppn_rate_11_variant()

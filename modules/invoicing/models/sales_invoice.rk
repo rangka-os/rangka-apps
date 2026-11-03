@@ -163,6 +163,10 @@ rules:
     on: save
     check: dpp_den > 0 && dpp_num > 0 && dpp_num <= dpp_den && tax_rate >= 0 && tax_rate <= 100
     message: {id: Tarif PPN atau faktor DPP tidak valid}
+  - name: ppn_needs_pkp
+    on: save
+    check: tax.pkp || tax_rate == 0
+    message: {id: Perusahaan bukan PKP tidak boleh memungut PPN (tarif PPN harus 0)}
   - name: due_after_posting
     on: save
     check: due_date >= posting_date
