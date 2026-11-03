@@ -51,8 +51,8 @@ fields:
     type: currency
     label: {id: Jumlah uang}
     required: true
-    # A foreign-currency payment is converted once, here: amount = round(amount_fx x exchange_rate) (the twin
-    # amount_fx_idr, contract 0013). An IDR payment is typed in rupiah. Allocation rows are always IDR.
+    # A foreign-currency payment is converted once, here: amount = round(amount_fx x exchange_rate) (half away from zero, as the
+    # twin amount_fx_idr; a default cannot read the twin, which is settled after defaults). An IDR payment is typed in rupiah. Allocation rows are always IDR.
     default: "currency != 'IDR' ? round(amount_fx * exchange_rate) : 0"
     in_list: true
   - name: allocations
@@ -89,7 +89,7 @@ rules:
     message: {id: Alokasi melebihi jumlah pembayaran}
   - name: fx_amount_matches
     on: save
-    check: currency == 'IDR' || amount == amount_fx_idr
+    check: "currency == 'IDR' || amount == round(amount_fx * exchange_rate)"
     message: {id: Jumlah rupiah harus sama dengan jumlah valas x kurs}
   - name: receive_needs_customer
     on: save

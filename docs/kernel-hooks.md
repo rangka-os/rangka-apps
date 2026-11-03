@@ -15,6 +15,14 @@ Every hook named below is built in the kernel (stream S8c) except `stock.post_mo
 `tests/day_one.py` reports each of these as a gap, not a failure. All hooks run in the document's transaction: an error
 rolls the whole submit/cancel back. Money is whole rupiah and no hook consults an LLM.
 
+## Foreign-currency documents
+
+Hooks read only the IDR fields (`amount_due`, `grand_total`, `outstanding`, `paid_amount`, allocation `amount`), never `*_fx`. For a
+document whose `currency` is not IDR, the model sets the IDR `subtotal` to the IDR twin of `subtotal_fx` (contract 0013); `dpp_base`,
+PPN (assessed in rupiah), `grand_total`, retention, PPh 23 and `amount_due` stay IDR computes from it. Lines are entered with `rate_fx`; the
+IDR line `amount` (qty x rate) cannot see the parent's currency, so a foreign header ignores it. The `*_fx` header totals are
+informative. A foreign payment's IDR `amount` is `round(amount_fx x exchange_rate)`, so allocation rows stay IDR.
+
 ## invoicing
 
 ### `ledger.post_receivable` (core hook, `sales_invoice.on_submit`)

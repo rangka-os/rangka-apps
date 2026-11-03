@@ -730,6 +730,39 @@ def scenario_payments(api):
         st, resp = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 16000, "amount_fx": 1000,
                                           "allocations": [{"sales_invoice": inv5, "amount": 11_100_000}]})
         check("USD payment allocating 11.100.000 works", st == 201, (st, resp))
+
+    # payment.amount follows amount_fx x exchange_rate (half away from zero); a stated amount must agree
+    st, resp = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 16000, "amount_fx": 1000, "amount": 15_000_000})
+    check("USD payment whose amount disagrees with amount_fx x rate -> 422 'Jumlah rupiah harus sama'",
+          st == 422 and any("Jumlah rupiah harus sama" in m for m in messages(resp)), (st, resp))
+    st, resp = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 1, "amount_fx": "0.5"})
+    check("USD 0.5 at rate 1 -> amount 1 (half away from zero)", st == 201 and resp.get("amount") == 1, (st, resp))
+    st, resp = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 1, "amount_fx": "0.5", "amount": 1})
+    check("USD 0.5 at rate 1 with amount 1 passes the rule", st == 201, (st, resp))
+
+    # foreign-currency invoice: the IDR header comes from the converted subtotal (rupiah PPN), then a USD payment clears it
+    usd_body = {"customer": customer, "currency": "USD", "exchange_rate": 16000,
+                "items": [{"item": item, "qty": 1, "rate_fx": 1000}]}
+    st, ui = api.create("sales_invoice", usd_body)
+    check("create USD sales_invoice (1.000 USD at 16.000)", st == 201, (st, ui))
+    if st == 201:
+        eq("USD invoice subtotal 16.000.000", ui["subtotal"], 16_000_000)
+        eq("USD invoice ppn 1.760.000", ui["ppn"], 1_760_000)
+        eq("USD invoice grand_total 17.760.000", ui["grand_total"], 17_760_000)
+        eq("USD invoice amount_due 17.760.000", ui["amount_due"], 17_760_000)
+        eq("USD invoice outstanding 17.760.000", ui["outstanding"], 17_760_000)
+        st, resp = api.verb("sales_invoice", ui["name"], "submit", {"force": True})
+        check("submit USD invoice", st == 200, resp)
+        uin = resp.get("name", ui["name"])
+        st, pu = api.create("payment", {"direction": "receive", "customer": customer, "currency": "USD", "exchange_rate": 16000, "amount_fx": 1110,
+                                        "allocations": [{"sales_invoice": uin, "amount": 17_760_000}]})
+        check("USD payment 1.110 at 16.000 (17.760.000) allocated to the USD invoice", st == 201 and pu.get("amount") == 17_760_000, (st, pu))
+        if st == 201:
+            st, resp = api.verb("payment", pu["name"], "submit")
+            check("submit USD payment", st == 200, (st, resp))
+            after = api.get("sales_invoice", uin)
+            eq("USD invoice cleared: outstanding 0", after["outstanding"], 0)
+            check("USD invoice status paid", after.get("status") == "paid", after.get("status"))
     other = next(c["name"] for c in api.list("customer") if c["name"] != customer)
     st, resp = api.create("withholding", {"customer": other, "sales_invoice": inv3, "cert_no": "BP-X", "cert_date": "2026-11-05"})
     check("withholding of another customer's invoice -> 422", st == 422 and any("bukan milik" in m for m in messages(resp)), (st, resp))
@@ -829,6 +862,17 @@ def scenario_procurement(api):
     check("po_approval: a PO above 5.000.000 asks purchasing_manager at submit (request recorded)",
           len(reqs) == 1 and reqs[0].get("approvers") == ["purchasing_manager"] and reqs[0].get("state") in ("approved", "pending"), reqs)
     check("po_approval: the PO under the limit made no request", not approvals_of(api, "purchase_order", pon), approvals_of(api, "purchase_order", pon))
+
+    # foreign-currency PO: the IDR header comes from the converted subtotal
+    st, upo = api.create("purchase_order", {"vendor": vendor, "currency": "USD", "exchange_rate": 16000, "ppn_applies": True,
+                                            "items": [{"item": liter_item, "qty": 1, "rate_fx": 1000}]})
+    check("create USD purchase_order (1.000 USD at 16.000)", st == 201, (st, upo))
+    if st == 201:
+        eq("USD PO subtotal 16.000.000", upo["subtotal"], 16_000_000)
+        eq("USD PO ppn 1.760.000", upo["ppn"], 1_760_000)
+        eq("USD PO grand_total 17.760.000", upo["grand_total"], 17_760_000)
+        st, resp = api.verb("purchase_order", upo["name"], "submit")
+        check("submit USD purchase order (above the approval limit: request recorded, owner self-approves)", st in (200, 202), (st, resp))
 
     # receive refuses a PO without an outlet (goods_receipt.outlet is required)
     st, noout = api.create("purchase_order", {"vendor": vendor, "items": po_lines})
