@@ -8,7 +8,7 @@ on_submit: [stock.post_moves]
 on_cancel: [stock.reverse_moves]
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
-  - {role: outlet_staff, read: true, create: true, write: true, submit: true}
+  - {role: outlet_staff, read: true}
 fields:
   - name: from_outlet
     type: link
@@ -28,6 +28,16 @@ fields:
     default: today()
     required: true
     in_list: true
+  - name: state
+    type: select
+    label: {id: Status kirim}
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: in_transit, label: {id: Dalam perjalanan}}
+      - {value: partly_received, label: {id: Diterima sebagian}}
+      - {value: received, label: {id: Diterima}}
   - name: items
     type: table
     of: stock_transfer_item
@@ -47,13 +57,13 @@ rules:
     message: {id: Jumlah barang harus lebih dari 0}
 views:
   list:
-    columns: [name, from_outlet, to_outlet, transfer_date, status]
+    columns: [name, from_outlet, to_outlet, transfer_date, state, status]
     sort: -transfer_date
   form:
     layout:
       - section: {id: Transfer}
         columns:
-          - [from_outlet, to_outlet, transfer_date]
+          - [from_outlet, to_outlet, transfer_date, state]
       - section: {id: Barang}
         fields: [items]
       - section: {id: Catatan}

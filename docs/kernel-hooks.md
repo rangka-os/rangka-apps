@@ -148,7 +148,7 @@ Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill`
 
 ## stock
 
-### `stock.post_moves` (core hook, `on_submit` of `goods_receipt`, `stock_transfer`, `stock_count`, `stock_adjustment`, `outlet_sales`) and `stock.reverse_moves` (`on_cancel`)
+### `stock.post_moves` (core hook, `on_submit` of `goods_receipt`, `stock_transfer`, `stock_transfer_receipt`, `stock_count`, `stock_adjustment`, `outlet_sales`) and `stock.reverse_moves` (`on_cancel`)
 - **Models it writes:** `stock_move` (one per document line and item affected) and `stock_balance` (one per outlet and item, created on the first move, row-locked).
   Both models are `read_only` for every role: `permissions:` give `head_office` and `outlet_staff` only `read`, so only owner (and the hooks, which are not
   scoped or permission-checked, contract 0010 §5) can create, change or delete them. Quantities are in the item's `stock_uom`: transfer, adjustment and receipt lines
@@ -160,7 +160,12 @@ Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill`
   `round(qty x item.standard_cost)` when there is no average yet. Example: 100 kg at 12.000, then 50 kg at 15.000 gives 150 kg, Rp 1.950.000, avg 13.000.
 - **Per document:**
   - `goods_receipt`: `+stock_qty` into `outlet`, reason `receipt`; adds `stock_qty` to the PO line's `received_qty` (in the PO line's own unit) and sets `received_pct`.
-  - `stock_transfer`: out of `from_outlet` at its average (`transfer_out`), into `to_outlet` at the same cost (`transfer_in`).
+  - `stock_transfer` (two steps, because `stock_transfer_receipt` is installed): submit takes the goods out of `from_outlet` at its average (`transfer_out`), writes `unit_cost` and
+    `received_qty = 0` on each line and sets `state = in_transit`; nothing enters `to_outlet` yet. Cancel returns 409 `has_receipts` while a receipt is submitted.
+  - `stock_transfer_receipt` (submitted by the receiving outlet, `outlet` = the transfer's `to_outlet`): brings the goods in at the transfer's unit cost (`transfer_in`), adds to the lines' `received_qty`
+    and moves `state` to `partly_received`, then `received`. The receipt that takes an item's whole remainder gets the exact remaining value, so the in-values add up to the out-value to the rupiah.
+    Refuses 409 `wrong_outlet` (receipt outlet is not the transfer's `to_outlet`), `not_in_transit` (transfer not submitted, already `received`, or an old one-step transfer) and `over_receipt`
+    (an item's qty is more than sent minus received, or the item is not on the transfer). Cancel reverses the moves exactly and takes `received_qty` back. Without the receipt model the transfer is one step again.
   - `stock_count`: reads the balance, writes `system_qty` and `difference = counted_qty - system_qty` onto the line, and posts the difference (`count`; a zero difference posts nothing).
   - `stock_adjustment`: `-stock_qty` at the average; reason `waste` gives move reason `waste`, anything else `adjustment`.
   - `outlet_sales`: per line, the active `recipe` of the item (the most recently modified if several), each `recipe_line` consumes `line.qty x recipe_line.qty / yield_qty`
@@ -232,9 +237,3 @@ saved while valid stays `expired = false` after `expires_on` passes. The kernel 
 date-dependent computes or a scheduled recompute (a flow with `schedule:` that touches rows crossing their date). Until then
 only a save of the worker refreshes it; `tests/day_one.py` asserts the value right after creation.
 
-## Field names the kernel hooks still read (follow-up)
-
-`ledger.post_receivable` (rangka-os `kernel/internal/engine/ledger.go:72` and `:74`) reads the old names `dp_deduction` (on each
-deducting invoice) and `dpp_base` (on the DP invoice). The documented names are `down_payment` and `dpp`. Until the hook is changed,
-`sales_invoice` keeps read-only computed twins `dp_deduction = down_payment` and `dpp_base = dpp`; delete them when the hook reads the
-new names. Nothing else in the modules uses the old names.

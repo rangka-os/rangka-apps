@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: stock_transfer_receipt
+label: {id: Penerimaan transfer, en: Transfer receipt}
+icon: stock
+is_submittable: true
+naming: TRM-{YYYY}-{#####}
+on_submit: [stock.post_moves]
+on_cancel: [stock.reverse_moves]
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: outlet_staff, read: true, create: true, write: true, submit: true, cancel: true}
+fields:
+  - name: stock_transfer
+    type: link
+    to: stock_transfer
+    label: {id: Transfer stok}
+    required: true
+    in_list: true
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet penerima}
+    help: {id: 'Harus outlet tujuan transfer; stok masuk ke outlet ini'}
+    required: true
+    in_list: true
+  - name: received_on
+    type: date
+    label: {id: Tanggal terima}
+    default: today()
+    required: true
+    in_list: true
+  - name: items
+    type: table
+    of: stock_transfer_receipt_item
+    label: {id: Barang}
+    min_rows: 1
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+views:
+  list:
+    columns: [name, stock_transfer, outlet, received_on, status]
+    sort: -received_on
+  form:
+    layout:
+      - section: {id: Penerimaan}
+        columns:
+          - [stock_transfer, outlet, received_on]
+      - section: {id: Barang}
+        fields: [items]
+      - section: {id: Catatan}
+        fields: [notes]
