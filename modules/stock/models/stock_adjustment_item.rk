@@ -7,6 +7,10 @@ fields:
     to: item
     label: {id: Barang}
     required: true
+  - name: description
+    type: text
+    label: {id: Uraian}
+    default: item.item_name
   - name: qty
     type: float
     label: {id: Qty keluar}

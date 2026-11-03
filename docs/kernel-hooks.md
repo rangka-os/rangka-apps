@@ -266,6 +266,7 @@ What the modules need that the kernel does not do yet. "Harness gap" is the chec
 | Print helper `dppfactor` reads `dpp_ratio`, not the document's `dpp_num`/`dpp_den` | S3 | formats join `dpp_num`/`dpp_den` themselves | none |
 | Print helper `aging` buckets `grand_total - paid_amount`, not `outstanding` | S3 | the statement sums its buckets in the template from `outstanding` | none |
 | Conversion hooks drop `currency` and `exchange_rate` (`orders.from_quotation`, `invoicing.from_order`) | S8c follow-up | an order cannot be made from a foreign quotation (rule `quotation_in_rupiah`, 422); foreign invoices are created directly | none (the 422 is checked in `scenario_fx_jasa`) |
+| Prints get `.Links` for top-level link fields only, not for child rows | S3 | line `description` defaults to `item.item_name`, so prints show names; the line unit prints as its `uom` code (e.g. `UOM-004`) until child-row links reach templates | none |
 | Imports see only `row` in CEL (no `org`, no `tax`) | S7 | import rules cannot read the PPN rate or the org; the Moka and daily-form imports carry no tax logic | `Moka import: upload, preview, commit, duplicates` (only on a kernel without imports) |
 
 Not kernel gaps, but reported as `GAP` on one site: `stock.post_moves` / `stock.reverse_moves` on `demo-jasa` (the `stock` module is optional for

@@ -709,6 +709,27 @@ def scenario_fx_jasa(api):
     check_print("USD purchase order print shows USD lines and the kurs", api, "purchase_order", resp.get("name", po["name"]), "", ["USD 1.000,00", "Kurs: 1 USD = Rp 16.000"])
 
 
+def scenario_print_descriptions(api):
+    """Review item 7: line descriptions default to the item name, so prints show names, not item codes."""
+    site = CTX["kernel"].site
+    if site == "demo-jasa":
+        item, name = "BRG-0001", "Inspeksi NDT (per orang-hari)"
+        st, q = api.create("quotation", {"customer": "CUST-0001", "subject": "Uraian", "items": [{"item": item, "qty": 1, "rate": 1_000_000}]})
+        eq("quotation line description defaults to the item name", q["items"][0]["description"], name)
+        st, inv = api.create("sales_invoice", invoice_body("CUST-0001", item))
+        eq("sales_invoice line description defaults to the item name", inv["items"][0]["description"], name)
+        st, resp = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        check_print("invoice print shows the item name, not its code", api, "sales_invoice", resp.get("name", inv["name"]), "", [name], ["BRG-0001"])
+        check_print("quotation print shows the item name, not its code", api, "quotation", q["name"], "", [name], ["BRG-0001"])
+        vendor, pitem = "VND-0001", "BRG-0004"
+    else:
+        vendor, pitem = "VND-0002", "BRG-0001"
+    pname = api.get("item", pitem)["item_name"]
+    st, po = api.create("purchase_order", dict({"vendor": vendor, "items": [{"item": pitem, "qty": 1, "rate": 1_000}]}, **({"outlet": DAGO} if site == "demo-fnb" else {})))
+    eq("purchase_order line description defaults to the item name", po["items"][0]["description"], pname)
+    check_print("purchase order print shows the item name, not its code", api, "purchase_order", po["name"], "", [pname], [pitem])
+
+
 def scenario_orders(api):
     customer, other = api.list("customer")[0]["name"], api.list("customer")[1]["name"]
     ndt = services(api)[0]["name"]
@@ -2598,9 +2619,9 @@ def setup_demo_fnb(api, k):
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_permissions],
-    "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
+    "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa],
-    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_permissions],
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
 }
 
 
