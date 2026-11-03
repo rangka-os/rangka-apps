@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/flow.json
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 name: stock_negative_alert
 label: {id: Peringatan stok minus}
 # The kernel passes the stock_move record as `event` (name, outlet, item, qty, balance_qty, negative, ...). It does not
@@ -8,8 +8,8 @@ label: {id: Peringatan stok minus}
 on: stock_move.created
 if: event.negative == true
 steps:
-  - {find: item, where: name == event.item, as: stock_item}
-  - {find: outlet, where: name == event.outlet, as: stock_outlet}
+  - {find: item, where: name == event.item, as: it}
+  - {find: outlet, where: name == event.outlet, as: ou}
   - notify: head_office
     channel: in_app
-    template: 'Stok {stock_item != null ? stock_item.item_name : event.item} di {stock_outlet != null ? stock_outlet.outlet_name : event.outlet} minus ({event.balance_qty})'
+    template: {id: 'Stok {it != null ? it.item_name : event.item} di {ou != null ? ou.outlet_name : event.outlet} minus ({event.balance_qty})'}
