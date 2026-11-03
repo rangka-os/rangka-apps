@@ -5,7 +5,7 @@ Modules declare cross-record logic as **named hooks**. A hook is a Go function i
 automation's `do`) and lists its own hooks in `module.rk` `hooks:`. This file fixes what each hook must do, so
 the kernel implements it exactly and the modules can rely on it.
 
-Every hook named below is built in the kernel (stream S8c) except `stock.post_moves`/`stock.reverse_moves`, which do nothing until the stock module's models exist. The kernel runs a hook inside the caller's transaction. A hook that is **not implemented** is handled like this:
+Every hook named below is built in the kernel (stream S8c). The kernel runs a hook inside the caller's transaction. A hook that is **not implemented** is handled like this:
 
 - `on_submit` / `on_cancel`: the kernel records `hook.skipped` in the audit log (target `<model>/<name>`) and carries on,
   so the document is submitted without the side effect;
@@ -135,16 +135,43 @@ Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill`
 - **Refuses:** `422 outlet_required`, "Outlet tujuan wajib diisi di PO sebelum barang diterima", when the PO has no `outlet` (`purchase_order.outlet` is optional, `goods_receipt.outlet` is required, and the hook copies it); `409 nothing_to_receive` when every line is fully received; `409 order_not_submitted` past the gate.
 
 ### `stock.post_moves` / `stock.reverse_moves` on `goods_receipt`
-- Declared by the model (`on_submit: [stock.post_moves]`, `on_cancel: [stock.reverse_moves]`) and implemented with the stock module (Task 8); the semantics of the
-  moves are in the stock section. For a goods receipt the hook also adds each line's `stock_qty` to the PO line's `received_qty` and sets the PO's
+- Declared by the model (`on_submit: [stock.post_moves]`, `on_cancel: [stock.reverse_moves]`); the semantics of the
+  moves are in the stock section below. For a goods receipt the hook also adds each line's `stock_qty` to the PO line's `received_qty` and sets the PO's
   `received_pct = round(sum(received_qty) / sum(stock_qty) * 100)` (capped at 100). Reversal subtracts the same.
-  Until the stock module exists the kernel records `hook.skipped` and the receipt is only a document.
+  Without the stock module installed (no `stock_move` model) the hook returns a message and writes nothing, so the receipt is only a document.
 - `stock.reverse_moves` is not a core hook, so `modules/procurement/module.rk` lists it in `hooks:`.
 
 ### Not checkable in a rule
 - A `packing` must belong to the line's `item` (`uom_conversion.item == item`): CEL does not evaluate link lookups inside `map`, so no model rule can check it. Suggested hardening, not in the S8c plan: the hooks that read the line (`stock.post_moves`, `procurement.receive`) refuse `422 packing_mismatch`.
 - A vendor's `bill_no` should be unique per vendor; suggested hardening, not in the S8c plan: `procurement.post_payable` refuses `409 duplicate_bill` when another submitted bill of the same vendor has it.
 - A receipt larger than the PO's remainder: `stock.post_moves` accepts it (over-delivery happens) but caps `received_pct` at 100.
+
+## stock
+
+### `stock.post_moves` (core hook, `on_submit` of `goods_receipt`, `stock_transfer`, `stock_count`, `stock_adjustment`, `outlet_sales`) and `stock.reverse_moves` (`on_cancel`)
+- **Models it writes:** `stock_move` (one per document line and item affected) and `stock_balance` (one per outlet and item, created on the first move, row-locked).
+  Both models are `read_only` for every role: `permissions:` give `head_office` and `outlet_staff` only `read`, so only owner (and the hooks, which are not
+  scoped or permission-checked, contract 0010 §5) can create, change or delete them. Quantities are in the item's `stock_uom`: transfer, adjustment and receipt lines
+  go through their computed `stock_qty`; sales, recipe and count lines are already in stock units.
+- **Per move:** `posting_date` (the document's date), `outlet`, `item`, signed `qty`, `unit_cost`, signed `value`, `balance_qty`, `balance_value`, `avg_cost`,
+  `negative` (`balance_qty < 0` after the move), `voucher_type`, `voucher` (the document's final name), `reason`.
+- **Moving average and rounding:** `stock_balance.value` is the exact sum of the move values and `avg_cost = round(value / qty)` while `qty > 0` (kept otherwise).
+  A receipt move's value is the line `amount` (so a package of 3 kg at Rp 100.000 is worth Rp 100.000, not 99.999). An outgoing move is `round(qty x avg)`, or
+  `round(qty x item.standard_cost)` when there is no average yet. Example: 100 kg at 12.000, then 50 kg at 15.000 gives 150 kg, Rp 1.950.000, avg 13.000.
+- **Per document:**
+  - `goods_receipt`: `+stock_qty` into `outlet`, reason `receipt`; adds `stock_qty` to the PO line's `received_qty` (in the PO line's own unit) and sets `received_pct`.
+  - `stock_transfer`: out of `from_outlet` at its average (`transfer_out`), into `to_outlet` at the same cost (`transfer_in`).
+  - `stock_count`: reads the balance, writes `system_qty` and `difference = counted_qty - system_qty` onto the line, and posts the difference (`count`; a zero difference posts nothing).
+  - `stock_adjustment`: `-stock_qty` at the average; reason `waste` gives move reason `waste`, anything else `adjustment`.
+  - `outlet_sales`: per line, the active `recipe` of the item (the most recently modified if several), each `recipe_line` consumes `line.qty x recipe_line.qty / yield_qty`
+    of its material (reason `sale`); with no recipe a good, material or product consumes itself and a service is skipped. The line `cogs` is the sum of the values consumed and the
+    header `cogs_total` the sum of the lines; `margin` is a compute.
+- **Never refuses for lack of stock:** a balance may go below zero. That is the negative-stock exception: the move and the balance carry `negative = true`, and head office
+  reads them from a "Stok minus" list (`stock_balance` filtered on `negative`). The alert flow `stock_negative_alert` (`on: stock_move.created`) is not fired by the kernel
+  yet (no record-event to flow dispatch, S8c finding); run with a move as its `event` it notifies `head_office` with "Stok <item> di <outlet> minus (<balance_qty>)".
+- **Refuses:** `409 duplicate_sales` when another submitted `outlet_sales` has the same `outlet`, `date` and `source = form`. A Moka import is protected by the import's key check instead (contract 0012).
+- **Reversal:** one `reversal` move per original move, opposite `qty` and `value`, at the original unit cost, dated the day of the cancel; the average is recomputed as
+  `round(value / qty)` so cancelling a receipt restores value and average exactly. Line `cogs` and count `system_qty` are kept as history; a receipt's cancel takes its quantities off the PO.
 
 ## quotation
 
