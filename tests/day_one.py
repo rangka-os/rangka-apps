@@ -96,10 +96,9 @@ class Kernel:
 
     def args(self):
         site_dir = os.path.join(ROOT, "examples", "sites", self.site)
-        return ["--apps", os.path.join(ROOT, "build", "catalogue"), "--site", site_dir, "--connectors", self.connectors, "--db", self.db]
+        return ["--apps", os.path.join(ROOT, "apps"), "--site", site_dir, "--connectors", self.connectors, "--db", self.db]
 
     def start(self):
-        subprocess.run([os.path.join(ROOT, "scripts", "catalogue.sh")], check=True, capture_output=True)
         r = subprocess.run(["bash", self.pgtemp, "start"], env=self.env, capture_output=True, text=True)
         if r.returncode != 0:
             sys.exit("pgtemp start failed: " + r.stderr)

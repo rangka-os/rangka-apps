@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+# Interim app for the project-services pilot (demo-jasa): the modules so far and a flat menu of their models.
+# Task 10 completes it (dashboards, home, onboarding, roles).
+name: jasa_proyek
+version: 0.1.0
+title: {id: Jasa proyek, en: Project services}
+label: {id: Rangka Jasa Proyek, en: Rangka Project Services}
+rangka: '>=0.5'
+modules:
+  contacts: ^1.0
+  catalogue: ^1.0
+  users: ^1.0
+  outlets: ^1.0
+  tax_id: ^1.0
+  currency: ^1.0
+  invoicing: ^1.0
+  quotation: ^1.0
+  orders: ^1.0
+  workforce: ^1.0
+  projects: ^1.0
+  payments: ^1.0
+  procurement: ^1.0
+menu:
+  - group: {id: Penjualan}
+    items: [quotation, customer_order, sales_invoice, payment]
+  - group: {id: Proyek}
+    items: [project, assignment, timesheet, acceptance, worker, certification]
+  - group: {id: Pembelian}
+    items: [purchase_request, purchase_order, goods_receipt, vendor_bill]
+  - group: {id: Data induk}
+    items: [customer, vendor, contact_person, item, uom, price_list, outlet, user, tax_code, currency, exchange_rate]
