@@ -5,6 +5,10 @@ icon: check
 is_submittable: true
 naming: BA-{YYYY}-{####}
 title_field: project
+permissions:
+  - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true}
+  - {role: finance_manager, read: true}
 fields:
   - name: project
     type: link

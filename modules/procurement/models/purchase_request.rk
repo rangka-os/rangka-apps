@@ -5,6 +5,11 @@ icon: cart
 is_submittable: true
 naming: PR-{YYYY}-{#####}
 title_field: purpose
+permissions:
+  - {role: purchasing_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, submit: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: outlet_staff, read: true, create: true, write: true, submit: true}
 fields:
   - name: requested_by
     type: link

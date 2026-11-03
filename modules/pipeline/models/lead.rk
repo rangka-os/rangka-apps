@@ -4,6 +4,14 @@ label: {id: Lead, en: Lead}
 icon: user
 naming: LEAD-{#####}
 title_field: lead_name
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true}
+  - {role: purchasing_manager, read: true}
+  - {role: project_admin, read: true}
+  - {role: head_office, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: sales_rep, read: true, create: true, write: true, if: owner == user.name}
 fields:
   - name: lead_name
     type: data
@@ -93,17 +101,6 @@ actions:
     hook: crm.convert_lead
     primary: true
     if: status != 'lost' && converted_deal == ''
-permissions:
-  - role: sales_rep
-    read: true
-    create: true
-    write: true
-    if: owner == user.name
-  - role: sales_manager
-    read: true
-    create: true
-    write: true
-    delete: true
 views:
   list:
     columns: [name, lead_name, company_name, source, status, owner]

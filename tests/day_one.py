@@ -1015,8 +1015,8 @@ def scenario_procurement(api):
     check("submit big purchase order", st in (200, 202), (st, resp))
     bign = resp.get("name", big["name"]) if st == 200 else big["name"]
     reqs = [a for a in approvals_of(api, "purchase_order", bign) if a.get("policy") == "po_approval"]
-    check("po_approval: a PO above 5.000.000 asks purchasing_manager at submit (request recorded)",
-          len(reqs) == 1 and reqs[0].get("approvers") == ["purchasing_manager"] and reqs[0].get("state") in ("approved", "pending"), reqs)
+    check("po_approval: a PO above 5.000.000 asks purchasing_manager or head_office at submit (request recorded)",
+          len(reqs) == 1 and reqs[0].get("approvers") == ["purchasing_manager", "head_office"] and reqs[0].get("state") in ("approved", "pending"), reqs)
     check("po_approval: the PO under the limit made no request", not approvals_of(api, "purchase_order", pon), approvals_of(api, "purchase_order", pon))
 
     # foreign-currency PO: the IDR header comes from the converted subtotal
@@ -1225,42 +1225,44 @@ def scenario_roles_jasa(api):
     st, resp = decide(sm, resp["approval"]["id"], "reject", "Harga belum sesuai")
     check("sales_manager rejects: the request is rejected and the quotation stays a draft", st == 200 and resp.get("state", resp.get("approval", {}).get("state")) == "rejected" and api.get("quotation", q2)["docstatus"] == 0, (st, resp))
 
-    # B-side of A5: a big invoice (> 100.000.000) is held for finance_manager
-    st, inv = pa.create("sales_invoice", invoice_body(customer, ndt, rate=100_000_000))
-    check("project_admin creates a big invoice (111.000.000)", st == 201 and inv["grand_total"] == 111_000_000, (st, inv))
-    st, resp = pa.verb("sales_invoice", inv["name"], "submit", {"force": True})
-    check("big invoice by a non-approver: held, 202, policy big_invoice for finance_manager",
-          st == 202 and resp["approval"]["policy"] == "big_invoice" and resp["approval"]["approvers"] == ["finance_manager"], (st, resp))
-    if st == 202:
-        st2, r2 = decide(sm, resp["approval"]["id"])
-        check("sales_manager cannot approve a big invoice -> 403", st2 == 403, (st2, r2))
-        st2, r2 = decide(fm, resp["approval"]["id"])
-        check("finance_manager approves the big invoice: submitted", st2 == 200 and r2.get("record", {}).get("docstatus") == 1, (st2, r2))
-        big = r2.get("record", {}).get("name")
-        # finance_manager's main job: record the customer's payment against it
-        st3, pay = fm.create("payment", {"direction": "receive", "customer": customer, "amount": 11_100_000, "allocations": [{"sales_invoice": big, "amount": 11_100_000}]})
-        check("finance_manager creates a payment against the invoice", st3 == 201, (st3, pay))
-        if st3 == 201:
-            st3, resp3 = fm.verb("payment", pay["name"], "submit")
-            check("finance_manager submits the payment", st3 == 200, (st3, resp3))
-            eq("the invoice's outstanding fell by the payment (111.000.000 - 11.100.000)", api.get("sales_invoice", big)["outstanding"], 99_900_000)
+    # B-side of A5: a big invoice (> 100.000.000) asks finance_manager. Only finance_manager may create and submit invoices
+    # (docs/permissions.md), and an approver self-approves, so the request is recorded approved; nobody else can make one.
+    st, resp = pa.create("sales_invoice", invoice_body(customer, ndt, rate=100_000_000))
+    check("project_admin may not create a sales_invoice -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+    st, resp = sm.create("sales_invoice", invoice_body(customer, ndt, rate=100_000_000))
+    check("sales_manager may not create a sales_invoice -> 403", st == 403, (st, resp))
+    st, inv = fm.create("sales_invoice", invoice_body(customer, ndt, rate=100_000_000))
+    check("finance_manager creates a big invoice (111.000.000)", st == 201 and inv["grand_total"] == 111_000_000, (st, inv))
+    if st == 201:
+        st, resp = fm.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        big = resp.get("name", inv["name"]) if st == 200 else None
+        reqs = [a for a in approvals_of(api, "sales_invoice", big or inv["name"]) if a.get("policy") == "big_invoice"]
+        check("finance_manager submits the big invoice: self-approved, the big_invoice request recorded approved",
+              st == 200 and len(reqs) == 1 and reqs[0]["approvers"] == ["finance_manager"] and reqs[0]["state"] == "approved", (st, resp, reqs))
+        if big:
+            # finance_manager's main job: record the customer's payment against it
+            st3, pay = fm.create("payment", {"direction": "receive", "customer": customer, "amount": 11_100_000, "allocations": [{"sales_invoice": big, "amount": 11_100_000}]})
+            check("finance_manager creates a payment against the invoice", st3 == 201, (st3, pay))
+            if st3 == 201:
+                st3, resp3 = fm.verb("payment", pay["name"], "submit")
+                check("finance_manager submits the payment", st3 == 200, (st3, resp3))
+                eq("the invoice's outstanding fell by the payment (111.000.000 - 11.100.000)", api.get("sales_invoice", big)["outstanding"], 99_900_000)
 
-    # held new_revision: the site overlay makes cancelling a submitted quotation need a sales_manager (custom/quotation.rk)
+    # new_revision cancels the quotation first, and project_admin has no cancel (docs/permissions.md): refused. The site overlay
+    # (custom/quotation.rk) makes the cancel need a sales_manager, who self-approves, so the request is recorded approved.
     st, resp = pa.action("quotation", sub1, "new_revision")
-    check("project_admin revises a submitted open quotation: {held: true} and nothing is amended",
-          st in (200, 202) and resp.get("held") is True and api.get("quotation", sub1)["docstatus"] == 1, (st, resp))
-    pend = [a for a in approvals_of(api, "quotation", sub1) if a.get("state") == "pending"]
-    check("the held revise left a pending cancel_approval for sales_manager", len(pend) == 1 and pend[0]["verb"] == "cancel" and pend[0]["approvers"] == ["sales_manager"], pend)
-    if len(pend) == 1:
-        st, resp = decide(sm, pend[0]["id"])
-        check("sales_manager approves the cancel: the quotation is cancelled", st == 200 and api.get("quotation", sub1)["docstatus"] == 2, (st, resp))
-        st, resp = pa.action("quotation", sub1, "new_revision")
-        check("revise again on the cancelled quotation opens a draft", st == 200 and resp.get("open", {}).get("model") == "quotation", (st, resp))
-        if st == 200:
-            d = api.get("quotation", resp["open"]["name"])
-            eq("the revision is a draft with revision 1, outcome open, amended from the original", (d["docstatus"], d["revision"], d["outcome"], d.get("amended_from")), (0, 1, "open", sub1))
-            st, resp = pa.verb("quotation", d["name"], "submit")
-            check("the revision is held again for the manager (a new submit approval)", st == 202 and resp["approval"]["policy"] == "manager_approval", (st, resp))
+    check("project_admin may not revise a quotation (new_revision cancels) -> 403 permission_denied on cancel",
+          st == 403 and resp["error"]["code"] == "permission_denied" and resp["error"].get("action") == "cancel" and api.get("quotation", sub1)["docstatus"] == 1, (st, resp))
+    st, resp = sm.action("quotation", sub1, "new_revision")
+    check("sales_manager revises the submitted quotation: a draft opens", st == 200 and resp.get("open", {}).get("model") == "quotation", (st, resp))
+    cancels = [a for a in approvals_of(api, "quotation", sub1) if a.get("verb") == "cancel"]
+    check("the revise recorded the overlay's cancel_approval, self-approved by the sales_manager",
+          len(cancels) == 1 and cancels[0]["approvers"] == ["sales_manager"] and cancels[0]["state"] == "approved" and api.get("quotation", sub1)["docstatus"] == 2, cancels)
+    if st == 200:
+        d = api.get("quotation", resp["open"]["name"])
+        eq("the revision is a draft with revision 1, outcome open, amended from the original", (d["docstatus"], d["revision"], d["outcome"], d.get("amended_from")), (0, 1, "open", sub1))
+        st, resp = pa.verb("quotation", d["name"], "submit")
+        check("the project_admin submits the revision: held again for the manager (a new submit approval)", st == 202 and resp["approval"]["policy"] == "manager_approval", (st, resp))
 
     # sales_manager's main job: own quotation submits at once (self-approval), then record the outcome
     st, q = sm.create("quotation", {"customer": customer, "subject": "Oleh manajer", "items": [{"item": ndt, "qty": 1, "rate": 1_500_000}]})
@@ -1283,28 +1285,188 @@ def scenario_roles_jasa(api):
             st, resp = pa.verb("timesheet", t["name"], "submit")
             check("project_admin submits the timesheet", st == 200, (st, resp))
 
-    # purchasing_manager: a PO above 5.000.000 by a non-approver is held, the purchasing_manager approves; under the limit needs nobody
+    # purchasing_manager: PO rights are purchasing_manager and head_office only, and both approve po_approval, so a PO above
+    # 5.000.000 is self-approved (request recorded); under the limit no request is made
+    st, resp = pa.create("purchase_order", {"vendor": "VND-0002", "order_date": "2026-11-03", "items": [{"item": "BRG-0004", "qty": 1, "rate": 85_000}]})
+    check("project_admin may not create a purchase order -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
     def po(qty):
-        st, o = pa.create("purchase_order", {"vendor": "VND-0002", "order_date": "2026-11-03", "items": [{"item": "BRG-0004", "qty": qty, "rate": 85_000}]})
-        check(f"project_admin creates a purchase order of {qty} x 85.000", st == 201, (st, o))
+        st, o = pm.create("purchase_order", {"vendor": "VND-0002", "order_date": "2026-11-03", "items": [{"item": "BRG-0004", "qty": qty, "rate": 85_000}]})
+        check(f"purchasing_manager creates a purchase order of {qty} x 85.000", st == 201, (st, o))
         return o["name"], o["grand_total"]
     big_po, total = po(100)
     eq("the big PO is 8.500.000 (above 5.000.000)", total, 8_500_000)
-    st, resp = pa.verb("purchase_order", big_po, "submit")
-    check("PO above 5.000.000 by a non-approver: held, policy po_approval for purchasing_manager",
-          st == 202 and resp["approval"]["policy"] == "po_approval" and resp["approval"]["approvers"] == ["purchasing_manager"], (st, resp))
-    if st == 202:
-        st2, r2 = decide(sm, resp["approval"]["id"])
-        check("sales_manager cannot approve a PO -> 403", st2 == 403, (st2, r2))
-        st2, r2 = decide(pm, resp["approval"]["id"])
-        check("purchasing_manager approves the PO above 5.000.000: submitted and numbered PO/CIN/...",
-              st2 == 200 and r2.get("record", {}).get("docstatus") == 1 and r2["record"]["name"].startswith("PO/CIN/"), (st2, r2))
+    st, resp = pm.verb("purchase_order", big_po, "submit")
+    done = resp.get("name", big_po) if st == 200 else big_po
+    reqs = [a for a in approvals_of(api, "purchase_order", done) if a.get("policy") == "po_approval"]
+    check("purchasing_manager submits a big PO: self-approved, numbered PO/CIN/..., po_approval recorded approved",
+          st == 200 and done.startswith("PO/CIN/") and len(reqs) == 1 and reqs[0]["state"] == "approved", (st, resp, reqs))
     small_po, total = po(10)
-    st, resp = pa.verb("purchase_order", small_po, "submit")
-    check("PO under the limit (850.000) is submitted by the project_admin without approval", st == 200 and not approvals_of(api, "purchase_order", resp.get("name", small_po)), (st, resp))
-    own_po, _ = po(100)
-    st, resp = pm.verb("purchase_order", own_po, "submit")
-    check("purchasing_manager submits a big PO of its own: self-approved, 200", st == 200, (st, resp))
+    st, resp = pm.verb("purchase_order", small_po, "submit")
+    check("PO under the limit (850.000) is submitted without an approval request", st == 200 and not approvals_of(api, "purchase_order", resp.get("name", small_po)), (st, resp))
+    # project_admin's purchasing job is the request: create and submit, no PO
+    st, pr = pa.create("purchase_request", {"needed_by": "2026-11-30", "purpose": "Bahan uji", "items": [{"item": "BRG-0004", "qty": 2, "est_rate": 85_000}]})
+    check("project_admin creates a purchase request", st == 201, (st, pr))
+    if st == 201:
+        st, resp = pa.verb("purchase_request", pr["name"], "submit")
+        check("project_admin submits the purchase request", st == 200, (st, resp))
+
+
+# ---------- scenarios: the permission matrix (docs/permissions.md), every site
+
+# Executable copy of docs/permissions.md: model -> role -> granted actions (owner is implicit and unrestricted).
+# Models outside this table must not exist on a site (the check below fails on one), so a new model needs a row here
+# and in the doc.
+_ALL = {"read", "create", "write", "delete", "submit", "cancel", "amend", "export", "print"}
+_R, _RP, _RCWP, _RCWS = {"read"}, {"read", "print"}, {"read", "create", "write", "print"}, {"read", "create", "write", "submit"}
+_JASA = ("sales_manager", "finance_manager", "purchasing_manager", "project_admin")
+_MASTER = dict({r: _RCWP for r in _JASA + ("head_office",)}, outlet_staff=_R)
+_PIPE = dict({r: _R for r in ("finance_manager", "purchasing_manager", "project_admin", "head_office", "outlet_staff")},
+             sales_manager=_ALL, sales_rep={"read", "create", "write"})          # sales_rep: own records (if: owner == user.name)
+_STOCK_DOC = {"head_office": _ALL, "outlet_staff": _RCWS}
+MATRIX = {
+    **{m: _MASTER for m in ("customer", "vendor", "item", "uom", "uom_conversion", "price_list", "tax_code", "currency", "exchange_rate", "outlet", "worker")},
+    "user": {r: _R for r in _JASA + ("head_office", "outlet_staff", "sales_rep")},
+    "quotation": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
+    "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
+    **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("project", "assignment", "timesheet", "acceptance")},
+    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _RP},
+    "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
+    "payment": {"finance_manager": _ALL, "sales_manager": _RP, "head_office": {"read", "create", "write", "submit", "print"}},
+    "purchase_request": {"purchasing_manager": _ALL, "project_admin": _RCWS, "head_office": _ALL, "outlet_staff": _RCWS},
+    "purchase_order": {"purchasing_manager": _ALL, "finance_manager": _RP, "head_office": _ALL},
+    "vendor_bill": {"purchasing_manager": _ALL, "finance_manager": {"read", "submit", "print"}, "head_office": _ALL},
+    "goods_receipt": {"purchasing_manager": _ALL, "head_office": _ALL, "outlet_staff": _RCWS},
+    "lead": _PIPE, "deal": _PIPE, "activity": _PIPE,
+    "recipe": {"head_office": {"read", "create", "write", "delete", "export"}, "outlet_staff": _R},
+    "stock_move": {"head_office": {"read", "export"}, "outlet_staff": _R},
+    "stock_balance": {"head_office": {"read", "export"}, "outlet_staff": _R},
+    "stock_transfer": {"head_office": _ALL, "outlet_staff": _R},
+    "stock_transfer_receipt": {"head_office": _ALL, "outlet_staff": _RCWS | {"cancel"}},
+    "stock_count": _STOCK_DOC, "stock_adjustment": _STOCK_DOC,
+    "outlet_sales": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
+}
+_CHECKED = ("read", "create", "write", "delete", "submit", "cancel", "amend", "export", "import", "print")
+
+
+def granted(role, model):
+    return MATRIX.get(model, {}).get(role, set())
+
+
+def setup_kopi_senja(api, k):
+    """Members for the matrix check on the CRM site: a sales_manager and a sales_rep."""
+    CTX.update(kernel=k, org="kopi-senja")
+    pw = secrets.token_urlsafe(18)   # throwaway password of a throwaway database
+    for key, email, role, name in (("sm", "manajer@kopisenja.test", "sales_manager", "Sari Contoh"), ("sr", "sales@kopisenja.test", "sales_rep", "Raka Contoh")):
+        code, out = k.user_add(email, role, CTX["org"], name, password=pw)
+        cl = Api.login(k.base, email, pw) if code == 0 else None
+        if cl is None:
+            CTX["login_error"] = f"{email}: " + (out if code else "login refused")
+            return
+        CTX[key] = cl
+
+
+# The members each site's setup signs in, with their role.
+SITE_MEMBERS = {
+    "kopi-senja": [("sm", "sales_manager"), ("sr", "sales_rep")],
+    "demo-jasa": [("sm", "sales_manager"), ("fm", "finance_manager"), ("pm", "purchasing_manager"), ("pa", "project_admin")],
+    "demo-fnb": [("hq", "head_office"), ("staff_dago", "outlet_staff")],
+}
+
+
+def money_bodies(api, site):
+    """A valid create body per money model of the site (fixture names), for the allowed/forbidden create calls."""
+    item = {"demo-fnb": "BRG-0001", "demo-jasa": "BRG-0001"}.get(site) or api.list("item")[0]["name"]
+    customer = "CUST-0001" if site == "demo-jasa" else (api.list("customer") or [{"name": ""}])[0]["name"]
+    vendor = "VND-0002" if site != "kopi-senja" else ""
+    outlet = {"outlet": DAGO} if site == "demo-fnb" else {}
+    b = {
+        "quotation": {"customer": customer, "subject": "Uji izin", "items": [{"item": item, "qty": 1, "rate": 1_000_000}]},
+        "customer_order": {"customer": customer, "po_number": "PO-IZIN", "po_date": "2026-11-03", "items": [{"item": item, "qty": 1, "rate": 1_000_000}]},
+        "sales_invoice": invoice_body(customer, item),
+        "payment": ({"direction": "pay", "vendor": vendor, "amount": 1_000} if site == "demo-fnb" else {"direction": "receive", "customer": customer, "amount": 1_000}),
+        "purchase_request": dict({"needed_by": "2026-11-30", "items": [{"item": item, "qty": 1, "est_rate": 1_000}]}, **outlet),
+        "purchase_order": dict({"vendor": vendor, "items": [{"item": item, "qty": 1, "rate": 1_000}]}, **outlet),
+        "vendor_bill": {"vendor": vendor, "bill_no": "IZIN-1", "bill_date": "2026-11-03", "items": [{"item": item, "qty": 1, "rate": 1_000}]},
+        "goods_receipt": {"vendor": vendor, "outlet": DAGO if site == "demo-fnb" else (api.list("outlet") or [{"name": ""}])[0]["name"], "items": [{"item": item, "qty": 1, "rate": 1_000}]},
+        "outlet_sales": {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]},
+    }
+    return {m: v for m, v in b.items() if installed(api, m)}
+
+
+def denied(st, resp):
+    return st == 403 and isinstance(resp, dict) and resp.get("error", {}).get("code") == "permission_denied"
+
+
+def scenario_permissions(api):
+    """Review item 2: /meta `can` of every model equals the matrix for each member, and each money model answers one allowed and one
+    forbidden call per role with 2xx / 403 permission_denied."""
+    site = CTX["kernel"].site
+    members = [(key, role, CTX.get(key)) for key, role in SITE_MEMBERS[site]]
+    if not all(cl for _, _, cl in members):
+        fail("permission matrix: members signed in", CTX.get("login_error"))
+        return
+    st, meta = api.call("GET", "/api/v1/meta")
+    models = (meta or {}).get("models", {})
+    top = sorted(n for n, m in models.items() if not m.get("is_child"))
+    missing = [n for n in top if n not in MATRIX]
+    check("every top-level model of the site has a row in the permission matrix", not missing, missing)
+    for key, role, cl in members:
+        st, mm = cl.call("GET", "/api/v1/meta")
+        wrong = []
+        for n in top:
+            can = ((mm or {}).get("models", {}).get(n) or {}).get("can", {})
+            got = {a for a in _CHECKED if can.get(a)}
+            want = granted(role, n) & set(_CHECKED)
+            if got != want:
+                wrong.append(f"{n}: got {sorted(got)} want {sorted(want)}")
+        check(f"{role}: /meta can matches the matrix on all {len(top)} models", not wrong, wrong[:6])
+    for model, body in money_bodies(api, site).items():
+        for key, role, cl in members:
+            g = granted(role, model)
+            if "create" in g:
+                st, resp = cl.create(model, body)
+                check(f"{role} may create {model} -> 201", st == 201, (st, resp))
+            elif "read" in g:
+                st, resp = cl.call("GET", f"/api/v1/r/{model}?limit=1")
+                check(f"{role} may list {model} -> 200", st == 200, (st, resp))
+            if "read" not in g:
+                st, resp = cl.call("GET", f"/api/v1/r/{model}?limit=1")
+                check(f"{role} may not list {model} -> 403 permission_denied", denied(st, resp), (st, resp))
+            elif "create" not in g:
+                st, resp = cl.create(model, body)
+                check(f"{role} may not create {model} -> 403 permission_denied", denied(st, resp), (st, resp))
+            elif "delete" not in g:
+                st, d = api.create(model, body)
+                st, resp = cl.call("DELETE", f"/api/v1/r/{model}/{Api.q(d['name'])}") if st == 201 else (st, d)
+                check(f"{role} may not delete a draft {model} -> 403 permission_denied", denied(st, resp), (st, resp))
+    if site == "demo-fnb":
+        # the reviewer's probes: outlet staff on money documents and masters
+        dago = CTX["staff_dago"]
+        body = money_bodies(api, site)["vendor_bill"]
+        st, resp = dago.create("vendor_bill", body)
+        check("outlet_staff cannot create a vendor_bill -> 403", denied(st, resp), (st, resp))
+        st, vb = api.create("vendor_bill", body)
+        st, resp = dago.verb("vendor_bill", vb["name"], "submit")
+        check("outlet_staff cannot submit a vendor_bill -> 403", denied(st, resp), (st, resp))
+        st, resp = dago.create("payment", {"direction": "pay", "vendor": "VND-0002", "amount": 1_000_000, "allocations": [{"vendor_bill": vb["name"], "amount": 1_000_000}]})
+        check("outlet_staff cannot create a vendor payment -> 403", denied(st, resp), (st, resp))
+        st, p = api.create("payment", {"direction": "pay", "vendor": "VND-0002", "amount": 1_000})
+        st, resp = dago.verb("payment", p["name"], "submit")
+        check("outlet_staff cannot submit a payment -> 403", denied(st, resp), (st, resp))
+        st, resp = dago.patch("item", "BRG-0001", {"standard_cost": 1})
+        check("outlet_staff cannot change item.standard_cost -> 403", denied(st, resp), (st, resp))
+        st, resp = dago.patch("uom_conversion", "KONV-0001", {"factor": 1})
+        check("outlet_staff cannot change uom_conversion.factor -> 403", denied(st, resp), (st, resp))
+        st, resp = dago.call("GET", "/api/v1/r/payment")
+        check("outlet_staff cannot list payments -> 403", denied(st, resp), (st, resp))
+        hq = CTX["hq"]
+        st, p = hq.create("payment", {"direction": "pay", "vendor": "VND-0002", "amount": 1_000})
+        check("head_office creates a vendor payment", st == 201, (st, p))
+        if st == 201:
+            st, resp = hq.verb("payment", p["name"], "submit")
+            check("head_office submits the vendor payment", st == 200, (st, resp))
+            st, resp = hq.verb("payment", resp.get("name", p["name"]), "cancel")
+            check("head_office cannot cancel a payment (r+cw+s+p) -> 403", denied(st, resp), (st, resp))
 
 
 # ---------- scenarios: print formats (contract 0008), both PTs of demo-jasa
@@ -2333,10 +2495,10 @@ def setup_demo_fnb(api, k):
 
 
 SCENARIOS = {
-    "kopi-senja": [scenario_invoicing],
+    "kopi-senja": [scenario_invoicing, scenario_permissions],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_dashboards_jasa],
-    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa],
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_permissions],
 }
 
 
@@ -2358,6 +2520,8 @@ def main():
         setup_demo_fnb(api, k)
     if a.site == "demo-jasa":
         setup_demo_jasa(api, k)
+    if a.site == "kopi-senja":
+        setup_kopi_senja(api, k)
     for sc in SCENARIOS[a.site]:
         if a.only and a.only not in sc.__name__:
             continue

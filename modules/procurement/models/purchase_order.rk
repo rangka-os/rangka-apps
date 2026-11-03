@@ -5,6 +5,10 @@ icon: cart
 is_submittable: true
 naming: PO-{YYYY}-{#####}
 title_field: vendor
+permissions:
+  - {role: purchasing_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
 fields:
   - name: vendor
     type: link
@@ -109,7 +113,7 @@ approvals:
   - name: po_approval
     on: submit
     when: "grand_total > 5000000"
-    approvers: [purchasing_manager]
+    approvers: [purchasing_manager, head_office]
     label: {id: Persetujuan pembelian, en: Purchasing approval}
 views:
   list:

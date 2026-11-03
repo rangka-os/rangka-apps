@@ -4,6 +4,10 @@ label: {id: Proyek, en: Project}
 icon: card
 naming: PRJ-{YYYY}-{####}
 title_field: project_name
+permissions:
+  - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true}
+  - {role: finance_manager, read: true}
 fields:
   - name: project_name
     type: data

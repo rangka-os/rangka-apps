@@ -2,4 +2,4 @@
 name: tax_id
 version: 1.0.0
 title: {id: Pajak Indonesia, en: Indonesian taxes}
-requires: {rangka: '>=0.5'}
+requires: {rangka: '>=0.5', users: ^1.0}

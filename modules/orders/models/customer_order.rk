@@ -5,6 +5,10 @@ icon: card
 is_submittable: true
 naming: SO-{YYYY}-{#####}
 title_field: po_number
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, submit: true}
+  - {role: finance_manager, read: true, print: true}
 fields:
   - name: customer
     type: link

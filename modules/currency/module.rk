@@ -2,4 +2,4 @@
 name: currency
 version: 1.0.0
 title: {id: Mata uang, en: Currencies}
-requires: {rangka: '>=0.5'}
+requires: {rangka: '>=0.5', users: ^1.0}

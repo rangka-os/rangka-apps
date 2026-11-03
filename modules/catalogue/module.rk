@@ -2,4 +2,4 @@
 name: catalogue
 version: 1.0.0
 title: {id: Katalog, en: Catalogue}
-requires: {rangka: '>=0.5', contacts: ^1.0}
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0}

@@ -4,6 +4,13 @@ label: {id: Tenaga kerja, en: Worker}
 icon: user
 naming: WRK-{####}
 title_field: worker_name
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, print: true}
+  - {role: purchasing_manager, read: true, create: true, write: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
 fields:
   - name: worker_name
     type: data

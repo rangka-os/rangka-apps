@@ -8,6 +8,10 @@ title_field: vendor
 # stock.post_moves is a core hook: also adds the received qty to the PO lines' received_qty and sets received_pct.
 on_submit: [stock.post_moves]
 on_cancel: [stock.reverse_moves]
+permissions:
+  - {role: purchasing_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: outlet_staff, read: true, create: true, write: true, submit: true}
 fields:
   - name: purchase_order
     type: link
