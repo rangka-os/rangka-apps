@@ -93,8 +93,9 @@ SITE_ORGS = {
 class Kernel:
     """A temp Postgres plus `rangka serve` for one site."""
 
-    def __init__(self, site, state_dir):
+    def __init__(self, site, state_dir, site_dir=None):
         self.site = site
+        self.site_dir = site_dir or os.path.join(ROOT, "examples", "sites", site)
         self.os_dir, self.binary, self.connectors = lib_env()
         self.pgtemp = os.path.join(self.os_dir, "kernel", "scripts", "pgtemp.sh")
         self.env = dict(os.environ, PGTEMP_STATE=os.path.join(state_dir, "pgtemp.state"))
@@ -109,8 +110,7 @@ class Kernel:
         self.orgs = SITE_ORGS[site]
 
     def args(self):
-        site_dir = os.path.join(ROOT, "examples", "sites", self.site)
-        return ["--apps", os.path.join(ROOT, "apps"), "--site", site_dir, "--connectors", self.connectors, "--db", self.db]
+        return ["--apps", os.path.join(ROOT, "apps"), "--site", self.site_dir, "--connectors", self.connectors, "--db", self.db]
 
     def start(self):
         r = subprocess.run(["bash", self.pgtemp, "start"], env=self.env, capture_output=True, text=True)
@@ -125,6 +125,9 @@ class Kernel:
             r = subprocess.run([self.binary, verb] + self.args() + extra, capture_output=True, text=True)
             if r.returncode != 0:
                 sys.exit(f"rangka {verb} failed:\n{r.stdout}\n{r.stderr}")
+        self.serve()
+
+    def serve(self):
         first = self.orgs[0][0]
         self.proc = subprocess.Popen([self.binary, "serve"] + self.args() + (["--org", first] if first else []) + ["--dev-open", "--addr", f"127.0.0.1:{self.port}"],
                                      stdout=self.log, stderr=subprocess.STDOUT)
@@ -138,6 +141,11 @@ class Kernel:
             except Exception:
                 time.sleep(0.2)
         sys.exit("serve did not become ready")
+
+    def stop_serve(self):
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+            self.proc.wait(10)
 
     def user_add(self, email, role, org, name, outlets="", record="", password=""):
         """`rangka user add`: a member of `org` with `role` (and the outlets of contract 0010). Returns (exit code, output)."""
@@ -320,7 +328,7 @@ def scenario_invoicing(api):
 
     # kopi-senja fixtures: existing invoices still read with the new defaults
     existing = api.list("sales_invoice")
-    check("fixture invoices valid with new fields", bool(existing) and all(r.get("kind") == "regular" and r.get("ppn_applies") in (True, "true") for r in existing),
+    check("fixture invoices valid with new fields", bool(existing) and all(r.get("kind") == "regular" and r.get("tax_rate") == 12 for r in existing),
           f"first: {existing[0] if existing else None}")
 
     # PKP: PPN on
@@ -330,20 +338,21 @@ def scenario_invoicing(api):
         return
     eq("PKP subtotal", inv["subtotal"], 10_000_000)
     eq("PKP discount 0", inv["discount_amount"], 0)
-    eq("PKP dpp_base", inv["dpp_base"], 10_000_000)
+    eq("PKP dpp", inv["dpp"], 10_000_000)
+    eq("PKP tax_rate 12 with DPP 11/12 stored on the document", (inv["tax_rate"], inv["dpp_num"], inv["dpp_den"]), (12, 11, 12))
     eq("PKP ppn 1.100.000", inv["ppn"], 1_100_000)
     eq("PKP grand_total 11.100.000", inv["grand_total"], 11_100_000)
     eq("PKP amount_due = grand_total", inv["amount_due"], 11_100_000)
     eq("PKP outstanding", inv["outstanding"], 11_100_000)
 
     # non-PKP: PPN off
-    st, inv = api.create("sales_invoice", invoice_body(customer, item, ppn_applies=False))
+    st, inv = api.create("sales_invoice", invoice_body(customer, item, tax_rate=0))
     eq("non-PKP ppn 0", inv.get("ppn"), 0)
     eq("non-PKP grand_total 10.000.000", inv.get("grand_total"), 10_000_000)
 
     # discount
     st, inv = api.create("sales_invoice", invoice_body(customer, item, discount_amount=1_000_000))
-    eq("discount 1.000.000 -> dpp_base 9.000.000", inv.get("dpp_base"), 9_000_000)
+    eq("discount 1.000.000 -> dpp 9.000.000", inv.get("dpp"), 9_000_000)
     eq("discount -> ppn 990.000", inv.get("ppn"), 990_000)
     st, resp = api.create("sales_invoice", invoice_body(customer, item, discount_amount=10_000_001))
     check("discount above subtotal rejected", st == 422 and any("Diskon" in m for m in messages(resp)), (st, resp))
@@ -380,20 +389,20 @@ def scenario_invoicing(api):
     check("create DP invoice", st == 201, dp)
     if st != 201:
         return
-    st, resp = api.create("sales_invoice", invoice_body(customer, item, dp_invoice=dp["name"], dp_deduction=1))
+    st, resp = api.create("sales_invoice", invoice_body(customer, item, dp_invoice=dp["name"], down_payment=1))
     check("DP not submitted yet -> deduction refused", st == 422, (st, resp))
     st, resp = api.verb("sales_invoice", dp["name"], "submit", {"force": True})
     check("submit DP invoice", st == 200, resp)
     dp_no = resp.get("name", dp["name"])  # submit renames DRAFT-… to the numbered name
-    st, reg = api.create("sales_invoice", invoice_body(customer, item, dp_invoice=dp_no, dp_deduction=3_000_000))
+    st, reg = api.create("sales_invoice", invoice_body(customer, item, dp_invoice=dp_no, down_payment=3_000_000))
     check("create regular invoice with DP deduction", st == 201, reg)
     if st == 201:
-        eq("DP deducted: dpp_base 7.000.000", reg["dpp_base"], 7_000_000)
+        eq("DP deducted: dpp 7.000.000", reg["dpp"], 7_000_000)
         eq("DP deducted: ppn 770.000", reg["ppn"], 770_000)
-    st, resp = api.create("sales_invoice", invoice_body(customer, item, dp_invoice=dp_no, dp_deduction=4_000_000))
+    st, resp = api.create("sales_invoice", invoice_body(customer, item, dp_invoice=dp_no, down_payment=4_000_000))
     check("DP over-deduction 4.000.000 vs 3.000.000 -> rule error",
           st == 422 and any("Potongan uang muka melebihi" in m for m in messages(resp)), (st, resp))
-    st, resp = api.create("sales_invoice", invoice_body(customer, item, dp_deduction=1_000_000))
+    st, resp = api.create("sales_invoice", invoice_body(customer, item, down_payment=1_000_000))
     check("deduction without a DP invoice -> rule error", st == 422 and any("faktur uang muka" in m.lower() for m in messages(resp)), (st, resp))
 
     # retention invoice must point at a submitted invoice
@@ -475,8 +484,8 @@ def scenario_quotation(api):
     check("valid_until before quotation_date rejected", st == 422, (st, resp))
     st, resp = api.create("quotation", {"customer": customer, "subject": "x", "discount_amount": 99_999_999_999, "items": [{"item": ndt}]})
     check("discount above subtotal rejected", st == 422 and any("Diskon" in m for m in messages(resp)), (st, resp))
-    st, resp = api.create("quotation", {"customer": customer, "subject": "x", "ppn_applies": False, "items": [{"item": ndt, "qty": 2, "rate": 1_000_000}]})
-    eq("quotation without PPN: grand_total = dpp_base", (resp.get("ppn"), resp.get("grand_total")), (0, 2_000_000))
+    st, resp = api.create("quotation", {"customer": customer, "subject": "x", "tax_rate": 0, "items": [{"item": ndt, "qty": 2, "rate": 1_000_000}]})
+    eq("quotation without PPN: grand_total = dpp", (resp.get("ppn"), resp.get("grand_total")), (0, 2_000_000))
 
     # submit (contract 0007: the owner caller self-approves, so the document submits at once and the request is recorded)
     st, resp = api.verb("quotation", q["name"], "submit")
@@ -694,7 +703,7 @@ def scenario_payments(api):
         return resp.get("name", inv["name"])
 
     inv1 = submitted_invoice(10_000_000)
-    inv2 = submitted_invoice(3_900_000, ppn_applies=False)
+    inv2 = submitted_invoice(3_900_000, tax_rate=0)
     eq("invoice 1 outstanding 11.100.000", api.get("sales_invoice", inv1)["outstanding"], 11_100_000)
     eq("invoice 2 outstanding 3.900.000", api.get("sales_invoice", inv2)["outstanding"], 3_900_000)
     cust_before = api.get("customer", customer)["outstanding"]
@@ -820,7 +829,7 @@ def scenario_payments(api):
                                         "payment": p2["name"] if isinstance(p2, dict) and p2.get("name") else ""})
     check("create withholding for the invoice", st == 201, bp)
     if st == 201:
-        eq("withholding dpp defaults to invoice dpp_base", bp["dpp"], 10_000_000)
+        eq("withholding dpp defaults to invoice dpp", bp["dpp"], 10_000_000)
         eq("withholding amount = round(dpp x 2 / 100) = 200.000", bp["amount"], 200_000)
         st, resp = api.verb("withholding", bp["name"], "submit")
         check("submit withholding", st == 200 and str(resp.get("name", "")).startswith("BP-"), resp)
@@ -938,7 +947,7 @@ def scenario_procurement(api):
 
     # purchase order (manual create from the request's lines): line 2 is 2 Karung of 50 Kg
     po_lines = [{"item": liter_item, "qty": 10, "rate": 85_000}, {"item": mag_item, "qty": 2, "packing": conv, "rate": 600_000}]
-    st, po = api.create("purchase_order", {"vendor": vendor, "purchase_request": prn, "outlet": outlet, "ppn_applies": True,
+    st, po = api.create("purchase_order", {"vendor": vendor, "purchase_request": prn, "outlet": outlet,
                                            "payment_terms": "Tempo 30 hari", "items": po_lines})
     check("create purchase order", st == 201, po)
     if st != 201:
@@ -951,8 +960,9 @@ def scenario_procurement(api):
     eq("PO grand_total 2.275.500", po["grand_total"], 2_275_500)
     eq("PO line uom: stock_uom without packing, the packing's uom (Karung) with it; stock_qty stays 100", [i["uom"] for i in po["items"]], ["UOM-009", "UOM-008"])
     eq("PO received_pct 0", po["received_pct"], 0)
-    st, p2 = api.create("purchase_order", {"vendor": vendor, "items": po_lines})
-    eq("PO without PPN: ppn 0, grand_total 2.050.000", (p2.get("ppn"), p2.get("grand_total")), (0, 2_050_000))
+    eq("PO from a PKP vendor: tax_rate 12, DPP 11/12 stored on the document", (po["tax_rate"], po["dpp_num"], po["dpp_den"], po["dpp"]), (12, 11, 12, 2_050_000))
+    st, p2 = api.create("purchase_order", {"vendor": "VND-0002", "items": po_lines})
+    eq("PO from a non-PKP vendor: tax_rate 0, ppn 0, grand_total 2.050.000", (p2.get("tax_rate"), p2.get("ppn"), p2.get("grand_total")), (0, 0, 2_050_000))
     st, resp = api.create("purchase_order", {"items": po_lines})
     check("PO without vendor -> 422", st == 422, (st, resp))
     st, resp = api.create("purchase_order", {"vendor": vendor, "order_date": "2026-11-10", "delivery_date": "2026-11-01", "items": po_lines})
@@ -965,7 +975,7 @@ def scenario_procurement(api):
     st, resp = api.verb("purchase_order", po["name"], "submit")
     check("submit purchase order (2.275.500 is under the approval limit)", st == 200, (st, resp))
     pon = resp.get("name", po["name"])
-    st, big = api.create("purchase_order", {"vendor": vendor, "items": [{"item": liter_item, "qty": 100, "rate": 85_000}]})
+    st, big = api.create("purchase_order", {"vendor": "VND-0002", "items": [{"item": liter_item, "qty": 100, "rate": 85_000}]})
     eq("big PO grand_total 8.500.000", big.get("grand_total"), 8_500_000)
     st, resp = api.verb("purchase_order", big["name"], "submit")
     # contract 0007: the dev-open caller is the owner, so the request is created and self-approved (200); a caller without an
@@ -978,7 +988,7 @@ def scenario_procurement(api):
     check("po_approval: the PO under the limit made no request", not approvals_of(api, "purchase_order", pon), approvals_of(api, "purchase_order", pon))
 
     # foreign-currency PO: the IDR header comes from the converted subtotal
-    st, upo = api.create("purchase_order", {"vendor": vendor, "currency": "USD", "exchange_rate": 16000, "ppn_applies": True,
+    st, upo = api.create("purchase_order", {"vendor": vendor, "currency": "USD", "exchange_rate": 16000,
                                             "items": [{"item": liter_item, "qty": 1, "rate_fx": 1000}]})
     check("create USD purchase_order (1.000 USD at 16.000)", st == 201, (st, upo))
     if st == 201:
@@ -1041,7 +1051,7 @@ def scenario_procurement(api):
 
     # vendor bill: amount_due = grand_total - pph23_amount
     bill_body = {"vendor": vendor, "purchase_order": pon, "goods_receipt": grn, "bill_no": "INV-CBU-0001", "bill_date": "2026-11-10",
-                 "ppn_applies": True, "pph23_amount": 20_000,
+                 "pph23_amount": 20_000,
                  "items": [{"item": liter_item, "qty": 10, "rate": 85_000}, {"item": mag_item, "qty": 2, "rate": 600_000}]}
     vendor_before = api.get("vendor", vendor)["outstanding"]
     st, vb = api.create("vendor_bill", bill_body)
@@ -1243,7 +1253,7 @@ def scenario_roles_jasa(api):
 
     # purchasing_manager: a PO above 5.000.000 by a non-approver is held, the purchasing_manager approves; under the limit needs nobody
     def po(qty):
-        st, o = pa.create("purchase_order", {"vendor": "VND-0001", "order_date": "2026-11-03", "items": [{"item": "BRG-0004", "qty": qty, "rate": 85_000}]})
+        st, o = pa.create("purchase_order", {"vendor": "VND-0002", "order_date": "2026-11-03", "items": [{"item": "BRG-0004", "qty": qty, "rate": 85_000}]})
         check(f"project_admin creates a purchase order of {qty} x 85.000", st == 201, (st, o))
         return o["name"], o["grand_total"]
     big_po, total = po(100)
@@ -1332,7 +1342,7 @@ def scenario_prints_jasa(api):
     st, dpi = api.create("sales_invoice", invoice_body(customer, ndt, rate=3_000_000, kind="down_payment"))
     st, resp = api.verb("sales_invoice", dpi["name"], "submit", {"force": True})
     dpn = resp.get("name", dpi["name"])
-    st, reg = api.create("sales_invoice", invoice_body(customer, ndt, dp_invoice=dpn, dp_deduction=3_000_000))
+    st, reg = api.create("sales_invoice", invoice_body(customer, ndt, dp_invoice=dpn, down_payment=3_000_000))
     check("print: create invoice with DP deduction", st == 201, reg)
     st, resp = api.verb("sales_invoice", reg["name"], "submit", {"force": True})
     rn = resp.get("name", reg["name"])
@@ -1340,7 +1350,7 @@ def scenario_prints_jasa(api):
                ["Uang muka", "Rp 3.000.000", "Rp 7.000.000", "Rp 770.000", "Rp 7.770.000", "tujuh juta tujuh ratus tujuh puluh ribu rupiah"])
 
     # purchase_order (the PO's own ppn and totals)
-    st, po = api.create("purchase_order", {"vendor": "VND-0001", "order_date": "2026-11-03", "payment_terms": "Net 30", "ppn_applies": True,
+    st, po = api.create("purchase_order", {"vendor": "VND-0001", "order_date": "2026-11-03", "payment_terms": "Net 30",
                                            "items": [{"item": "BRG-0004", "qty": 20, "rate": 85_000}, {"item": "BRG-0005", "qty": 100, "rate": 12_000}]})
     check("print: create purchase_order", st == 201, po)
     if st == 201:
@@ -1394,7 +1404,7 @@ def scenario_prints_jasa(api):
     st, _ = org2.call("GET", "/api/v1/r/sales_invoice/" + Api.q(invn))
     check("an invoice of PT Contoh Inspeksi is 404 in CV Contoh Pelatihan (records never cross orgs)", st == 404, st)
     item2 = org2.list("item")[0]["name"]
-    st, inv2 = org2.create("sales_invoice", invoice_body("CUST-0001", item2, ppn_applies=False))
+    st, inv2 = org2.create("sales_invoice", invoice_body("CUST-0001", item2))
     check("print: create non-PKP invoice", st == 201, inv2)
     eq("non-PKP invoice grand_total 10.000.000", inv2.get("grand_total"), 10_000_000)
     st, resp = org2.verb("sales_invoice", inv2["name"], "submit", {"force": True})
@@ -1404,10 +1414,112 @@ def scenario_prints_jasa(api):
     check_print("sales_invoice (non-PKP org)", org2, "sales_invoice", inv2n, "",
                 [inv2n, "Rp 10.000.000", "sepuluh juta rupiah", "CV Contoh Pelatihan", "00.000.000.0-000.002"],
                 must_not=["PPN", "e-Faktur", "Rp 11.100.000", "PT Contoh Inspeksi"])
-    st, q2 = org2.create("quotation", {"customer": "CUST-0001", "subject": "Pelatihan K3", "ppn_applies": False, "items": [{"item": item2, "qty": 1, "rate": 10_000_000}]})
+    st, q2 = org2.create("quotation", {"customer": "CUST-0001", "subject": "Pelatihan K3", "items": [{"item": item2, "qty": 1, "rate": 10_000_000}]})
     st, resp = org2.verb("quotation", q2["name"], "submit")
     q2n = resp.get("name", q2["name"])
     check_print("quotation (non-PKP org)", org2, "quotation", q2n, "quotation", [q2n, "Rp 10.000.000", "sepuluh juta rupiah", "CV Contoh Pelatihan"], must_not=["PPN"])
+
+
+# ---------- scenarios: PPN from config and org, stored per document (task 10c)
+
+LETTERHEADS = {   # org -> (legal name, address line, bank account) of examples/sites/*/letterheads/<org>.rk
+    "pt_contoh_inspeksi": ("PT Contoh Inspeksi", "Jl. Contoh Industri No. 1", "111 000 0001"),
+    "cv_contoh_pelatihan": ("CV Contoh Pelatihan", "Jl. Contoh Pendidikan No. 5", "222 000 0002"),
+    "tahu_contoh": ("PT Tahu Contoh Nusantara", "Jl. Contoh Dago No. 1", "333 000 0003"),
+}
+
+
+def check_org_letterhead(api, org, vendor, customer, item):
+    """A PO and an invoice of one PT print that PT's own name, address and bank, and no other PT's (a listed PT never uses the site letterhead)."""
+    name, addr, bank = LETTERHEADS[org]
+    others = [v for k, v in LETTERHEADS.items() if k != org]
+    must_not = [o[0] for o in others] + [o[2] for o in others] + ["Contoh Jasa Teknik"]
+    for model, body in (("purchase_order", {"vendor": vendor, "items": [{"item": item, "qty": 1, "rate": 100_000}]}),
+                        ("sales_invoice", invoice_body(customer, item, rate=100_000))):
+        st, doc = api.create(model, body)
+        check(f"{org}: create {model} for the letterhead check", st == 201, (st, doc))
+        if st != 201:
+            continue
+        st, resp = api.verb(model, doc["name"], "submit", {"force": True})
+        check(f"{org}: submit {model}", st == 200, (st, resp))
+        n = resp.get("name", doc["name"])
+        must = [name, addr] + ([bank] if model == "sales_invoice" else [])
+        check_print(f"{org} {model}: its own letterhead", api, model, n, "", must, must_not=must_not)
+
+
+def scenario_tax_jasa(api):
+    """PKP org vs non-PKP org vs PKP vendor: the rate, DPP ratio and PPN are stored on each document."""
+    org2 = Api.login(CTX["kernel"].base, CTX["kernel"].owner_email, CTX["kernel"].owner_pw, org="cv_contoh_pelatihan")
+    customer, ndt = "CUST-0001", services(api)[0]["name"]
+    # PKP org (PT Contoh Inspeksi): tax.pkp true
+    st, inv = api.create("sales_invoice", invoice_body(customer, ndt))
+    check("PKP org invoice created", st == 201, inv)
+    eq("PKP org invoice: tax_rate 12, dpp 11/12, ppn 1.100.000", (inv.get("tax_rate"), inv.get("dpp_num"), inv.get("dpp_den"), inv.get("ppn")), (12, 11, 12, 1_100_000))
+    st, q = api.create("quotation", {"customer": customer, "subject": "Pajak", "items": [{"item": ndt, "qty": 1, "rate": 10_000_000}]})
+    eq("PKP org quotation: tax_rate 12, ppn 1.100.000", (q.get("tax_rate"), q.get("ppn")), (12, 1_100_000))
+    st, resp = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+    check("submit the PKP invoice", st == 200, resp)
+    stored = api.get("sales_invoice", resp.get("name", inv["name"]))
+    eq("a submitted invoice keeps its stored tax_rate, DPP ratio and ppn", (stored["tax_rate"], stored["dpp_num"], stored["dpp_den"], stored["ppn"]), (12, 11, 12, 1_100_000))
+    # a down payment invoice's own amount is its dpp / grand_total
+    st, dp = api.create("sales_invoice", invoice_body(customer, ndt, rate=3_000_000, kind="down_payment"))
+    eq("down_payment invoice: dpp 3.000.000, ppn 330.000, grand_total 3.330.000", (dp.get("dpp"), dp.get("ppn"), dp.get("grand_total")), (3_000_000, 330_000, 3_330_000))
+    # purchase side: the vendor's pkp decides
+    st, vb = api.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "T-1", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 10, "rate": 100_000}]})
+    eq("vendor_bill from a PKP vendor: tax_rate 12, ppn 110.000", (vb.get("tax_rate"), vb.get("dpp"), vb.get("ppn")), (12, 1_000_000, 110_000))
+    st, vb = api.create("vendor_bill", {"vendor": "VND-0002", "bill_no": "T-2", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 10, "rate": 100_000}]})
+    eq("vendor_bill from a non-PKP vendor: tax_rate 0, ppn 0", (vb.get("tax_rate"), vb.get("ppn")), (0, 0))
+    # non-PKP org (CV Contoh Pelatihan): tax.pkp false in its orgs entry
+    if org2 is None:
+        fail("sign in as the owner of CV Contoh Pelatihan", "login refused")
+        return
+    item2 = org2.list("item")[0]["name"]
+    st, i2 = org2.create("sales_invoice", invoice_body("CUST-0001", item2))
+    eq("non-PKP org invoice: tax_rate 0, ppn 0, grand_total = dpp", (i2.get("tax_rate"), i2.get("ppn"), i2.get("grand_total")), (0, 0, 10_000_000))
+    eq("non-PKP org invoice still stores the DPP ratio 11/12", (i2.get("dpp_num"), i2.get("dpp_den")), (11, 12))
+    st, q2 = org2.create("quotation", {"customer": "CUST-0001", "subject": "Pajak", "items": [{"item": item2, "qty": 1, "rate": 10_000_000}]})
+    eq("non-PKP org quotation: tax_rate 0, ppn 0", (q2.get("tax_rate"), q2.get("ppn")), (0, 0))
+    st, vb2 = org2.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "T-3", "bill_date": "2026-11-10", "items": [{"item": item2, "qty": 1, "rate": 100_000}]})
+    eq("non-PKP org, non-PKP vendor: vendor_bill tax_rate 0", (vb2.get("tax_rate"), vb2.get("ppn")), (0, 0))
+    check_org_letterhead(api, "pt_contoh_inspeksi", "VND-0001", customer, ndt)
+    check_org_letterhead(org2, "cv_contoh_pelatihan", "VND-0001", "CUST-0001", item2)
+    ppn_rate_11_variant()
+
+
+def ppn_rate_11_variant():
+    """A site whose PKP org sets tax ppn_rate 11: documents get 11, ppn = round(10.000.000 x 11/12 x 11/100) = 1.008.333, the print shows 11%,
+    and after the config goes back to 12 the submitted invoice keeps 11 while a new one gets 12."""
+    import shutil
+    state = tempfile.mkdtemp(prefix="day-one-ppn11-")
+    site_dir = os.path.join(state, "site")
+    shutil.copytree(os.path.join(ROOT, "examples", "sites", "demo-jasa"), site_dir)
+    cfg = os.path.join(site_dir, "config.rk")
+    text = open(cfg).read()
+    assert "      tax: {pkp: true}" in text
+    open(cfg, "w").write(text.replace("      tax: {pkp: true}", "      tax: {pkp: true, ppn_rate: 11}"))
+    k = Kernel("demo-jasa", state, site_dir=site_dir)
+    try:
+        k.start()
+        api = Api(k.base)
+        customer, ndt = "CUST-0001", services(api)[0]["name"]
+        st, inv = api.create("sales_invoice", invoice_body(customer, ndt))
+        check("ppn_rate 11 site: create invoice", st == 201, inv)
+        eq("ppn_rate 11: tax_rate 11, DPP still 11/12, ppn 1.008.333", (inv.get("tax_rate"), inv.get("dpp_num"), inv.get("dpp_den"), inv.get("ppn")), (11, 11, 12, 1_008_333))
+        st, resp = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        check("ppn_rate 11 site: submit invoice", st == 200, resp)
+        n11 = resp.get("name", inv["name"])
+        check_print("ppn_rate 11 invoice", api, "sales_invoice", n11, "", ["PPN 11%", "Rp 1.008.333", "Rp 11.008.333", "11/12"], must_not=["PPN 12%"])
+        st, po = api.create("purchase_order", {"vendor": "VND-0001", "items": [{"item": ndt, "qty": 1, "rate": 10_000_000}]})
+        eq("ppn_rate 11: a PO from a PKP vendor gets 11 too", (po.get("tax_rate"), po.get("ppn")), (11, 1_008_333))
+        # the config changes back to 12: stored documents are not recomputed
+        k.stop_serve()
+        open(cfg, "w").write(text)
+        k.serve()
+        eq("config back to 12: the submitted invoice keeps tax_rate 11 and ppn 1.008.333", (api.get("sales_invoice", n11)["tax_rate"], api.get("sales_invoice", n11)["ppn"]), (11, 1_008_333))
+        st, inv12 = api.create("sales_invoice", invoice_body(customer, ndt))
+        eq("config back to 12: a new invoice gets 12", (inv12.get("tax_rate"), inv12.get("ppn")), (12, 1_100_000))
+    finally:
+        k.stop()
 
 
 # ---------- scenarios: dashboards (computed by the kernel, compared with figures computed here from the records)
@@ -1462,7 +1574,7 @@ def scenario_dashboards_jasa(api):
     added = dict.fromkeys(buckets, 0)
     for days, bucket, amount in AGING_EDGES:
         due = today - datetime.timedelta(days=days)
-        st, i = api.create("sales_invoice", invoice_body(bc["name"], services(api)[0]["name"], rate=amount, ppn_applies=False,
+        st, i = api.create("sales_invoice", invoice_body(bc["name"], services(api)[0]["name"], rate=amount, tax_rate=0,
                                                           posting_date=(due - datetime.timedelta(days=30)).isoformat(), due_date=due.isoformat()))
         st2, resp = api.verb("sales_invoice", i["name"], "submit", {"force": True}) if st == 201 else (st, i)
         check(f"aging edges: invoice due {days} days ago submitted", st == 201 and st2 == 200, (st, st2, resp))
@@ -1569,6 +1681,17 @@ def scenario_prints_fnb(api):
     check_print("purchase_order (Tahu Contoh)", api, "purchase_order", pon, "",
                 [pon, "Pesanan pembelian", "PT Tahu Contoh Nusantara", "halo@tahucontoh.test", "CV Contoh Tahu Segar", "Outlet Dago",
                  "Rp 120.000", "seratus dua puluh ribu rupiah"], must_not=["PPN"])
+    # a PKP vendor: PPN 12% (DPP 11/12) is on the document and on the print; the org itself is non-PKP
+    st, po2 = api.create("purchase_order", {"vendor": "VND-0002", "outlet": DAGO, "order_date": "2026-11-03", "items": [{"item": "BRG-0001", "qty": 10, "rate": 12_000}]})
+    eq("fnb PO from a PKP vendor: tax_rate 12, dpp 120.000, ppn 13.200", (po2.get("tax_rate"), po2.get("dpp"), po2.get("ppn")), (12, 120_000, 13_200))
+    eq("fnb PO from a non-PKP vendor: tax_rate 0", api.get("purchase_order", pon)["tax_rate"], 0)
+    st, resp = api.verb("purchase_order", po2["name"], "submit")
+    check_print("purchase_order from a PKP vendor", api, "purchase_order", resp.get("name", po2["name"]), "", ["PPN 12%", "Rp 13.200", "Rp 133.200", "11/12"])
+    st, cust = api.create("customer", {"customer_name": "Warung Contoh Pelanggan", "address": "Jl. Contoh Pelanggan 1", "payment_days": 7})
+    st, items = 200, [i for i in api.list("item") if i.get("kind") == "material"]
+    check_org_letterhead(api, "tahu_contoh", "VND-0001", cust["name"], items[0]["name"])
+    st, i0 = api.create("sales_invoice", invoice_body(cust["name"], items[0]["name"]))
+    eq("fnb (non-PKP org) invoice: tax_rate 0, ppn 0", (i0.get("tax_rate"), i0.get("ppn")), (0, 0))
 
 
 # ---------- scenarios: multi-branch F&B (demo-fnb): stock and outlet sales
@@ -1824,20 +1947,16 @@ def scenario_stock_access(api):
     st, resp = dago.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-05", "lines": [{"item": "BRG-0007", "qty": 1}]})
     check("outlet_staff (Dago) creates outlet_sales for Braga -> 403", st == 403, (st, resp))
 
-    # transfer scope (contract 0010 §5): the scope lists [outlet, from_outlet, to_outlet], so a Dago member may not pull stock out of Braga
+    # transfer scope (contract 0010 §5): the scope lists [outlet, from_outlet, to_outlet]; reading needs one field in `from`, writing needs
+    # every field that holds a value in `from` (S5 scope-on-writes), so a Dago member can neither pull stock out of Braga nor push it into Braga
     st, resp = dago.create("stock_transfer", {"from_outlet": BRAGA, "to_outlet": DAGO, "items": [{"item": m, "qty": 1}]})
-    if st == 201:
-        gap("outlet_staff (Dago) creates a stock_transfer from Braga (to Dago) -> 403", "kernel (S5 row scope)",
-            f"201: with a list scope [outlet, from_outlet, to_outlet] a create passes when any one field is in scope, so a member can pull stock out of "
-            f"another outlet by naming its own outlet as the destination (draft {resp.get('name')} created); the check below expects 403 permission_denied")
-        api.call("DELETE", f"/api/v1/r/stock_transfer/{Api.q(resp['name'])}")
-    else:
-        check("outlet_staff (Dago) creates a stock_transfer from Braga (to Dago) -> 403 permission_denied",
-              st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
+    check("outlet_staff (Dago) creates a stock_transfer from Braga (to Dago) -> 403 permission_denied",
+          st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
     st, resp = dago.create("stock_transfer", {"from_outlet": BRAGA, "to_outlet": HO, "items": [{"item": m, "qty": 1}]})
     check("outlet_staff (Dago) creates a stock_transfer from Braga to head office (neither side is Dago) -> 403", st == 403, (st, resp))
     st, resp = dago.create("stock_transfer", {"from_outlet": DAGO, "to_outlet": BRAGA, "items": [{"item": m, "qty": 1}]})
-    check("outlet_staff (Dago) creates a stock_transfer from Dago to Braga -> 201 (one side is its own outlet)", st == 201, (st, resp))
+    check("outlet_staff (Dago) creates a stock_transfer from Dago to Braga -> 403 permission_denied (every outlet field must be in scope)",
+          st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
     st, braga_sales = api.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
     check("setup: owner creates a draft outlet_sales for Braga", st == 201, (st, braga_sales))
     if st == 201:
@@ -2015,7 +2134,7 @@ def setup_demo_fnb(api, k):
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_roles_jasa, scenario_dashboards_jasa],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_dashboards_jasa],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb],
 }
 

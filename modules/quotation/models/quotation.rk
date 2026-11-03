@@ -68,8 +68,9 @@ fields:
     label: {id: Tarif PPN}
     help: {id: 'Dari config tax.ppn_rate; 0 bila perusahaan bukan PKP. Tersimpan di dokumen.'}
     default: "tax.pkp ? tax.ppn_rate : 0"
-  - {name: dpp_num, type: int, read_only: true, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num'}
-  - {name: dpp_den, type: int, read_only: true, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den'}
+  # Not read_only: a generic amend zeroes read-only fields, and a zero dpp_den would break ppn (kernel follow-up).
+  - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num'}
+  - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den'}
   - name: ppn
     type: currency
     label: {id: PPN (DPP x rasio DPP nilai lain x tarif)}
