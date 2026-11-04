@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/process.json
+name: quote_to_cash
+label: {id: Dari penawaran sampai lunas, en: Quote to cash}
+stages:
+  - {name: quotation, label: {id: Penawaran, en: Quotation}, model: quotation}
+  - {name: order, label: {id: Pesanan, en: Order}, model: customer_order}
+  - {name: project, label: {id: Proyek, en: Project}, model: project, models: [assignment, timesheet, acceptance]}
+  - {name: invoice, label: {id: Faktur, en: Invoice}, model: sales_invoice}
+  - {name: paid, label: {id: Lunas, en: Paid}, model: sales_invoice, when: "status == 'paid'", models: [payment, payment_allocation, withholding]}
