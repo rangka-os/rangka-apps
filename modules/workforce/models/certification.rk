@@ -18,8 +18,7 @@ fields:
   - name: expires_on
     type: date
     label: {id: Berlaku sampai}
-  # Computed at save: the value goes stale after expires_on passes. Kernel gap (computed-on-read or a scheduled
-  # recompute), noted in docs/kernel-hooks.md.
+  # Reads today(), so the kernel recomputes it on every read: it turns true once expires_on passes, without a save.
   - name: expired
     type: check
     label: {id: Kedaluwarsa}
