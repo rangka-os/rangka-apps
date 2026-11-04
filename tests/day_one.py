@@ -15,6 +15,7 @@ import atexit
 import json
 import os
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -784,7 +785,21 @@ def scenario_workforce(api):
     eq("certification without date -> expired false", certs[2].get("expired") in (True, "true"), False)
     fixtures = {x["worker_name"]: x for x in api.list("worker")}
     check("fixture has a worker with an expired certification", any(c.get("expired") in (True, "true") for c in api.get("worker", fixtures["Budi Contoh"]["name"])["certifications"]), fixtures.get("Budi Contoh"))
-    gap("certification.expired stays current after save", "kernel (engine: computed-on-read or a scheduled recompute)", "computes run at save; the flag goes stale once expires_on passes")
+    # let a valid certificate's date pass without a save: the stored `expired` stays false, a read must recompute it
+    out = sql(f"update r_certification set expires_on = current_date - 1 where parent = '{w['name']}' and cert_name = 'Masih berlaku'")
+    if not check("certification date moved into the past behind the kernel's back", out == "UPDATE 1", out):
+        return
+    certs = api.get("worker", w["name"])["certifications"]
+    eq("certification.expired stays current after save (computed on read)", certs[1].get("expired") in (True, "true"), True)
+
+
+def sql(stmt):
+    """Runs one statement on the kernel's database with psql ($PGBIN/psql, else psql on PATH); returns the command tag or the error."""
+    psql = os.path.join(os.environ.get("PGBIN", ""), "psql")
+    if not os.access(psql, os.X_OK):
+        psql = shutil.which("psql") or "psql"
+    r = subprocess.run([psql, CTX["kernel"].db, "-X", "-v", "ON_ERROR_STOP=1", "-c", stmt], capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else r.stderr.strip()
 
 
 def yesterday():
@@ -952,8 +967,8 @@ def scenario_payments(api):
         elif row["pph23_applies"] in (True, "true"):
             fail("rule no_double_pph23 did not fire", f"201 with stored pph23_applies true and withheld {row.get('withheld')}")
         else:
-            gap("client-supplied pph23_applies=false on a row is ignored", "kernel (S1, read_only on child-row fields)",
-                "kernel stores the client value, so the row rule passes; payments.allocate must refuse with 409 pph23_already_deducted from the stored invoice")
+            fail("client-supplied pph23_applies=false on a row is ignored (read_only on child rows)",
+                 "kernel stored the client value, so the row rule passed; checking that payments.allocate still refuses")
             st2, r2 = api.verb("payment", resp["name"], "submit")
             bypass = r2.get("name", resp["name"]) if st2 == 200 else resp["name"]
             if st2 == 200 and skipped(api, "payments.allocate", f"payment/{bypass}"):
@@ -1065,7 +1080,7 @@ def scenario_procurement(api):
     check("PR line qty 0 -> 422 'Jumlah barang harus lebih dari 0'", st == 422 and any("Jumlah barang harus lebih dari 0" in m for m in messages(resp)), (st, resp))
     st, resp = api.create("purchase_request", {"needed_by": "2026-12-01", "items": []})
     if st == 201:
-        gap("min_rows 1: a purchase request without lines is refused", "kernel (S1/engine)", "201: min_rows is not enforced on create")
+        fail("min_rows 1: a purchase request without lines is refused", "201: the kernel saved it")
     else:
         check("PR without lines -> 422", st == 422, (st, resp))
     st, resp = api.verb("purchase_request", pr["name"], "submit")
@@ -2379,8 +2394,8 @@ def scenario_stock(api):
     # the alert flow: runs when handed the move, but nothing hands it over yet
     alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
     if not alerts:
-        gap("stock_negative_alert notifies head_office when a move turns negative", "kernel, unassigned (record events -> flows; ask integrator)",
-            "no notify.in_app audit entry: the kernel does not fire `on: stock_move.created` flows (S8c finding)")
+        fail("stock_negative_alert notifies head_office when a move turns negative",
+             "no notify.in_app audit entry: the kernel did not run the `on: stock_move.created` flow")
     else:
         ok("stock_negative_alert notified head_office on its own")
     st, resp = api.call("POST", "/api/v1/flows/stock_negative_alert/run", {"event": mv[0]} if mv else {})
@@ -2660,7 +2675,7 @@ def scenario_outlet_sales(api):
     check("outlet_sales without an outlet -> 422", st == 422, (st, resp))
     st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": []})
     if st == 201:
-        gap("min_rows 1: an outlet_sales without lines is refused", "kernel (S1/engine)", "201: min_rows is not enforced on create")
+        fail("min_rows 1: an outlet_sales without lines is refused", "201: the kernel saved it")
     else:
         check("outlet_sales without lines -> 422", st == 422, (st, resp))
 
