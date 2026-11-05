@@ -11,8 +11,10 @@ title_field: consignor
 # copy carries amended_from, so a cancelled settlement can be amended), so two settlements can never bill one month.
 # A settlement whose bill is submitted cannot be cancelled (flow consignment_bill_cancelled): cancel the bill first. qty_sold is typed from the "Titipan terjual" list of the retail dashboard;
 # filling it from the stock moves needs a kernel hook (draft contract 0021, K-o).
+# No delete for head office: deleting a cancelled settlement would free its month's key while its amended copy is
+# live, and a second settlement of that month would then go unbilled. Only the owner may delete.
 permissions:
-  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, submit: true, cancel: true, amend: true, export: true, print: true}
 fields:
   - name: consignor
     type: link

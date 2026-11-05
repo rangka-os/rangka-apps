@@ -36,7 +36,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | recipe | | | | | r c w d e | r | |
 | outlet_sales | | | | | all + i | r c w s | |
 | outlet_takings | | | | | all + i | r c w s | |
-| consignment_settlement | | | | | all | | |
+| consignment_settlement | | | | | all except d (a deleted cancelled settlement would free its month) | | |
 | lead, deal, activity | all | r | r | r | r | r | r c w on own records (`owner == user.name`) |
 
 Approvals (contract 0007) decide on top of this: `quotation` submit → `sales_manager`; `sales_invoice` above

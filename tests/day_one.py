@@ -1487,7 +1487,7 @@ MATRIX = {
     "stock_count": _STOCK_DOC, "stock_adjustment": _STOCK_DOC,
     "outlet_sales": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     "outlet_takings": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
-    "consignment_settlement": {"head_office": _ALL},
+    "consignment_settlement": {"head_office": _ALL - {"delete"}},
 }
 _CHECKED = ("read", "create", "write", "delete", "submit", "cancel", "amend", "export", "import", "print")
 
@@ -1634,7 +1634,8 @@ def scenario_permissions(api):
                 st, resp = cl.create(model, body)
                 check(f"{role} may not create {model} -> 403 permission_denied", denied(st, resp), (st, resp))
             elif "delete" not in g:
-                st, d = api.create(model, body)
+                # a second consignment settlement needs another month (one live settlement per consignor and month)
+                st, d = api.create(model, dict(body, month="2026-02") if model == "consignment_settlement" else body)
                 st, resp = cl.call("DELETE", f"/api/v1/r/{model}/{Api.q(d['name'])}") if st == 201 else (st, d)
                 check(f"{role} may not delete a draft {model} -> 403 permission_denied", denied(st, resp), (st, resp))
     if site == "demo-fnb":
@@ -3059,6 +3060,10 @@ def scenario_ritel_settlement(api):
     if live:
         submit_doc(hq, "vendor_bill", live[0]["name"], "submit the corrected bill")
     eq("payable to the consignor = corrected total", api.get("vendor", v)["outstanding"], total2)
+    st, resp = hq.call("DELETE", f"/api/v1/r/consignment_settlement/{Api.q(ksn)}")
+    check("head office cannot delete the cancelled settlement (its month stays taken) -> 403", denied(st, resp), (st, resp))
+    st, dup = hq.create("consignment_settlement", {"consignor": v, "month": month, "items": lines})
+    check("a new settlement for the month is still refused while the amended one is live", st in (409, 422), (st, dup))
     st, adj = hq.create("stock_adjustment", {"outlet": CBR, "reason": "consignment_return", "items": [{"item": n, "qty": 12} for n in by if want_sold.get(n)]})
     if check("unsold goods back to the consignor: stock_adjustment reason consignment_return", st == 201, (st, adj)):
         submit_doc(hq, "stock_adjustment", adj["name"], "submit the return")
