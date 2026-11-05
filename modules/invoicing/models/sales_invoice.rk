@@ -128,7 +128,7 @@ fields:
     label: {id: Tarif PPh 23}
     default: '2'
   # The PPh 23 base: (subtotal - header discount) x the share of lines not marked pph23_exclude, minus the base already
-  # taken on the down-payment invoice this one deducts (that invoice's pph23_dpp in proportion to down_payment). Equal
+  # taken on the down-payment invoice this one deducts (that invoice's line base in proportion to down_payment). Equal
   # to dpp when no line is excluded and the DP invoice had none either. Foreign-currency documents take the share from
   # the *_fx line amounts. "* 1.0" keeps the products in float, clear of int64 overflow.
   - name: pph23_lines_base
@@ -140,7 +140,14 @@ fields:
     type: currency
     label: {id: Dasar PPh 23 di faktur uang muka}
     hidden: true
-    compute: "dp_invoice == '' || dp_invoice.dpp == 0 ? 0 : round(dp_invoice.pph23_dpp * 1.0 * down_payment / dp_invoice.dpp)"
+    # Recomputed from the DP invoice's own lines (not its stored pph23_dpp), so a DP invoiced before pph23_dpp existed
+    # is deducted like a new one. A foreign-currency DP uses its stored base (its IDR line amounts are not used).
+    compute: >-
+      dp_invoice == '' || dp_invoice.dpp == 0 || dp_invoice.subtotal == 0 ? 0 :
+      round((dp_invoice.currency != '' && dp_invoice.currency != 'IDR'
+        ? dp_invoice.pph23_dpp * 1.0
+        : (dp_invoice.subtotal - dp_invoice.discount_amount) * 1.0 * dp_invoice.items.map(i, i.pph23_exclude ? 0 : i.amount).sum() / dp_invoice.subtotal)
+        * down_payment / dp_invoice.dpp)
   - name: pph23_dpp
     type: currency
     label: {id: Dasar PPh 23}
@@ -211,6 +218,11 @@ rules:
     on: save
     check: project == '' || project.customer == customer
     message: {id: Proyek harus milik pelanggan yang sama}
+  - name: dp_base_above_lines
+    on: save
+    level: warn
+    check: "!pph23_applies || pph23_dp_base <= pph23_lines_base"
+    message: {id: 'Dasar PPh 23 di faktur uang muka lebih besar dari dasar baris faktur ini; pisahkan baris gaji di faktur DP juga'}
   - name: acceptance_same_customer
     on: save
     check: acceptance == '' || acceptance.project.customer == customer

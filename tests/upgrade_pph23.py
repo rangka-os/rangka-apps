@@ -1,5 +1,6 @@
 """Upgrade check for the per-line PPh 23 base (tests/upgrade.py --site demo-jasa --check pph23): invoices written
-before pph23_exclude and pph23_dpp existed keep their PPh 23 after migrate."""
+before pph23_exclude and pph23_dpp existed keep their PPh 23 after migrate, and a down payment invoiced before the
+upgrade is still deducted from the base of a final invoice made or edited after it."""
 
 
 def before(api):
@@ -8,7 +9,11 @@ def before(api):
     st, sub = api.create("sales_invoice", body)
     st, resp = api.verb("sales_invoice", sub["name"], "submit", {"force": True})
     st, draft = api.create("sales_invoice", body)
-    return {"submitted": resp.get("name", sub["name"]), "draft": draft["name"]}
+    st, dp = api.create("sales_invoice", {"customer": "CUST-0001", "kind": "down_payment", "pph23_applies": True, "items": [{"item": ndt, "qty": 1, "rate": 3_000_000}]})
+    st, dpr = api.verb("sales_invoice", dp["name"], "submit", {"force": True})
+    dpn = dpr.get("name", dp["name"])
+    st, fin = api.create("sales_invoice", dict(body, dp_invoice=dpn, down_payment=3_000_000))
+    return {"submitted": resp.get("name", sub["name"]), "draft": draft["name"], "dp": dpn, "final_draft": fin["name"], "ndt": ndt}
 
 
 def after(api, s, d1):
@@ -21,3 +26,11 @@ def after(api, s, d1):
     st, upd = api.call("PATCH", f"/api/v1/r/sales_invoice/{d1.Api.q(s['draft'])}", {"po_number": "PO-UPG"})
     d1.check("old draft edited after migrate keeps PPh 23: base 10.000.000, PPh 23 200.000",
              st == 200 and (upd.get("pph23_dpp"), upd.get("pph23_amount")) == (10_000_000, 200_000), (st, upd))
+    # a down payment invoiced before the upgrade (no stored base) is deducted like a new one
+    st, fin = api.create("sales_invoice", {"customer": "CUST-0001", "pph23_applies": True, "dp_invoice": s["dp"], "down_payment": 3_000_000,
+                                          "items": [{"item": s["ndt"], "qty": 1, "rate": 10_000_000}]})
+    d1.check("new final invoice deducting an old DP: base 7.000.000, PPh 23 140.000 (as before the upgrade)",
+             st == 201 and (fin.get("pph23_dpp"), fin.get("pph23_amount")) == (7_000_000, 140_000), (st, fin))
+    st, upd = api.call("PATCH", f"/api/v1/r/sales_invoice/{d1.Api.q(s['final_draft'])}", {"po_number": "PO-UPG-2"})
+    d1.check("old final draft deducting an old DP, edited after migrate: base 7.000.000, PPh 23 140.000",
+             st == 200 and (upd.get("pph23_dpp"), upd.get("pph23_amount")) == (7_000_000, 140_000), (st, upd))

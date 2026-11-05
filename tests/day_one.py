@@ -1877,6 +1877,14 @@ def scenario_tax_jasa(api):
             {"item": ndt, "qty": 1, "rate": 1_000_000, "description": "Fee"}]})
         if check("final invoice deducting the DP", st == 201, (st, fin)):
             eq("final invoice base = fee 1.000.000 - DP base 300.000 = 700.000 (contract total = fee)", (fin["pph23_dpp"], fin["pph23_amount"]), (700_000, 14_000))
+        # a DP left all-base, then wages excluded on the final: base clamps to 0 and the save warns
+        st, dp2 = api.create("sales_invoice", {"customer": customer, "kind": "down_payment", "pph23_applies": True, "items": [{"item": ndt, "qty": 1, "rate": 3_000_000}]})
+        dp2n = submit_doc(api, "sales_invoice", dp2["name"], "submit an all-base DP invoice") if st == 201 else None
+        if dp2n:
+            st, w = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "dp_invoice": dp2n, "down_payment": 3_000_000, "items": [
+                {"item": ndt, "qty": 1, "rate": 10_000_000, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate": 1_000_000}]})
+            check("DP base above the final's line base: saved with a warning 'Dasar PPh 23 di faktur uang muka lebih besar'",
+                  st == 201 and any("faktur uang muka lebih besar" in str(x) for x in (w.get("warnings") or w.get("_warnings") or [])), (st, {k: w.get(k) for k in ("pph23_dpp", "warnings", "_warnings")}))
     if mp.get("name"):
         check_print("manpower invoice print names the PPh 23 base", api, "sales_invoice", mp["name"], "", ["PPh 23 dipotong pelanggan (dasar Rp 1.000.000)", "Rp 20.000", "Rp 12.190.000"])
     st, fx = api.create("sales_invoice", {"customer": customer, "currency": "USD", "exchange_rate": 16000, "pph23_applies": True, "items": [
