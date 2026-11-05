@@ -3,7 +3,6 @@ name: project_expense_on_cancel
 label: {id: Biaya proyek batal}
 # Project ledger row (projects): a cancel writes the opposite row on the document's date, only when the document has a + row (documents submitted before the ledger existed have none).
 on: project_expense.cancelled
-if: event.vendor_bill == ''
 steps:
   - find: project_ledger
     where: source_name == event.name && kind == 'expense' && entry == 'post'
