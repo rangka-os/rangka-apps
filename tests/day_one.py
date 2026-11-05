@@ -2620,6 +2620,17 @@ def scenario_po_approval_fnb(api):
     if check("head office records a USD 100.000 bill at kurs 1,01 without a PO", st == 201, (st, d)):
         st, resp = hq.verb("vendor_bill", d["name"], "submit")
         check("the USD bill waits for the owner (202, bill_without_po_approval)", st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    # nor through a PO link: a bill in another currency than the base (IDR) always waits (audit round 4 of #10, D1)
+    st, d = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 1, "rate": 200_000}]})
+    st, resp = hq.verb("purchase_order", d["name"], "submit")
+    po200 = resp.get("name", "") if st == 200 else ""
+    check("a PO of 200.000 is submitted without approval", st == 200 and po200.startswith("PO/"), (st, resp))
+    st, d = hq.create("vendor_bill", dict(fx, vendor="VND-0001", bill_no="FX-D1", bill_date="2026-11-05", outlet=DAGO, purchase_order=po200,
+                                          items=[{"item": "BRG-0001", "qty": 1, "rate": 0, "rate_fx": 100_000}]))
+    if check("head office records a USD 100.000 bill at kurs 1,01 (Rp 101.000) on the 200.000 PO", st == 201 and d["grand_total"] == 101_000, (st, d)):
+        st, resp = hq.verb("vendor_bill", d["name"], "submit")
+        check("the USD bill on an approved PO still waits for the owner (202, bill_without_po_approval)",
+              st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
     st, d = hq.create("payment", dict(fx, direction="pay", vendor="VND-0001", amount_fx=100_000))
     if check("head office drafts a USD 100.000 outgoing payment at kurs 1,01", st == 201 and d["amount"] == 101_000, (st, d)):
         st, resp = hq.verb("payment", d["name"], "submit")

@@ -3,12 +3,13 @@
 # it, so without this a PO approval could be skipped by billing directly (contract 0007 §1). A bill is not asked again
 # only when its PO is approved and live (submitted, docstatus 1: not a draft still waiting, not cancelled) and the bill
 # is not above the PO value; any other PO link counts as no PO.
-# A foreign-currency bill counts as above the threshold (its kurs is typed by the maker, so the rupiah value can be made
-# small); on an approved PO and within its rupiah value it is not asked again either.
+# A bill in another currency than the base (IDR, contract 0013) always waits, whatever its value and with or without a
+# PO: its kurs is typed by the maker, so neither the threshold nor the PO value means anything in rupiah. Both pilots
+# and all demos are IDR only; when a site needs foreign currency, compare base-currency values at an official rate.
 model: vendor_bill
 approvals:
   - name: bill_without_po_approval
     on: submit
-    when: "(purchase_order == '' || purchase_order.docstatus != 1 || grand_total > purchase_order.grand_total) && (grand_total > 5000000 || (currency != '' && currency != 'IDR'))"
+    when: "(currency != '' && currency != 'IDR') || ((purchase_order == '' || purchase_order.docstatus != 1 || grand_total > purchase_order.grand_total) && grand_total > 5000000)"
     approvers: [purchasing_manager]
     label: {id: Persetujuan tagihan tanpa PO, en: Approval of a bill without a PO}
