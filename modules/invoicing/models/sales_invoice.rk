@@ -11,6 +11,8 @@ permissions:
   - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: sales_rep, read: true}
+  # project admins read invoices: the project flows that freeze contract terms read them as the project admin
+  - {role: project_admin, read: true}
 fields:
   - name: kind
     type: select
@@ -54,13 +56,6 @@ fields:
     hidden: true
     unique: true
     compute: "billing_milestone == '' ? '' : billing_milestone + ':' + billing_milestone.bill_token"
-  # True on every invoice saved since project.billed_amount exists, so the cancel flow only takes off what a submit
-  # added (an invoice submitted before the upgrade was never counted).
-  - name: project_counted
-    type: check
-    label: {id: Dihitung di tagihan proyek}
-    hidden: true
-    compute: 'true'
   - name: acceptance
     type: link
     to: acceptance
@@ -248,6 +243,14 @@ rules:
     on: save
     check: billing_milestone == '' || dpp <= billing_milestone.amount
     message: {id: DPP faktur tidak boleh melebihi nilai termin}
+  - name: retainer_invoice_via_milestone
+    on: save
+    check: project == '' || project.billing_model != 'retainer' || billing_milestone != '' || kind == 'retention'
+    message: {id: 'Faktur proyek retainer dibuat dari termin bulanannya (satu termin, satu faktur per bulan)'}
+  - name: retention_same_project
+    on: save
+    check: retention_of == '' || retention_of.project == project
+    message: {id: Faktur retensi harus untuk proyek yang sama dengan faktur asalnya}
   - name: retainer_invoice_within_fee
     on: save
     check: project == '' || project.billing_model != 'retainer' || project.contract_value == 0 || dpp <= project.contract_value

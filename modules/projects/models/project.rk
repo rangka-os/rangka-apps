@@ -94,8 +94,8 @@ fields:
     label: {id: Nilai termin terjadwal}
     read_only: true
     default: '0'
-  # The DPP of this project's live invoices (retention releases excluded), kept by flows at each invoice's submit and
-  # cancel; rule billing_within_contract refuses the submit that would take it above the contract value.
+  # The DPP of this project's live invoices (retention releases excluded), recomputed from the invoices by flows at each
+  # invoice's submit and cancel; rule billing_within_contract refuses the submit that would take it above the contract.
   - name: billed_amount
     type: currency
     label: {id: Nilai tertagih}

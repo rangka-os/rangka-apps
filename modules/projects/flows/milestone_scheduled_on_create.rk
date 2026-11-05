@@ -1,11 +1,14 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 name: milestone_scheduled_on_create
 label: {id: Termin masuk jadwal proyek}
-# Inside the milestone's create: adds its amount to project.scheduled_amount. The project's rule
-# schedule_within_contract then refuses the whole save when the schedule would exceed the contract value.
+# scheduled_amount is recomputed from all the project's milestones (those made before it existed included); the
+# project's rule schedule_within_contract then refuses a schedule above the contract.
 on: billing_milestone.created
 steps:
+  - find_all: billing_milestone
+    where: project == event.project
+    as: all
   - {find: project, where: name == event.project, as: prj}
   - update: prj
     set:
-      scheduled_amount: prj.scheduled_amount + event.amount
+      scheduled_amount: "size(all) == 0 ? 0 : all.map(m, m.amount).sum()"
