@@ -86,6 +86,7 @@ fields:
   # The sum of this project's billing milestones, kept by flows when a milestone is created or its amount changes
   # (milestones cannot be deleted by people, so the sum never misses one). Rule schedule_within_contract keeps it at or
   # under the contract value, which refuses a milestone that would overfill the schedule and a contract lowered below it.
+  # A retainer's contract value is the monthly fee: each month is checked against it instead (billing_milestone).
   - name: scheduled_amount
     type: currency
     label: {id: Nilai termin terjadwal}
@@ -94,7 +95,7 @@ fields:
 rules:
   - name: schedule_within_contract
     on: save
-    check: contract_value == 0 || scheduled_amount <= contract_value
+    check: billing_model == 'retainer' || contract_value == 0 || scheduled_amount <= contract_value
     message: {id: Jumlah termin melebihi nilai kontrak}
   - name: contract_value_not_negative
     on: save
