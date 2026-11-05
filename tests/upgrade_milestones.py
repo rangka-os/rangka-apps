@@ -12,10 +12,20 @@ def before(api):
     api.verb("acceptance", b["name"], "submit")
     st, i = api.create("sales_invoice", {"billing_milestone": ms[0], "items": [{"item": ndt, "qty": 1, "rate": 50_000_000}]})
     st, r = api.verb("sales_invoice", i["name"], "submit", {"force": True})
-    return {"p": p, "ms": ms, "inv": r.get("name", i["name"]), "ndt": ndt}
+    st, q = api.create("project", {"project_name": "Lama borongan", "customer": "CUST-0001", "contract_value": 100_000_000})
+    st, qi = api.create("sales_invoice", {"customer": "CUST-0001", "project": q["name"], "items": [{"item": ndt, "qty": 1, "rate": 100_000_000}]})
+    api.verb("sales_invoice", qi["name"], "submit", {"force": True})
+    return {"p": p, "ms": ms, "inv": r.get("name", i["name"]), "ndt": ndt, "q": q["name"]}
 
 
 def after(api, s, d1):
+    # L1: a project billed before the upgrade keeps its contract frozen
+    st, r = api.call("PATCH", f"/api/v1/r/project/{d1.Api.q(s['p'])}", {"contract_value": 200_000_000})
+    d1.check("L1: raising the contract of a project billed before the upgrade -> 422", st == 422, (st, r))
+    # L2: invoices from before the upgrade count against the contract
+    st, i = api.create("sales_invoice", {"customer": "CUST-0001", "project": s["q"], "items": [{"item": s["ndt"], "qty": 1, "rate": 100_000_000}]})
+    st2, r2 = api.verb("sales_invoice", i["name"], "submit", {"force": True}) if st == 201 else (st, i)
+    d1.check("L2: a project billed 100.000.000 before the upgrade takes no further 100.000.000 on a 100.000.000 contract -> 422", st2 == 422, (st2, r2))
     st, b = api.create("acceptance", {"project": s["p"], "accepted_on": "2026-11-21", "accepted_by": "PIC", "scope": "y"})
     st, r = api.verb("acceptance", b["name"], "submit")
     d1.check("old schedule: the next report submits and makes milestone 2 ready", st == 200 and api.get("billing_milestone", s["ms"][1])["state"] == "ready", (st, r))
