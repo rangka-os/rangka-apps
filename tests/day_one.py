@@ -1904,6 +1904,21 @@ def scenario_tax_jasa(api):
             {"item": ndt, "qty": 1, "rate": 10_000_000, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate": 2_000_000}]})
         eq("rupiah final deducting a USD DP: DP base 800.000, base 1.200.000, PPh 23 24.000",
            (fin.get("pph23_dp_base"), fin.get("pph23_dpp"), fin.get("pph23_amount")), (800_000, 1_200_000, 24_000))
+    # large foreign amounts (a Decimal product above 10^16 is stored as 0 by the kernel): a USD DP 10.000 x 15.000 =
+    # 150.000.000 deducted by a final of 500.000.000: base 350.000.000, PPh 23 7.000.000; a KRW invoice 40.000.000 x 11 =
+    # 440.000.000: PPh 23 8.800.000, in won 800.000
+    st, dpb = api.create("sales_invoice", {"customer": customer, "kind": "down_payment", "currency": "USD", "exchange_rate": 15000, "pph23_applies": True,
+                                           "items": [{"item": ndt, "qty": 1, "rate_fx": 10_000}]})
+    dpbn = submit_doc(api, "sales_invoice", dpb["name"], "submit a USD DP invoice of 150.000.000") if st == 201 else None
+    if dpbn:
+        st, fin = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "dp_invoice": dpbn, "down_payment": 150_000_000,
+                                              "items": [{"item": ndt, "qty": 1, "rate": 500_000_000}]})
+        eq("final of 500.000.000 deducting a USD DP of 150.000.000: DP base 150.000.000, base 350.000.000, PPh 23 7.000.000",
+           (fin.get("pph23_dp_base"), fin.get("pph23_dpp"), fin.get("pph23_amount")), (150_000_000, 350_000_000, 7_000_000))
+    st, krw = api.create("sales_invoice", {"customer": customer, "currency": "KRW", "exchange_rate": 11, "pph23_applies": True,
+                                           "items": [{"item": ndt, "qty": 1, "rate_fx": 40_000_000}]})
+    eq("KRW invoice 40.000.000 x 11: PPh 23 base 440.000.000, PPh 23 8.800.000, PPh 23 (valas) 800.000",
+       (krw.get("pph23_dpp"), krw.get("pph23_amount"), float(krw.get("pph23_amount_fx") or 0)), (440_000_000, 8_800_000, 800_000.0))
     # a down payment invoice's own amount is its dpp / grand_total
     st, dp = api.create("sales_invoice", invoice_body(customer, ndt, rate=3_000_000, kind="down_payment"))
     eq("down_payment invoice: dpp 3.000.000, ppn 330.000, grand_total 3.330.000", (dp.get("dpp"), dp.get("ppn"), dp.get("grand_total")), (3_000_000, 330_000, 3_330_000))

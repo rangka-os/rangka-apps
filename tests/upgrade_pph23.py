@@ -17,8 +17,18 @@ def before(api):
     st, dpx = api.create("sales_invoice", {"customer": "CUST-0001", "kind": "down_payment", "currency": "USD", "exchange_rate": 15000, "pph23_applies": True,
                                            "items": [{"item": ndt, "qty": 1, "rate_fx": 200}]})
     st, dpxr = api.verb("sales_invoice", dpx["name"], "submit", {"force": True})
+    # large foreign amounts (above 10^16 in an intermediate product): a USD DP 10.000 x 15.000 = 150.000.000 with a final
+    # draft of 500.000.000 deducting it, and a KRW draft 1.000.000.000 x 11 = 11.000.000.000
+    st, big = api.create("sales_invoice", {"customer": "CUST-0001", "kind": "down_payment", "currency": "USD", "exchange_rate": 15000, "pph23_applies": True,
+                                           "items": [{"item": ndt, "qty": 1, "rate_fx": 10_000}]})
+    st, bigr = api.verb("sales_invoice", big["name"], "submit", {"force": True})
+    bign = bigr.get("name", big["name"])
+    st, bigfin = api.create("sales_invoice", {"customer": "CUST-0001", "pph23_applies": True, "dp_invoice": bign, "down_payment": 150_000_000,
+                                              "items": [{"item": ndt, "qty": 1, "rate": 500_000_000}]})
+    st, krw = api.create("sales_invoice", {"customer": "CUST-0001", "currency": "KRW", "exchange_rate": 11, "pph23_applies": True,
+                                           "items": [{"item": ndt, "qty": 1, "rate_fx": 1_000_000_000}]})
     return {"submitted": resp.get("name", sub["name"]), "draft": draft["name"], "dp": dpn, "final_draft": fin["name"], "ndt": ndt,
-            "dp_fx": dpxr.get("name", dpx["name"])}
+            "dp_fx": dpxr.get("name", dpx["name"]), "big_dp": bign, "big_final": bigfin["name"], "krw": krw["name"]}
 
 
 def after(api, s, d1):
@@ -46,3 +56,16 @@ def after(api, s, d1):
                                           "items": [{"item": s["ndt"], "qty": 1, "rate": 10_000_000}]})
     d1.check("new final invoice deducting an old USD DP: base 7.000.000, PPh 23 140.000 (as before the upgrade)",
              st == 201 and (fin.get("pph23_dpp"), fin.get("pph23_amount")) == (7_000_000, 140_000), (st, fin))
+    # large foreign amounts: 500.000.000 - 150.000.000 = 350.000.000, 2% = 7.000.000 (old draft re-saved and a new final)
+    st, upd = api.call("PATCH", f"/api/v1/r/sales_invoice/{d1.Api.q(s['big_final'])}", {"po_number": "PO-UPG-3"})
+    d1.check("old final draft deducting an old USD DP of 150.000.000, edited after migrate: base 350.000.000, PPh 23 7.000.000",
+             st == 200 and (upd.get("pph23_dpp"), upd.get("pph23_amount")) == (350_000_000, 7_000_000), (st, {k: upd.get(k) for k in ("pph23_lines_base", "pph23_dp_base", "pph23_dpp", "pph23_amount")}))
+    st, fin = api.create("sales_invoice", {"customer": "CUST-0001", "pph23_applies": True, "dp_invoice": s["big_dp"], "down_payment": 150_000_000,
+                                          "items": [{"item": s["ndt"], "qty": 1, "rate": 500_000_000}]})
+    d1.check("new final deducting an old USD DP of 150.000.000: base 350.000.000, PPh 23 7.000.000",
+             st == 201 and (fin.get("pph23_dpp"), fin.get("pph23_amount")) == (350_000_000, 7_000_000), (st, {k: fin.get(k) for k in ("pph23_lines_base", "pph23_dp_base", "pph23_dpp", "pph23_amount")}))
+    # 11.000.000.000 x 2% = 220.000.000 (as on main); in won 1.000.000.000 x 2% = 20.000.000
+    st, upd = api.call("PATCH", f"/api/v1/r/sales_invoice/{d1.Api.q(s['krw'])}", {"po_number": "PO-UPG-4"})
+    d1.check("old KRW draft of Rp 11.000.000.000 edited after migrate: base 11.000.000.000, PPh 23 220.000.000, PPh 23 (valas) 20.000.000",
+             st == 200 and (upd.get("pph23_dpp"), upd.get("pph23_amount"), float(upd.get("pph23_amount_fx") or 0)) == (11_000_000_000, 220_000_000, 20_000_000.0),
+             (st, {k: upd.get(k) for k in ("pph23_lines_base", "pph23_dpp", "pph23_amount", "pph23_amount_fx")}))
