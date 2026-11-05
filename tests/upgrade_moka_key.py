@@ -15,9 +15,9 @@ DAGO = "OUT-02"
 HEAD = ("Outlet,Receipt Number,Date,Time,Category,Brand,Items,Variant,SKU,Quantity,Modifier Applied,Discount Applied,"
         "Gross Sales,Discounts,Refunds,Net Sales,Gratuity,Tax,Sales Type,Collected By,Served By,Customer,Payment Method,"
         "Event Type,Reason of Refund\n")
-R1 = "Outlet Dago,DGO-0101,04-11-2026,08:10:00,Tahu,Unbranded,Tahu goreng original,Porsi,TH-ORI,2,,,30000.0,0.0,0.0,30000.0,0.0,0.0,Dine In,Kasir 1,Kasir 1,,Cash,Payment,\n"
-R2 = "Outlet Dago,DGO-0102,04-11-2026,09:20:00,Tahu,Unbranded,Tahu isi sayur,Porsi,TH-ISI,3,,,60000.0,0.0,0.0,60000.0,0.0,0.0,Take Away,Kasir 1,Kasir 1,,QRIS,Payment,\n"
-R3 = "Outlet Dago,DGO-0103,04-11-2026,10:30:00,Tahu,Unbranded,Tahu goreng pedas,Porsi,TH-PDS,1,,,18000.0,0.0,0.0,18000.0,0.0,0.0,Dine In,Kasir 1,Kasir 1,,Cash,Payment,\n"
+R1 = "Tahu Contoh - Dago,DGO-0101,04-11-2026,08:10:00,Tahu,Unbranded,Tahu goreng original,Porsi,TH-ORI,2,,,30000.0,0.0,0.0,30000.0,0.0,0.0,Dine In,Kasir 1,Kasir 1,,Cash,Payment,\n"
+R2 = "Tahu Contoh - Dago,DGO-0102,04-11-2026,09:20:00,Tahu,Unbranded,Tahu isi sayur,Porsi,TH-ISI,3,,,60000.0,0.0,0.0,60000.0,0.0,0.0,Take Away,Kasir 1,Kasir 1,,QRIS,Payment,\n"
+R3 = "Tahu Contoh - Dago,DGO-0103,04-11-2026,10:30:00,Tahu,Unbranded,Tahu goreng pedas,Porsi,TH-PDS,1,,,18000.0,0.0,0.0,18000.0,0.0,0.0,Dine In,Kasir 1,Kasir 1,,Cash,Payment,\n"
 
 
 def _kernel():
@@ -60,6 +60,9 @@ def after(api, s, d1):
     if not check("head office signs in after the upgrade", hq is not None):
         return
     eq("old record: net 90.000", api.get("outlet_sales", s["old"])["net_total"], 90_000)
+    # an outlet that predates outlet.moka_name (rangka-apps#8) must be told its Moka name before it can take a file
+    st, resp = api.patch("outlet", DAGO, {"moka_name": "Tahu Contoh - Dago"})
+    check("owner sets the outlet's Moka name after the upgrade", st == 200, (st, resp))
     st, pv = _preview(hq, "moka-04-11-b.csv", HEAD + R1 + R2 + R3)
     check("overlapping export after the upgrade previews (the old rows are not recognised by the new key)", st == 200 and pv["errors"] == [], (st, pv))
     st, c = hq.call("POST", f"/api/v1/imports/moka_item_details/{pv['id']}/commit")
