@@ -1540,6 +1540,29 @@ def scenario_project_margin(api):
     st, nb = pm.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "NOPRJ-1", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 1_000_000}]})
     st, resp = pa.create("project_expense", {"project": p, "description": "x", "amount": 1_000_000, "vendor_bill": nb.get("name", "")})
     check("an expense linking a bill without the project -> 422", st == 422 and any("proyek yang sama" in m for m in messages(resp)), (st, resp))
+    # a project invoice with DPP 0 (fully discounted) submits and cancels: its post and reverse rows have distinct keys
+    st, z = fm.create("sales_invoice", {"customer": customer, "project": p, "discount_amount": 1_000_000, "items": [{"item": ndt, "qty": 1, "rate": 1_000_000}]})
+    zn = submit_doc(fm, "sales_invoice", z["name"], "finance submits a DPP 0 project invoice") if st == 201 else None
+    if zn:
+        st, resp = fm.verb("sales_invoice", zn, "cancel")
+        check("the DPP 0 project invoice can be cancelled (no entry_key clash)", st == 200, (st, resp))
+    # a reversal row needs the row it reverses: none for a document that never had one, and only one per row
+    st, ex = pa.create("project_expense", {"project": p, "category": "other", "description": "Batal", "amount": 500_000})
+    exn = submit_doc(pa, "project_expense", ex["name"], "submit an expense to cancel") if st == 201 else None
+    if exn:
+        pa.verb("project_expense", exn, "cancel")
+        post = [r for r in rows() if r["source_name"] == exn and r["entry"] == "post"]
+        st, resp = pa.create("project_ledger", {"project": p, "posting_date": ex["expense_date"], "kind": "expense", "entry": "reverse", "source_model": "project_expense",
+                                                "source_name": exn, "project_expense": exn, "reverses": post[0]["name"] if post else "", "amount": 500_000})
+        check("a second reversal of the same row -> 422", st == 422, (st, resp))
+    allr = rows()
+    posts = {r["name"]: r for r in allr if r["entry"] == "post"}
+    revs = [r for r in allr if r["entry"] == "reverse"]
+    check("every reversal points at the post row of the same document, with the opposite amount",
+          all(r["reverses"] in posts and posts[r["reverses"]]["source_name"] == r["source_name"] and r["amount"] == -posts[r["reverses"]]["amount"] for r in revs), revs)
+    eq("no document has two reversals; the cancelled ones here (bill, DPP 0 invoice, expense) have one each",
+       sorted(r["source_name"] for r in revs), sorted({r["source_name"] for r in revs}))
+    eq("three reversals: the subcontract bill, the DPP 0 invoice and the expense", len(revs), 3)
     ws = dashboard(api, "project_margin", 365)
     eq("project_margin margin_by_project shows the project's margin", chart_map(ws.get("margin_by_project", {})).get(p), 35_000_000)
 

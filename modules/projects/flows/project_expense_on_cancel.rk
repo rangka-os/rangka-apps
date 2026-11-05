@@ -6,15 +6,17 @@ on: project_expense.cancelled
 if: event.vendor_bill == ''
 steps:
   - find: project_ledger
-    where: source_name == event.name && kind == 'expense'
+    where: source_name == event.name && kind == 'expense' && entry == 'post'
     as: orig
   - if: orig != null
     create: project_ledger
     set:
       project: event.project
-      posting_date: event.expense_date
+      posting_date: orig.posting_date
+      entry: "'reverse'"
+      reverses: orig.name
       kind: "'expense'"
       source_model: event.model
       source_name: event.name
       project_expense: event.name
-      amount: "event.amount"
+      amount: "0 - orig.amount"

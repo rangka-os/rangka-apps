@@ -8,10 +8,14 @@ title_field: project
 # excluded), costs - (timesheet cost, project expense not on a vendor bill, vendor bill dpp). Cancelling the document
 # writes the opposite row on the document's own date, so the sum per project (and per period) is its margin. Rows are
 # written by flows inside the document's submit or cancel. A flow runs as the person submitting, so those roles hold
-# create; the rules make a row only valid as the flow writes it: it links its source document, which must be on the
-# same project, submitted for a + row or cancelled for a - row, with exactly its amount, and entry_key is unique, so
-# no row can be made up or doubled by hand. Documents submitted before this model existed have no row; their cancel
-# writes none either (the cancel flows look for the + row first).
+# create, and a rule cannot tell a flow from a person; the rules therefore make every row true to its document:
+# - a post row links its source document, on the same project, submitted, with exactly the document's amount; one per
+#   document (entry_key = source:post);
+# - a reverse row links the post row it reverses (reverses, unique) for the same document, now cancelled, with the
+#   opposite amount; one per post row (entry_key = source:reverse).
+# So each cancelled document has exactly one reversal, and only if it had a post row: a document submitted before
+# this model existed has none, and none can be reversed by hand. The only row a person could add by hand is a true
+# post row for such an old, still submitted document.
 permissions:
   - {role: project_admin, read: true, create: true, export: true}
   - {role: finance_manager, read: true, create: true, export: true}
@@ -65,12 +69,34 @@ fields:
     type: link
     to: vendor_bill
     label: {id: Tagihan pemasok}
+  - name: entry
+    type: select
+    label: {id: Baris}
+    default: "'post'"
+    options:
+      - {value: post, label: {id: Diajukan}}
+      - {value: reverse, label: {id: Pembalik}}
+  - name: reverses
+    type: link
+    to: project_ledger
+    label: {id: Membalik baris}
+    unique: true
+  - name: source_status
+    type: int
+    label: {id: Status dokumen}
+    hidden: true
+    compute: "kind == 'revenue' ? sales_invoice.docstatus : (kind == 'labor' ? timesheet.docstatus : (kind == 'expense' ? project_expense.docstatus : vendor_bill.docstatus))"
+  - name: source_amount
+    type: currency
+    label: {id: Nilai dokumen}
+    hidden: true
+    compute: "kind == 'revenue' ? sales_invoice.dpp : (kind == 'labor' ? 0 - timesheet.cost_amount : (kind == 'expense' ? 0 - project_expense.amount : 0 - vendor_bill.dpp))"
   - name: entry_key
     type: data
     label: {id: Kunci baris}
     hidden: true
     unique: true
-    compute: "source_name + (amount < 0 ? ':-' : ':+')"
+    compute: "source_name + ':' + entry"
   - name: amount
     type: currency
     label: {id: 'Nilai (+ pendapatan, - biaya)'}
@@ -79,17 +105,23 @@ rules:
   - name: source_matches
     on: save
     check: >-
-      (kind == 'revenue' && sales_invoice != '' && source_name == sales_invoice && sales_invoice.project == project && sales_invoice.kind != 'retention'
-        && ((sales_invoice.docstatus == 1 && amount == sales_invoice.dpp) || (sales_invoice.docstatus == 2 && amount == 0 - sales_invoice.dpp)))
-      || (kind == 'labor' && timesheet != '' && source_name == timesheet && timesheet.project == project
-        && ((timesheet.docstatus == 1 && amount == 0 - timesheet.cost_amount) || (timesheet.docstatus == 2 && amount == timesheet.cost_amount)))
-      || (kind == 'expense' && project_expense != '' && source_name == project_expense && project_expense.project == project && project_expense.vendor_bill == ''
-        && ((project_expense.docstatus == 1 && amount == 0 - project_expense.amount) || (project_expense.docstatus == 2 && amount == project_expense.amount)))
-      || (kind == 'vendor' && vendor_bill != '' && source_name == vendor_bill && vendor_bill.project == project
-        && ((vendor_bill.docstatus == 1 && amount == 0 - vendor_bill.dpp) || (vendor_bill.docstatus == 2 && amount == vendor_bill.dpp)))
-    message: {id: Baris buku untung proyek hanya dibuat sistem dari dokumen yang diajukan atau dibatalkan}
+      (kind == 'revenue' && sales_invoice != '' && source_name == sales_invoice && sales_invoice.project == project && sales_invoice.kind != 'retention')
+      || (kind == 'labor' && timesheet != '' && source_name == timesheet && timesheet.project == project)
+      || (kind == 'expense' && project_expense != '' && source_name == project_expense && project_expense.project == project && project_expense.vendor_bill == '')
+      || (kind == 'vendor' && vendor_bill != '' && source_name == vendor_bill && vendor_bill.project == project)
+    message: {id: Baris buku untung proyek harus menunjuk dokumen sumbernya di proyek yang sama}
+  - name: post_matches_document
+    on: save
+    check: entry != 'post' || (reverses == '' && source_status == 1 && amount == source_amount)
+    message: {id: Baris diajukan hanya untuk dokumen yang diajukan dengan nilai yang sama}
+  - name: reverse_matches_post
+    on: save
+    check: >-
+      entry != 'reverse' || (reverses != '' && source_status == 2 && reverses.entry == 'post' && reverses.source_name == source_name
+        && reverses.kind == kind && reverses.project == project && amount == 0 - reverses.amount)
+    message: {id: Baris pembalik hanya untuk dokumen yang dibatalkan dan harus menunjuk baris aslinya}
 views:
   list:
-    columns: [name, project, posting_date, kind, source_name, amount]
+    columns: [name, project, posting_date, kind, entry, source_name, amount]
     filters: [project, kind]
     sort: -posting_date
