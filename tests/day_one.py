@@ -1441,6 +1441,11 @@ def scenario_roles_jasa(api):
         check("the maker (purchasing_manager) cannot approve its PO -> 403", st2 == 403, (st2, r2))
         st2, r2 = decide(fm, resp["approval"]["id"])
         check("finance_manager approves: the PO is submitted and numbered PO/CIN/...", st2 == 200 and r2.get("record", {}).get("name", "").startswith("PO/CIN/"), (st2, r2))
+    st, fxpo = pm.create("purchase_order", {"vendor": "VND-0002", "currency": "USD", "exchange_rate": 1.01,
+                                            "items": [{"item": "BRG-0004", "qty": 1, "rate": 0, "rate_fx": 100_000}]})
+    if check("purchasing_manager drafts a USD 100.000 PO at kurs 1,01", st == 201, (st, fxpo)):
+        st, resp = pm.verb("purchase_order", fxpo["name"], "submit")
+        check("a USD PO waits for finance_manager whatever its rupiah value (202)", st == 202 and resp["approval"]["approvers"] == ["finance_manager"], (st, resp))
     small_po, total = po(10)
     st, resp = pm.verb("purchase_order", small_po, "submit")
     check("PO under the limit (850.000) is submitted without an approval request", st == 200 and not approvals_of(api, "purchase_order", resp.get("name", small_po)), (st, resp))
@@ -2603,6 +2608,22 @@ def scenario_po_approval_fnb(api):
         st, resp = bill_on(approved_po, "A4-8JT5", 85_000)
         check("an 8.500.000 bill on the approved 8.500.000 PO is not asked again (200, no request)",
               st == 200 and resp.get("approval") is None, (st, resp))
+    # a foreign-currency document waits whatever its rupiah value: the kurs is typed by the maker, so USD 100.000 at
+    # 1,01 (Rp 101.000) would otherwise pass every threshold (audit round 3 of #10, B4)
+    fx = {"currency": "USD", "exchange_rate": 1.01}
+    st, d = hq.create("purchase_order", dict(fx, vendor="VND-0001", outlet=DAGO, items=[{"item": "BRG-0001", "qty": 1, "rate": 0, "rate_fx": 100_000}]))
+    if check("head office drafts a USD 100.000 PO at kurs 1,01 (Rp 101.000)", st == 201 and d["grand_total"] == 101_000, (st, d)):
+        st, resp = hq.verb("purchase_order", d["name"], "submit")
+        check("the USD PO waits for the owner (202, po_approval)", st == 202 and resp["approval"]["policy"] == "po_approval", (st, resp))
+    st, d = hq.create("vendor_bill", dict(fx, vendor="VND-0001", bill_no="FX-101", bill_date="2026-11-05", outlet=DAGO,
+                                          items=[{"item": "BRG-0001", "qty": 1, "rate": 0, "rate_fx": 100_000}]))
+    if check("head office records a USD 100.000 bill at kurs 1,01 without a PO", st == 201, (st, d)):
+        st, resp = hq.verb("vendor_bill", d["name"], "submit")
+        check("the USD bill waits for the owner (202, bill_without_po_approval)", st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    st, d = hq.create("payment", dict(fx, direction="pay", vendor="VND-0001", amount_fx=100_000))
+    if check("head office drafts a USD 100.000 outgoing payment at kurs 1,01", st == 201 and d["amount"] == 101_000, (st, d)):
+        st, resp = hq.verb("payment", d["name"], "submit")
+        check("the USD payment waits for the owner (202, payout_approval)", st == 202 and resp["approval"]["policy"] == "payout_approval", (st, resp))
     # the PO approval cannot be skipped by billing and paying directly
     st, vb = hq.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "TANPA-PO-1", "bill_date": "2026-11-05", "outlet": DAGO,
                                        "items": [{"item": "BRG-0001", "qty": 100, "rate": 85_000}]})

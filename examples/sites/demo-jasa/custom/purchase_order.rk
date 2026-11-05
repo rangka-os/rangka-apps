@@ -2,10 +2,11 @@
 # The purchase approval (contract 0007 §1): a PO above Rp 5.000.000 waits for finance (or the owner). Only
 # purchasing_manager and head_office may submit purchase orders, so the approver is a role that does not raise them:
 # whoever makes the PO never approves it. The threshold is an example; a site sets its own.
+# A foreign-currency document always waits: its kurs is typed by the maker, so the rupiah value alone can be made small.
 model: purchase_order
 approvals:
   - name: po_approval
     on: submit
-    when: "grand_total > 5000000"
+    when: "grand_total > 5000000 || (currency != '' && currency != 'IDR')"
     approvers: [finance_manager]
     label: {id: Persetujuan pembelian, en: Purchasing approval}

@@ -40,6 +40,7 @@ Rp 100.000.000 → `finance_manager`; `purchase_order` approval is a site's choi
 Rp 5.000.000 (not a role that raises POs, so the maker never approves), demo-fnb asks `purchasing_manager` (in practice the
 owner) above Rp 5.000.000, and also holds a vendor bill above that amount unless it sits on an approved, live PO of at
 least its value (a draft, held or cancelled PO counts as none), and an outgoing payment above that amount
+(a foreign-currency PO, bill or payment counts as above it, whatever kurs the maker typed)
 (`custom/vendor_bill.rk`, `custom/payment.rk`), so the PO approval cannot be skipped by billing or paying directly.
 An approver who submits self-approves, so a quotation by a `project_admin` and a big invoice by a `sales_manager` are held;
 both hold: a PO is never approved by its maker.

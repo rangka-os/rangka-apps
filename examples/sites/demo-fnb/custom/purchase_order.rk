@@ -2,10 +2,11 @@
 # The owner's purchase approval (contract 0007 §1). Rp 5.000.000 is an example: the threshold is the owner's call.
 # No fnb_cabang member holds purchasing_manager and the owner may always approve, so a head office PO above it waits
 # for the owner. head_office is not an approver: an approver who submits self-approves, and the policy would never hold.
+# A foreign-currency document always waits: its kurs is typed by the maker, so the rupiah value alone can be made small.
 model: purchase_order
 approvals:
   - name: po_approval
     on: submit
-    when: "grand_total > 5000000"
+    when: "grand_total > 5000000 || (currency != '' && currency != 'IDR')"
     approvers: [purchasing_manager]
     label: {id: Persetujuan pembelian, en: Purchasing approval}

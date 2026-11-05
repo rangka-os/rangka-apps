@@ -1,10 +1,11 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
 # An outgoing payment above the threshold waits for the owner (no fnb_cabang member holds purchasing_manager), so
 # money cannot leave through a payment without a bill or PO. Incoming payments are not affected.
+# A foreign-currency document always waits: its kurs is typed by the maker, so the rupiah value alone can be made small.
 model: payment
 approvals:
   - name: payout_approval
     on: submit
-    when: "direction == 'pay' && amount > 5000000"
+    when: "direction == 'pay' && (amount > 5000000 || (currency != '' && currency != 'IDR'))"
     approvers: [purchasing_manager]
     label: {id: Persetujuan pembayaran keluar, en: Approval of an outgoing payment}
