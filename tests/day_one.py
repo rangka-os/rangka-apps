@@ -2544,6 +2544,34 @@ def preview(cl, imp, filename, content, outlet):
     return cl.upload(f"/api/v1/imports/{imp}", {"outlet": outlet}, filename, content)
 
 
+def scenario_po_approval_fnb(api):
+    """demo-fnb's custom/purchase_order.rk: a head office PO above Rp 5.000.000 waits for the owner (contract 0007 §1)."""
+    hq = CTX.get("hq")
+    if hq is None:
+        fail("po_approval (fnb): head office member", CTX.get("login_error", "no head office member"))
+        return
+    st, meta = api.call("GET", "/api/v1/meta")
+    pols = [p.get("name") for p in (((meta or {}).get("models") or {}).get("purchase_order") or {}).get("approvals", [])]
+    check("meta: purchase_order carries po_approval from the site overlay", "po_approval" in pols, pols)
+    st, edge = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 100, "rate": 50_000}]})
+    st, resp = hq.verb("purchase_order", edge["name"], "submit")
+    check("a PO of exactly 5.000.000 by head office submits without approval", st == 200 and not approvals_of(api, "purchase_order", resp.get("name", edge["name"])), (st, resp))
+    st, big = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 100, "rate": 85_000}]})
+    check("head office creates a PO of 8.500.000", st == 201 and big["grand_total"] == 8_500_000, (st, big))
+    if st != 201:
+        return
+    st, resp = hq.verb("purchase_order", big["name"], "submit")
+    check("head office submits it: held, 202, po_approval pending for purchasing_manager",
+          st == 202 and resp["approval"]["policy"] == "po_approval" and resp["approval"]["state"] == "pending" and resp["approval"]["approvers"] == ["purchasing_manager"], (st, resp))
+    if st != 202:
+        return
+    eq("the held PO is still a draft", api.get("purchase_order", big["name"])["docstatus"], 0)
+    st2, r2 = decide(hq, resp["approval"]["id"])
+    check("head office cannot approve its own PO -> 403", st2 == 403, (st2, r2))
+    st2, r2 = decide(api, resp["approval"]["id"])
+    check("the owner approves: the PO is submitted and numbered PO/...", st2 == 200 and r2.get("record", {}).get("docstatus") == 1 and r2["record"]["name"].startswith("PO/"), (st2, r2))
+
+
 def scenario_outlet_sales(api):
     hq, dago = CTX.get("hq") or api, CTX.get("staff_dago")
     st, meta = api.call("GET", "/api/v1/meta")
@@ -2707,7 +2735,7 @@ SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa],
-    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
 }
 
 

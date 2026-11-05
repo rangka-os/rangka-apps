@@ -36,9 +36,11 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | lead, deal, activity | all | r | r | r | r | r | r c w on own records (`owner == user.name`) |
 
 Approvals (contract 0007) decide on top of this: `quotation` submit → `sales_manager`; `sales_invoice` above
-Rp 100.000.000 → `finance_manager`; `purchase_order` above Rp 5.000.000 → `purchasing_manager` or `head_office`.
+Rp 100.000.000 → `finance_manager`; `purchase_order` approval is a site's choice (`custom/purchase_order.rk`): demo-jasa keeps above Rp 5.000.000 →
+`purchasing_manager` or `head_office`, demo-fnb asks `purchasing_manager` (in practice the owner) above Rp 5.000.000.
 An approver who submits self-approves, so a quotation by a `project_admin` and a big invoice by a `sales_manager` are held;
-`po_approval` never holds with this matrix (only its approvers may submit purchase orders).
+demo-jasa's `po_approval` never holds with this matrix (only its approvers may submit purchase orders); demo-fnb's holds a head
+office PO for the owner.
 
 Actions (`make_order`, `make_invoice`, `receive`, `make_po`, `new_revision`, `mark_outcome`) need `write` on their
 model; `new_revision` also needs `cancel` (the hook cancels the quotation), so a `project_admin` cannot revise.

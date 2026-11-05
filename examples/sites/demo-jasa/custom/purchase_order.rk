@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
+# The purchase approval jasa_proyek had in the module (contract 0007 §1), kept as it was. Only its approvers may submit
+# purchase orders, so it records a self-approval and never holds (docs/permissions.md); a firm that wants a second pair
+# of eyes lists only the role that does not raise purchase orders.
+model: purchase_order
+approvals:
+  - name: po_approval
+    on: submit
+    when: "grand_total > 5000000"
+    approvers: [purchasing_manager, head_office]
+    label: {id: Persetujuan pembelian, en: Purchasing approval}
