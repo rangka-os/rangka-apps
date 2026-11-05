@@ -97,6 +97,13 @@ fields:
     type: date
     label: {id: Periode sampai}
     depends_on: kind == 'retainer' || kind == 'time_material'
+  # One retainer milestone per project and month: period_from is the 1st of the month and this key is unique.
+  - name: retainer_key
+    type: data
+    label: {id: Bulan retainer}
+    hidden: true
+    unique: true
+    compute: "kind == 'retainer' ? project + ':' + period_from : ''"
   - name: state
     type: select
     label: {id: Status}
@@ -152,6 +159,10 @@ rules:
     on: save
     check: basis != 'percent' || contract_snapshot > 0 || project.contract_value > 0
     message: {id: Termin persen butuh nilai kontrak di proyek}
+  - name: retainer_month
+    on: save
+    check: kind != 'retainer' || (period_from != '' && period_from.endsWith('-01'))
+    message: {id: 'Termin retainer satu per bulan: Periode dari harus tanggal 1'}
   - name: retainer_month_within_fee
     on: save
     check: project.billing_model != 'retainer' || project.contract_value == 0 || amount <= project.contract_value

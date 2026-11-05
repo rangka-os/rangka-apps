@@ -23,7 +23,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | assignment, timesheet, acceptance | r | r | | all | | | |
 | billing_milestone (state written by flows; no delete; finance and sales write only through the invoice flows, an amount edit by them is refused) | r w | r w e | | r c w e i | | | |
 | project_expense | r | all but d | | all | | | |
-| sales_invoice | all | all | | | | | r |
+| sales_invoice | all | all | | r | | | r |
 | withholding | r p | all | | | | | |
 | payment | all | all | | | r c w s p if `direction == 'pay'` (vendor payments only) | | |
 | purchase_request | | | all | r c w s | all | r c w s | |
