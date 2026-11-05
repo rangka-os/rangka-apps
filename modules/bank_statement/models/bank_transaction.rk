@@ -3,9 +3,10 @@
 #   unmatched -> suggested (flow bank_transaction_suggest found exactly one invoice) -> confirmed (the owner agrees,
 #   flow bank_transaction_confirm drafts the payment into draft_payment) -> matched (that very draft is submitted;
 #   flow bank_transaction_matched sets payment). ignored = not a sale.
-# payment is only ever a submitted payment and only flows write it, so "Cocok" cannot be set by hand. Cancelling the
-# payment sends the line back to unmatched. Leaving "Dikonfirmasi" forgets the draft; a deleted draft is drafted
-# again by saving the line as "Dikonfirmasi".
+# payment is only ever a submitted payment and only flows write it, so "Cocok" cannot be set by hand. A line has at
+# most one live draft: confirming again reuses it, and submitting it matches the line from any status. Cancelling the
+# payment sends the line back to unmatched and keeps the cancelled name, so its amend matches the line again. A
+# deleted draft is drafted again by saving the line as "Dikonfirmasi".
 name: bank_transaction
 label: {id: Mutasi bank, en: Bank transaction}
 icon: bank

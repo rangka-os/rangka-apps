@@ -2,16 +2,28 @@
 # The owner sets a line to "Dikonfirmasi": draft a payment from the customer of the chosen invoice, for the line's
 # amount, allocated to that invoice (up to what it still owes; any rest stays unallocated on the payment).
 # The draft is submitted by a person (finance), which settles the invoice through payments.allocate.
-# The draft goes into draft_payment; a line whose draft still exists is left alone, a line whose draft was deleted
-# gets a new one (saving it as "Dikonfirmasi" again), so a deleted draft never leaves the line stuck.
+# One line has at most one live draft, kept in draft_payment: confirming again (after going back, or with another
+# invoice) updates that draft, or the live amend of a cancelled payment of the line, instead of drafting a second
+# payment for the same money. Only when the draft is gone (deleted) is a new one drafted, so the line is never stuck.
 name: bank_transaction_confirm
 label: {id: Mutasi dikonfirmasi jadi pembayaran}
 on: bank_transaction.updated
 if: event.status == 'confirmed' && event.payment == '' && event.suggested_invoice != ''
 steps:
-  - {find: payment, where: "event.draft_payment != '' && name == event.draft_payment && docstatus == 0", as: draft}
+  - find: payment
+    where: "event.draft_payment != '' && (name == event.draft_payment || amended_from == event.draft_payment) && docstatus == 0"
+    as: draft
   - {find: sales_invoice, where: name == event.suggested_invoice, as: inv}
   - {find: bank_transaction, where: name == event.name, as: line}
+  - update: draft
+    if: inv != null && draft != null
+    set:
+      customer: inv.customer
+      amount: event.amount
+      allocations: "[{'sales_invoice': inv.name, 'amount': min(event.amount, inv.outstanding)}]"
+  - update: line
+    if: inv != null && draft != null && draft.name != event.draft_payment
+    set: {draft_payment: draft.name}
   - create: payment
     if: inv != null && draft == null
     set:

@@ -1498,7 +1498,7 @@ def scenario_money_rail(api):
     check("delete the drafted payment", st in (200, 204), (st, resp))
     st, resp = api.patch("bank_transaction", ld["name"], {"status": "suggested"})
     ld2 = api.get("bank_transaction", ld["name"])
-    check("after the draft is deleted the line can go back (draft link cleared)", st == 200 and not ld2.get("draft_payment"), (st, ld2))
+    check("after the draft is deleted the line can go back", st == 200 and ld2["status"] == "suggested", (st, ld2))
     st, resp = api.patch("bank_transaction", ld["name"], {"status": "confirmed"})
     ld2 = api.get("bank_transaction", ld["name"])
     check("confirming again drafts a new payment", st == 200 and ld2.get("draft_payment") not in ("", None, ld["draft_payment"]), (st, ld2))
@@ -1514,6 +1514,32 @@ def scenario_money_rail(api):
     la = api.get("bank_transaction", la["name"])
     check("line A back to unmatched, payment cleared", la["status"] == "unmatched" and not la.get("payment"), la)
     eq("invoice A owed again", api.get("sales_invoice", inv_a)["outstanding"], 2_750_000)
+    # the cancelled payment is amended and submitted: the line follows it (amended_from), so it is not confirmed again
+    st, am = api.verb("payment", pname, "amend")
+    st, resp = api.verb("payment", am.get("name", ""), "submit")
+    la = api.get("bank_transaction", la["name"])
+    check("the amended payment of line A matches line A again", st == 200 and la["status"] == "matched" and la["payment"] == resp.get("name"), (st, la))
+    eq("invoice A paid once", api.get("sales_invoice", inv_a)["outstanding"], 0)
+
+    # going back and forth never leaves a second draft: one line, one payment
+    inv_o, inv_o2 = submitted_invoice(1_000_001), submitted_invoice(1_000_002)
+    st, lo = api.create("bank_transaction", {"account": "1110000001", "date": "2026-11-08", "seq": 1, "description": "TRSF CR BOLAK BALIK", "credit": 400_000})
+    check("statement line for the back-and-forth case", st == 201, (st, lo))
+    api.patch("bank_transaction", lo["name"], {"suggested_invoice": inv_o, "status": "confirmed"})
+    d1 = api.get("bank_transaction", lo["name"]).get("draft_payment")
+    api.patch("bank_transaction", lo["name"], {"status": "suggested"})
+    api.patch("bank_transaction", lo["name"], {"suggested_invoice": inv_o2, "status": "confirmed"})
+    lo = api.get("bank_transaction", lo["name"])
+    drafts = api.find("payment", f"reference == '{lo['name']}' && docstatus == 0")
+    check("confirm, back, confirm again with another invoice: the same single draft", bool(d1) and lo["draft_payment"] == d1 and len(drafts) == 1, (d1, lo, drafts))
+    p1 = api.get("payment", d1)
+    check("the draft follows the invoice chosen last", [r["sales_invoice"] for r in p1.get("allocations", [])] == [inv_o2], p1)
+    api.patch("bank_transaction", lo["name"], {"status": "ignored"})
+    st, resp = api.verb("payment", d1, "submit")
+    lo = api.get("bank_transaction", lo["name"])
+    check("its draft submitted while the line is set aside still matches the line (no second payment possible)",
+          st == 200 and lo["status"] == "matched" and lo["payment"] == resp.get("name"), (st, lo))
+    eq("invoices: the first untouched, the last paid 400.000", (api.get("sales_invoice", inv_o)["outstanding"], api.get("sales_invoice", inv_o2)["outstanding"]), (1_000_001, 600_002))
 
 
 def setup_demo_jasa(api, k):
