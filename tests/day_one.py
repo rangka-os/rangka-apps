@@ -2354,6 +2354,11 @@ def receive(api, outlet, lines, label, vendor="VND-0001"):
 
 
 def scenario_fnb_fixtures(api):
+    st, meta = api.call("GET", "/api/v1/meta")
+    models = (meta or {}).get("models") or {}
+    pf = {f["name"]: f for f in (models.get("purchase_order") or {}).get("fields", [])}.get("project") or {}
+    check("F&B has no projects module: the PO's Proyek field is hidden (depends_on app_installed('projects'))",
+          "project" not in models and pf.get("depends_on") == "app_installed('projects')", pf)
     outlets = api.list("outlet")
     check("fixtures: 3 outlets, one head office", len(outlets) == 3 and [o["name"] for o in outlets if o.get("is_head_office") in (True, "true")] == [HO], outlets)
     eq("fixtures: uoms Kg, Gram, Karung, Liter, Pcs, Porsi", sorted(u["uom_name"] for u in api.list("uom")), ["Gram", "Karung", "Kg", "Liter", "Pcs", "Porsi"])

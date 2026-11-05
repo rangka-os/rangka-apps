@@ -25,6 +25,7 @@ fields:
     type: link
     to: project
     label: {id: Proyek}
+    depends_on: app_installed('projects')
   - name: needed_by
     type: date
     label: {id: Dibutuhkan tanggal}
