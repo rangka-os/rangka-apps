@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A payment that names a statement line is submitted: it claims the line (bank_transaction_claim). The unique index
+# refuses the claim, and with it the whole submit, when another live payment already holds the line.
+name: bank_transaction_claim
+label: {id: Klaim mutasi saat pembayaran diajukan}
+on: payment.submitted
+if: event.bank_transaction != ''
+steps:
+  - create: bank_transaction_claim
+    set: {bank_transaction: event.bank_transaction, payment: event.name}

@@ -1,18 +1,13 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
-# A payment drafted from a statement line is submitted: the line is matched, whatever status it was moved to in
-# between (the draft holds the line's money, so the line must not be confirmed into a second payment). The draft's
-# name changes on submit, so the line is found by the draft's name (event.before.name) in draft_payment, or, for the
-# amend of a cancelled payment of the line, by amended_from == cancelled_payment (bank_transaction_amend_guard has
-# refused that amend already when the line has another live draft). reference is free text that any payment can carry (and amend copies), so it never picks the line:
-# another payment naming the line cannot take it over.
+# A payment that names a statement line (payment.bank_transaction) is submitted: the line is matched to it. By then
+# bank_transaction_claim (same event, earlier in name order) has made sure no other live payment holds the line.
+# reference is free text and never picks the line.
 name: bank_transaction_matched
 label: {id: Mutasi cocok saat pembayaran diajukan}
 on: payment.submitted
-if: event.direction == 'receive' && event.before != null
+if: event.direction == 'receive' && event.bank_transaction != ''
 steps:
-  - find: bank_transaction
-    where: "payment == '' && ((draft_payment != '' && draft_payment == event.before.name) || (cancelled_payment != '' && cancelled_payment == event.amended_from))"
-    as: line
+  - {find: bank_transaction, where: name == event.bank_transaction, as: line}
   - update: line
     if: line != null
     set: {status: "'matched'", payment: event.name, draft_payment: "''"}

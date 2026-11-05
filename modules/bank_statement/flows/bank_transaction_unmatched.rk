@@ -1,8 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
-# The payment of a matched line is cancelled: the line goes back to unmatched and can be matched again. The cancelled
-# payment's name goes to cancelled_payment, which confirming never overwrites: its amend, once submitted, matches the
-# line again (confirming reuses that amend while it is a draft), and bank_transaction_amend_guard refuses it when the
-# line got another draft or payment meanwhile, so one transfer is never recorded twice.
+# The payment of a matched line is cancelled: the line goes back to unmatched and can be matched again (by the amend
+# of that payment, which keeps bank_transaction, or by a new confirmation; only one of them can be submitted).
 name: bank_transaction_unmatched
 label: {id: Mutasi kembali belum cocok saat pembayaran dibatalkan}
 on: payment.cancelled
@@ -10,4 +8,4 @@ steps:
   - {find: bank_transaction, where: payment == event.name && status == 'matched', as: line}
   - update: line
     if: line != null
-    set: {status: "'unmatched'", payment: "''", draft_payment: "''", cancelled_payment: event.name}
+    set: {status: "'unmatched'", payment: "''"}

@@ -3,11 +3,10 @@
 #   unmatched -> suggested (flow bank_transaction_suggest found exactly one invoice) -> confirmed (the owner agrees,
 #   flow bank_transaction_confirm drafts the payment into draft_payment) -> matched (that very draft is submitted;
 #   flow bank_transaction_matched sets payment). ignored = not a sale.
-# payment is only ever a submitted payment and only flows write it, so "Cocok" cannot be set by hand. A line has at
-# most one live draft: confirming again reuses it, and submitting it matches the line from any status. Cancelling the
-# payment sends the line back to unmatched and keeps the cancelled name in cancelled_payment, so its amend matches
-# the line again, but only while the line has no other live draft or payment (else its submit is refused). A
-# deleted draft is drafted again by saving the line as "Dikonfirmasi".
+# payment is only ever a submitted payment and only flows write it, so "Cocok" cannot be set by hand. The payment
+# names the line in payment.bank_transaction, and bank_transaction_claim allows one live payment per line, whatever
+# path made it. draft_payment points at the line's open draft, which confirming again reuses; a deleted draft is
+# drafted again by saving the line as "Dikonfirmasi". Cancelling the payment sends the line back to unmatched.
 name: bank_transaction
 label: {id: Mutasi bank, en: Bank transaction}
 icon: bank
@@ -86,17 +85,6 @@ fields:
     to: payment
     label: {id: Pembayaran}
     read_only: true
-  # The last payment of this line that was cancelled (data: it stays cancelled, never deleted). Its amend may match
-  # the line only while the line has no other live draft and no payment (flow bank_transaction_amend_guard).
-  - name: cancelled_payment
-    type: data
-    label: {id: Pembayaran dibatalkan}
-    read_only: true
-  # Set only inside a flow run that must be refused; the rule amend_refused then rolls the whole save back.
-  - name: amend_refused
-    type: check
-    label: {id: Amend ditolak}
-    read_only: true
 rules:
   - name: one_side_only
     on: save
@@ -114,10 +102,6 @@ rules:
     on: save
     check: (status == 'matched') == (payment != '')
     message: {id: Status Cocok diisi otomatis saat pembayarannya diajukan dan hanya lepas saat pembayaran itu dibatalkan}
-  - name: amend_refused
-    on: save
-    check: "!amend_refused"
-    message: {id: 'Mutasi ini sudah punya draf atau pembayaran lain; amend pembayaran yang dibatalkan ditolak'}
   - name: seq_positive
     on: save
     check: seq > 0

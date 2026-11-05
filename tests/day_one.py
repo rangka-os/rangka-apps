@@ -1549,55 +1549,98 @@ def scenario_money_rail(api):
           st == 200 and lo["status"] == "matched" and lo["payment"] == resp.get("name"), (st, lo))
     eq("invoices: the first untouched, the last paid 400.000", (api.get("sales_invoice", inv_o)["outstanding"], api.get("sales_invoice", inv_o2)["outstanding"]), (1_000_001, 600_002))
 
-    # paid, cancelled, confirmed again to another invoice, then the cancelled payment amended: still one live payment
-    inv_p, inv_q = submitted_invoice(1_000_003), submitted_invoice(1_000_004)
-    st, lp = api.create("bank_transaction", {"account": "1110000001", "date": "2026-11-09", "seq": 1, "description": "TRSF CR BATAL AMEND", "credit": 300_000})
-    api.patch("bank_transaction", lp["name"], {"suggested_invoice": inv_p, "status": "confirmed"})
-    st, resp = api.verb("payment", api.get("bank_transaction", lp["name"])["draft_payment"], "submit")
-    p_first = resp.get("name", "")
-    st, resp = api.verb("payment", p_first, "cancel")
-    check("cancel the payment of the line", st == 200 and api.get("bank_transaction", lp["name"])["status"] == "unmatched", (st, resp))
-    api.patch("bank_transaction", lp["name"], {"suggested_invoice": inv_q, "status": "confirmed"})
-    d2 = api.get("bank_transaction", lp["name"])["draft_payment"]
-    st, am = api.verb("payment", p_first, "amend")
-    st, resp = api.verb("payment", am.get("name", ""), "submit")
-    check("the amend of the cancelled payment is refused while the line has another draft", st in (409, 422) and "amend" in str(resp), (st, resp))
-    st, resp = api.verb("payment", d2, "submit")
-    lp = api.get("bank_transaction", lp["name"])
-    check("the line's new draft submits and matches", st == 200 and lp["status"] == "matched" and lp["payment"] == resp.get("name"), (st, lp))
-    st, resp = api.verb("payment", am.get("name", ""), "submit")
-    check("the amend stays refused once the line is matched", st in (409, 422), (st, resp))
-    eq("one transfer, one payment: first invoice owed in full, second paid 300.000",
-       (api.get("sales_invoice", inv_p)["outstanding"], api.get("sales_invoice", inv_q)["outstanding"]), (1_000_003, 700_004))
+    # The invariant, whatever the path: one statement line, at most one live payment (bank_transaction_claim).
+    def one_live(label, line_name, invoices, amount):
+        live = api.find("payment", f"bank_transaction == '{line_name}' && docstatus == 1")
+        paid = sum(base - api.get("sales_invoice", i)["outstanding"] for i, base in invoices)
+        ln = api.get("bank_transaction", line_name)
+        check(f"{label}: one live payment for the line, the transfer paid once, the line matched to it",
+              len(live) == 1 and paid == amount and ln["status"] == "matched" and ln["payment"] == live[0]["name"], (live, paid, ln))
 
-    # chained: paid to A, cancelled, confirmed to B, paid, cancelled again; the older cancelled payment's amend is refused
-    for label, older_first in (("H2", True), ("H3", False)):
-        ia, ib = submitted_invoice(1_000_010 + (0 if older_first else 2)), submitted_invoice(1_000_011 + (0 if older_first else 2))
-        st, lc = api.create("bank_transaction", {"account": "1110000001", "date": "2026-11-10", "seq": 1 if older_first else 2,
-                                                 "description": f"TRSF CR BERANTAI {label}", "credit": 300_000})
-        api.patch("bank_transaction", lc["name"], {"suggested_invoice": ia, "status": "confirmed"})
-        st, r = api.verb("payment", api.get("bank_transaction", lc["name"])["draft_payment"], "submit")
-        p0 = r.get("name", "")
+    def new_line(desc, seq, amount=300_000):
+        st, ln = api.create("bank_transaction", {"account": "1110000001", "date": "2026-11-09", "seq": seq, "description": desc, "credit": amount})
+        return ln["name"]
+
+    def confirm(line_name, invoice):
+        api.patch("bank_transaction", line_name, {"suggested_invoice": invoice, "status": "confirmed"})
+        return api.get("bank_transaction", line_name)["draft_payment"]
+
+    def submit(name):
+        st, r = api.verb("payment", name, "submit")
+        return st, (r.get("name", "") if isinstance(r, dict) else "")
+
+    # N1: paid to A, cancelled, confirmed to B, the cancelled payment amended; both submitted: the second is refused
+    ia, ib = submitted_invoice(1_000_003), submitted_invoice(1_000_004)
+    ln = new_line("TRSF CR N1", 1)
+    st, p0 = submit(confirm(ln, ia))
+    st, resp = api.verb("payment", p0, "cancel")
+    check("N1: cancel the payment of the line", st == 200 and api.get("bank_transaction", ln)["status"] == "unmatched", (st, resp))
+    d2 = confirm(ln, ib)
+    st, am = api.verb("payment", p0, "amend")
+    check("N1: the amend keeps the line", am.get("bank_transaction") == ln, am)
+    st1, _ = submit(am.get("name", ""))
+    st2, _ = submit(d2)
+    check("N1: of the amend and the new draft, one submits and the other is refused (422)", sorted((st1, st2)) == [200, 422], (st1, st2))
+    one_live("N1", ln, [(ia, 1_000_003), (ib, 1_000_004)], 300_000)
+
+    # H2 / H3: a chain (paid, cancelled, confirmed again, paid, cancelled), then both cancelled payments amended,
+    # or one amended and the line confirmed again
+    for label, amend_both in (("H2", True), ("H3", False)):
+        ia, ib = submitted_invoice(1_000_010 + amend_both), submitted_invoice(1_000_020 + amend_both)
+        ln = new_line(f"TRSF CR {label}", 2 + amend_both)
+        st, p0 = submit(confirm(ln, ia))
         api.verb("payment", p0, "cancel")
-        api.patch("bank_transaction", lc["name"], {"suggested_invoice": ib, "status": "confirmed"})
-        st, r = api.verb("payment", api.get("bank_transaction", lc["name"])["draft_payment"], "submit")
-        p2 = r.get("name", "")
+        st, p2 = submit(confirm(ln, ib))
         api.verb("payment", p2, "cancel")
         st, a0 = api.verb("payment", p0, "amend")
-        st0, r0 = api.verb("payment", a0.get("name", ""), "submit")
-        check(f"{label}: the amend of the older cancelled payment is refused", st0 in (409, 422), (st0, r0))
-        if older_first:
+        st1, _ = submit(a0.get("name", ""))
+        if amend_both:
             st, a2 = api.verb("payment", p2, "amend")
-            st, r = api.verb("payment", a2.get("name", ""), "submit")
-        else:
-            api.patch("bank_transaction", lc["name"], {"suggested_invoice": ib, "status": "confirmed"})
-            st, r = api.verb("payment", api.get("bank_transaction", lc["name"])["draft_payment"], "submit")
-        lc = api.get("bank_transaction", lc["name"])
-        check(f"{label}: the line ends matched once", st == 200 and lc["status"] == "matched", (st, lc))
-        eq(f"{label}: one transfer paid once (A owed in full, B 300.000 paid)",
-           (api.get("sales_invoice", ia)["outstanding"], api.get("sales_invoice", ib)["outstanding"]),
-           (1_000_010 + (0 if older_first else 2), 700_011 + (0 if older_first else 2)))
+            st2, _ = submit(a2.get("name", ""))
+        else:   # the line is matched by the amend already: confirming it again is refused at the line
+            st2, _ = api.patch("bank_transaction", ln, {"suggested_invoice": ib, "status": "confirmed"})
+            if st2 == 200:
+                st2, _ = submit(api.get("bank_transaction", ln)["draft_payment"])
+        check(f"{label}: the first submit goes through, the second is refused", (st1, st2) == (200, 422), (st1, st2))
+        one_live(label, ln, [(ia, 1_000_010 + amend_both), (ib, 1_000_020 + amend_both)], 300_000)
 
+    # r4: paid to A, cancelled, confirmed to B (draft D2), the cancelled payment amended, confirmed to C
+    ia, ib, ic = submitted_invoice(1_000_031), submitted_invoice(1_000_032), submitted_invoice(1_000_033)
+    ln = new_line("TRSF CR R4", 4)
+    st, p0 = submit(confirm(ln, ia))
+    api.verb("payment", p0, "cancel")
+    d2 = confirm(ln, ib)
+    st, am = api.verb("payment", p0, "amend")
+    dc = confirm(ln, ic)
+    sts = [submit(n)[0] for n in {d2, am.get("name", ""), dc}]
+    check("r4: of all drafts of the line exactly one submits", sts.count(200) == 1 and all(x in (200, 409, 422) for x in sts), sts)
+    one_live("r4", ln, [(ia, 1_000_031), (ib, 1_000_032), (ic, 1_000_033)], 300_000)
+
+    # two drafts of one line submitted at the same time: the unique claim lets exactly one through
+    import threading
+    ia, ib = submitted_invoice(1_000_041), submitted_invoice(1_000_042)
+    ln = new_line("TRSF CR SERENTAK", 5)
+    drafts = []
+    for inv_ in (ia, ib):
+        st, dp = api.create("payment", {"direction": "receive", "customer": customer, "amount": 300_000, "reference": ln, "bank_transaction": ln,
+                                        "allocations": [{"sales_invoice": inv_, "amount": 300_000}]})
+        drafts.append(dp.get("name", ""))
+    api.patch("bank_transaction", ln, {"suggested_invoice": ia, "status": "confirmed"})   # reuses one of them
+    results = []
+    threads = [threading.Thread(target=lambda n=n: results.append(submit(n)[0])) for n in drafts]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    check("concurrent submits of two drafts of one line: one 200, one refused", sorted(results)[0] == 200 and sorted(results)[1] in (409, 422, 500) and len(results) == 2, results)
+    check("concurrent submits: never 500", 500 not in results, results)
+    one_live("concurrent", ln, [(ia, 1_000_041), (ib, 1_000_042)], 300_000)
+
+    # a payment that names a matched line is refused, so the line cannot be taken over through bank_transaction either
+    st, intr = api.create("payment", {"direction": "receive", "customer": customer, "amount": 1_000, "bank_transaction": ln,
+                                      "allocations": [{"sales_invoice": inv_d, "amount": 1_000}]})
+    st, resp = api.verb("payment", intr.get("name", ""), "submit")
+    check("a second payment naming a matched line is refused (422)", st == 422, (st, resp))
 
 def setup_demo_jasa(api, k):
     """One member per jasa role in PT Contoh Inspeksi (rangka user add), signed in: the owner self-approves, so only these can show a held approval."""
@@ -1777,6 +1820,8 @@ MATRIX = {
                           "head_office": {"read", "create", "write"}},
     "invoice_reminder": {"finance_manager": {"read", "create", "write", "delete", "export"}, "sales_manager": {"read", "create", "write", "delete", "export"},
                          "sales_rep": {"read", "create"}},
+    "bank_transaction_claim": {"finance_manager": {"read", "create", "write", "export"}, "sales_manager": {"read", "create", "write", "export"},
+                               "head_office": {"read", "create", "write"}},
     "bank_transaction": {"finance_manager": {"read", "create", "write", "delete", "export", "import"}, "sales_manager": {"read", "create", "write", "export", "import"},
                          "head_office": {"read", "create", "write", "export", "import"}},
     "payment": {"finance_manager": _ALL, "sales_manager": _ALL, "head_office": {"read", "create", "write", "submit", "print"}},   # head_office: if direction == 'pay'
