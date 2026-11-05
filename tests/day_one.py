@@ -2573,6 +2573,36 @@ def scenario_po_approval_fnb(api):
     check("head office cannot approve its own PO -> 403", st2 == 403, (st2, r2))
     st2, r2 = decide(api, resp["approval"]["id"])
     check("the owner approves: the PO is submitted and numbered PO/...", st2 == 200 and r2.get("record", {}).get("docstatus") == 1 and r2["record"]["name"].startswith("PO/"), (st2, r2))
+    approved_po = r2.get("record", {}).get("name", "") if st2 == 200 else ""
+    # a bill skips the owner only on an approved (submitted, live) PO and within its value; audit round 2 of #10
+    def bill_on(po_name, bill_no, rate):
+        st, vb = hq.create("vendor_bill", {"vendor": "VND-0001", "bill_no": bill_no, "bill_date": "2026-11-05", "outlet": DAGO,
+                                           "purchase_order": po_name, "items": [{"item": "BRG-0001", "qty": 100, "rate": rate}]})
+        if not check(f"head office records bill {bill_no} on {po_name}", st == 201, (st, vb)):
+            return None, None
+        return hq.verb("vendor_bill", vb["name"], "submit")
+    st, small = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 1, "rate": 10_000}]})
+    st, resp = hq.verb("purchase_order", small["name"], "submit")
+    small_po = resp.get("name", "") if st == 200 else ""
+    check("a PO of 10.000 is submitted without approval", st == 200 and small_po.startswith("PO/"), (st, resp))
+    st, resp = bill_on(small_po, "A1-50JT", 500_000)
+    check("a 50.000.000 bill on a 10.000 PO is held for the owner (202, bill_without_po_approval)",
+          st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    st, held = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 100, "rate": 510_000}]})
+    st, resp = hq.verb("purchase_order", held["name"], "submit")
+    check("a PO of 51.000.000 waits for the owner (202)", st == 202, (st, resp))
+    st, resp = bill_on(held["name"], "A2-51JT", 510_000)
+    check("a 51.000.000 bill on a PO still waiting for approval is held (202)",
+          st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    st, resp = hq.verb("purchase_order", small_po, "cancel")
+    check("head office cancels the 10.000 PO", st == 200, (st, resp))
+    st, resp = bill_on(small_po, "A3-50JT", 500_000)
+    check("a 50.000.000 bill on a cancelled PO is held (202)",
+          st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    if approved_po:
+        st, resp = bill_on(approved_po, "A4-8JT5", 85_000)
+        check("an 8.500.000 bill on the approved 8.500.000 PO is not asked again (200, no request)",
+              st == 200 and resp.get("approval") is None, (st, resp))
     # the PO approval cannot be skipped by billing and paying directly
     st, vb = hq.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "TANPA-PO-1", "bill_date": "2026-11-05", "outlet": DAGO,
                                        "items": [{"item": "BRG-0001", "qty": 100, "rate": 85_000}]})
