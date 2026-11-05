@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The payment drafted from a statement line is submitted: the line is matched. The draft's name changes on submit,
+# so the line is found by the payment's reference, which bank_transaction_confirm sets to the line's name.
+name: bank_transaction_matched
+label: {id: Mutasi cocok saat pembayaran diajukan}
+on: payment.submitted
+steps:
+  - {find: bank_transaction, where: name == event.reference && event.direction == 'receive', as: line}
+  - update: line
+    if: line != null
+    set: {status: "'matched'", payment: event.name}

@@ -4,7 +4,7 @@
 metadata: models, rules, dashboards, flows and roles. No application code — the Rangka kernel turns these files into a
 database, an API and screens.
 
-> **Status: v0 (November 2026).** Sixteen modules, three apps (`crm`, `fnb_cabang`, `jasa_proyek`) and three example sites, laid out per
+> **Status: v0 (November 2026).** Seventeen modules, three apps (`crm`, `fnb_cabang`, `jasa_proyek`) and three example sites, laid out per
 > [contract 0001](https://github.com/rangka-os/rangka-os/blob/main/docs/contracts/0001-modules-and-apps.md).
 > All files pass both validators with 0 errors.
 
@@ -35,6 +35,7 @@ Every module requires `users`, which holds all roles (`sales_manager`, `sales_re
 | `workforce` | none | `worker`, `certification` (expiry flag) |
 | `projects` | contacts, workforce (optional: orders) | `project`, `assignment`, `timesheet`, `acceptance` (berita acara) |
 | `payments` | contacts, invoicing, procurement (optional: currency) | `payment` (+ `payment_allocation`), `withholding` (PPh 23 certificate); foreign-currency `amount_fx`; methods QRIS, VA, e-wallet and a unique `gateway_ref` per gateway payment; hooks `payments.allocate` and `payments.unallocate`; print *Statement* |
+| `bank_statement` | contacts, invoicing, payments | `bank_transaction` (one statement line; money in positive): import `bank_statement_csv` (Tanggal, Keterangan, Masuk, Keluar, Saldo, Rekening; duplicates by file and by row); flow `bank_transaction_suggest` (invoice number in the note, else exactly one open invoice of that amount); confirming a line drafts the `payment` (flow `bank_transaction_confirm`), submitting it marks the line matched, cancelling it unmatched. A statement line never settles an invoice by itself |
 | `procurement` | contacts, catalogue (optional: outlets, currency, stock) | `purchase_request`, `purchase_order`, `goods_receipt`, `vendor_bill` (+ line models): approval above Rp 5.000.000 (purchasing_manager or head_office), foreign-currency `*_fx` totals, print *Pesanan pembelian*, actions `make_po` and `receive` |
 | `stock` | catalogue, outlets | `recipe` (+ line), `stock_move`, `stock_balance`, `stock_transfer` (two steps), `stock_transfer_receipt`, `stock_count`, `stock_adjustment` (+ line models): moving-average cost, recipes, negative stock allowed and flagged; flow `stock_negative_alert` |
 | `outlet_sales` | outlets, catalogue, stock | `outlet_sales` (+ line): daily sales per outlet, submit posts stock through the recipes; imports `moka_item_details` and `daily_form` |
@@ -44,7 +45,7 @@ Every module requires `users`, which holds all roles (`sales_manager`, `sales_re
 | --- | --- | --- |
 | `crm` | contacts, catalogue, pipeline, invoicing, outlets, users | Menu, dashboards `crm_overview` and `sales_overview`, process `lead_to_cash`, WhatsApp connector, home, onboarding |
 | `fnb_cabang` | contacts, catalogue, outlets, users, stock, outlet_sales, procurement, payments, invoicing (no menu entry) | Multi-branch F&B back office: menu groups Penjualan outlet, Stok, Pembelian, Data induk; dashboards `fnb_overview` (home: net sales today and over the period, margin, net by outlet and by day, the "Stok minus" list for head office) and `stock_recap` (stock value by outlet, moves by reason, monthly sales and cost per outlet and in total); roles `head_office` and `outlet_staff`; onboarding (outlets, Moka outlets, raw-material unit) |
-| `jasa_proyek` | contacts, catalogue, users, outlets, tax_id, currency, invoicing, quotation, orders, workforce, projects, payments, procurement | Project-services quote-to-cash: menu groups Penjualan, Proyek, Tenaga kerja, Keuangan, Pembelian, Data induk; process `quote_to_cash`; dashboards `jasa_overview` (home: open, won and lost quotations, invoices issued, outstanding AR, overdue invoices, active projects) and `ar_aging` (outstanding by age bucket, by customer, overdue list); roles `sales_manager`, `finance_manager`, `purchasing_manager`, `project_admin`; onboarding (PKP, business line, number of PTs) |
+| `jasa_proyek` | contacts, catalogue, users, outlets, tax_id, currency, invoicing, quotation, orders, workforce, projects, payments, bank_statement, procurement | Project-services quote-to-cash: menu groups Penjualan, Proyek, Tenaga kerja, Keuangan, Pembelian, Data induk; process `quote_to_cash`; dashboards `jasa_overview` (home: open, won and lost quotations, invoices issued, outstanding AR, overdue invoices, active projects) and `ar_aging` (outstanding by age bucket, by customer, overdue list); roles `sales_manager`, `finance_manager`, `purchasing_manager`, `project_admin`; onboarding (PKP, business line, number of PTs) |
 
 ```
 modules/<m>/module.rk               manifest: name, version, title, requires, optional, hooks

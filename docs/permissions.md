@@ -23,6 +23,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | sales_invoice | all | all | | | | | r |
 | withholding | r p | all | | | | | |
 | invoice_reminder | r c w d e | r c w d e | | | | | r c |
+| bank_transaction | r c w e i | r c w d e i | | | r c w e i | | |
 | payment | all | all | | | r c w s p if `direction == 'pay'` (vendor payments only) | | |
 | purchase_request | | | all | r c w s | all | r c w s | |
 | purchase_order | | r p | all | | all | | |

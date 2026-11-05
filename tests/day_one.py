@@ -1308,6 +1308,9 @@ def statement_csv(rows):
 
 
 def scenario_money_rail(api):
+    if not installed(api, "bank_transaction"):
+        fail("money rail", "bank_statement module not installed on this site")
+        return
     item = services(api)[0]["name"]
     st, cust = api.create("customer", {"customer_name": "PT Contoh Lunas", "phone": "081200001111"})
     check("money rail: create customer with a WhatsApp number", st == 201, cust)
@@ -1354,9 +1357,6 @@ def scenario_money_rail(api):
     check("the same callback again (same gateway_ref) is refused", st in (409, 422), (st, resp))
     st, resp = api.create("payment", dict(body, gateway_ref="", amount=1))
     check("a gateway payment without gateway_ref is refused", st == 422, (st, resp))
-
-    if not installed(api, "bank_transaction"):
-        return
 
     # 3. mutasi: import the statement
     rows = [("06/11/2026", f"TRSF E-BANKING CR {inv_a} PT CONTOH LUNAS", 2_750_000, 0, 12_750_000),
@@ -1601,6 +1601,8 @@ MATRIX = {
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
     "invoice_reminder": {"finance_manager": {"read", "create", "write", "delete", "export"}, "sales_manager": {"read", "create", "write", "delete", "export"},
                          "sales_rep": {"read", "create"}},
+    "bank_transaction": {"finance_manager": {"read", "create", "write", "delete", "export", "import"}, "sales_manager": {"read", "create", "write", "export", "import"},
+                         "head_office": {"read", "create", "write", "export", "import"}},
     "payment": {"finance_manager": _ALL, "sales_manager": _ALL, "head_office": {"read", "create", "write", "submit", "print"}},   # head_office: if direction == 'pay'
     "purchase_request": {"purchasing_manager": _ALL, "project_admin": _RCWS, "head_office": _ALL, "outlet_staff": _RCWS},
     "purchase_order": {"purchasing_manager": _ALL, "finance_manager": _RP, "head_office": _ALL},

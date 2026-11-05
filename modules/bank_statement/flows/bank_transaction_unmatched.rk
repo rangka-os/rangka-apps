@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The payment of a matched line is cancelled: the line goes back to unmatched and can be matched again.
+name: bank_transaction_unmatched
+label: {id: Mutasi kembali belum cocok saat pembayaran dibatalkan}
+on: payment.cancelled
+steps:
+  - {find: bank_transaction, where: name == event.reference && payment == event.name, as: line}
+  - update: line
+    if: line != null
+    set: {status: "'unmatched'", payment: "''"}

@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# Bank statement in a fixed layout: Tanggal (dd/mm/yyyy), Keterangan, Masuk, Keluar, Saldo, Rekening.
+# Bank exports differ by bank and channel (KlikBCA, Livin, BRImo), so each gets its own import once a real export
+# is in hand; until then the owner pastes the bank's rows into this layout (template in the module docs).
+# Same file twice -> duplicate (file hash). Overlapping exports -> only rows whose key is new. Saldo is part of the
+# key: two equal transfers on one day with the same note differ only by the running balance.
+name: bank_statement_csv
+label: {id: Mutasi rekening (CSV), en: Bank statement (CSV)}
+model: bank_transaction
+source: csv
+header_row: 1
+per: org
+key: [Rekening, Tanggal, Keterangan, Masuk, Keluar, Saldo]
+map:
+  account: Rekening
+  date: Tanggal
+  description: Keterangan
+  credit: Masuk
+  debit: Keluar
+  balance: Saldo
