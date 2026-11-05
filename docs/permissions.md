@@ -25,6 +25,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | invoice_reminder | r c w d e | r c w d e | | | | | r c |
 | bank_transaction | r c w e i | r c w d e i | | | r c w e i | | |
 | payment | all | all | | | r c w s p if `direction == 'pay'` (vendor payments only) | | |
+| gateway_ref_claim (written by the payment flows) | r c w e | r c w e | | | r c w | | |
 | purchase_request | | | all | r c w s | all | r c w s | |
 | purchase_order | | r p | all | | all | | |
 | vendor_bill | | r s p | all | | all | | |
