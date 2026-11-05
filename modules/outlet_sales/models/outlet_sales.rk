@@ -28,6 +28,9 @@ fields:
     label: {id: Tanggal}
     required: true
     in_list: true
+  # Set by the import (moka) or left at form. Not read_only: the kernel drops read_only input from imports too, and it
+  # does not enforce read_only_for, so a person who may create outlet_sales can still type source moka (and negative
+  # refund lines). Closing that needs a kernel "set by import only" field; tracked for the kernel.
   - name: source
     type: select
     label: {id: Sumber}
