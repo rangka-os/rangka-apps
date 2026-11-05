@@ -5,6 +5,8 @@
 # Sales Type, Collected By, Served By, Customer, Payment Method, Event Type, Reason of Refund) come from code that reads
 # real exports; columns are matched by name, so their order does not matter. Dates are dd-mm-yyyy (rangka-os #32).
 # When a pilot's real export differs, fix the headers here, not in the kernel.
+# One outlet per file (choose it at upload): a row whose Outlet is not that outlet's moka_name is refused, so an All
+# Outlets export or a file uploaded for the wrong outlet cannot land in another outlet's stock.
 # Same file twice -> duplicate (file hash). Overlapping exports -> only rows whose key is new. Records arrive as drafts.
 name: moka_item_details
 label: {id: Penjualan Moka (detail item), en: Moka sales (item details)}
@@ -13,10 +15,11 @@ source: csv
 header_row: 1
 per: outlet
 key: [Date, Receipt Number, Items, Variant, Modifier Applied]
-group: [Date]
+group: [Date, Outlet]
 map:
   date: Date
   source: "='moka'"
+  moka_outlet: Outlet
   note: "='Moka ' + row['Date']"
 lines:
   field: lines

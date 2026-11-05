@@ -2590,6 +2590,7 @@ def scenario_outlet_sales(api):
     eq("imported totals: gross 259.000, discount 16.000, refund 15.000", (sales["gross_total"], sales["discount_total"], sales["refund_total"]), (259_000, 16_000, 15_000))
     eq("imported net_total 228.000 (= Moka's Net Sales)", sales["net_total"], 228_000)
     eq("imported qty_total 12 (the refund line counts -1)", sales["qty_total"], 12)
+    eq("moka_outlet keeps the file's Outlet column", sales["moka_outlet"], "Tahu Contoh - Dago")
     eq("refund line kept as Moka wrote it: qty -1, gross 0, refund 15.000, net -15.000",
        [(l["qty"], l["gross"], l["refund"], l["net"]) for l in sales["lines"] if l["refund"]], [(-1, 0, 15_000, -15_000)])
     eq("imported lines match items by sku", [l["item"] for l in sales["lines"]], ["BRG-0007", "BRG-0008", "BRG-0009", "BRG-0008", "BRG-0007", "BRG-0007", "BRG-0010"])
@@ -2610,9 +2611,29 @@ def scenario_outlet_sales(api):
     if st == 200:
         got = sorted((r["date"], len(r["lines"])) for r in (api.get("outlet_sales", n) for n in c3["records"]))
         eq("new records: 02/11 with 2 lines, 03/11 with 1 line", got, [("2026-11-02", 2), ("2026-11-03", 1)])
-    # the same Moka file for another outlet is not a duplicate (scope is per outlet)
-    st, pvb = preview(hq, "moka_item_details", "moka-sample.csv", moka, BRAGA)
-    check("the same file for another outlet is not a duplicate", st == 200 and pvb["duplicate"] is False and pvb["skipped"] == 0 and pvb["errors"] == [], (st, pvb))
+    # the Outlet column must be the chosen outlet's moka_name: Dago's file uploaded for Braga is refused
+    wrong = "beda dengan Nama outlet di Moka"
+    st, pvw = preview(hq, "moka_item_details", "moka-sample.csv", moka, BRAGA)
+    check("Dago's Moka file uploaded for Braga: preview error 'Kolom Outlet ... beda dengan Nama outlet di Moka'",
+          st == 200 and pvw["duplicate"] is False and any(wrong in e["message"] for e in pvw["errors"]), (st, pvw))
+    if st == 200:
+        st, c = hq.call("POST", f"/api/v1/imports/moka_item_details/{pvw['id']}/commit")
+        check("the wrong-outlet file cannot be committed: 422 import_errors", st == 422 and c["error"]["code"] == "import_errors", (st, c))
+    # an All Outlets export (Dago and Braga rows) for Dago: the Braga rows are refused, nothing is committed
+    braga = read_sample("moka-sample-braga.csv")
+    allout = moka + braga.split(b"\n", 1)[1]
+    st, pva = preview(hq, "moka_item_details", "all-outlets.csv", allout, DAGO)
+    check("All Outlets file for Dago: Dago's 7 rows skipped (already imported), Braga's 7 rows grouped apart and refused",
+          st == 200 and pva["skipped"] == 7 and len(pva["preview"]) == 1 and any(wrong in e["message"] for e in pva["errors"]), (st, pva))
+    if st == 200:
+        st, c = hq.call("POST", f"/api/v1/imports/moka_item_details/{pva['id']}/commit")
+        check("the All Outlets file cannot be committed for Dago: 422 import_errors", st == 422 and c["error"]["code"] == "import_errors", (st, c))
+    # an outlet without moka_name (head office) refuses any Moka file
+    st, pvh = preview(hq, "moka_item_details", "moka-sample.csv", moka, "OUT-01")
+    check("outlet without Nama outlet di Moka (head office): the Moka file is refused", st == 200 and any(wrong in e["message"] for e in pvh["errors"]), (st, pvh))
+    # Braga's own export: no errors (used below for the negative-stock checks)
+    st, pvb = preview(hq, "moka_item_details", "moka-sample-braga.csv", braga, BRAGA)
+    check("Braga's own Moka file for Braga: no errors, not a duplicate", st == 200 and pvb["duplicate"] is False and pvb["skipped"] == 0 and pvb["errors"] == [], (st, pvb))
 
     # submit: stock moves through the recipes, cogs, margin
     sn = submit_doc(api, "outlet_sales", sales["name"], "submit the imported sales record")
