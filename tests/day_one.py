@@ -2677,6 +2677,8 @@ def scenario_outlet_sales(api):
     check("outlet_sales without an outlet -> 422", st == 422, (st, resp))
     st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": -1, "gross": 0}]})
     check("a negative qty without a refund -> 422 'hanya boleh negatif di baris retur'", st == 422 and any("hanya boleh negatif di baris retur" in x for x in messages(resp)), (st, resp))
+    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 1}]})
+    check("a negative qty with a refund on a daily form (not Moka) -> 422", st == 422 and any("hanya boleh negatif di baris retur" in x for x in messages(resp)), (st, resp))
     st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": []})
     if st == 201:
         fail("min_rows 1: an outlet_sales without lines is refused", "201: the kernel saved it")

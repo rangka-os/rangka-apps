@@ -80,16 +80,16 @@ fields:
 rules:
   - name: qty_not_negative
     on: save
-    check: "lines.map(l, l.qty < 0 && l.refund == 0 ? 1 : 0).sum() == 0"
-    message: {id: Jumlah terjual hanya boleh negatif di baris retur}
+    check: "lines.map(l, l.qty < 0 && (l.refund == 0 || source != 'moka') ? 1 : 0).sum() == 0"
+    message: {id: Jumlah terjual hanya boleh negatif di baris retur dari Moka}
   - name: discount_within_gross
     on: save
     check: "lines.map(l, l.discount > l.gross ? 1 : 0).sum() == 0"
     message: {id: Diskon tidak boleh melebihi penjualan kotor}
   - name: net_not_negative
     on: save
-    check: "lines.map(l, l.net < 0 && l.refund == 0 ? 1 : 0).sum() == 0"
-    message: {id: Penjualan bersih per baris hanya boleh negatif di baris retur}
+    check: "lines.map(l, l.net < 0 && (l.refund == 0 || source != 'moka') ? 1 : 0).sum() == 0"
+    message: {id: Penjualan bersih per baris hanya boleh negatif di baris retur dari Moka}
 views:
   list:
     columns: [name, outlet, date, source, status, net_total, cogs_total, margin]
