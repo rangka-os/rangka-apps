@@ -37,3 +37,9 @@ fields:
     type: check
     label: {id: Aktif}
     default: 'true'
+  # Moka's Item Details export names the outlet in its Outlet column; outlet_sales checks each Moka file against it.
+  - name: moka_name
+    type: data
+    label: {id: Nama outlet di Moka}
+    help: {id: 'Persis seperti kolom Outlet di ekspor Moka, misalnya "Tahu Contoh - Dago". Kosongkan kalau outlet ini tidak pakai Moka'}
+    depends_on: app_installed('outlet_sales')

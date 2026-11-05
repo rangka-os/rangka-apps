@@ -44,6 +44,11 @@ fields:
   - name: note
     type: data
     label: {id: Catatan}
+  # The Outlet column of the Moka file this record came from; must equal the chosen outlet's moka_name.
+  - name: moka_outlet
+    type: data
+    label: {id: Outlet di file Moka}
+    depends_on: source == 'moka'
   # The Moka import key gained Time (two partial refunds of one item on one receipt). Keys stored before that never
   # match the new key, so an overlapping export re-imports rows of a day already imported. key_version is 2 on every
   # record the current import writes; flow moka_legacy_key_overlap marks a new record whose outlet and day already have
@@ -96,6 +101,10 @@ fields:
     compute: net_total - cogs_total
     in_list: true
 rules:
+  - name: moka_outlet_matches
+    on: save
+    check: "source != 'moka' || moka_outlet == outlet.moka_name"
+    message: {id: 'Kolom Outlet di file Moka beda dengan Nama outlet di Moka pada outlet ini. Ekspor per outlet, atau cek data outlet'}
   - name: qty_not_negative
     on: save
     check: "lines.map(l, l.qty < 0 && (l.refund == 0 || source != 'moka') ? 1 : 0).sum() == 0"
