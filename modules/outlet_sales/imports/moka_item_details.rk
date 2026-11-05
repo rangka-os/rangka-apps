@@ -7,7 +7,8 @@
 # When a pilot's real export differs, fix the headers here, not in the kernel.
 # One outlet per file (choose it at upload): a row whose Outlet is not that outlet's moka_name is refused, so an All
 # Outlets export or a file uploaded for the wrong outlet cannot land in another outlet's stock.
-# Time is in the key: two partial refunds of one item on one receipt are two rows, not a "Baris ganda".
+# Time is in the key: two partial refunds of one item on one receipt are two rows, not a "Baris ganda". Keys stored
+# before Time joined do not match, so a day imported earlier is held at submit (outlet_sales.legacy_key_reviewed).
 # Same file twice -> duplicate (file hash). Overlapping exports -> only rows whose key is new. Records arrive as drafts.
 name: moka_item_details
 label: {id: Penjualan Moka (detail item), en: Moka sales (item details)}
@@ -21,6 +22,7 @@ map:
   date: Date
   source: "='moka'"
   moka_outlet: Outlet
+  key_version: "=2"
   note: "='Moka ' + row['Date']"
 lines:
   field: lines

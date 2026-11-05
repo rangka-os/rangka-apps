@@ -15,7 +15,9 @@ on_submit: [stock.post_moves]
 on_cancel: [stock.reverse_moves]
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, import: true, print: true}
-  - {role: outlet_staff, read: true, create: true, write: true, submit: true}
+  # Outlet staff keep the daily form; a source moka record (negative refund lines allowed) is the importer's, head office.
+  - {role: outlet_staff, read: true, create: true, write: true, submit: true, if: source != 'moka'}
+  - {role: outlet_staff, read: true}
 fields:
   - name: outlet
     type: link
@@ -28,9 +30,8 @@ fields:
     label: {id: Tanggal}
     required: true
     in_list: true
-  # Set by the import (moka) or left at form. Not read_only: the kernel drops read_only input from imports too, and it
-  # does not enforce read_only_for, so a person who may create outlet_sales can still type source moka (and negative
-  # refund lines). Closing that needs a kernel "set by import only" field; tracked for the kernel.
+  # Set by the import (moka) or left at form. Not read_only: the kernel drops read_only input from imports too. The
+  # outlet_staff permission holds only while source != 'moka', so only head office (who imports) can write a Moka record.
   - name: source
     type: select
     label: {id: Sumber}
@@ -48,6 +49,20 @@ fields:
     type: data
     label: {id: Outlet di file Moka}
     depends_on: source == 'moka'
+  # The Moka import key gained Time (two partial refunds of one item on one receipt). Keys stored before that never
+  # match the new key, so an overlapping export re-imports rows of a day already imported. key_version is 2 on every
+  # record the current import writes; flow moka_legacy_key_overlap marks a new record whose outlet and day already have
+  # a live Moka record without it, and rule legacy_key_reviewed holds its submit until head office has removed the
+  # repeated lines and ticks legacy_key_checked.
+  - {name: key_version, type: int, label: {id: Versi kunci impor}, hidden: true}
+  - name: legacy_key_overlap
+    type: check
+    label: {id: Tumpang tindih impor lama}
+    read_only: true
+    help: {id: 'Tanggal ini sudah punya penjualan Moka yang diimpor sebelum pembaruan; baris yang sama bisa masuk lagi'}
+  - name: legacy_key_checked
+    type: check
+    label: {id: Baris ganda sudah dihapus}
   - name: lines
     type: table
     of: outlet_sales_line
@@ -102,6 +117,10 @@ rules:
     on: save
     check: "lines.map(l, l.net < 0 && (l.refund == 0 || source != 'moka') ? 1 : 0).sum() == 0"
     message: {id: Penjualan bersih per baris hanya boleh negatif di baris retur dari Moka}
+  - name: legacy_key_reviewed
+    on: submit
+    check: "!legacy_key_overlap || legacy_key_checked"
+    message: {id: 'Tanggal ini sudah diimpor sebelum pembaruan: hapus baris yang terulang, lalu centang Baris ganda sudah dihapus'}
 views:
   list:
     columns: [name, outlet, date, source, status, net_total, cogs_total, margin]
@@ -112,7 +131,7 @@ views:
       - section: {id: Penjualan}
         columns:
           - [outlet, date, source]
-          - [note]
+          - [note, legacy_key_overlap, legacy_key_checked]
       - section: {id: Barang terjual}
         fields: [lines]
       - section: {id: Ringkasan}
