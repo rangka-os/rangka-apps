@@ -9,8 +9,11 @@ title_field: title
 # acceptance report is submitted (trigger acceptance), -> invoiced when an invoice linked to it is submitted, back to
 # ready when that invoice is cancelled. A date-triggered milestone stays planned and shows as due from its due_date.
 permissions:
-  - {role: project_admin, read: true, create: true, write: true, delete: true, export: true, import: true}
-  - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true, import: true}
+  # No delete: there is no delete event for flows, so project.scheduled_amount would keep a deleted milestone; and an
+  # invoiced milestone must keep its invoice link. Create and import are the project admin's (the schedule flows update
+  # the project, which only project admins may write); finance writes the state through the invoice flows.
+  - {role: project_admin, read: true, create: true, write: true, export: true, import: true}
+  - {role: finance_manager, read: true, write: true, export: true}
   - {role: sales_manager, read: true, write: true}
 fields:
   - name: project

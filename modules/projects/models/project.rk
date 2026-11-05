@@ -83,7 +83,19 @@ fields:
     type: currency
     label: {id: Nilai kontrak (DPP)}
     default: '0'
+  # The sum of this project's billing milestones, kept by flows when a milestone is created or its amount changes
+  # (milestones cannot be deleted by people, so the sum never misses one). Rule schedule_within_contract keeps it at or
+  # under the contract value, which refuses a milestone that would overfill the schedule and a contract lowered below it.
+  - name: scheduled_amount
+    type: currency
+    label: {id: Nilai termin terjadwal}
+    read_only: true
+    default: '0'
 rules:
+  - name: schedule_within_contract
+    on: save
+    check: contract_value == 0 || scheduled_amount <= contract_value
+    message: {id: Jumlah termin melebihi nilai kontrak}
   - name: contract_value_not_negative
     on: save
     check: contract_value >= 0
