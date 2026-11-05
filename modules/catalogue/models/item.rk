@@ -9,7 +9,7 @@ permissions:
   - {role: finance_manager, read: true, create: true, write: true, print: true}
   - {role: purchasing_manager, read: true, create: true, write: true, print: true}
   - {role: project_admin, read: true, create: true, write: true, print: true}
-  - {role: head_office, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, import: true, print: true}
   - {role: outlet_staff, read: true}
   - {role: sales_rep, read: true}
 fields:
@@ -23,6 +23,26 @@ fields:
     label: {id: SKU}
     in_list: true
     unique: true
+  # A shop scans or types the barcode (EAN-13 / PLU) printed on the pack; a POS export usually carries it as the SKU.
+  - name: barcode
+    type: data
+    label: {id: Barcode}
+    unique: true
+  - name: category
+    type: link
+    to: item_category
+    label: {id: Kategori}
+    in_list: true
+  # Variants are separate items (every Indonesian POS exports a variant as its own SKU). Items of one product share
+  # variant_group (e.g. KAOS-POLOS) and differ in variant_label (e.g. "M / Hitam"); no size x colour generator.
+  - name: variant_group
+    type: data
+    label: {id: Grup varian}
+    help: {id: 'Kode yang sama untuk semua varian satu produk, misalnya KAOS-POLOS'}
+  - name: variant_label
+    type: data
+    label: {id: Varian}
+    help: {id: 'Misalnya "M / Hitam" atau "600 ml"'}
   - name: kind
     type: select
     label: {id: Jenis}
@@ -55,6 +75,19 @@ fields:
     type: float
     label: {id: Stok}
     in_list: true
+  # Consignment in (barang titipan): the consignor still owns the goods; the shop pays consignment_cost per unit sold
+  # in the monthly settlement (module consignment). Empty consignor = the shop's own goods.
+  - name: consignor
+    type: link
+    to: vendor
+    label: {id: Penitip}
+    help: {id: 'Isi kalau barang ini titipan. Kosongkan untuk barang milik sendiri'}
+    depends_on: app_installed('consignment')
+  - name: consignment_cost
+    type: currency
+    label: {id: Harga setor titipan}
+    help: {id: 'Yang dibayar ke penitip per barang terjual'}
+    depends_on: app_installed('consignment') && consignor != ''
   - name: notes
     type: text
     label: {id: Catatan}
