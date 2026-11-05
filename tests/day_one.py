@@ -1388,6 +1388,18 @@ def scenario_money_rail(api):
     st, resp = api.create("payment", body2)
     check("but not twice", st in (409, 422), (st, resp))
 
+    # the WhatsApp print never bills an invoice that is not open
+    inv_x = submitted_invoice(700_000, posting_date="2026-01-01", due_date=past)
+    st, resp = api.verb("sales_invoice", inv_x, "cancel")
+    check("cancel an overdue invoice", st == 200, (st, resp))
+    st, page, _ = api.print_html("sales_invoice", inv_x, "sales_invoice_whatsapp")
+    check("WhatsApp print of a cancelled invoice: no reminder, no amount, no wa.me link",
+          st == 200 and "wa.me" not in page and "mengingatkan" not in page and "700.000" not in page and "dibatalkan" in page, (st, page[:800]))
+    st, dr = api.create("sales_invoice", invoice_body(customer, item, rate=650_000))
+    st, page, _ = api.print_html("sales_invoice", dr["name"], "sales_invoice_whatsapp")
+    check("WhatsApp print of a draft invoice: no bill, no wa.me link",
+          st == 200 and "wa.me" not in page and "650.000" not in page and "belum diajukan" in page, (st, page[:800]))
+
     if not installed(api, "bank_transaction"):
         return
 

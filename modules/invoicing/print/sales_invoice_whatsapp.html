@@ -10,7 +10,16 @@
 {{- $bank := "" -}}{{- with .Letterhead.bank -}}{{- with index . 0 -}}{{- $bank = printf "%s %s a.n. %s" .bank .account .holder -}}{{- end -}}{{- end -}}
 {{- $late := overdue .Doc.due_date -}}
 {{- $msg := "" -}}
-{{- if not .Doc.outstanding -}}
+{{- $open := eq (printf "%v" .Doc.docstatus) "1" -}}
+{{- $owed := gt (printf "%v" .Doc.outstanding | len) 0 -}}{{- if $owed -}}{{- $owed = ne (slice (printf "%v" .Doc.outstanding) 0 1) "-" -}}{{- end -}}
+{{- if not $open -}}
+{{- $p = "" -}}
+{{- if eq (printf "%v" .Doc.docstatus) "2" -}}
+{{- $msg = printf "Faktur %s sudah dibatalkan. Tidak ada tagihan yang dikirim untuk faktur ini." .Doc.name -}}
+{{- else -}}
+{{- $msg = printf "Faktur %s belum diajukan. Ajukan dulu sebelum menagih pelanggan." .Doc.name -}}
+{{- end -}}
+{{- else if or (not .Doc.outstanding) (not $owed) -}}
 {{- $msg = printf "Halo %s, terima kasih. Pembayaran faktur %s sudah kami terima dan faktur ini sudah lunas.\n\n%s" $c.customer_name .Doc.name .Letterhead.legal_name -}}
 {{- else if gt $late 0 -}}
 {{- $msg = printf "Halo %s, kami mengingatkan faktur %s sebesar %s sudah lewat %d hari dari jatuh tempo (%s).\n\nPembayaran ke %s. Mohon tulis %s di berita transfer.\n\nAbaikan pesan ini kalau sudah membayar. Terima kasih.\n%s" $c.customer_name .Doc.name (rupiah .Doc.outstanding) $late (date .Doc.due_date) $bank .Doc.name .Letterhead.legal_name -}}
@@ -18,7 +27,7 @@
 {{- $msg = printf "Halo %s, berikut tagihan %s no. %s sebesar %s, jatuh tempo %s.\n\nPembayaran ke %s. Mohon tulis %s di berita transfer.\n\nTerima kasih." $c.customer_name .Letterhead.legal_name .Doc.name (rupiah .Doc.outstanding) (date .Doc.due_date) $bank .Doc.name -}}
 {{- end -}}
 <h1>Pesan tagihan WhatsApp</h1>
-<p>Untuk: <strong>{{$c.customer_name}}</strong>{{if $p}} · +{{$p}}{{else}} · <em>nomor WhatsApp pelanggan belum diisi</em>{{end}}</p>
+<p>Untuk: <strong>{{$c.customer_name}}</strong>{{if $p}} · +{{$p}}{{else if $open}} · <em>nomor WhatsApp pelanggan belum diisi</em>{{end}}</p>
 <div class="msg">{{$msg}}</div>
 {{if $p}}<p><a class="wa" href="https://wa.me/{{$p}}?text={{$msg}}">Buka di WhatsApp</a></p>{{end}}
 <p class="muted">Setelah terkirim, catat di Pengingat tagihan supaya tidak menagih dua kali di hari yang sama.</p>
