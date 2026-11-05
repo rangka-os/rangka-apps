@@ -40,10 +40,10 @@ fields:
     label: {id: Proyek}
     default: billing_milestone.project
   # The billing milestone this invoice bills (projects module); flows mark it invoiced on submit, ready on cancel.
-  # milestone_claim (unique) holds the milestone from the invoice's first save: one invoice per milestone, draft or
-  # submitted, and the database refuses a second one even when both are made at the same moment. The claim stays on a
-  # cancelled invoice (the kernel does not recompute on cancel), so billing a milestone again after a cancel is done by
-  # amending that invoice: an amendment claims milestone:<cancelled invoice>, and only one amendment can.
+  # milestone_claim (unique) = milestone:<its bill_token> from the invoice's first save: one invoice per milestone, draft
+  # or submitted, and the database refuses a second one even when both are made at the same moment (an amendment
+  # re-pointed at the milestone included). A cancelled invoice keeps its claim (the kernel does not recompute on
+  # cancel); the cancel flow sets the milestone's bill_token to that invoice, so the next invoice claims a new key.
   - name: billing_milestone
     type: link
     to: billing_milestone
@@ -53,7 +53,14 @@ fields:
     label: {id: Faktur untuk termin ini}
     hidden: true
     unique: true
-    compute: "billing_milestone == '' ? '' : (amended_from == '' ? billing_milestone : billing_milestone + ':' + amended_from)"
+    compute: "billing_milestone == '' ? '' : billing_milestone + ':' + billing_milestone.bill_token"
+  # True on every invoice saved since project.billed_amount exists, so the cancel flow only takes off what a submit
+  # added (an invoice submitted before the upgrade was never counted).
+  - name: project_counted
+    type: check
+    label: {id: Dihitung di tagihan proyek}
+    hidden: true
+    compute: 'true'
   - name: acceptance
     type: link
     to: acceptance
@@ -241,6 +248,10 @@ rules:
     on: save
     check: billing_milestone == '' || dpp <= billing_milestone.amount
     message: {id: DPP faktur tidak boleh melebihi nilai termin}
+  - name: retainer_invoice_within_fee
+    on: save
+    check: project == '' || project.billing_model != 'retainer' || project.contract_value == 0 || dpp <= project.contract_value
+    message: {id: Faktur retainer tidak boleh melebihi fee bulanan (nilai kontrak)}
   - name: milestone_ready_to_bill
     on: save
     check: billing_milestone == '' || billing_milestone.trigger != 'acceptance' || billing_milestone.state == 'ready' || (billing_milestone.sales_invoice != '' && billing_milestone.sales_invoice == name)
