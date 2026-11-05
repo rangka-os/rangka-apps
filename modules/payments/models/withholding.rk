@@ -38,8 +38,9 @@ fields:
   - name: dpp
     type: currency
     label: {id: DPP}
-    # The invoice's PPh 23 base: its dpp without the lines kept out of PPh 23 (wages, reimbursed costs).
-    default: sales_invoice.pph23_dpp
+    # The invoice's PPh 23 base (its dpp without the lines kept out of PPh 23). An invoice submitted before that field
+    # existed has PPh 23 but an empty base: its dpp was the base then.
+    default: "sales_invoice.pph23_amount > 0 && sales_invoice.pph23_dpp == 0 ? sales_invoice.dpp : sales_invoice.pph23_dpp"
   - name: rate
     type: percent
     label: {id: Tarif}

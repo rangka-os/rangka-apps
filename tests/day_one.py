@@ -1400,12 +1400,38 @@ def scenario_billing_milestones(api):
     check("finance cancels the milestone invoice", st == 200, (st, resp))
     m2 = api.get("billing_milestone", ms[2]["name"])
     eq("cancel reopens milestone 2: ready, no invoice", (m2["state"], m2["sales_invoice"]), ("ready", ""))
+    st, resp = fm.create("sales_invoice", dict(body, items=[{"item": ndt, "qty": 1, "rate": 45_000_000}]))
+    check("an invoice above the milestone (45.000.000 > 40.000.000) -> 422 'melebihi nilai termin'", st == 422 and any("melebihi nilai termin" in m for m in messages(resp)), (st, resp))
+    st, resp = fm.create("sales_invoice", dict(body, customer="CUST-0002"))
+    check("another customer than the milestone's -> 422", st == 422, (st, resp))
+    # the report is cancelled and amended: the amended report takes over milestone 2, milestone 3 stays planned
+    st, resp = pa.verb("acceptance", ban, "cancel")
+    check("project admin cancels the acceptance report", st == 200, (st, resp))
+    m2 = api.get("billing_milestone", ms[2]["name"])
+    eq("cancelled report gives milestone 2 back: planned, no report", (m2["state"], m2["acceptance"]), ("planned", ""))
+    st, am = pa.verb("acceptance", ban, "amend")
+    amn = (am or {}).get("name") or ((am or {}).get("open") or {}).get("name")
+    if check("amend the report", st in (200, 201) and amn, (st, am)):
+        ban2 = submit_doc(pa, "acceptance", amn, "submit the amended report")
+        m2, m3 = api.get("billing_milestone", ms[2]["name"]), api.get("billing_milestone", ms[3]["name"])
+        eq("amended report: milestone 2 ready again with it, milestone 3 still planned", (m2["state"], m2["acceptance"], m3["state"]), ("ready", ban2, "planned"))
+        # the audit case: milestone 2 is invoiced, then its report is cancelled and amended -> milestone 3 must not move
+        st, inv2 = fm.create("sales_invoice", body)
+        inv2n = submit_doc(fm, "sales_invoice", inv2["name"], "finance invoices milestone 2 again") if st == 201 else None
+        st, resp = pa.verb("acceptance", ban2, "cancel")
+        m2 = api.get("billing_milestone", ms[2]["name"])
+        eq("cancelling the report of an invoiced milestone keeps it invoiced", (m2["state"], m2["sales_invoice"]), ("invoiced", inv2n))
+        st, am = pa.verb("acceptance", ban2, "amend")
+        amn = (am or {}).get("name") or ((am or {}).get("open") or {}).get("name")
+        ban3 = submit_doc(pa, "acceptance", amn, "submit the second amendment") if amn else None
+        m2, m3 = api.get("billing_milestone", ms[2]["name"]), api.get("billing_milestone", ms[3]["name"])
+        eq("second amendment takes over invoiced milestone 2; milestone 3 stays planned", (m2["state"], m2["acceptance"], m3["state"]), ("invoiced", ban3, "planned"))
 
     # monthly retainers from a sheet
     sheet = ("Proyek,Urutan,Judul,Jenis,Nominal,Jatuh tempo,Periode dari,Periode sampai\n"
-             f"{p},11,Retainer November,retainer,15000000,30-11-2026,01-11-2026,30-11-2026\n"
-             f"{p},12,Retainer Desember,retainer,15000000,31-12-2026,01-12-2026,31-12-2026\n"
-             f"{p},13,Retainer Januari,retainer,15000000,31-01-2027,01-01-2027,31-01-2027\n").encode()
+             f"{p},11,Retainer November,retainer,15000000,30/11/2026,01/11/2026,30/11/2026\n"
+             f"{p},12,Retainer Desember,retainer,15000000,31/12/2026,01/12/2026,31/12/2026\n"
+             f"{p},13,Retainer Januari,retainer,15000000,31/01/2027,01/01/2027,31/01/2027\n").encode()
     st, pv = fm.upload("/api/v1/imports/billing_milestone", {}, "retainer.csv", sheet)
     if check("retainer sheet: preview 3 rows, no errors", st == 200 and pv.get("rows") == 3 and pv.get("errors") == [], (st, pv)):
         st, c = fm.call("POST", f"/api/v1/imports/billing_milestone/{pv['id']}/commit")
@@ -1432,10 +1458,10 @@ def scenario_project_costs(api):
         submit_doc(api, "project_expense", ex["name"], "submit the expense")
     st, own = api.create("project_expense", {"project": p, "category": "travel", "description": "Bensin", "amount": 300_000})
     eq("an expense not billed on: rebill_amount 0", own.get("rebill_amount"), 0)
-    # the re-billed line stays out of PPh 23 (pph23_base off)
+    # the re-billed line stays out of PPh 23 (pph23_exclude)
     st, inv = api.create("sales_invoice", {"customer": customer, "project": p, "pph23_applies": True, "items": [
         {"item": ndt, "qty": 1, "rate": 20_000_000, "description": "Jasa audit tahap 1"},
-        {"item": ndt, "qty": 1, "rate": 2_200_000, "description": "Penggantian biaya hotel", "pph23_base": False}]})
+        {"item": ndt, "qty": 1, "rate": 2_200_000, "description": "Penggantian biaya hotel", "pph23_exclude": True}]})
     if check("invoice with the fee and the re-billed hotel", st == 201, (st, inv)):
         eq("PPh 23 base excludes the re-billed 2.200.000: base 20.000.000, PPh 23 400.000", (inv["pph23_dpp"], inv["pph23_amount"]), (20_000_000, 400_000))
         st, upd = api.call("PATCH", f"/api/v1/r/project_expense/{Api.q(own['name'])}", {"rebill_invoice": inv["name"]})
@@ -2041,26 +2067,39 @@ def scenario_tax_jasa(api):
     check("submit the PKP invoice", st == 200, resp)
     stored = api.get("sales_invoice", resp.get("name", inv["name"]))
     eq("a submitted invoice keeps its stored tax_rate, DPP ratio and ppn", (stored["tax_rate"], stored["dpp_num"], stored["dpp_den"], stored["ppn"]), (12, 11, 12, 1_100_000))
-    # manpower: wages on their own line are not PPh 23 base, the management fee is (pph23_base per line)
+    # manpower: wages on their own line are not PPh 23 base, the management fee is (pph23_exclude per line)
     st, mp = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "items": [
-        {"item": ndt, "qty": 1, "rate": 10_000_000, "description": "Gaji tenaga kerja", "pph23_base": False},
+        {"item": ndt, "qty": 1, "rate": 10_000_000, "description": "Gaji tenaga kerja", "pph23_exclude": True},
         {"item": ndt, "qty": 1, "rate": 1_000_000, "description": "Management fee"}]})
     check("manpower invoice (wages 10.000.000 untaxed for PPh 23, fee 1.000.000) created", st == 201, (st, mp))
     if st == 201:
         eq("manpower invoice: dpp 11.000.000, ppn 1.210.000, grand_total 12.210.000", (mp["dpp"], mp["ppn"], mp["grand_total"]), (11_000_000, 1_210_000, 12_210_000))
         eq("manpower invoice: PPh 23 base 1.000.000 (the fee), PPh 23 20.000, amount_due 12.190.000", (mp["pph23_dpp"], mp["pph23_amount"], mp["amount_due"]), (1_000_000, 20_000, 12_190_000))
-        eq("lines default to pph23_base true; the wage line keeps false", [l["pph23_base"] in (True, "true") for l in mp["items"]], [False, True])
+        eq("lines default to pph23_exclude false; the wage line keeps true", [l["pph23_exclude"] in (True, "true") for l in mp["items"]], [True, False])
     st, dsc = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "discount_amount": 1_100_000, "items": [
-        {"item": ndt, "qty": 1, "rate": 10_000_000, "pph23_base": False}, {"item": ndt, "qty": 1, "rate": 1_000_000}]})
+        {"item": ndt, "qty": 1, "rate": 10_000_000, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate": 1_000_000}]})
     if st == 201:
         eq("header discount spreads pro rata: dpp 9.900.000, PPh 23 base 900.000, PPh 23 18.000", (dsc["dpp"], dsc["pph23_dpp"], dsc["pph23_amount"]), (9_900_000, 900_000, 18_000))
     else:
         fail("discounted manpower invoice created", (st, dsc))
-    eq("an invoice with every line ticked: PPh 23 base = dpp", inv.get("pph23_dpp"), inv.get("dpp"))
+    eq("an invoice with no line excluded: PPh 23 base = dpp", inv.get("pph23_dpp"), inv.get("dpp"))
+    # down payment: the DP invoice splits wages and fee too; the final invoice deducts the DP's base, so the contract's
+    # total PPh 23 base is the fee (11.000.000 contract: wages 10.000.000, fee 1.000.000; DP 30% = 3.300.000)
+    st, dp = api.create("sales_invoice", {"customer": customer, "kind": "down_payment", "pph23_applies": True, "items": [
+        {"item": ndt, "qty": 1, "rate": 3_000_000, "description": "DP 30% gaji", "pph23_exclude": True},
+        {"item": ndt, "qty": 1, "rate": 300_000, "description": "DP 30% fee"}]})
+    dpn = submit_doc(api, "sales_invoice", dp["name"], "submit the DP invoice (wages and fee split)") if st == 201 else None
+    if dpn:
+        eq("DP invoice PPh 23 base = its fee line 300.000", api.get("sales_invoice", dpn)["pph23_dpp"], 300_000)
+        st, fin = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "dp_invoice": dpn, "down_payment": 3_300_000, "items": [
+            {"item": ndt, "qty": 1, "rate": 10_000_000, "description": "Gaji", "pph23_exclude": True},
+            {"item": ndt, "qty": 1, "rate": 1_000_000, "description": "Fee"}]})
+        if check("final invoice deducting the DP", st == 201, (st, fin)):
+            eq("final invoice base = fee 1.000.000 - DP base 300.000 = 700.000 (contract total = fee)", (fin["pph23_dpp"], fin["pph23_amount"]), (700_000, 14_000))
     if mp.get("name"):
         check_print("manpower invoice print names the PPh 23 base", api, "sales_invoice", mp["name"], "", ["PPh 23 dipotong pelanggan (dasar Rp 1.000.000)", "Rp 20.000", "Rp 12.190.000"])
     st, fx = api.create("sales_invoice", {"customer": customer, "currency": "USD", "exchange_rate": 16000, "pph23_applies": True, "items": [
-        {"item": ndt, "qty": 1, "rate_fx": 900, "pph23_base": False}, {"item": ndt, "qty": 1, "rate_fx": 100}]})
+        {"item": ndt, "qty": 1, "rate_fx": 900, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate_fx": 100}]})
     if st == 201:
         eq("USD invoice 900 untaxed + 100 fee at 16.000: PPh 23 base 1.600.000, PPh 23 32.000, PPh 23 (valas) 2",
            (fx["pph23_dpp"], fx["pph23_amount"], float(fx["pph23_amount_fx"])), (1_600_000, 32_000, 2.0))
