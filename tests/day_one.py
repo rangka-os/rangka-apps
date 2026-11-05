@@ -1615,6 +1615,13 @@ def scenario_permissions(api):
             g = granted(role, model)
             if "create" in g:
                 st, resp = cl.create(model, body)
+                if model == "outlet_sales" and role == "outlet_staff":
+                    # Dago uses Moka (one source per outlet) and Moka records are head office's, so the role is allowed
+                    # to create but the sales-source rule refuses the daily form here: 422 from the rule, not 403
+                    st, resp = cl.create(model, {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
+                    rules = [e.get("rule") for e in (resp or {}).get("errors", [])] if isinstance(resp, dict) else []
+                    check(f"{role} may create {model} (permission passes; the Moka outlet refuses the form by rule)", st == 422 and rules == ["form_only_for_non_moka_outlets"], (st, resp))
+                    continue
                 check(f"{role} may create {model} -> 201", st == 201, (st, resp))
             elif "read" in g:
                 st, resp = cl.call("GET", f"/api/v1/r/{model}?limit=1")
@@ -2723,12 +2730,10 @@ def scenario_outlet_sales(api):
         st, resp = dago.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "source": "moka",
                                                 "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 500_000}]})
         check("outlet staff creating a source moka record with net -500.000 -> 403", st == 403, (st, resp))
-        st, own = dago.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
-        if check("outlet staff creates a daily form record", st == 201 and own["source"] == "form", (st, own)):
-            st, resp = dago.patch("outlet_sales", own["name"], {"source": "moka", "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 900_000}]})
-            check("outlet staff turning it into source moka with net -900.000 -> 403", st == 403, (st, resp))
-            eq("the form record keeps net 15.000 (1 x 15.000)", api.get("outlet_sales", own["name"])["net_total"], 15_000)
-            api.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(own['name'])}")
+        # Dago is a Moka outlet here (one source per outlet), so its staff cannot create a daily form record at all; the
+        # "turn a form record into source moka" probe of #7 has no record to start from
+        st, resp = dago.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
+        check("outlet staff creating a daily form record at a Moka outlet -> 422 by the sales-source rule", st == 422, (st, resp))
         moka_rec = next(iter(api.find("outlet_sales", "source == 'moka' && outlet == '%s'" % DAGO)), None)
         if moka_rec:
             st, resp = dago.call("GET", f"/api/v1/r/outlet_sales/{Api.q(moka_rec['name'])}")
