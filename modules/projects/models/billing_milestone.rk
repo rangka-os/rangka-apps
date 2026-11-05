@@ -75,7 +75,8 @@ fields:
   - name: amount
     type: currency
     label: {id: Nilai termin (DPP)}
-    compute: "basis == 'percent' ? round(contract_snapshot * percent / 100) : amount_fixed"
+    # contract_snapshot is empty on milestones made before it existed: those use the project's contract (frozen once billed).
+    compute: "basis == 'percent' ? round((contract_snapshot > 0 ? contract_snapshot : project.contract_value) * percent / 100) : amount_fixed"
     in_list: true
   - name: trigger
     type: select
@@ -120,19 +121,36 @@ fields:
     in_list: true
   # Set only by flow milestone_lock_on_update, inside an edit that changes the amount or the project of a milestone
   # that is no longer planned; rule edit_locked then refuses that edit.
+  # The last cancelled invoice of this milestone (set by milestone_reopened): part of the invoices' milestone_claim, so
+  # a new invoice after a cancel claims a key the cancelled one does not hold.
+  - name: bill_token
+    type: data
+    label: {id: Faktur batal terakhir}
+    read_only: true
+  # Set by milestone_invoiced when the invoice's DPP is above the milestone's amount (an edit that raced the submit);
+  # rule not_over_billed then refuses the submit.
+  - name: over_billed
+    type: check
+    label: {id: Tertagih melebihi termin}
+    hidden: true
+    default: 'false'
   - name: locked_edit
     type: check
     label: {id: Perubahan terkunci}
     hidden: true
     default: 'false'
 rules:
+  - name: not_over_billed
+    on: save
+    check: "!over_billed"
+    message: {id: DPP faktur melebihi nilai termin}
   - name: edit_locked
     on: save
     check: "!locked_edit"
     message: {id: Termin yang sudah siap ditagih atau ditagih tidak bisa diubah nilai atau proyeknya}
   - name: percent_needs_contract
     on: save
-    check: basis != 'percent' || contract_snapshot > 0
+    check: basis != 'percent' || contract_snapshot > 0 || project.contract_value > 0
     message: {id: Termin persen butuh nilai kontrak di proyek}
   - name: retainer_month_within_fee
     on: save
