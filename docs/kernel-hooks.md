@@ -183,7 +183,10 @@ Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill`
   - `stock_adjustment`: `-stock_qty` at the average; reason `waste` gives move reason `waste`, anything else `adjustment`.
   - `outlet_sales`: per line, the active `recipe` of the item (the most recently modified if several), each `recipe_line` consumes `line.qty x recipe_line.qty / yield_qty`
     of its material (reason `sale`); with no recipe a good, material or product consumes itself and a service is skipped. The line `cogs` is the sum of the values consumed and the
-    header `cogs_total` the sum of the lines; `margin` is a compute.
+    header `cogs_total` the sum of the lines; `margin` is a compute. A line with `qty <= 0` (a refund from a POS file) posts nothing, so returned goods stay out of stock.
+- **`stock_balance.last_sale_date`:** every `sale` move out of a balance sets it to the move's `posting_date` when that is later than the stored date (an earlier
+  sale leaves it, a reversal keeps it). Written only when the model has the field, like `last_move`; needs rangka-os `feat/stock-balance-last-sale`. The retail
+  dashboard lists slow movers with `qty > 0 && last_sale_date < today() - duration('30d')`.
 - **Never refuses for lack of stock:** a balance may go below zero. That is the negative-stock exception: the move and the balance carry `negative = true`, and head office
   reads them from a "Stok minus" list (`stock_balance` filtered on `negative`). The alert flow `stock_negative_alert` (`on: stock_move.created`) runs in the writer's transaction
   when the move is created (rangka-os #34); with the move as its `event` it notifies `head_office` with "Stok <item_name> di <outlet_name> minus (<balance_qty>)" (two `find` steps look the names up; the plain record names stand in when a record is not found).
@@ -263,6 +266,10 @@ What the modules need that the kernel does not do yet. "Harness gap" is the chec
 | `avg_cost` is whole rupiah per stock unit (`currency`) | S8e follow-up (stock) | a stock unit of gram would round cheap materials to the rupiah (Rp 12,4/g becomes Rp 12, 3% off); `fnb_cabang` onboarding offers kg, liter and pcs only, grams and sacks are `uom_conversion` packings (`balance_value` stays the exact sum of move values) | none |
 | Conversion hooks drop `currency` and `exchange_rate` (`orders.from_quotation`, `invoicing.from_order`) | S8c follow-up | an order cannot be made from a foreign quotation (rule `quotation_in_rupiah`, 422); foreign invoices are created directly | none (the 422 is checked in `scenario_fx_jasa`) |
 | Prints get `.Links` for top-level link fields only, not for child rows | S3 | line `description` defaults to `item.item_name`, so prints show names; the line unit prints as its `uom` code (e.g. `UOM-004`) until child-row links reach templates | none |
+| `stock_balance.last_sale_date` is written only by a kernel with rangka-os `feat/stock-balance-last-sale` | stock (K-o follow-up) | on an older kernel the slow-mover widgets of `ritel_stock` stay empty (they need a date, never-sold items are not listed) | `GAP` in `scenario_ritel_sales` and `scenario_dashboards_ritel` when no balance has the date |
+| No stock document moves goods back in on a sale return (`qty <= 0` posts nothing) | K-o / K-p (draft contracts 0021, 0022) | retail returns lower net sales but not stock; `ritel_overview` shows returns per day so the count corrects them | none |
+| No hook fills `consignment_settlement` qty sold from the sale moves | K-o | head office types qty sold from the "Titipan terjual" chart; the test checks the chart's numbers equal the POS sales | none |
+| No file export for Coretax (Digunggung XML) | B4 + X6 `coretax_xml` | `ritel_tax` shows the monthly numbers only | none |
 | Imports see only `row` in CEL (no `org`, no `tax`) | S7 | import rules cannot read the PPN rate or the org; the Moka and daily-form imports carry no tax logic | none (S7 is merged: a kernel without imports makes `Moka import: upload, preview, commit, duplicates` fail) |
 
 No row above is a `GAP` line any more: record-event flows (rangka-os #34), `read_only` on child rows, `min_rows` on save and

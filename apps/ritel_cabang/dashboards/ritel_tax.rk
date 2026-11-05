@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: ritel_tax
+label: {id: Rekap pajak bulanan, en: Monthly tax recap}
+default_period: 90
+periods: [30, 90, 365]
+roles: [head_office]
+# Numbers only, from submitted sales. A non-PKP shop pays 0,5% final PPh on turnover (PP 55/2022; an individual's
+# first Rp 500 juta a year is exempt, which this recap does not take off). A PKP shop reports retail sales as
+# Digunggung: the PPN inside net sales per month. The Coretax XML file needs a kernel export and the coretax_xml
+# template (not built).
+widgets:
+  - name: turnover
+    type: number
+    label: {id: Omzet (penjualan bersih)}
+    model: outlet_sales
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    span: 4
+  - name: pph_final_total
+    type: number
+    label: {id: 'PPh final 0,5%'}
+    description: {id: 'Untuk usaha non-PKP; belum dikurangi bebas Rp 500 juta orang pribadi'}
+    model: outlet_sales
+    aggregate: sum
+    field: pph_final
+    filter: docstatus == 1
+    period: date
+    span: 4
+  - name: ppn_total
+    type: number
+    label: {id: PPN Digunggung}
+    description: {id: 'Untuk usaha PKP: PPN di dalam penjualan bersih'}
+    model: outlet_sales
+    aggregate: sum
+    field: ppn_in_sales
+    filter: docstatus == 1
+    period: date
+    span: 4
+  - name: turnover_by_month
+    type: chart
+    chart: bar
+    label: {id: Omzet per bulan}
+    model: outlet_sales
+    group_by: date
+    grain: month
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    span: 4
+  - name: pph_by_month
+    type: chart
+    chart: bar
+    label: {id: PPh final per bulan}
+    model: outlet_sales
+    group_by: date
+    grain: month
+    aggregate: sum
+    field: pph_final
+    filter: docstatus == 1
+    period: date
+    span: 4
+  - name: ppn_by_month
+    type: chart
+    chart: bar
+    label: {id: PPN Digunggung per bulan}
+    model: outlet_sales
+    group_by: date
+    grain: month
+    aggregate: sum
+    field: ppn_in_sales
+    filter: docstatus == 1
+    period: date
+    span: 4

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Day-one integration test against a live kernel (Python stdlib only).
 
-    python3 tests/day_one.py [--site kopi-senja|demo-jasa|demo-fnb] [--strict]
+    python3 tests/day_one.py [--site kopi-senja|demo-jasa|demo-fnb|demo-ritel] [--strict] [--keep]
 
 Starts a throwaway Postgres (rangka-os/kernel/scripts/pgtemp.sh), runs `rangka migrate`, `seed` and
 `serve --dev-open` on a free port, waits for /api/v1/system/status, runs the scenarios of the site, and stops everything.
@@ -89,6 +89,7 @@ SITE_ORGS = {
     "kopi-senja": [(None, "kopi-senja")],
     "demo-jasa": [("pt_contoh_inspeksi", "demo-jasa"), ("cv_contoh_pelatihan", "demo-jasa-pelatihan")],
     "demo-fnb": [("tahu_contoh", "demo-fnb")],
+    "demo-ritel": [("toko_contoh", "demo-ritel")],
 }
 
 
@@ -1464,7 +1465,8 @@ _STOCK_DOC = {"head_office": _ALL, "outlet_staff": _RCWS}
 MATRIX = {
     **{m: _MASTER for m in ("vendor", "uom", "uom_conversion", "price_list", "tax_code", "currency", "exchange_rate", "worker")},
     "customer": dict(_MASTER, sales_rep={"read", "create", "write"}),     # crm.convert_lead makes customers for sales reps
-    "item": dict(_MASTER, sales_rep=_R), "outlet": dict(_MASTER, sales_rep=_R),
+    "item": dict(_MASTER, sales_rep=_R, head_office=_RCWP | {"import"}), "outlet": dict(_MASTER, sales_rep=_R),
+    "item_category": dict(_MASTER, sales_rep=_R, head_office=_RCWP | {"delete"}),
     "user": {r: _R for r in _JASA + ("head_office", "outlet_staff", "sales_rep")},
     "quotation": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
     "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
@@ -1475,7 +1477,7 @@ MATRIX = {
     "purchase_request": {"purchasing_manager": _ALL, "project_admin": _RCWS, "head_office": _ALL, "outlet_staff": _RCWS},
     "purchase_order": {"purchasing_manager": _ALL, "finance_manager": _RP, "head_office": _ALL},
     "vendor_bill": {"purchasing_manager": _ALL, "finance_manager": {"read", "submit", "print"}, "head_office": _ALL},
-    "goods_receipt": {"purchasing_manager": _ALL, "head_office": _ALL, "outlet_staff": _RCWS},
+    "goods_receipt": {"purchasing_manager": _ALL, "head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     "lead": _PIPE, "deal": _PIPE, "activity": _PIPE,
     "recipe": {"head_office": {"read", "create", "write", "delete", "export"}, "outlet_staff": _R},
     "stock_move": {"head_office": {"read", "export"}, "outlet_staff": _R},
@@ -1484,6 +1486,8 @@ MATRIX = {
     "stock_transfer_receipt": {"head_office": _ALL, "outlet_staff": _RCWS | {"cancel"}},
     "stock_count": _STOCK_DOC, "stock_adjustment": _STOCK_DOC,
     "outlet_sales": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
+    "outlet_takings": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
+    "consignment_settlement": {"head_office": _ALL},
 }
 _CHECKED = ("read", "create", "write", "delete", "submit", "cancel", "amend", "export", "import", "print")
 
@@ -1512,6 +1516,7 @@ SITE_MEMBERS = {
     "kopi-senja": [("sm", "sales_manager"), ("sr", "sales_rep")],
     "demo-jasa": [("sm", "sales_manager"), ("fm", "finance_manager"), ("pm", "purchasing_manager"), ("pa", "project_admin")],
     "demo-fnb": [("hq", "head_office"), ("staff_dago", "outlet_staff")],
+    "demo-ritel": [("hq", "head_office"), ("staff_cly", "outlet_staff")],
 }
 
 
@@ -1520,17 +1525,20 @@ def money_bodies(api, site):
     item = {"demo-fnb": "BRG-0001", "demo-jasa": "BRG-0001"}.get(site) or api.list("item")[0]["name"]
     customer = "CUST-0001" if site == "demo-jasa" else (api.list("customer") or [{"name": ""}])[0]["name"]
     vendor = "VND-0002" if site != "kopi-senja" else ""
-    outlet = {"outlet": DAGO} if site == "demo-fnb" else {}
+    outlet = {"outlet": DAGO} if site in ("demo-fnb", "demo-ritel") else {}
     b = {
         "quotation": {"customer": customer, "subject": "Uji izin", "items": [{"item": item, "qty": 1, "rate": 1_000_000}]},
         "customer_order": {"customer": customer, "po_number": "PO-IZIN", "po_date": "2026-11-03", "items": [{"item": item, "qty": 1, "rate": 1_000_000}]},
         "sales_invoice": invoice_body(customer, item),
-        "payment": ({"direction": "pay", "vendor": vendor, "amount": 1_000} if site == "demo-fnb" else {"direction": "receive", "customer": customer, "amount": 1_000}),
+        "payment": ({"direction": "pay", "vendor": vendor, "amount": 1_000} if site in ("demo-fnb", "demo-ritel") else {"direction": "receive", "customer": customer, "amount": 1_000}),
         "purchase_request": dict({"needed_by": "2026-11-30", "items": [{"item": item, "qty": 1, "est_rate": 1_000}]}, **outlet),
         "purchase_order": dict({"vendor": vendor, "items": [{"item": item, "qty": 1, "rate": 1_000}]}, **outlet),
         "vendor_bill": {"vendor": vendor, "bill_no": "IZIN-1", "bill_date": "2026-11-03", "items": [{"item": item, "qty": 1, "rate": 1_000}]},
-        "goods_receipt": {"vendor": vendor, "outlet": DAGO if site == "demo-fnb" else (api.list("outlet") or [{"name": ""}])[0]["name"], "items": [{"item": item, "qty": 1, "rate": 1_000}]},
-        "outlet_sales": {"outlet": DAGO, "date": "2026-11-04", "source": "moka", "moka_outlet": "Tahu Contoh - Dago", "lines": [{"item": "BRG-0007", "qty": 1}]},
+        "goods_receipt": {"vendor": vendor, "outlet": DAGO if site in ("demo-fnb", "demo-ritel") else (api.list("outlet") or [{"name": ""}])[0]["name"], "items": [{"item": item, "qty": 1, "rate": 1_000}]},
+        "outlet_sales": ({"outlet": DAGO, "date": "2026-11-04", "source": "moka", "moka_outlet": "Tahu Contoh - Dago", "lines": [{"item": "BRG-0007", "qty": 1}]} if site != "demo-ritel"
+                         else {"outlet": CLY, "date": "2026-11-04", "source": "file", "lines": [{"item": "BRG-0001", "qty": 1}]}),
+        "outlet_takings": {"outlet": CLY, "date": "2026-11-04", "lines": [{"method": "cash", "expected": 1_000, "received": 1_000}]},
+        "consignment_settlement": {"consignor": "VND-0006", "period_start": "2026-10-01", "period_end": "2026-10-31", "items": [{"item": "BRG-0193", "qty_received": 1, "qty_sold": 1}]},
     }
     return {m: v for m, v in b.items() if installed(api, m)}
 
@@ -2713,6 +2721,409 @@ def scenario_outlet_sales(api):
         check("outlet_sales without lines -> 422", st == 422, (st, resp))
 
 
+# ---------- scenarios: multi-branch retail, Jalur A (demo-ritel): POS files in, stock per outlet, purchasing, consignment
+
+RITEL = os.path.join(ROOT, "examples", "fixtures", "demo-ritel")
+CBR, CLY = "OUT-01", "OUT-02"     # Cibiru imports Moka (and is the head office), Cileunyi Juragan's POS file template
+
+
+def ritel_gen():
+    """examples/fixtures/demo-ritel/generate.py as a module (the fixtures and the POS files of this run)."""
+    import importlib.util
+    if "gen" not in CTX:
+        spec = importlib.util.spec_from_file_location("ritel_generate", os.path.join(RITEL, "generate.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        CTX["gen"] = mod
+    return CTX["gen"]
+
+
+def rows_all(api, model, where="", **q):
+    """Every record of `model` matching `where`, paged by 200."""
+    out, off = [], 0
+    while True:
+        page = api.list(model, limit=200, offset=off, **(dict(filter=where) if where else {}), **q)
+        out += page
+        if len(page) < 200:
+            return out
+        off += 200
+
+
+def import_commit(cl, imp, filename, content, outlet=None, label=""):
+    """Upload -> preview -> commit; returns (preview, commit response) or (preview, None) when the preview has errors."""
+    fields = {"outlet": outlet} if outlet else {}
+    st, pv = cl.upload(f"/api/v1/imports/{imp}", fields, filename, content)
+    if not check(f"{label or imp}: preview without errors", st == 200 and not pv.get("errors"), (st, (pv or {}).get("errors", pv) if isinstance(pv, dict) else pv)):
+        return pv, None
+    st, c = cl.call("POST", f"/api/v1/imports/{imp}/{pv['id']}/commit")
+    check(f"{label or imp}: commit", st == 200, (st, c))
+    return pv, (c if st == 200 else None)
+
+
+def submit_all(api, model, names, label):
+    bad = []
+    for n in names:
+        st, resp = api.verb(model, n, "submit")
+        if st != 200:
+            bad.append((n, st, resp))
+    check(f"{label}: all {len(names)} submitted", not bad, bad[:3])
+
+
+def scenario_ritel_fixtures(api):
+    g = ritel_gen()
+    outlets = {o["name"]: o for o in api.list("outlet")}
+    eq("fixtures: 2 outlets, Cibiru (Moka, head office) and Cileunyi (POS file)",
+       sorted((n, bool(o.get("is_head_office")), o.get("moka_name") or "", o.get("sales_source") or "") for n, o in outlets.items()),
+       [(CBR, True, g.MOKA_NAME, ""), (CLY, False, "", "file")])
+    its = rows_all(api, "item")
+    eq("fixtures: 200 items, 8 of them consigned", (len(its), len([i for i in its if i.get("consignor")])), (200, 8))
+    barcodes = [i["barcode"] for i in its if i.get("barcode")]
+    check("fixtures: 192 barcodes, all distinct, EAN-13 in the in-store range 200-299",
+          len(barcodes) == 192 and len(set(barcodes)) == 192 and all(len(b) == 13 and b[:1] == "2" for b in barcodes), len(barcodes))
+    eq("fixtures: 11 item categories", len(api.list("item_category")), 11)
+    groups = {}
+    for i in its:
+        if i.get("variant_group"):
+            groups.setdefault(i["variant_group"], []).append(i["variant_label"])
+    check("fixtures: variants are items sharing variant_group (MI-KUAH has 4)", sorted(groups.get("MI-KUAH", [])) == ["ayam bawang", "baso", "kari", "soto"], groups.get("MI-KUAH"))
+    st, resp = api.create("item", {"item_name": "Barcode kembar", "stock_uom": "UOM-001", "barcode": barcodes[0]})
+    check("a second item with the same barcode -> 409/422 (barcode is unique)", st in (409, 422), (st, resp))
+
+
+def scenario_ritel_item_master(api):
+    g = ritel_gen()
+    hq = CTX.get("hq") or api
+    pv, c = import_commit(hq, "item_master", "daftar-barang-baru.csv", g.item_master_csv(), label="item list import (6 new items)")
+    if not c:
+        return
+    eq("item list: 6 items created", len(c["records"]), 6)
+    by = {i["sku"]: i for i in rows_all(api, "item", "sku.startsWith('TKC-02')")}
+    kaos = sorted((by[s]["variant_group"], by[s]["variant_label"]) for s in ("TKC-0203", "TKC-0204", "TKC-0205"))
+    eq("item list: three variants of KAOSKAKI (S, M, L)", kaos, [("KAOSKAKI", "L"), ("KAOSKAKI", "M"), ("KAOSKAKI", "S")])
+    eq("item list: category matched by name, uom by name", (by["TKC-0201"]["category"], by["TKC-0201"]["stock_uom"]), ("KTG-001", "UOM-001"))
+    eq("item list: the consigned row gets consignor and consignment_cost", (by["TKC-0206"].get("consignor"), by["TKC-0206"].get("consignment_cost")), ("VND-0008", 11000))
+    eq("item list: an empty Penitip leaves the item the shop's own", by["TKC-0201"].get("consignor") or "", "")
+    st, pv2 = hq.upload("/api/v1/imports/item_master", {}, "daftar-barang-baru.csv", g.item_master_csv())
+    check("the same item list again: duplicate", st == 200 and pv2["duplicate"] is True, (st, pv2))
+    bad = (b"SKU,Barcode,Nama barang,Kategori,Grup varian,Varian,Satuan,Harga jual,Harga pokok,Penitip,Harga setor\n"
+           b"TKC-0299,,Barang uji,Kategori salah,,,Pcs,1000,800,,\n")
+    st, pv3 = hq.upload("/api/v1/imports/item_master", {}, "salah.csv", bad)
+    check("an unknown category is reported per row", st == 200 and any("Kategori salah" in e["message"] for e in pv3["errors"]), (st, pv3))
+
+
+def scenario_ritel_opening_stock(api):
+    g, today = ritel_gen(), kernel_today()
+    CTX["today"] = today
+    hq = CTX.get("hq") or api
+    by = {i["sku"]: i for i in rows_all(api, "item")}
+    for outlet, label in ((CBR, "Cibiru"), (CLY, "Cileunyi")):
+        csv = g.opening_stock_csv(today, outlet)
+        pv, c = import_commit(hq, "opening_stock", f"stok-awal-{label.lower()}.csv", csv, outlet, f"opening stock {label}")
+        if not c:
+            continue
+        eq(f"opening stock {label}: one goods receipt from 'Saldo awal'", (len(c["records"]), pv["preview"][0]["vendor"]), (1, "VND-0001"))
+        gr = api.get("goods_receipt", c["records"][0])
+        want = sum(q * by[s]["standard_cost"] for s, q in g.opening_qty(today, outlet).items())
+        eq(f"opening stock {label}: value = sum qty x cost price to the rupiah", gr["total_value"], want)
+        name = submit_doc(api, "goods_receipt", gr["name"], f"submit opening stock {label}")
+        vals = sum(b["value"] for b in rows_all(api, "stock_balance", f"outlet == '{outlet}'"))
+        eq(f"opening stock {label}: stock value of the outlet = receipt value", vals, want)
+        CTX.setdefault("opening", {})[outlet] = name
+        st, pv2 = hq.upload("/api/v1/imports/opening_stock", {"outlet": outlet}, "lagi.csv", csv)
+        check(f"opening stock {label} uploaded again: duplicate", st == 200 and pv2["duplicate"] is True, (st, pv2.get("duplicate")))
+    eq("'Saldo awal' gets no payable (no vendor_bill)", api.get("vendor", "VND-0001").get("outstanding") or 0, 0)
+    sku = next(iter(g.opening_qty(today, CBR)))
+    item = by[sku]["name"]
+    b = balance(api, CBR, item)
+    eq(f"opening stock: the average cost of {sku} starts at its cost price", b["avg_cost"] if b else None, by[sku]["standard_cost"])
+
+
+def scenario_ritel_consignment_in(api):
+    """The consignors deliver to Cibiru before the sales window: goods receipts without PO, at the consignment cost."""
+    g, today = ritel_gen(), CTX.get("today") or kernel_today()
+    import datetime
+    sold = {}
+    for rows in g.daily_sales(today, CBR).values():
+        for it, q in rows:
+            if it.get("consignor"):
+                sold[it["sku"]] = sold.get(it["sku"], 0) + q
+    CTX["consigned_sold"] = sold
+    by = {i["sku"]: i for i in rows_all(api, "item")}
+    day = (today - datetime.timedelta(days=g.DAYS + 1)).isoformat()
+    for v in g.PENITIP:
+        lines = [{"item": i["name"], "qty": sold.get(i["sku"], 0) + 12, "rate": i["consignment_cost"]} for i in by.values() if i.get("consignor") == v and i["sku"] in sold]
+        st, gr = api.create("goods_receipt", {"vendor": v, "outlet": CBR, "received_on": day, "notes": "Barang titipan", "items": lines})
+        if check(f"consignment in from {v}: goods receipt without PO", st == 201, (st, gr)):
+            submit_doc(api, "goods_receipt", gr["name"], f"submit consignment receipt {v}")
+        eq(f"consignment in from {v}: no payable", api.get("vendor", v).get("outstanding") or 0, 0)
+
+
+def scenario_ritel_sales(api):
+    g, today = ritel_gen(), CTX.get("today") or kernel_today()
+    import datetime
+    hq, staff = CTX.get("hq") or api, CTX.get("staff_cly")
+    moka, posf = g.moka_csv(today), g.pos_file_csv(today)
+    # wrong outlet / wrong source are refused before anything lands
+    st, pv = hq.upload("/api/v1/imports/moka_item_details", {"outlet": CLY}, "moka.csv", moka)
+    check("a Moka file uploaded for Cileunyi (no moka_name) is refused per row", st == 200 and pv["errors"], (st, (pv or {}).get("errors", [])[:1]))
+    st, pv = hq.upload("/api/v1/imports/pos_sales_file", {"outlet": CBR}, "pos.csv", posf)
+    check("a POS file uploaded for Cibiru (a Moka outlet) is refused: one source per outlet",
+          st == 200 and any("Sumber penjualan" in e["message"] for e in pv["errors"]), (st, (pv or {}).get("errors", [])[:1]))
+    if staff is not None:
+        st, pv = staff.upload("/api/v1/imports/pos_sales_file", {"outlet": CLY}, "pos.csv", posf)
+        check("outlet_staff may not import sales -> 403", st == 403, st)
+    t0 = time.time()
+    pv, c = import_commit(hq, "moka_item_details", "moka-item-details-cibiru.csv", moka, CBR, f"Moka Cibiru, {g.DAYS} days")
+    CTX["timing_moka"] = (pv.get("rows"), round(time.time() - t0, 1))
+    if c:
+        eq(f"Moka Cibiru: one draft per day ({g.DAYS})", len(c["records"]), g.DAYS)
+        t0 = time.time()
+        submit_all(api, "outlet_sales", c["records"], "Moka Cibiru")
+        CTX["timing_moka_submit"] = round(time.time() - t0, 1)
+    pv, c = import_commit(hq, "pos_sales_file", "penjualan-file-pos-cileunyi.csv", posf, CLY, f"POS file Cileunyi, {g.DAYS} days")
+    if c:
+        eq(f"POS file Cileunyi: one draft per day ({g.DAYS})", len(c["records"]), g.DAYS)
+        submit_all(api, "outlet_sales", c["records"], "POS file Cileunyi")
+    st, pv = hq.upload("/api/v1/imports/pos_sales_file", {"outlet": CLY}, "lagi.csv", posf)
+    check("the POS file again: duplicate", st == 200 and pv["duplicate"] is True, (st, pv.get("duplicate")))
+    sales = rows_all(api, "outlet_sales", "docstatus == 1")
+    for outlet, label in ((CBR, "Cibiru"), (CLY, "Cileunyi")):
+        want = {d.isoformat(): v for d, v in g.sales_net(today, outlet).items()}
+        got = {}
+        for s in sales:
+            if s["outlet"] == outlet:
+                got[s["date"]] = got.get(s["date"], 0) + s["net_total"]
+        bad = {d: (got.get(d), want[d]) for d in want if got.get(d) != want[d]}
+        check(f"{label}: net sales per day = the POS report to the rupiah, all {len(want)} days", not bad, list(bad.items())[:3])
+    refunds = [s for s in sales if s["refund_total"]]
+    check("refund lines lower net sales (refund_total > 0 on some days)", refunds, len(refunds))
+    # stock: opening - sold, refunds do not come back
+    by = {i["sku"]: i for i in rows_all(api, "item")}
+    sku = max((it for it in g.items() if g.own(it)), key=lambda it: it["_weight"])["sku"]
+    sold = sum(q for rows in g.daily_sales(today, CBR).values() for it, q in rows if it["sku"] == sku)
+    b = balance(api, CBR, by[sku]["name"])
+    eq(f"Cibiru stock of the best seller {sku} = opening - sold", b["qty"] if b else None, g.opening_qty(today, CBR)[sku] - sold)
+    # last sale dates: slow items were last sold more than 30 days ago, never-sold items have none
+    cutoff = (today - datetime.timedelta(days=30)).isoformat()
+    bals = rows_all(api, "stock_balance", f"outlet == '{CBR}'")
+    sku_of = {i["name"]: i["sku"] for i in by.values()}
+    dated = [b for b in bals if b.get("last_sale_date")]
+    if not dated:
+        CTX["no_last_sale"] = True
+        gap("stock_balance.last_sale_date written on sale moves", "rangka-os feat/stock-balance-last-sale", "kernel without the field writer: slow movers stay empty")
+        return
+    late = {sku_of[b["item"]] for b in dated if b["last_sale_date"][:10] < cutoff}
+    check("stock_balance.last_sale_date (kernel): the slow items' last sale is over 30 days ago", g.SLOW <= late, sorted(g.SLOW - late))
+    never = [b for b in bals if sku_of.get(b["item"]) in g.NEVER]
+    check("never-sold items keep an empty last_sale_date", never and all(not b.get("last_sale_date") for b in never), never[:1])
+
+
+def scenario_ritel_loyverse(api):
+    """A third outlet on Loyverse: its export (guessed headers) imports with the refund as a negative line."""
+    g, today = ritel_gen(), CTX.get("today") or kernel_today()
+    hq = CTX.get("hq") or api
+    st, o = api.create("outlet", {"outlet_name": "Toko Contoh Uji Loyverse", "code": "UJI-LOY", "sales_source": "loyverse"})
+    if not check("create a Loyverse outlet", st == 201, (st, o)):
+        return
+    pv, c = import_commit(hq, "loyverse_receipts", "loyverse.csv", g.loyverse_csv(today), o["name"], "Loyverse receipts by item")
+    if not c:
+        return
+    s = api.get("outlet_sales", c["records"][0])
+    a, b = g.items()[0], g.items()[1]
+    eq("Loyverse: source loyverse, 3 lines, the refund as qty -1", (s["source"], len(s["lines"]), sorted(l["qty"] for l in s["lines"])), ("loyverse", 3, [-1, 3, 5]))
+    eq("Loyverse: net sales = sales - discount - refund", s["net_total"], a["rate"] * 3 + b["rate"] * 5 - 500 - a["rate"])
+    st, pv = hq.upload("/api/v1/imports/pos_sales_file", {"outlet": o["name"]}, "pos.csv", g.pos_file_csv(today))
+    check("a POS template file for the Loyverse outlet is refused (one source per outlet)", st == 200 and pv["errors"], st)
+
+
+def scenario_ritel_purchase(api):
+    """PO in cartons to a supplier for Cileunyi, partial receipt, bill, payment."""
+    hq = CTX.get("hq") or api
+    by = {i["sku"]: i for i in rows_all(api, "item")}
+    item = by["TKC-0014"]   # Mi goreng instan original (40 per carton)
+    conv = rows_all(api, "uom_conversion", f"item == '{item['name']}'")
+    if not check("the item has a carton packing", conv, item["name"]):
+        return
+    before = balance(api, CLY, item["name"])
+    st, po = hq.create("purchase_order", {"vendor": "VND-0002", "outlet": CLY, "items": [{"item": item["name"], "qty": 5, "packing": conv[0]["name"], "rate": 108_000}]})
+    if not check("head office orders 5 cartons for Cileunyi", st == 201 and po["grand_total"] == 540_000, (st, po)):
+        return
+    pon = submit_doc(hq, "purchase_order", po["name"], "submit the PO")
+    st, r = hq.action("purchase_order", pon, "receive")
+    check("receive: a draft goods receipt", st == 200 and r.get("open", {}).get("model") == "goods_receipt", (st, r))
+    gr = api.get("goods_receipt", r["open"]["name"])
+    gr["items"][0]["qty"] = 3
+    st, gr2 = hq.patch("goods_receipt", gr["name"], {"items": gr["items"]})
+    grn = submit_doc(hq, "goods_receipt", gr["name"], "submit a partial receipt (3 of 5 cartons)")
+    after = balance(api, CLY, item["name"])
+    eqf("Cileunyi stock +120 pcs (3 cartons x 40)", (after["qty"] if after else 0) - (before["qty"] if before else 0), 120)
+    eq("PO received_pct 60", api.get("purchase_order", pon)["received_pct"], 60)
+    st, vb = hq.create("vendor_bill", {"vendor": "VND-0002", "purchase_order": pon, "goods_receipt": grn, "bill_no": "INV-CDS-0912", "bill_date": (CTX.get("today") or kernel_today()).isoformat(),
+                                       "items": [{"item": item["name"], "qty": 3, "uom": "UOM-004", "rate": 108_000}]})
+    if not check("bill for the 3 cartons", st == 201 and vb["amount_due"] == 324_000, (st, vb)):
+        return
+    vbn = submit_doc(hq, "vendor_bill", vb["name"], "submit the bill")
+    eq("payable to the supplier 324.000", api.get("vendor", "VND-0002")["outstanding"], 324_000)
+    st, p = hq.create("payment", {"direction": "pay", "vendor": "VND-0002", "amount": 324_000, "allocations": [{"vendor_bill": vbn, "amount": 324_000}]})
+    if check("pay the bill", st == 201, (st, p)):
+        submit_doc(hq, "payment", p["name"], "submit the payment")
+    eq("payable back to 0 after the payment", api.get("vendor", "VND-0002")["outstanding"], 0)
+
+
+def scenario_ritel_transfer_count(api):
+    hq, staff = CTX.get("hq") or api, CTX.get("staff_cly")
+    by = {i["sku"]: i for i in rows_all(api, "item")}
+    item = by["TKC-0034"]["name"]
+    b0c, b0l = balance(api, CBR, item), balance(api, CLY, item)
+    st, t = hq.create("stock_transfer", {"from_outlet": CBR, "to_outlet": CLY, "items": [{"item": item, "qty": 24}]})
+    tn = submit_doc(hq, "stock_transfer", t["name"], "transfer 24 pcs Cibiru -> Cileunyi") if st == 201 else None
+    if not tn:
+        return
+    eq("in transit: Cibiru -24, Cileunyi unchanged", (round(balance(api, CBR, item)["qty"] - b0c["qty"], 6), round(balance(api, CLY, item)["qty"] - b0l["qty"], 6)), (-24, 0))
+    cl = staff or hq
+    st, rc = cl.create("stock_transfer_receipt", {"stock_transfer": tn, "outlet": CLY, "items": [{"item": item, "qty": 24}]})
+    if check("Cileunyi staff records the arrival", st == 201, (st, rc)):
+        submit_doc(cl, "stock_transfer_receipt", rc["name"], "submit the transfer receipt")
+    eq("after the receipt: Cileunyi +24", round(balance(api, CLY, item)["qty"] - b0l["qty"], 6), 24)
+    sys_qty = balance(api, CLY, item)["qty"]
+    st, sc = cl.create("stock_count", {"outlet": CLY, "items": [{"item": item, "counted_qty": sys_qty - 2}]})
+    if check("monthly count at Cileunyi (2 short)", st == 201, (st, sc)):
+        scn = submit_doc(cl, "stock_count", sc["name"], "submit the count")
+        line = api.get("stock_count", scn)["items"][0]
+        eq("count: difference -2 posted", (line["system_qty"], line["difference"]), (sys_qty, -2))
+
+
+def scenario_ritel_settlement(api):
+    """Month-end with consignor VND-0006: what sold (read from the sale moves) becomes a draft vendor_bill; the rest goes back."""
+    g, today = ritel_gen(), CTX.get("today") or kernel_today()
+    import datetime
+    hq = CTX.get("hq") or api
+    v = g.PENITIP[0]
+    by = {i["name"]: i for i in rows_all(api, "item", f"consignor == '{v}'")}
+    sold = {}
+    for m in rows_all(api, "stock_move", f"reason == 'sale' && outlet == '{CBR}'"):
+        if m["item"] in by:
+            sold[m["item"]] = sold.get(m["item"], 0) - m["qty"]
+    want_sold = {i["name"]: CTX.get("consigned_sold", {}).get(i["sku"], 0) for i in by.values()}
+    eq("consigned qty sold from the sale moves = the POS sales", {k: round(q, 6) for k, q in sold.items() if q}, {k: q for k, q in want_sold.items() if q})
+    start = (today - datetime.timedelta(days=g.DAYS)).isoformat()
+    end = (today - datetime.timedelta(days=1)).isoformat()
+    lines = [{"item": n, "qty_received": want_sold[n] + 12, "qty_sold": sold.get(n, 0), "qty_returned": 12} for n in by if want_sold.get(n)]
+    st, ks = hq.create("consignment_settlement", {"consignor": v, "outlet": CBR, "period_start": start, "period_end": end, "items": lines})
+    if not check("settlement for Bu Sari: draft", st == 201, (st, ks)):
+        return
+    total = sum(round(sold.get(n, 0) * by[n]["consignment_cost"]) for n in by)
+    eq("settlement: rate defaults to the item's consignment cost, total = sold x rate, nothing left on the shelf",
+       (ks["total"], [l["qty_left"] for l in ks["items"]]), (total, [0] * len(lines)))
+    st, bad = hq.patch("consignment_settlement", ks["name"], {"items": [dict(lines[0], qty_returned=999)]})
+    check("sold + returned above what came in -> 422", st == 422, (st, bad))
+    st, resp = hq.verb("consignment_settlement", ks["name"], "submit")
+    check("submit the settlement", st == 200, (st, resp))
+    ksn = resp.get("name", ks["name"]) if st == 200 else ks["name"]
+    bills = rows_all(api, "vendor_bill", f"vendor == '{v}'")
+    check("flow consignment_bill: a draft vendor_bill for the consignor, bill_no = settlement number, amount = settlement total",
+          len(bills) == 1 and bills[0]["docstatus"] == 0 and bills[0]["bill_no"] == ksn and bills[0]["amount_due"] == total, bills)
+    if bills:
+        submit_doc(hq, "vendor_bill", bills[0]["name"], "submit the consignor's bill")
+        eq("payable to the consignor = settlement total", api.get("vendor", v)["outstanding"], total)
+    st, adj = hq.create("stock_adjustment", {"outlet": CBR, "reason": "consignment_return", "items": [{"item": n, "qty": 12} for n in by if want_sold.get(n)]})
+    if check("unsold goods back to the consignor: stock_adjustment reason consignment_return", st == 201, (st, adj)):
+        submit_doc(hq, "stock_adjustment", adj["name"], "submit the return")
+        left = [balance(api, CBR, n)["qty"] for n in by if want_sold.get(n)]
+        check("consigned stock of Bu Sari back to 0", all(abs(q) < 1e-9 for q in left), left)
+
+
+def scenario_ritel_takings(api):
+    g, today = ritel_gen(), CTX.get("today") or kernel_today()
+    hq = CTX.get("hq") or api
+    pv, c = import_commit(hq, "takings_file", "setoran-cibiru.csv", g.takings_csv(today), CBR, "daily takings Cibiru (7 days)")
+    if not c:
+        return
+    submit_all(api, "outlet_takings", c["records"], "takings")
+    rows = rows_all(api, "outlet_takings", f"outlet == '{CBR}' && docstatus == 1")
+    short = [r for r in rows if r["short"]]
+    eq("takings: one day short, by Rp 50.000 (cash)", [(r["difference_total"]) for r in short], [-50_000])
+    net = {d.isoformat(): v for d, v in g.sales_net(today, CBR).items()}
+    eq("takings: what the POS expected = net sales of that day", {r["date"]: r["expected_total"] for r in rows}, {r["date"]: net[r["date"]] for r in rows})
+    eq("takings: QRIS MDR 0,3% recorded as fee, not as shortfall", all(r["difference_total"] in (0, -50_000) for r in rows) and all(r["fee_total"] > 0 for r in rows), True)
+
+
+def scenario_dashboards_ritel(api):
+    g, today = ritel_gen(), CTX.get("today") or kernel_today()
+    import datetime
+    since30 = (today - datetime.timedelta(days=30)).isoformat()
+    sales = rows_all(api, "outlet_sales", "docstatus == 1")
+    ws = dashboard(api, "ritel_overview", 30)
+    in30 = [s for s in sales if s["date"] >= since30]
+    if ws:
+        eq("ritel_overview net_period (30 days)", num(ws["net_period"]), sum(s["net_total"] for s in in30))
+        eq("ritel_overview margin_period", num(ws["margin_period"]), sum(s["margin"] for s in in30))
+        eq("ritel_overview net by outlet", chart_map(ws["net_by_outlet"]), {o: sum(s["net_total"] for s in in30 if s["outlet"] == o) for o in {s["outlet"] for s in in30}})
+        eq("ritel_overview takings_short = -50.000", num(ws["takings_short"]), -50_000)
+        check("ritel_overview lists the Cileunyi bestseller as negative stock", ws["negative_stock"]["total"] >= 1, ws["negative_stock"].get("total"))
+    ws = dashboard(api, "ritel_stock", 30)
+    if ws:
+        bal = rows_all(api, "stock_balance")
+        eq("ritel_stock stock_value_total", num(ws["stock_value_total"]), sum(b["value"] for b in bal))
+        cons = {i["name"] for i in rows_all(api, "item") if i.get("consignor")}
+        eq("ritel_stock consigned stock value (link-of-link filter item.consignor)", num(ws["stock_value_consigned"]), sum(b["value"] for b in bal if b["item"] in cons))
+        cutoff = (today - datetime.timedelta(days=30)).isoformat()
+        slow = [b for b in bal if b["qty"] > 0 and b.get("last_sale_date") and b["last_sale_date"][:10] < cutoff]
+        eq("ritel_stock slow movers (qty > 0, last sale over 30 days ago)", (num(ws["slow_count"]), ws["slow_movers"]["total"]), (len(slow), len(slow)))
+        if CTX.get("no_last_sale"):
+            gap("ritel_stock slow movers listed", "rangka-os feat/stock-balance-last-sale", "no last_sale_date on this kernel: the list is empty, not faked")
+        else:
+            check("ritel_stock: at least the 9 generated slow items per outlet are listed", len(slow) >= len(g.SLOW), len(slow))
+        top = ws["best_sellers_qty"]["data"][0] if ws["best_sellers_qty"].get("data") else {}
+        qty = {}
+        for o in (CBR, CLY):
+            for d, rows in g.daily_sales(today, o).items():
+                if d.isoformat() >= since30:
+                    for it, q in rows:
+                        qty[it["name"]] = qty.get(it["name"], 0) + q
+        most = max(qty.values())
+        check("ritel_stock best seller by qty (30 days) = an item the POS files sold most",
+              -round(top.get("value", 0)) == most and qty.get(top.get("key")) == most, (top, most))
+        check("ritel_stock consigned sold chart has data", ws["consigned_sold"].get("data"), ws["consigned_sold"])
+    ws = dashboard(api, "ritel_tax", 30)
+    if ws:
+        eq("ritel_tax turnover (30 days)", num(ws["turnover"]), sum(s["net_total"] for s in in30))
+        eq("ritel_tax PPh final 0,5% = sum of round(net x 0,5%) per record (non-PKP org)", num(ws["pph_final_total"]), sum((s["net_total"] * 5 + 500) // 1000 for s in in30))   # kernel round() is half up
+        eq("ritel_tax PPN Digunggung 0 for a non-PKP org", num(ws["ppn_total"]), 0)
+
+
+def scenario_ritel_access(api):
+    staff = CTX.get("staff_cly")
+    if staff is None:
+        fail("ritel access: outlet staff signed in", CTX.get("login_error"))
+        return
+    mine = staff.list("outlet_sales", limit=200)
+    check("Cileunyi staff sees only Cileunyi sales", mine and all(s["outlet"] == CLY for s in mine), {s["outlet"] for s in mine})
+    st, resp = staff.call("GET", "/api/v1/r/consignment_settlement")
+    check("outlet_staff cannot see consignment settlements -> 403", denied(st, resp), (st, resp))
+    st, resp = staff.create("outlet_takings", {"outlet": CBR, "date": "2026-11-01", "lines": [{"method": "cash", "expected": 1}]})
+    check("Cileunyi staff cannot record Cibiru's takings -> 403/404", st in (403, 404, 422), (st, resp))
+
+
+def setup_demo_ritel(api, k):
+    st, me = api.call("GET", "/auth/me")
+    org = ((me or {}).get("org") or {}).get("id") or "toko_contoh"
+    CTX.update(kernel=k, org=org)
+    pw = secrets.token_urlsafe(18)   # throwaway password of a throwaway database
+    people = [("hq", "dewi@tokocontoh.test", "head_office", "", "USR-001", "Dewi Contoh"),
+              ("staff_cly", "agus.cileunyi@tokocontoh.test", "outlet_staff", CLY, "USR-003", "Agus Contoh")]
+    for key, email, role, outlets, rec, name in people:
+        code, out = k.user_add(email, role, org, name, outlets=outlets, record=rec, password=pw)
+        cl = Api.login(k.base, email, pw) if code == 0 else None
+        if cl is None:
+            CTX["login_error"] = f"{email}: " + (out if code else "login refused")
+            fail("setup: add and sign in the members", CTX["login_error"])
+            return
+        CTX[key] = cl
+    CTX["member_pw"] = pw
+
+
+
 def setup_demo_fnb(api, k):
     """Members for the access checks: head office, and outlet staff of Dago and Braga (rangka user add, contract 0010 §7)."""
     st, me = api.call("GET", "/auth/me")
@@ -2741,13 +3152,17 @@ SCENARIOS = {
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
+    "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
+                   scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
+                   scenario_permissions],
 }
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--site", default="kopi-senja", choices=["kopi-senja", "demo-jasa", "demo-fnb"])
+    ap.add_argument("--site", default="kopi-senja", choices=["kopi-senja", "demo-jasa", "demo-fnb", "demo-ritel"])
     ap.add_argument("--strict", action="store_true", help="exit 1 on gaps too")
+    ap.add_argument("--keep", action="store_true", help="after the scenarios, keep the server and its data running for a demo (Ctrl-C stops it)")
     ap.add_argument("--only", default="", help="run only the scenarios whose function name contains this text (debugging)")
     a = ap.parse_args()
     if a.site not in SCENARIOS:
@@ -2764,6 +3179,8 @@ def main():
         setup_demo_jasa(api, k)
     if a.site == "kopi-senja":
         setup_kopi_senja(api, k)
+    if a.site == "demo-ritel":
+        setup_demo_ritel(api, k)
     for sc in SCENARIOS[a.site]:
         if a.only and a.only not in sc.__name__:
             continue
@@ -2774,6 +3191,17 @@ def main():
             while tb.tb_next:
                 tb = tb.tb_next
             fail(sc.__name__, f"{type(e).__name__}: {e} (line {tb.tb_lineno})")
+    if a.site == "demo-ritel" and CTX.get("timing_moka"):
+        rows, secs = CTX["timing_moka"]
+        print(f"timing: Moka import {rows} rows in {secs}s (upload, preview, commit), submit {CTX.get('timing_moka_submit')}s")
+    if a.keep:
+        report()
+        print(f"\ndemo running: {k.base}/  (dev-open signs you in as the owner)")
+        print(f"database: {k.db}\nCtrl-C stops the server and removes the database.")
+        try:
+            k.proc.wait()
+        except KeyboardInterrupt:
+            pass
     k.stop()
     _, n_gap, n_fail = report()
     sys.exit(1 if n_fail or (a.strict and n_gap) else 0)

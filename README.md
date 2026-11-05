@@ -4,7 +4,7 @@
 metadata: models, rules, dashboards, flows and roles. No application code — the Rangka kernel turns these files into a
 database, an API and screens.
 
-> **Status: v0 (November 2026).** Sixteen modules, three apps (`crm`, `fnb_cabang`, `jasa_proyek`) and three example sites, laid out per
+> **Status: v0 (November 2026).** Seventeen modules, four apps (`crm`, `fnb_cabang`, `jasa_proyek`, `ritel_cabang`) and five example sites, laid out per
 > [contract 0001](https://github.com/rangka-os/rangka-os/blob/main/docs/contracts/0001-modules-and-apps.md).
 > All files pass both validators with 0 errors.
 
@@ -25,7 +25,7 @@ Every module requires `users`, which holds all roles (`sales_manager`, `sales_re
 | --- | --- | --- |
 | `users` | none | `user`; every role |
 | `contacts` | none | `customer`, `vendor` (`pkp`), `contact_person` |
-| `catalogue` | contacts | `item`, `uom`, `uom_conversion`, `price_list` (+ `price_list_item`) |
+| `catalogue` | contacts | `item` (barcode, category, variants as items sharing `variant_group`, consignor and consignment cost), `item_category`, `uom`, `uom_conversion`, `price_list` (+ `price_list_item`); import `item_master` |
 | `outlets` | none | `outlet` |
 | `invoicing` | contacts, catalogue (optional: outlets, tax_id, currency, orders, projects) | `sales_invoice` (+ `sales_invoice_item`): PPN from config, PPh 23, down payment, retention (no PPN again, bounded by the origin), header discount; print format; finance approval above Rp 100.000.000; foreign-currency `*_fx` totals; numbering series `invoice` |
 | `tax_id` | none | `tax_code` |
@@ -35,15 +35,17 @@ Every module requires `users`, which holds all roles (`sales_manager`, `sales_re
 | `workforce` | none | `worker`, `certification` (expiry flag) |
 | `projects` | contacts, workforce (optional: orders) | `project`, `assignment`, `timesheet`, `acceptance` (berita acara) |
 | `payments` | contacts, invoicing, procurement (optional: currency) | `payment` (+ `payment_allocation`), `withholding` (PPh 23 certificate); foreign-currency `amount_fx`; hooks `payments.allocate` and `payments.unallocate`; print *Statement* |
-| `procurement` | contacts, catalogue (optional: outlets, currency, stock) | `purchase_request`, `purchase_order`, `goods_receipt`, `vendor_bill` (+ line models): approval above Rp 5.000.000 (purchasing_manager or head_office), foreign-currency `*_fx` totals, print *Pesanan pembelian*, actions `make_po` and `receive` |
+| `procurement` | contacts, catalogue (optional: outlets, currency, stock) | `purchase_request`, `purchase_order`, `goods_receipt`, `vendor_bill` (+ line models): approval above Rp 5.000.000 (purchasing_manager or head_office), foreign-currency `*_fx` totals, print *Pesanan pembelian*, actions `make_po` and `receive`; import `opening_stock` (valued opening stock per outlet as a goods receipt from "Saldo awal") |
 | `stock` | catalogue, outlets | `recipe` (+ line), `stock_move`, `stock_balance`, `stock_transfer` (two steps), `stock_transfer_receipt`, `stock_count`, `stock_adjustment` (+ line models): moving-average cost, recipes, negative stock allowed and flagged; flow `stock_negative_alert` |
-| `outlet_sales` | outlets, catalogue, stock | `outlet_sales` (+ line): daily sales per outlet, submit posts stock through the recipes; imports `moka_item_details` and `daily_form` |
+| `outlet_sales` | outlets, catalogue, stock | `outlet_sales` (+ line): daily sales per outlet, submit posts stock through the recipes (an item without one takes itself out), one sales source per outlet, PPN-in-sales and 0,5% final PPh per record; `outlet_takings` (+ line): daily takings per payment method against the POS; imports `moka_item_details`, `daily_form`, `pos_sales_file` (Juragan's template for any POS), `loyverse_receipts` (guessed headers), `takings_file` |
+| `consignment` | contacts, catalogue, outlets, stock, procurement | `consignment_settlement` (+ item): monthly settlement with a consignor; flow `consignment_bill` turns a submitted settlement into a draft `vendor_bill`. Goods come in through `goods_receipt`, go back through `stock_adjustment` reason `consignment_return` |
 | `pipeline` | contacts (optional: invoicing) | `lead`, `deal`, `activity`, flows `whatsapp_to_lead` and `morning_follow_up` |
 
 | App | Modules | Also |
 | --- | --- | --- |
 | `crm` | contacts, catalogue, pipeline, invoicing, outlets, users | Menu, dashboards `crm_overview` and `sales_overview`, process `lead_to_cash`, WhatsApp connector, home, onboarding |
 | `fnb_cabang` | contacts, catalogue, outlets, users, stock, outlet_sales, procurement, payments, invoicing (no menu entry) | Multi-branch F&B back office: menu groups Penjualan outlet, Stok, Pembelian, Data induk; dashboards `fnb_overview` (home: net sales today and over the period, margin, net by outlet and by day, the "Stok minus" list for head office) and `stock_recap` (stock value by outlet, moves by reason, monthly sales and cost per outlet and in total); roles `head_office` and `outlet_staff`; onboarding (outlets, Moka outlets, raw-material unit) |
+| `ritel_cabang` | contacts, catalogue, outlets, users, stock, outlet_sales, procurement, payments, consignment, invoicing (no menu entry) | Retail back office for a shop that keeps its POS (Jalur A): menu groups Penjualan toko, Stok, Pembelian, Titipan, Data induk; dashboards `ritel_overview` (home: net sales today and over the period, gross margin and net sales per branch, returns per day, short takings, negative stock), `ritel_stock` (stock value own vs consigned, best sellers, slow movers from `stock_balance.last_sale_date`, consigned goods sold) and `ritel_tax` (monthly turnover, 0,5% final PPh, PPN Digunggung); roles `head_office` and `outlet_staff`; onboarding (branches, Moka branches, other POS, PKP) |
 | `jasa_proyek` | contacts, catalogue, users, outlets, tax_id, currency, invoicing, quotation, orders, workforce, projects, payments, procurement | Project-services quote-to-cash: menu groups Penjualan, Proyek, Tenaga kerja, Keuangan, Pembelian, Data induk; process `quote_to_cash`; dashboards `jasa_overview` (home: open, won and lost quotations, invoices issued, outstanding AR, overdue invoices, active projects) and `ar_aging` (outstanding by age bucket, by customer, overdue list); roles `sales_manager`, `finance_manager`, `purchasing_manager`, `project_admin`; onboarding (PKP, business line, number of PTs) |
 
 ```
@@ -56,7 +58,7 @@ apps/<a>/processes/                 named stages for the process canvas (kind pr
 examples/sites/<site>/              example installations: system.rk, features.rk, config.rk (+ letterhead.rk, letterheads/<org>.rk, themes/, layouts/)
 examples/fixtures/<dir>/            their demo data (`demo-jasa` seeds the first PT, `demo-jasa-pelatihan` the second; see below)
 scripts/                            validate.sh (both validators over every site), lib.sh (finds rangka-os and the kernel binary)
-tests/day_one.py                    integration test against a live kernel (`python3 tests/day_one.py --site kopi-senja|demo-jasa|demo-fnb`)
+tests/day_one.py                    integration test against a live kernel (`python3 tests/day_one.py --site kopi-senja|demo-jasa|demo-fnb|demo-ritel`)
 docs/kernel-hooks.md                what each hook the modules declare does in the kernel, and the table of kernel gaps
 docs/permissions.md                 the permission matrix every model declares
 ```
@@ -83,8 +85,14 @@ submitted document keeps its rate when the config changes later. Sales side `tax
   (the owner switches orgs with `POST /auth/org`).
 - `demo-fnb`: Tahu Contoh, one org (`tahu_contoh`, code `TCN`) with three outlets (head office, Dago, Braga), a letterhead
   and PO numbers like `PO/TCN/2611/001`. Outlet staff are members with `--outlets` (`tests/day_one.py` adds them with `rangka user add`).
+- `demo-ritel`: Toko Contoh, a grocery shop with two branches (org `toko_contoh`, code `TKC`, non-PKP): Cibiru imports Moka and is the
+  head office, Cileunyi sends Juragan's POS file template. 200 items (192 own with barcodes, 8 consigned from three home businesses),
+  11 categories, carton packings, four suppliers. `examples/fixtures/demo-ritel/generate.py` writes the seed file and, for any end date,
+  40 days of POS exports, opening stock, daily takings and a new item list (`python3 generate.py --out /tmp/ritel`); the test builds them
+  for today, so the 30-day dashboards and the slow-mover list have data. `python3 tests/day_one.py --site demo-ritel --keep` leaves the
+  server running with that month of data for a walkthrough.
 
-`python3 tests/day_one.py --site demo-jasa|demo-fnb|kopi-senja` runs the integration test; `--only <text>` runs the
+`python3 tests/day_one.py --site demo-jasa|demo-fnb|demo-ritel|kopi-senja` runs the integration test; `--only <text>` runs the
 scenarios whose function name contains the text.
 
 ## Try it
@@ -120,7 +128,7 @@ the REST API (documents, hooks, approvals, prints, dashboards, roles, imports). 
 
 ```bash
 RANGKA_OS=../rangka-os PYTHON=python3 scripts/validate.sh
-python3 tests/day_one.py --site kopi-senja      # or demo-jasa, demo-fnb; add --only <text> for one scenario, --strict to fail on gaps
+python3 tests/day_one.py --site kopi-senja      # or demo-jasa, demo-fnb, demo-ritel; add --only <text> for one scenario, --strict to fail on gaps
 ```
 
 Each check prints `OK`, `FAIL` or `GAP`; the last line reads `N ok · M gaps · K failed`. A `GAP` is a genuine kernel limitation no merged stream covers
@@ -137,7 +145,7 @@ CI (`.github/workflows/day-one.yml`) runs `scripts/validate.sh` and the three `d
 
 ## Data
 
-Everything here is fictional: Kopi Senja, PT Contoh Inspeksi, CV Contoh Pelatihan and Tahu Contoh are made up, and the fixtures hold no real customer data.
+Everything here is fictional: Kopi Senja, PT Contoh Inspeksi, CV Contoh Pelatihan, Tahu Contoh and Toko Contoh are made up, and the fixtures hold no real customer data.
 Do not commit real customer, NPWP, bank or personal data to this repo.
 
 ## Writing an app
