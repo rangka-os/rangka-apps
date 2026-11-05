@@ -1559,11 +1559,44 @@ def scenario_milestone_money(api):
     [t.start() for t in th]; [t.join() for t in th]
     eq("two invoices for one milestone in parallel: one 200, one refused", sorted(x == 200 for x in out), [False, True])
     check("one milestone, one live invoice: billed 50.000.000", billed(p) == 50_000_000, billed(p))
+    # commercial terms freeze once a project has a schedule or invoices (audit round 4)
+    p = project("Uang V2")
+    m1 = ms(p, 1, 60)[1]; ba(p); invoice(m1["name"], 60_000_000)
+    st, resp = pa.call("PATCH", f"/api/v1/r/project/{Api.q(p)}", {"contract_value": 0})
+    check("V2: a billed project's contract cannot go to 0 -> 422", st == 422, (st, resp))
+    st, resp = pa.call("PATCH", f"/api/v1/r/project/{Api.q(p)}", {"billing_model": "retainer"})
+    check("V2b: a billed project cannot switch to retainer -> 422", st == 422, (st, resp))
+    st, resp = pa.call("PATCH", f"/api/v1/r/project/{Api.q(p)}", {"contract_value": 200_000_000})
+    check("a billed project's contract cannot be raised either (frozen) -> 422", st == 422, (st, resp))
+    # every project invoice counts against the contract, with or without a milestone
+    p = project("Uang tanpa termin", cv=10_000_000)
+    st, i1 = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 8_000_000}]})
+    st1 = fm.verb("sales_invoice", i1["name"], "submit", {"force": True})[0] if st == 201 else st
+    st, i2 = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 5_000_000}]})
+    st2, r2 = fm.verb("sales_invoice", i2["name"], "submit", {"force": True}) if st == 201 else (st, i2)
+    check("project invoices without milestones: 8.000.000 submits, a further 5.000.000 on a 10.000.000 contract -> 422",
+          st1 == 200 and st2 == 422, (st1, st2, r2))
+    st, resp = fm.verb("sales_invoice", i1["name"] if st1 != 200 else api.find("sales_invoice", "project == '%s' && docstatus == 1" % p)[0]["name"], "cancel")
+    st2b = fm.verb("sales_invoice", i2["name"], "submit", {"force": True})[0]
+    check("after cancelling the 8.000.000 invoice, the 5.000.000 one fits", st == 200 and st2b == 200, (st, st2b))
+    # an amendment re-pointed at another milestone claims that milestone like any invoice
+    p = project("Uang amend")
+    ma = ms(p, 1, 50, trig="date", due_date="2026-11-01")[1]; mb = ms(p, 2, 50, trig="date", due_date="2026-11-02")[1]
+    st, ia = fm.create("sales_invoice", {"billing_milestone": ma["name"], "items": [{"item": ndt, "qty": 1, "rate": 50_000_000}]})
+    st, ib = fm.create("sales_invoice", {"billing_milestone": mb["name"], "items": [{"item": ndt, "qty": 1, "rate": 50_000_000}]})
+    ibn = fm.verb("sales_invoice", ib["name"], "submit", {"force": True})[1].get("name")
+    fm.verb("sales_invoice", ibn, "cancel")
+    st, am = fm.verb("sales_invoice", ibn, "amend")
+    amn = (am or {}).get("name") or ((am or {}).get("open") or {}).get("name")
+    st, resp = fm.call("PATCH", f"/api/v1/r/sales_invoice/{Api.q(amn)}", {"billing_milestone": ma["name"]}) if amn else (0, None)
+    check("an amendment re-pointed at a milestone that already has an invoice -> 422", st == 422, (st, resp))
     # retainer: the contract value is the monthly fee; every month may bill it, no month more
     p = project("Uang retainer", cv=15_000_000, model="retainer")
     res = [ms(p, 10 + i, amount=15_000_000, trig="date", due_date=f"2026-1{i}-28", kind="retainer")[0] for i in (0, 1)]
     st, resp = ms(p, 20, amount=20_000_000, trig="date", due_date="2027-01-28", kind="retainer")
     check("retainer: months of 15.000.000 on a 15.000.000 monthly fee are accepted, a 20.000.000 month -> 422", res == [201, 201] and st == 422, (res, st, resp))
+    st, ri = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 20_000_000}]})
+    check("retainer: an invoice above the monthly fee -> 422", st == 422 or fm.verb("sales_invoice", ri["name"], "submit", {"force": True})[0] == 422, (st, ri))
 
 
 def scenario_roles_jasa(api):
@@ -1715,7 +1748,8 @@ MATRIX = {
     "user": {r: _R for r in _JASA + ("head_office", "outlet_staff", "sales_rep")},
     "quotation": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
     "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
-    **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("project", "assignment", "timesheet", "acceptance")},
+    **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("assignment", "timesheet", "acceptance")},
+    "project": {"project_admin": _ALL, "sales_manager": {"read", "write"}, "finance_manager": {"read", "write"}},   # write for the billing flows
     "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R},
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
                           "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
