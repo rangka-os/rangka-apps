@@ -6,6 +6,8 @@
 #   created or submitted -> claim the id (refused when another live payment holds it; a deleted draft holds nothing)
 #   cancelled            -> release it (gateway_ref emptied, the old id kept in released_ref)
 # People only read it; the flows write it as the person who saves the payment.
+# A payment created inside another flow (a connector callback flow) does not run these flows, because the kernel does
+# not nest flows: such a flow creates the claim itself in the same run (rangka-connectors README, Xendit example).
 name: gateway_ref_claim
 label: {id: Klaim ID gateway, en: Gateway reference claim}
 icon: card
