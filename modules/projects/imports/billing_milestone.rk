@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# A project's billing schedule from a sheet: twelve monthly retainers or the milestones of an SPK in one upload.
+# Proyek is the project number (PRJ-...). One row = one milestone; the same row twice is skipped by the key.
+name: billing_milestone
+label: {id: Jadwal termin tagihan, en: Billing schedule}
+model: billing_milestone
+source: csv
+header_row: 1
+key: [Proyek, Urutan]
+map:
+  project: Proyek
+  seq: Urutan
+  title: Judul
+  kind: Jenis
+  basis: "='amount'"
+  amount_fixed: Nominal
+  trigger: "='date'"
+  due_date: Jatuh tempo
+  period_from: Periode dari
+  period_to: Periode sampai

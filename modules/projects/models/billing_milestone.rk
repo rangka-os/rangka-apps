@@ -1,0 +1,142 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: billing_milestone
+label: {id: Termin tagihan, en: Billing milestone}
+icon: invoice
+naming: TRM-{YYYY}-{#####}
+title_field: title
+# The billing schedule of a project: down payment, milestones (by date or after an acceptance report), monthly
+# retainers, time-and-material periods, retention. state is written by flows only: planned -> ready when the project's
+# acceptance report is submitted (trigger acceptance), -> invoiced when an invoice linked to it is submitted, back to
+# ready when that invoice is cancelled. A date-triggered milestone stays planned and shows as due from its due_date.
+permissions:
+  - {role: project_admin, read: true, create: true, write: true, delete: true, export: true, import: true}
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true, import: true}
+  - {role: sales_manager, read: true, write: true}
+fields:
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+    required: true
+    in_list: true
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    default: project.customer
+    read_only: true
+    in_list: true
+  - name: seq
+    type: int
+    label: {id: Urutan}
+    default: '1'
+  - name: title
+    type: data
+    label: {id: Judul}
+    required: true
+    in_list: true
+  - name: kind
+    type: select
+    label: {id: Jenis}
+    default: "'milestone'"
+    options:
+      - {value: down_payment, label: {id: Uang muka (DP)}}
+      - {value: milestone, label: {id: Termin}}
+      - {value: retainer, label: {id: Retainer}}
+      - {value: time_material, label: {id: Jam atau hari kerja}}
+      - {value: retention, label: {id: Pelepasan retensi}}
+  - name: basis
+    type: select
+    label: {id: Dasar nilai}
+    default: "'amount'"
+    options:
+      - {value: percent, label: {id: Persen nilai kontrak}}
+      - {value: amount, label: {id: Nominal}}
+  - name: percent
+    type: percent
+    label: {id: Persen}
+    default: '0'
+    depends_on: basis == 'percent'
+  - name: amount_fixed
+    type: currency
+    label: {id: Nominal}
+    default: '0'
+    depends_on: basis == 'amount'
+  - name: amount
+    type: currency
+    label: {id: Nilai termin (DPP)}
+    compute: "basis == 'percent' ? round(project.contract_value * percent / 100) : amount_fixed"
+    in_list: true
+  - name: trigger
+    type: select
+    label: {id: Ditagih saat}
+    default: "'date'"
+    options:
+      - {value: date, label: {id: Tanggal}}
+      - {value: acceptance, label: {id: Setelah berita acara}}
+  - name: due_date
+    type: date
+    label: {id: Jatuh tempo tagih}
+    in_list: true
+  - name: period_from
+    type: date
+    label: {id: Periode dari}
+    depends_on: kind == 'retainer' || kind == 'time_material'
+  - name: period_to
+    type: date
+    label: {id: Periode sampai}
+    depends_on: kind == 'retainer' || kind == 'time_material'
+  - name: state
+    type: select
+    label: {id: Status}
+    default: "'planned'"
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: planned, label: {id: Direncanakan}}
+      - {value: ready, label: {id: Siap ditagih}}
+      - {value: invoiced, label: {id: Sudah ditagih}}
+  - name: acceptance
+    type: link
+    to: acceptance
+    label: {id: Berita acara}
+    read_only: true
+  - name: sales_invoice
+    type: link
+    to: sales_invoice
+    label: {id: Faktur}
+    read_only: true
+    in_list: true
+rules:
+  - name: percent_range
+    on: save
+    check: basis != 'percent' || (percent > 0 && percent <= 100)
+    message: {id: Persen termin harus di atas 0 dan paling besar 100}
+  - name: amount_positive
+    on: save
+    check: basis != 'amount' || amount_fixed > 0
+    message: {id: Nominal termin harus lebih dari 0}
+  - name: due_date_for_date_trigger
+    on: save
+    check: trigger != 'date' || due_date != ''
+    message: {id: Termin berdasarkan tanggal wajib punya jatuh tempo tagih}
+  - name: period_order
+    on: save
+    check: period_from == '' || period_to == '' || period_to >= period_from
+    message: {id: Periode sampai tidak boleh sebelum periode dari}
+views:
+  list:
+    columns: [name, project, customer, seq, title, kind, amount, due_date, state, sales_invoice]
+    filters: [project, state, kind]
+    sort: due_date
+  form:
+    layout:
+      - section: {id: Termin}
+        columns:
+          - [project, customer, seq, title, kind]
+          - [basis, percent, amount_fixed, amount]
+      - section: {id: Kapan ditagih}
+        columns:
+          - [trigger, due_date, period_from, period_to]
+          - [state, acceptance, sales_invoice]

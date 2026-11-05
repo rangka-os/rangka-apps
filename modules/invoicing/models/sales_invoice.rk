@@ -29,6 +29,7 @@ fields:
     required: true
     in_list: true
     peek: [outstanding, payment_days, npwp]
+    default: billing_milestone.customer
   - name: customer_order
     type: link
     to: customer_order
@@ -37,10 +38,17 @@ fields:
     type: link
     to: project
     label: {id: Proyek}
+    default: billing_milestone.project
+  # The billing milestone this invoice bills (projects module); flows mark it invoiced on submit, ready on cancel.
+  - name: billing_milestone
+    type: link
+    to: billing_milestone
+    label: {id: Termin tagihan}
   - name: acceptance
     type: link
     to: acceptance
     label: {id: Berita acara}
+    default: billing_milestone.acceptance
   - name: po_number
     type: data
     label: {id: No. PO pelanggan}
@@ -200,6 +208,14 @@ rules:
     on: save
     check: project == '' || project.customer == customer
     message: {id: Proyek harus milik pelanggan yang sama}
+  - name: milestone_same_project
+    on: save
+    check: billing_milestone == '' || billing_milestone.project == project
+    message: {id: Termin harus milik proyek yang sama}
+  - name: milestone_not_invoiced
+    on: save
+    check: billing_milestone == '' || billing_milestone.state != 'invoiced' || billing_milestone.sales_invoice == name
+    message: {id: Termin ini sudah ditagih di faktur lain}
   - name: acceptance_same_customer
     on: save
     check: acceptance == '' || acceptance.project.customer == customer
@@ -277,7 +293,7 @@ views:
     layout:
       - section: {id: Pelanggan}
         columns:
-          - [kind, customer, po_number, customer_order, project]
+          - [kind, customer, po_number, customer_order, project, billing_milestone]
           - [posting_date, due_date, outlet, acceptance]
       - section: {id: Barang/jasa}
         fields: [items]
