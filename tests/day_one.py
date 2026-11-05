@@ -2076,7 +2076,22 @@ def scenario_dashboards_fnb(api):
     check("fnb_overview 'Stok minus' list is not empty (the stock scenario made a negative balance)", len(negs) >= 1, negs)
     eq("fnb_overview negative_count", ws["negative_count"]["value"], len(negs))
 
+    # adjustments of every reason count in waste_by_outlet; a cancelled one nets to zero
+    for reason, qty, cancel in (("expired", 2, False), ("damage", 1, True)):
+        st, adj = api.create("stock_adjustment", {"outlet": DAGO, "reason": reason, "items": [{"item": "BRG-0001", "qty": qty}]})
+        if check(f"setup: {reason} adjustment of {qty} kg at Dago", st == 201, (st, adj)):
+            an = submit_doc(api, "stock_adjustment", adj["name"], f"submit the {reason} adjustment")
+            if cancel and an:
+                st, resp = api.verb("stock_adjustment", an, "cancel")
+                check(f"cancel the {reason} adjustment", st == 200, (st, resp))
     ws = dashboard(api, "stock_recap", 90)
+    adj_moves = api.find("stock_move", "voucher_type == 'stock_adjustment' && posting_date >= '%s'" % since90)
+    want = {}
+    for m in adj_moves:
+        want[m["outlet"]] = want.get(m["outlet"], 0) + m["value"]
+    eq("stock_recap waste_by_outlet = adjustment moves of every reason, cancelled ones netted", chart_map(ws["waste_by_outlet"]), {o: v for o, v in want.items() if v})
+    waste_only = sum(m["value"] for m in adj_moves if m["outlet"] == DAGO and m["reason"] == "waste")
+    check("waste_by_outlet at Dago includes the expired adjustment (not only reason waste)", chart_map(ws["waste_by_outlet"]).get(DAGO, 0) < waste_only, (chart_map(ws["waste_by_outlet"]).get(DAGO), waste_only))
     bal = api.list("stock_balance")
     val = {}
     for b in bal:

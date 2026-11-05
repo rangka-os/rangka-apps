@@ -109,13 +109,15 @@ widgets:
   - name: waste_by_outlet
     type: chart
     chart: bar
-    label: {id: Barang rusak per outlet}
-    description: {id: Nilai bahan yang dibuang atau rusak}
+    label: {id: Penyesuaian stok per outlet}
+    description: {id: 'Nilai stok keluar karena terbuang, rusak, kedaluwarsa atau lainnya (negatif = keluar)'}
     model: stock_move
     group_by: outlet
     aggregate: sum
     field: value
-    filter: reason == 'waste'
+    # Every adjustment reason (waste, damage, expired, other): the kernel names only 'waste' moves waste. Reversals carry
+    # the same voucher_type, so a cancelled adjustment nets to zero.
+    filter: voucher_type == 'stock_adjustment'
     period: posting_date
     span: 6
   - name: negative_balances
