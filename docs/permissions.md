@@ -32,7 +32,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | stock_transfer_receipt | | | | | all | r c w s x | |
 | stock_count, stock_adjustment | | | | | all | r c w s | |
 | recipe | | | | | r c w d e | r | |
-| outlet_sales | | | | | all + i | r c w s | |
+| outlet_sales | | | | | all + i | r c w s while `source != 'moka'`, else r | |
 | lead, deal, activity | all | r | r | r | r | r | r c w on own records (`owner == user.name`) |
 
 Approvals (contract 0007) decide on top of this: `quotation` submit → `sales_manager`; `sales_invoice` above
