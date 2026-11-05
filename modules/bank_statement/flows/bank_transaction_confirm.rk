@@ -2,16 +2,18 @@
 # The owner sets a line to "Dikonfirmasi": draft a payment from the customer of the chosen invoice, for the line's
 # amount, allocated to that invoice (up to what it still owes; any rest stays unallocated on the payment).
 # The draft is submitted by a person (finance), which settles the invoice through payments.allocate.
-# The draft goes into draft_payment (payment is only the submitted one, see bank_transaction_matched).
+# The draft goes into draft_payment; a line whose draft still exists is left alone, a line whose draft was deleted
+# gets a new one (saving it as "Dikonfirmasi" again), so a deleted draft never leaves the line stuck.
 name: bank_transaction_confirm
 label: {id: Mutasi dikonfirmasi jadi pembayaran}
 on: bank_transaction.updated
 if: event.status == 'confirmed' && event.payment == '' && event.suggested_invoice != ''
 steps:
+  - {find: payment, where: "event.draft_payment != '' && name == event.draft_payment && docstatus == 0", as: draft}
   - {find: sales_invoice, where: name == event.suggested_invoice, as: inv}
   - {find: bank_transaction, where: name == event.name, as: line}
   - create: payment
-    if: inv != null
+    if: inv != null && draft == null
     set:
       direction: "'receive'"
       customer: inv.customer
@@ -23,5 +25,5 @@ steps:
       notes: "'Dari mutasi ' + event.name + ': ' + event.description"
     as: pay
   - update: line
-    if: inv != null
+    if: inv != null && draft == null
     set: {draft_payment: pay.name}

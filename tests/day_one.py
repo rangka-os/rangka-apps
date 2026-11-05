@@ -1451,6 +1451,9 @@ def scenario_money_rail(api):
     check("invoice A lunas: outstanding 0, status paid", inv["outstanding"] == 0 and inv["status"] == "paid", inv)
     la = api.get("bank_transaction", la["name"])
     check("line matched to the submitted payment", la["status"] == "matched" and la["payment"] == pname, la)
+    st, resp = api.patch("bank_transaction", la["name"], {"status": "unmatched"})
+    check("a matched line cannot be set back by hand", st == 422, (st, resp))
+
     # another payment that only names the line in its reference does not take the line over
     st, other = api.create("payment", {"direction": "receive", "customer": customer, "amount": 100_000, "reference": la["name"],
                                        "allocations": [{"sales_invoice": inv_d, "amount": 100_000}]})
@@ -1471,6 +1474,20 @@ def scenario_money_rail(api):
     st, resp = api.patch("bank_transaction", ld["name"], {"suggested_invoice": inv_e, "status": "confirmed"})
     ld = api.get("bank_transaction", ld["name"])
     check("owner picks invoice E and confirms", st == 200 and bool(ld.get("draft_payment")), (st, ld))
+    st, resp = api.patch("bank_transaction", ld["name"], {"status": "matched"})
+    check("a line cannot be set to Cocok by hand while its payment is a draft", st == 422, (st, resp))
+    # the drafted payment is deleted: the line is not stuck, confirming again drafts a new one
+    st, resp = api.call("DELETE", f"/api/v1/r/payment/{api.q(ld['draft_payment'])}")
+    check("delete the drafted payment", st in (200, 204), (st, resp))
+    st, resp = api.patch("bank_transaction", ld["name"], {"status": "suggested"})
+    ld2 = api.get("bank_transaction", ld["name"])
+    check("after the draft is deleted the line can go back (draft link cleared)", st == 200 and not ld2.get("draft_payment"), (st, ld2))
+    st, resp = api.patch("bank_transaction", ld["name"], {"status": "confirmed"})
+    ld2 = api.get("bank_transaction", ld["name"])
+    check("confirming again drafts a new payment", st == 200 and ld2.get("draft_payment") not in ("", None, ld["draft_payment"]), (st, ld2))
+    st, resp = api.verb("payment", ld2.get("draft_payment", ""), "submit")
+    ld2 = api.get("bank_transaction", ld["name"])
+    check("submitting it matches the line", st == 200 and ld2["status"] == "matched" and ld2["payment"] == resp.get("name"), (st, ld2))
     st, resp = api.patch("bank_transaction", lf["name"], {"suggested_invoice": inv_d, "status": "confirmed"})
     check("money out cannot be confirmed against a sales invoice", st == 422, (st, resp))
 

@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A line leaves "Dikonfirmasi" before its payment is submitted: it forgets the draft, so submitting that draft later
+# no longer matches the line (bank_transaction_matched needs a confirmed line with that draft).
+name: bank_transaction_unconfirmed
+label: {id: Mutasi batal dikonfirmasi}
+on: bank_transaction.updated
+if: event.status != 'confirmed' && event.status != 'matched' && event.draft_payment != ''
+steps:
+  - {find: bank_transaction, where: name == event.name, as: line}
+  - update: line
+    set: {draft_payment: "''"}

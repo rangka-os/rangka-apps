@@ -4,7 +4,8 @@
 #   flow bank_transaction_confirm drafts the payment into draft_payment) -> matched (that very draft is submitted;
 #   flow bank_transaction_matched sets payment). ignored = not a sale.
 # payment is only ever a submitted payment and only flows write it, so "Cocok" cannot be set by hand. Cancelling the
-# payment sends the line back to unmatched.
+# payment sends the line back to unmatched. Leaving "Dikonfirmasi" forgets the draft; a deleted draft is drafted
+# again by saving the line as "Dikonfirmasi".
 name: bank_transaction
 label: {id: Mutasi bank, en: Bank transaction}
 icon: bank
@@ -92,8 +93,8 @@ rules:
     message: {id: Hanya uang masuk yang bisa dicocokkan ke faktur penjualan}
   - name: matched_needs_payment
     on: save
-    check: status != 'matched' || payment != ''
-    message: {id: Status Cocok diisi otomatis saat pembayarannya diajukan}
+    check: (status == 'matched') == (payment != '')
+    message: {id: Status Cocok diisi otomatis saat pembayarannya diajukan dan hanya lepas saat pembayaran itu dibatalkan}
 views:
   list:
     columns: [date, description, amount, status, suggested_invoice, payment]
