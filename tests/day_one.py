@@ -1458,10 +1458,10 @@ def scenario_project_costs(api):
         submit_doc(api, "project_expense", ex["name"], "submit the expense")
     st, own = api.create("project_expense", {"project": p, "category": "travel", "description": "Bensin", "amount": 300_000})
     eq("an expense not billed on: rebill_amount 0", own.get("rebill_amount"), 0)
-    # the re-billed line stays out of PPh 23 (pph23_base off)
+    # the re-billed line stays out of PPh 23 (pph23_exclude)
     st, inv = api.create("sales_invoice", {"customer": customer, "project": p, "pph23_applies": True, "items": [
         {"item": ndt, "qty": 1, "rate": 20_000_000, "description": "Jasa audit tahap 1"},
-        {"item": ndt, "qty": 1, "rate": 2_200_000, "description": "Penggantian biaya hotel", "pph23_base": False}]})
+        {"item": ndt, "qty": 1, "rate": 2_200_000, "description": "Penggantian biaya hotel", "pph23_exclude": True}]})
     if check("invoice with the fee and the re-billed hotel", st == 201, (st, inv)):
         eq("PPh 23 base excludes the re-billed 2.200.000: base 20.000.000, PPh 23 400.000", (inv["pph23_dpp"], inv["pph23_amount"]), (20_000_000, 400_000))
         st, upd = api.call("PATCH", f"/api/v1/r/project_expense/{Api.q(own['name'])}", {"rebill_invoice": inv["name"]})
