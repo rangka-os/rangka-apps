@@ -29,6 +29,7 @@ fields:
     to: project
     label: {id: Proyek}
     default: purchase_order.project
+    depends_on: app_installed('projects')
   - name: goods_receipt
     type: link
     to: goods_receipt

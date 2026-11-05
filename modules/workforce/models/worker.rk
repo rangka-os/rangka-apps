@@ -38,14 +38,18 @@ fields:
     type: currency
     label: {id: Tarif per jam}
     default: '0'
+  # Pay per person: hidden in forms and lists for roles that do not need it (hidden_for is not enforced by the kernel
+  # yet; the REST API still returns it to anyone who may read worker).
   - name: cost_day_rate
     type: currency
     label: {id: Biaya per hari}
     default: '0'
+    hidden_for: [sales_manager, purchasing_manager, head_office, outlet_staff, sales_rep]
   - name: cost_hour_rate
     type: currency
     label: {id: Biaya per jam}
     default: '0'
+    hidden_for: [sales_manager, purchasing_manager, head_office, outlet_staff, sales_rep]
   - name: active
     type: check
     label: {id: Aktif}
