@@ -1145,8 +1145,8 @@ def scenario_procurement(api):
     check("submit big purchase order", st in (200, 202), (st, resp))
     bign = resp.get("name", big["name"]) if st == 200 else big["name"]
     reqs = [a for a in approvals_of(api, "purchase_order", bign) if a.get("policy") == "po_approval"]
-    check("po_approval: a PO above 5.000.000 asks purchasing_manager or head_office at submit (request recorded)",
-          len(reqs) == 1 and reqs[0].get("approvers") == ["purchasing_manager", "head_office"] and reqs[0].get("state") in ("approved", "pending"), reqs)
+    check("po_approval: a PO above 5.000.000 asks finance_manager at submit (request recorded)",
+          len(reqs) == 1 and reqs[0].get("approvers") == ["finance_manager"] and reqs[0].get("state") in ("approved", "pending"), reqs)
     check("po_approval: the PO under the limit made no request", not approvals_of(api, "purchase_order", pon), approvals_of(api, "purchase_order", pon))
 
     # foreign-currency PO: the IDR header comes from the converted subtotal
@@ -1423,8 +1423,8 @@ def scenario_roles_jasa(api):
             st, resp = pa.verb("timesheet", t["name"], "submit")
             check("project_admin submits the timesheet", st == 200, (st, resp))
 
-    # purchasing_manager: PO rights are purchasing_manager and head_office only, and both approve po_approval, so a PO above
-    # 5.000.000 is self-approved (request recorded); under the limit no request is made
+    # purchasing_manager raises POs; a PO above 5.000.000 waits for finance_manager (demo-jasa custom/purchase_order.rk), so
+    # the maker never approves; under the limit no request is made
     st, resp = pa.create("purchase_order", {"vendor": "VND-0002", "order_date": "2026-11-03", "items": [{"item": "BRG-0004", "qty": 1, "rate": 85_000}]})
     check("project_admin may not create a purchase order -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
     def po(qty):
@@ -1434,10 +1434,13 @@ def scenario_roles_jasa(api):
     big_po, total = po(100)
     eq("the big PO is 8.500.000 (above 5.000.000)", total, 8_500_000)
     st, resp = pm.verb("purchase_order", big_po, "submit")
-    done = resp.get("name", big_po) if st == 200 else big_po
-    reqs = [a for a in approvals_of(api, "purchase_order", done) if a.get("policy") == "po_approval"]
-    check("purchasing_manager submits a big PO: self-approved, numbered PO/CIN/..., po_approval recorded approved",
-          st == 200 and done.startswith("PO/CIN/") and len(reqs) == 1 and reqs[0]["state"] == "approved", (st, resp, reqs))
+    check("purchasing_manager submits a big PO: held, 202, po_approval pending for finance_manager",
+          st == 202 and resp["approval"]["state"] == "pending" and resp["approval"]["approvers"] == ["finance_manager"], (st, resp))
+    if st == 202:
+        st2, r2 = decide(pm, resp["approval"]["id"])
+        check("the maker (purchasing_manager) cannot approve its PO -> 403", st2 == 403, (st2, r2))
+        st2, r2 = decide(fm, resp["approval"]["id"])
+        check("finance_manager approves: the PO is submitted and numbered PO/CIN/...", st2 == 200 and r2.get("record", {}).get("name", "").startswith("PO/CIN/"), (st2, r2))
     small_po, total = po(10)
     st, resp = pm.verb("purchase_order", small_po, "submit")
     check("PO under the limit (850.000) is submitted without an approval request", st == 200 and not approvals_of(api, "purchase_order", resp.get("name", small_po)), (st, resp))
@@ -2570,6 +2573,16 @@ def scenario_po_approval_fnb(api):
     check("head office cannot approve its own PO -> 403", st2 == 403, (st2, r2))
     st2, r2 = decide(api, resp["approval"]["id"])
     check("the owner approves: the PO is submitted and numbered PO/...", st2 == 200 and r2.get("record", {}).get("docstatus") == 1 and r2["record"]["name"].startswith("PO/"), (st2, r2))
+    # the PO approval cannot be skipped by billing and paying directly
+    st, vb = hq.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "TANPA-PO-1", "bill_date": "2026-11-05", "outlet": DAGO,
+                                       "items": [{"item": "BRG-0001", "qty": 100, "rate": 85_000}]})
+    if check("head office records an 8.500.000 bill without a PO", st == 201, (st, vb)):
+        st, resp = hq.verb("vendor_bill", vb["name"], "submit")
+        check("the bill without a PO is held for the owner (202, bill_without_po_approval)", st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    st, pay = hq.create("payment", {"direction": "pay", "vendor": "VND-0001", "amount": 50_000_000})
+    if check("head office drafts a 50.000.000 outgoing payment", st == 201, (st, pay)):
+        st, resp = hq.verb("payment", pay["name"], "submit")
+        check("the outgoing payment is held for the owner (202, payout_approval)", st == 202 and resp["approval"]["policy"] == "payout_approval", (st, resp))
 
 
 def scenario_outlet_sales(api):

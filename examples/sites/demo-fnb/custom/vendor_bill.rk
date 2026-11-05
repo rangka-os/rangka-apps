@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
+# Spending above the PO threshold without a PO also waits for the owner: head office may record a vendor bill and pay
+# it, so without this a PO approval could be skipped by billing directly (contract 0007 §1). A bill from an approved PO
+# is not asked again.
+model: vendor_bill
+approvals:
+  - name: bill_without_po_approval
+    on: submit
+    when: "purchase_order == '' && grand_total > 5000000"
+    approvers: [purchasing_manager]
+    label: {id: Persetujuan tagihan tanpa PO, en: Approval of a bill without a PO}

@@ -1,11 +1,11 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
-# The purchase approval jasa_proyek had in the module (contract 0007 §1), kept as it was. Only its approvers may submit
-# purchase orders, so it records a self-approval and never holds (docs/permissions.md); a firm that wants a second pair
-# of eyes lists only the role that does not raise purchase orders.
+# The purchase approval (contract 0007 §1): a PO above Rp 5.000.000 waits for finance (or the owner). Only
+# purchasing_manager and head_office may submit purchase orders, so the approver is a role that does not raise them:
+# whoever makes the PO never approves it. The threshold is an example; a site sets its own.
 model: purchase_order
 approvals:
   - name: po_approval
     on: submit
     when: "grand_total > 5000000"
-    approvers: [purchasing_manager, head_office]
+    approvers: [finance_manager]
     label: {id: Persetujuan pembelian, en: Purchasing approval}
