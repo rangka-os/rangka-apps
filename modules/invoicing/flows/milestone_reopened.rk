@@ -16,3 +16,4 @@ steps:
     set:
       state: "ms.trigger == 'acceptance' && (ms.acceptance == '' || ba == null || ba.docstatus != 1) ? 'planned' : 'ready'"
       sales_invoice: "''"
+      bill_token: event.name
