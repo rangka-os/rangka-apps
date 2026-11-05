@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# The opening list of field workers (manpower, inspectors, trainers): one row per person. Certifications are added on
+# the worker afterwards (a table field, not part of this file).
+name: worker_list
+label: {id: Daftar tenaga kerja, en: Worker list}
+model: worker
+source: csv
+header_row: 1
+key: [Nomor karyawan]
+map:
+  worker_name: Nama
+  employee_no: Nomor karyawan
+  role_title: Jabatan
+  phone: WhatsApp
+  day_rate: Tarif harian
