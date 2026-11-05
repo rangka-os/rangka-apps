@@ -65,10 +65,17 @@ fields:
     label: {id: Nominal}
     default: '0'
     depends_on: basis == 'amount'
+  # The contract value when the milestone was made: a percent milestone is a share of it, so its amount does not move
+  # when the contract changes later or when a flow saves the milestone again (the schedule flows only see edits).
+  - name: contract_snapshot
+    type: currency
+    label: {id: Nilai kontrak saat termin dibuat}
+    read_only: true
+    default: project.contract_value
   - name: amount
     type: currency
     label: {id: Nilai termin (DPP)}
-    compute: "basis == 'percent' ? round(project.contract_value * percent / 100) : amount_fixed"
+    compute: "basis == 'percent' ? round(contract_snapshot * percent / 100) : amount_fixed"
     in_list: true
   - name: trigger
     type: select
@@ -111,7 +118,26 @@ fields:
     label: {id: Faktur}
     read_only: true
     in_list: true
+  # Set only by flow milestone_lock_on_update, inside an edit that changes the amount or the project of a milestone
+  # that is no longer planned; rule edit_locked then refuses that edit.
+  - name: locked_edit
+    type: check
+    label: {id: Perubahan terkunci}
+    hidden: true
+    default: 'false'
 rules:
+  - name: edit_locked
+    on: save
+    check: "!locked_edit"
+    message: {id: Termin yang sudah siap ditagih atau ditagih tidak bisa diubah nilai atau proyeknya}
+  - name: percent_needs_contract
+    on: save
+    check: basis != 'percent' || contract_snapshot > 0
+    message: {id: Termin persen butuh nilai kontrak di proyek}
+  - name: retainer_month_within_fee
+    on: save
+    check: project.billing_model != 'retainer' || project.contract_value == 0 || amount <= project.contract_value
+    message: {id: Termin retainer tidak boleh melebihi fee bulanan (nilai kontrak)}
   - name: percent_range
     on: save
     check: basis != 'percent' || (percent > 0 && percent <= 100)

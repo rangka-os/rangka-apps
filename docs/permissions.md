@@ -20,7 +20,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | user | r | r | r | r | r | r | r |
 | quotation, customer_order | all | r p | | r c w s (submit held by `manager_approval`) | | | |
 | project, assignment, timesheet, acceptance | r | r | | all | | | |
-| billing_milestone (state written by flows; no delete) | r w | r w e | | r c w e i | | | |
+| billing_milestone (state written by flows; no delete; finance and sales write only through the invoice flows, an amount edit by them is refused) | r w | r w e | | r c w e i | | | |
 | project_expense | r | all but d | | all | | | |
 | project_ledger (rows written by flows) | r c e | r c e | r c | r c e | | | |
 | sales_invoice | all | all | | | | | r |
