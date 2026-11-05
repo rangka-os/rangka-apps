@@ -8,6 +8,9 @@ title_field: date
 # Created as a draft (by the daily form or by an import); stock moves only when head office or the outlet submits it.
 # stock.post_moves explodes each line through its active recipe, writes the line cogs and cogs_total, and refuses
 # a second submitted record for the same outlet and date when source is form (409 duplicate_sales).
+# A Moka refund is its own line (qty < 0, gross 0, refund > 0, net < 0). The kernel posts no stock move for a line
+# with qty <= 0, so the materials of the original sale stay consumed: a refund lowers net sales and margin, not stock.
+# That is also what Moka does with base ingredients on a refund. Returning materials to stock needs the kernel.
 on_submit: [stock.post_moves]
 on_cancel: [stock.reverse_moves]
 permissions:
@@ -77,16 +80,16 @@ fields:
 rules:
   - name: qty_not_negative
     on: save
-    check: "lines.map(l, l.qty < 0 ? 1 : 0).sum() == 0"
-    message: {id: Jumlah terjual tidak boleh negatif}
+    check: "lines.map(l, l.qty < 0 && l.refund == 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah terjual hanya boleh negatif di baris retur}
   - name: discount_within_gross
     on: save
     check: "lines.map(l, l.discount > l.gross ? 1 : 0).sum() == 0"
     message: {id: Diskon tidak boleh melebihi penjualan kotor}
   - name: net_not_negative
     on: save
-    check: "lines.map(l, l.net < 0 ? 1 : 0).sum() == 0"
-    message: {id: Penjualan bersih per baris tidak boleh negatif}
+    check: "lines.map(l, l.net < 0 && l.refund == 0 ? 1 : 0).sum() == 0"
+    message: {id: Penjualan bersih per baris hanya boleh negatif di baris retur}
 views:
   list:
     columns: [name, outlet, date, source, status, net_total, cogs_total, margin]
