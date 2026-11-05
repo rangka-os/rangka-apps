@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: milestone_scheduled_on_update
+label: {id: Nilai termin berubah}
+# Inside the milestone's update: moves the difference in amount (or the whole amount to another project) on
+# project.scheduled_amount, under the same rule. State changes by the invoice flows run inside a flow and do not
+# start this one.
+on: billing_milestone.updated
+if: event.amount != event.before.amount || event.project != event.before.project
+steps:
+  - {find: project, where: name == event.before.project, as: old}
+  - update: old
+    set:
+      scheduled_amount: old.scheduled_amount - event.before.amount
+  - {find: project, where: name == event.project, as: prj}
+  - update: prj
+    set:
+      scheduled_amount: prj.scheduled_amount + event.amount

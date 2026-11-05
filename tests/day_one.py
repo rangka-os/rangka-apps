@@ -1408,7 +1408,7 @@ def scenario_billing_milestones(api):
     st, resp = pa.verb("acceptance", ban, "cancel")
     check("project admin cancels the acceptance report", st == 200, (st, resp))
     m2 = api.get("billing_milestone", ms[2]["name"])
-    eq("cancelled report gives milestone 2 back: planned, no report", (m2["state"], m2["acceptance"]), ("planned", ""))
+    eq("cancelled report gives milestone 2 back: planned (it keeps the cancelled report, for the amendment)", (m2["state"], m2["acceptance"]), ("planned", ban))
     st, am = pa.verb("acceptance", ban, "amend")
     amn = (am or {}).get("name") or ((am or {}).get("open") or {}).get("name")
     if check("amend the report", st in (200, 201) and amn, (st, am)):
@@ -1427,14 +1427,55 @@ def scenario_billing_milestones(api):
         m2, m3 = api.get("billing_milestone", ms[2]["name"]), api.get("billing_milestone", ms[3]["name"])
         eq("second amendment takes over invoiced milestone 2; milestone 3 stays planned", (m2["state"], m2["acceptance"], m3["state"]), ("invoiced", ban3, "planned"))
 
-    # monthly retainers from a sheet
+    # the schedule never exceeds the contract: 30+40+30 = 100% is full, a 4th milestone or a lower contract is refused
+    st, resp = pa.create("billing_milestone", {"project": p, "seq": 4, "title": "Tambahan", "basis": "percent", "percent": 30, "trigger": "acceptance"})
+    check("a 4th milestone of 30% (130% of the contract) -> 422", st == 422, (st, resp))
+    st, resp = pa.create("billing_milestone", {"project": p, "seq": 5, "title": "Besar", "basis": "amount", "amount_fixed": 500_000_000, "trigger": "acceptance"})
+    check("a 500.000.000 milestone on a 100.000.000 contract -> 422", st == 422, (st, resp))
+    st, resp = pa.call("PATCH", f"/api/v1/r/project/{Api.q(p)}", {"contract_value": 50_000_000})
+    check("lowering the contract below its schedule (100.000.000) -> 422", st == 422, (st, resp))
+    st, resp = pa.call("DELETE", f"/api/v1/r/billing_milestone/{Api.q(ms[2]['name'])}")
+    check("a milestone cannot be deleted by project admin (403)", st == 403, (st, resp))
+
+    # two amendments of one cancelled report: only one takes over; the second moves nothing forward
+    st, ba7 = pa.create("acceptance", {"project": p, "accepted_on": "2026-11-25", "accepted_by": "Bu Rina (klien)", "scope": "Laporan akhir"})
+    ba7n = submit_doc(pa, "acceptance", ba7["name"], "a report for the final milestone") if st == 201 else None
+    m3 = api.get("billing_milestone", ms[3]["name"])
+    eq("the new report makes milestone 3 ready", (m3["state"], m3["acceptance"]), ("ready", ba7n))
+    pa.verb("acceptance", ba7n, "cancel")
+    amends = []
+    for _ in range(2):
+        st, am = pa.verb("acceptance", ba7n, "amend")
+        amends.append((am or {}).get("name") or ((am or {}).get("open") or {}).get("name"))
+    for n in amends:
+        if n:
+            pa.verb("acceptance", n, "submit")
+    m3 = api.get("billing_milestone", ms[3]["name"])
+    others = [m for m in api.find("billing_milestone", "project == '%s'" % p) if m["state"] == "ready" and m["name"] != ms[3]["name"]]
+    eq("two amendments: milestone 3 ready once, no other milestone moved", (m3["state"], [m["name"] for m in others if m["name"] != ms[2]["name"]]), ("ready", []))
+
+    # a cancelled report and a cancelled invoice: the milestone goes back to planned, not ready, and cannot be billed
+    st, inv3 = fm.create("sales_invoice", {"billing_milestone": ms[3]["name"], "items": [{"item": ndt, "qty": 1, "rate": 30_000_000}]})
+    inv3n = submit_doc(fm, "sales_invoice", inv3["name"], "finance bills milestone 3") if st == 201 else None
+    live = api.get("billing_milestone", ms[3]["name"])["acceptance"]
+    pa.verb("acceptance", live, "cancel")
+    if inv3n:
+        fm.verb("sales_invoice", inv3n, "cancel")
+    m3 = api.get("billing_milestone", ms[3]["name"])
+    eq("report and invoice cancelled: milestone 3 planned (its report is not live)", m3["state"], "planned")
+    st, resp = fm.create("sales_invoice", {"billing_milestone": ms[3]["name"], "items": [{"item": ndt, "qty": 1, "rate": 30_000_000}]})
+    check("billing an acceptance milestone that is not ready -> 422", st == 422 and any("siap ditagih" in m for m in messages(resp)), (st, resp))
+
+    # monthly retainers from a sheet (a retainer engagement of its own: 3 x 15.000.000)
+    st, rp = pa.create("project", {"project_name": "Retainer pajak bulanan", "customer": customer, "billing_model": "retainer", "contract_value": 45_000_000})
+    p = rp["name"]
     sheet = ("Proyek,Urutan,Judul,Jenis,Nominal,Jatuh tempo,Periode dari,Periode sampai\n"
              f"{p},11,Retainer November,retainer,15000000,30/11/2026,01/11/2026,30/11/2026\n"
              f"{p},12,Retainer Desember,retainer,15000000,31/12/2026,01/12/2026,31/12/2026\n"
              f"{p},13,Retainer Januari,retainer,15000000,31/01/2027,01/01/2027,31/01/2027\n").encode()
-    st, pv = fm.upload("/api/v1/imports/billing_milestone", {}, "retainer.csv", sheet)
+    st, pv = pa.upload("/api/v1/imports/billing_milestone", {}, "retainer.csv", sheet)
     if check("retainer sheet: preview 3 rows, no errors", st == 200 and pv.get("rows") == 3 and pv.get("errors") == [], (st, pv)):
-        st, c = fm.call("POST", f"/api/v1/imports/billing_milestone/{pv['id']}/commit")
+        st, c = pa.call("POST", f"/api/v1/imports/billing_milestone/{pv['id']}/commit")
         check("retainer sheet committed: 3 milestones", st == 200 and len(c.get("records", [])) == 3, (st, c))
         rs = api.find("billing_milestone", "project == '%s' && kind == 'retainer'" % p)
         eq("retainers: 3 x 15.000.000, planned, due 30/11, 31/12, 31/01", sorted((r["due_date"], r["amount"], r["state"]) for r in rs),
@@ -1592,8 +1633,8 @@ MATRIX = {
     "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
     **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("project", "assignment", "timesheet", "acceptance")},
     "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R},
-    "billing_milestone": {"project_admin": {"read", "create", "write", "delete", "export", "import"},
-                          "finance_manager": {"read", "create", "write", "delete", "export", "import"}, "sales_manager": {"read", "write"}},
+    "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
+                          "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
     "payment": {"finance_manager": _ALL, "sales_manager": _ALL, "head_office": {"read", "create", "write", "submit", "print"}},   # head_office: if direction == 'pay'
     "purchase_request": {"purchasing_manager": _ALL, "project_admin": _RCWS, "head_office": _ALL, "outlet_staff": _RCWS},
