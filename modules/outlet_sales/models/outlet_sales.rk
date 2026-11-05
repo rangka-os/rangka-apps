@@ -87,6 +87,12 @@ rules:
     on: save
     check: "source != 'moka' || moka_outlet == outlet.moka_name"
     message: {id: 'Kolom Outlet di file Moka beda dengan Nama outlet di Moka pada outlet ini. Ekspor per outlet, atau cek data outlet'}
+  # One sales source per outlet: a Moka outlet (moka_name set) imports Moka files only, any other outlet uses the
+  # daily form. Without it, a form and a Moka export for the same outlet and day both take stock out.
+  - name: form_only_for_non_moka_outlets
+    on: save
+    check: "source != 'form' || outlet.moka_name == ''"
+    message: {id: 'Outlet ini memakai Moka: penjualannya diimpor dari file Moka, bukan formulir harian'}
   - name: qty_not_negative
     on: save
     check: "lines.map(l, l.qty < 0 && (l.refund == 0 || source != 'moka') ? 1 : 0).sum() == 0"

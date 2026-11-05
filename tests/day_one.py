@@ -1530,7 +1530,7 @@ def money_bodies(api, site):
         "purchase_order": dict({"vendor": vendor, "items": [{"item": item, "qty": 1, "rate": 1_000}]}, **outlet),
         "vendor_bill": {"vendor": vendor, "bill_no": "IZIN-1", "bill_date": "2026-11-03", "items": [{"item": item, "qty": 1, "rate": 1_000}]},
         "goods_receipt": {"vendor": vendor, "outlet": DAGO if site == "demo-fnb" else (api.list("outlet") or [{"name": ""}])[0]["name"], "items": [{"item": item, "qty": 1, "rate": 1_000}]},
-        "outlet_sales": {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]},
+        "outlet_sales": {"outlet": DAGO, "date": "2026-11-04", "source": "moka", "moka_outlet": "Tahu Contoh - Dago", "lines": [{"item": "BRG-0007", "qty": 1}]},
     }
     return {m: v for m, v in b.items() if installed(api, m)}
 
@@ -2129,7 +2129,7 @@ def scenario_prints_fnb(api):
 # ---------- scenarios: multi-branch F&B (demo-fnb): stock and outlet sales
 
 KG, PORSI = "UOM-001", "UOM-006"
-HO, DAGO, BRAGA = "OUT-01", "OUT-02", "OUT-03"
+HO, DAGO, BRAGA, CIMAHI = "OUT-01", "OUT-02", "OUT-03", "OUT-04"   # Dago and Braga use Moka, Cimahi the daily form
 FIXTURES = os.path.join(ROOT, "examples", "fixtures", "demo-fnb")
 CTX = {}   # kernel, org and the signed-in clients, set by main() for demo-fnb
 
@@ -2177,7 +2177,7 @@ def receive(api, outlet, lines, label, vendor="VND-0001"):
 
 def scenario_fnb_fixtures(api):
     outlets = api.list("outlet")
-    check("fixtures: 3 outlets, one head office", len(outlets) == 3 and [o["name"] for o in outlets if o.get("is_head_office") in (True, "true")] == [HO], outlets)
+    check("fixtures: 4 outlets, one head office", len(outlets) == 4 and [o["name"] for o in outlets if o.get("is_head_office") in (True, "true")] == [HO], outlets)
     eq("fixtures: uoms Kg, Gram, Karung, Liter, Pcs, Porsi", sorted(u["uom_name"] for u in api.list("uom")), ["Gram", "Karung", "Kg", "Liter", "Pcs", "Porsi"])
     items = api.list("item")
     eq("fixtures: 6 materials and 4 products", (len([i for i in items if i["kind"] == "material"]), len([i for i in items if i["kind"] == "product"])), (6, 4))
@@ -2514,8 +2514,9 @@ def scenario_stock_access(api):
         check("the stock hook wrote the count move for the staff's submit (-2 kg)", len(mv) == 1 and mv[0]["qty"] == -2 and mv[0]["reason"] == "count", mv)
     st, resp = dago.create("stock_count", {"outlet": BRAGA, "items": [{"item": m, "counted_qty": 1}]})
     check("outlet_staff (Dago) creates a stock_count for Braga -> 403", st == 403, (st, resp))
-    st, resp = dago.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-05", "lines": [{"item": "BRG-0007", "qty": 1}]})
-    check("outlet_staff (Dago) creates outlet_sales for Braga -> 403", st == 403, (st, resp))
+    # Cimahi takes the daily form, so no sales rule fails first (the kernel checks rules before row scope)
+    st, resp = dago.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-05", "lines": [{"item": "BRG-0007", "qty": 1}]})
+    check("outlet_staff (Dago) creates outlet_sales for Cimahi -> 403", st == 403, (st, resp))
 
     # transfers (contract 0010 §5): the scope lists [outlet, from_outlet, to_outlet], so outlets read transfers in and out of their outlet; only head
     # office creates them (outlet_staff has read only), and outlets receive goods with a stock_transfer_receipt of their own outlet
@@ -2527,7 +2528,7 @@ def scenario_stock_access(api):
     st, resp = dago.create("stock_transfer", {"from_outlet": DAGO, "to_outlet": BRAGA, "items": [{"item": m, "qty": 1}]})
     check("outlet_staff (Dago) creates a stock_transfer from Dago to Braga -> 403 permission_denied (outlet_staff has read only on transfers)",
           st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
-    st, braga_sales = api.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
+    st, braga_sales = api.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-04", "source": "moka", "moka_outlet": "Tahu Contoh - Braga", "lines": [{"item": "BRG-0007", "qty": 1}]})
     check("setup: owner creates a draft outlet_sales for Braga", st == 201, (st, braga_sales))
     if st == 201:
         st, resp = dago.call("GET", f"/api/v1/r/outlet_sales/{Api.q(braga_sales['name'])}")
@@ -2669,7 +2670,7 @@ def scenario_outlet_sales(api):
         # fnb dashboard "Stok minus" list: Task 10 (a dashboard widget)
 
     # the daily form: created by REST with 2 lines, then imported
-    st, df = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [
+    st, df = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": [
         {"item": "BRG-0007", "qty": 40, "gross": 600_000}, {"item": "BRG-0008", "qty": 25, "gross": 450_000, "discount": 15_000}]})
     check("daily form created via REST with 2 lines", st == 201, (st, df))
     if st != 201:
@@ -2679,7 +2680,7 @@ def scenario_outlet_sales(api):
     dfn = submit_doc(api, "outlet_sales", df["name"], "submit the daily form")
     dd = api.get("outlet_sales", dfn)
     eq("daily form cogs: 40 ORI + 25 PDS through the recipes", dd["cogs_total"], 40 * 1698 + 25 * 2280)
-    st, pvf = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), DAGO)
+    st, pvf = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), CIMAHI)
     check("daily_form import: preview 3 rows, one record, no errors", st == 200 and pvf["rows"] == 3 and pvf["errors"] == [] and len(pvf["preview"]) == 1, (st, pvf))
     if st == 200:
         st, cf = hq.call("POST", f"/api/v1/imports/daily_form/{pvf['id']}/commit")
@@ -2690,17 +2691,22 @@ def scenario_outlet_sales(api):
             st, resp = api.verb("outlet_sales", rec["name"], "submit")
             check("a second submitted daily form for the same outlet and day -> 409 duplicate_sales",
                   st == 409 and resp["error"]["code"] == "duplicate_sales", (st, resp))
-    st, again = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), DAGO)
+    st, again = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), CIMAHI)
     check("the daily form file again: duplicate true", st == 200 and again["duplicate"] is True, (st, again))
-    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1, "discount": 99_999_999}]})
+    st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1, "discount": 99_999_999}]})
     check("discount above gross -> 422 'Diskon tidak boleh melebihi penjualan kotor'", st == 422 and any("Diskon tidak boleh" in x for x in messages(resp)), (st, resp))
+    # a Moka outlet takes no daily form, by REST or by import (one sales source per outlet)
+    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-05", "lines": [{"item": "BRG-0007", "qty": 1}]})
+    check("a daily form for Dago (a Moka outlet) -> 422 'Outlet ini memakai Moka'", st == 422 and any("Outlet ini memakai Moka" in x for x in messages(resp)), (st, resp))
+    st, pvd = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), DAGO)
+    check("the daily_form import for Dago: preview error 'Outlet ini memakai Moka'", st == 200 and any("Outlet ini memakai Moka" in e["message"] for e in pvd["errors"]), (st, pvd))
     st, resp = api.create("outlet_sales", {"date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
     check("outlet_sales without an outlet -> 422", st == 422, (st, resp))
-    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": -1, "gross": 0}]})
+    st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": -1, "gross": 0}]})
     check("a negative qty without a refund -> 422 'hanya boleh negatif di baris retur'", st == 422 and any("hanya boleh negatif di baris retur" in x for x in messages(resp)), (st, resp))
-    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 1}]})
+    st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 1}]})
     check("a negative qty with a refund on a daily form (not Moka) -> 422", st == 422 and any("hanya boleh negatif di baris retur" in x for x in messages(resp)), (st, resp))
-    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": []})
+    st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": []})
     if st == 201:
         fail("min_rows 1: an outlet_sales without lines is refused", "201: the kernel saved it")
     else:
