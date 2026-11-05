@@ -16,7 +16,7 @@ fields:
   - {name: avg_cost, type: currency, label: {id: Rata-rata biaya}, read_only: true, in_list: true}
   - {name: negative, type: check, label: {id: Stok minus}, compute: qty < 0, in_list: true}
   - {name: last_move, type: data, label: {id: Mutasi terakhir}, read_only: true}
-  # Written by stock.post_moves on each sale out of this balance (rangka-os, stock_balance.last_sale_date); older
+  # Written by stock.post_moves on each sale out of this balance (rangka-os#59); older
   # kernels leave it empty, so "not sold for N days" lists stay empty instead of listing every balance.
   - {name: last_sale_date, type: date, label: {id: Terakhir terjual}, read_only: true, in_list: true}
 views:

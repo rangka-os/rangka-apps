@@ -2910,7 +2910,7 @@ def scenario_ritel_sales(api):
     dated = [b for b in bals if b.get("last_sale_date")]
     if not dated:
         CTX["no_last_sale"] = True
-        gap("stock_balance.last_sale_date written on sale moves", "rangka-os feat/stock-balance-last-sale", "kernel without the field writer: slow movers stay empty")
+        gap("stock_balance.last_sale_date written on sale moves", "rangka-os#59", "kernel without the field writer: slow movers stay empty")
         return
     late = {sku_of[b["item"]] for b in dated if b["last_sale_date"][:10] < cutoff}
     check("stock_balance.last_sale_date (kernel): the slow items' last sale is over 30 days ago", g.SLOW <= late, sorted(g.SLOW - late))
@@ -3071,7 +3071,7 @@ def scenario_dashboards_ritel(api):
         slow = [b for b in bal if b["qty"] > 0 and b.get("last_sale_date") and b["last_sale_date"][:10] < cutoff]
         eq("ritel_stock slow movers (qty > 0, last sale over 30 days ago)", (num(ws["slow_count"]), ws["slow_movers"]["total"]), (len(slow), len(slow)))
         if CTX.get("no_last_sale"):
-            gap("ritel_stock slow movers listed", "rangka-os feat/stock-balance-last-sale", "no last_sale_date on this kernel: the list is empty, not faked")
+            gap("ritel_stock slow movers listed", "rangka-os#59", "no last_sale_date on this kernel: the list is empty, not faked")
         else:
             check("ritel_stock: at least the 9 generated slow items per outlet are listed", len(slow) >= len(g.SLOW), len(slow))
         top = ws["best_sellers_qty"]["data"][0] if ws["best_sellers_qty"].get("data") else {}

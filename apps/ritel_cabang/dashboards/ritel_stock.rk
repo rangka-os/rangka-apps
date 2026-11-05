@@ -5,7 +5,7 @@ default_period: 30
 cache: 5m
 # Stock value is the current balance (no period). Best sellers are the sale moves of the period per item (a sale
 # moves qty out, so the most sold item has the lowest sum). Slow movers need stock_balance.last_sale_date, written by
-# the kernel on each sale (rangka-os stock_balance.last_sale_date); on an older kernel that list stays empty.
+# the kernel on each sale (rangka-os#59); on an older kernel that list stays empty.
 widgets:
   - name: stock_value_total
     type: number
