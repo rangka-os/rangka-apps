@@ -1592,11 +1592,22 @@ def scenario_milestone_money(api):
     check("an amendment re-pointed at a milestone that already has an invoice -> 422", st == 422, (st, resp))
     # retainer: the contract value is the monthly fee; every month may bill it, no month more
     p = project("Uang retainer", cv=15_000_000, model="retainer")
-    res = [ms(p, 10 + i, amount=15_000_000, trig="date", due_date=f"2026-1{i}-28", kind="retainer")[0] for i in (0, 1)]
-    st, resp = ms(p, 20, amount=20_000_000, trig="date", due_date="2027-01-28", kind="retainer")
+    res = [ms(p, 10 + i, amount=15_000_000, trig="date", due_date=f"2026-1{i}-28", kind="retainer", period_from=f"2026-1{i}-01", period_to=f"2026-1{i}-28")[0] for i in (0, 1)]
+    st, resp = ms(p, 20, amount=20_000_000, trig="date", due_date="2027-01-28", kind="retainer", period_from="2027-01-01", period_to="2027-01-31")
     check("retainer: months of 15.000.000 on a 15.000.000 monthly fee are accepted, a 20.000.000 month -> 422", res == [201, 201] and st == 422, (res, st, resp))
-    st, ri = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 20_000_000}]})
-    check("retainer: an invoice above the monthly fee -> 422", st == 422 or fm.verb("sales_invoice", ri["name"], "submit", {"force": True})[0] == 422, (st, ri))
+    st, ri = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 10_000_000}]})
+    check("retainer: an invoice without a monthly milestone -> 422", st == 422 or fm.verb("sales_invoice", ri["name"], "submit", {"force": True})[0] == 422, (st, ri))
+    st, resp = ms(p, 30, amount=15_000_000, trig="date", due_date="2027-02-27", kind="retainer", period_from="2027-02-01", period_to="2027-02-28")
+    st2, resp2 = ms(p, 31, amount=15_000_000, trig="date", due_date="2027-02-28", kind="retainer", period_from="2027-02-01", period_to="2027-02-28")
+    check("retainer: one milestone per month (a second for February -> 422)", st == 201 and st2 == 422, (st, st2, resp2))
+    st, resp = ms(p, 32, amount=15_000_000, trig="date", due_date="2026-12-28", kind="retainer", period_from="2026-12-15", period_to="2027-01-14")
+    check("retainer: a month starts on the 1st (period_from 15 Dec -> 422)", st == 422, (st, resp))
+    # a retention release belongs to the project of the invoice it releases
+    pr1 = project("Retensi asal", cv=0); pr2 = project("Retensi lain", cv=100_000_000)
+    st, src = fm.create("sales_invoice", {"customer": customer, "project": pr1, "retention_percent": 10, "items": [{"item": ndt, "qty": 1, "rate": 20_000_000}]})
+    srcn = fm.verb("sales_invoice", src["name"], "submit", {"force": True})[1].get("name") if st == 201 else None
+    st, resp = fm.create("sales_invoice", {"customer": customer, "project": pr2, "kind": "retention", "retention_of": srcn, "items": [{"item": ndt, "qty": 1, "rate": 2_000_000}]})
+    check("a retention release on another project than its invoice's -> 422", st == 422, (st, resp))
 
 
 def scenario_roles_jasa(api):
@@ -1750,7 +1761,7 @@ MATRIX = {
     "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
     **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("assignment", "timesheet", "acceptance")},
     "project": {"project_admin": _ALL, "sales_manager": {"read", "write"}, "finance_manager": {"read", "write"}},   # write for the billing flows
-    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R},
+    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R},
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
                           "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
