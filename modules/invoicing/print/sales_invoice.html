@@ -52,7 +52,7 @@
   {{if taxrate .Doc .Tax}}<tr><td>PPN {{number (taxrate .Doc .Tax)}}% (DPP nilai lain {{.Doc.dpp_num}}/{{.Doc.dpp_den}})</td><td class="num">{{rupiah .Doc.ppn}}</td></tr>{{end}}
   <tr class="grand"><td>Total</td><td class="num">{{rupiah .Doc.grand_total}}</td></tr>
   {{if .Doc.retention_amount}}<tr><td>Retensi {{number .Doc.retention_percent}}% ditahan</td><td class="num">-{{rupiah .Doc.retention_amount}}</td></tr>{{end}}
-  {{if .Doc.pph23_amount}}<tr><td>PPh 23 dipotong pelanggan</td><td class="num">-{{rupiah .Doc.pph23_amount}}</td></tr>{{end}}
+  {{if .Doc.pph23_amount}}<tr><td>PPh 23 dipotong pelanggan (dasar {{rupiah .Doc.pph23_dpp}})</td><td class="num">-{{rupiah .Doc.pph23_amount}}</td></tr>{{end}}
   {{if or .Doc.retention_amount .Doc.pph23_amount}}<tr class="grand"><td>Tagihan bersih</td><td class="num">{{rupiah .Doc.amount_due}}</td></tr>{{end}}
 </table>
 <p class="note"><strong>Terbilang:</strong> {{terbilang .Doc.grand_total}}</p>

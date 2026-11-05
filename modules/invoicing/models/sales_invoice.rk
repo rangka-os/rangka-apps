@@ -127,10 +127,17 @@ fields:
     type: percent
     label: {id: Tarif PPh 23}
     default: '2'
+  # The share of dpp that PPh 23 applies to: dpp x (lines with pph23_base / all lines). Equal to dpp when every line
+  # is ticked (the default). Foreign-currency documents take the share from the *_fx line amounts (the IDR line amount
+  # is not used there). dpp * 1.0 keeps dpp x amount in float, clear of int64 overflow.
+  - name: pph23_dpp
+    type: currency
+    label: {id: Dasar PPh 23}
+    compute: "currency != '' && currency != 'IDR' ? (subtotal_fx == 0 ? 0 : round(dpp * 1.0 * sum(items.map(i, i.pph23_base ? i.amount_fx : 0)) / subtotal_fx)) : (subtotal == 0 ? 0 : round(dpp * 1.0 * items.map(i, i.pph23_base ? i.amount : 0).sum() / subtotal))"
   - name: pph23_amount
     type: currency
     label: {id: PPh 23 dipotong pelanggan}
-    compute: "pph23_applies ? round(dpp * pph23_rate / 100) : 0"
+    compute: "pph23_applies ? round(pph23_dpp * pph23_rate / 100) : 0"
   - name: amount_due
     type: currency
     label: {id: Tagihan bersih}
@@ -157,7 +164,7 @@ fields:
   - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "round(dpp_fx * dpp_num / dpp_den * tax_rate / 100, 2)"}
   - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_fx + ppn_fx"}
   - {name: retention_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Retensi ditahan (valas)}, compute: "round(dpp_fx * retention_percent / 100, 2)"}
-  - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, compute: "pph23_applies ? round(dpp_fx * pph23_rate / 100, 2) : 0"}
+  - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, compute: "pph23_applies && dpp != 0 ? round(dpp_fx * pph23_dpp / dpp * pph23_rate / 100, 2) : 0"}
   - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - retention_amount_fx - pph23_amount_fx"}
 rules:
   - name: qty_positive

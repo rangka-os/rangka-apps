@@ -991,7 +991,7 @@ def scenario_payments(api):
                                         "payment": p2["name"] if isinstance(p2, dict) and p2.get("name") else ""})
     check("create withholding for the invoice", st == 201, bp)
     if st == 201:
-        eq("withholding dpp defaults to invoice dpp", bp["dpp"], 10_000_000)
+        eq("withholding dpp defaults to the invoice's PPh 23 base (= dpp when every line is ticked)", bp["dpp"], 10_000_000)
         eq("withholding amount = round(dpp x 2 / 100) = 200.000", bp["amount"], 200_000)
         st, resp = api.verb("withholding", bp["name"], "submit")
         check("submit withholding", st == 200 and str(resp.get("name", "")).startswith("BP-"), resp)
@@ -1848,6 +1848,31 @@ def scenario_tax_jasa(api):
     check("submit the PKP invoice", st == 200, resp)
     stored = api.get("sales_invoice", resp.get("name", inv["name"]))
     eq("a submitted invoice keeps its stored tax_rate, DPP ratio and ppn", (stored["tax_rate"], stored["dpp_num"], stored["dpp_den"], stored["ppn"]), (12, 11, 12, 1_100_000))
+    # manpower: wages on their own line are not PPh 23 base, the management fee is (pph23_base per line)
+    st, mp = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "items": [
+        {"item": ndt, "qty": 1, "rate": 10_000_000, "description": "Gaji tenaga kerja", "pph23_base": False},
+        {"item": ndt, "qty": 1, "rate": 1_000_000, "description": "Management fee"}]})
+    check("manpower invoice (wages 10.000.000 untaxed for PPh 23, fee 1.000.000) created", st == 201, (st, mp))
+    if st == 201:
+        eq("manpower invoice: dpp 11.000.000, ppn 1.210.000, grand_total 12.210.000", (mp["dpp"], mp["ppn"], mp["grand_total"]), (11_000_000, 1_210_000, 12_210_000))
+        eq("manpower invoice: PPh 23 base 1.000.000 (the fee), PPh 23 20.000, amount_due 12.190.000", (mp["pph23_dpp"], mp["pph23_amount"], mp["amount_due"]), (1_000_000, 20_000, 12_190_000))
+        eq("lines default to pph23_base true; the wage line keeps false", [l["pph23_base"] in (True, "true") for l in mp["items"]], [False, True])
+    st, dsc = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "discount_amount": 1_100_000, "items": [
+        {"item": ndt, "qty": 1, "rate": 10_000_000, "pph23_base": False}, {"item": ndt, "qty": 1, "rate": 1_000_000}]})
+    if st == 201:
+        eq("header discount spreads pro rata: dpp 9.900.000, PPh 23 base 900.000, PPh 23 18.000", (dsc["dpp"], dsc["pph23_dpp"], dsc["pph23_amount"]), (9_900_000, 900_000, 18_000))
+    else:
+        fail("discounted manpower invoice created", (st, dsc))
+    eq("an invoice with every line ticked: PPh 23 base = dpp", inv.get("pph23_dpp"), inv.get("dpp"))
+    if mp.get("name"):
+        check_print("manpower invoice print names the PPh 23 base", api, "sales_invoice", mp["name"], "", ["PPh 23 dipotong pelanggan (dasar Rp 1.000.000)", "Rp 20.000", "Rp 12.190.000"])
+    st, fx = api.create("sales_invoice", {"customer": customer, "currency": "USD", "exchange_rate": 16000, "pph23_applies": True, "items": [
+        {"item": ndt, "qty": 1, "rate_fx": 900, "pph23_base": False}, {"item": ndt, "qty": 1, "rate_fx": 100}]})
+    if st == 201:
+        eq("USD invoice 900 untaxed + 100 fee at 16.000: PPh 23 base 1.600.000, PPh 23 32.000, PPh 23 (valas) 2",
+           (fx["pph23_dpp"], fx["pph23_amount"], float(fx["pph23_amount_fx"])), (1_600_000, 32_000, 2.0))
+    else:
+        fail("USD manpower invoice created", (st, fx))
     # a down payment invoice's own amount is its dpp / grand_total
     st, dp = api.create("sales_invoice", invoice_body(customer, ndt, rate=3_000_000, kind="down_payment"))
     eq("down_payment invoice: dpp 3.000.000, ppn 330.000, grand_total 3.330.000", (dp.get("dpp"), dp.get("ppn"), dp.get("grand_total")), (3_000_000, 330_000, 3_330_000))
