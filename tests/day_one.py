@@ -2575,12 +2575,12 @@ def scenario_outlet_sales(api):
 
     # upload -> preview
     st, pv = preview(hq, "moka_item_details", "moka-sample.csv", moka, DAGO)
-    check("upload the Moka sample: preview 6 rows, no errors, not a duplicate", st == 200 and pv["rows"] == 6 and pv["errors"] == [] and pv["skipped"] == 0 and pv["duplicate"] is False, (st, pv))
+    check("upload the Moka sample: preview 7 rows (one a refund), no errors, not a duplicate", st == 200 and pv["rows"] == 7 and pv["errors"] == [] and pv["skipped"] == 0 and pv["duplicate"] is False, (st, pv))
     if st != 200:
         return
     prev = pv["preview"]
-    check("preview: one outlet_sales record for 02/11/2026 with 6 lines, source moka, outlet Dago",
-          len(prev) == 1 and len(prev[0]["lines"]) == 6 and prev[0]["date"] == "2026-11-02" and prev[0]["source"] == "moka" and prev[0]["outlet"] == DAGO, prev)
+    check("preview: one outlet_sales record for 02/11/2026 with 7 lines, source moka, outlet Dago",
+          len(prev) == 1 and len(prev[0]["lines"]) == 7 and prev[0]["date"] == "2026-11-02" and prev[0]["source"] == "moka" and prev[0]["outlet"] == DAGO, prev)
     st, c = hq.call("POST", f"/api/v1/imports/moka_item_details/{pv['id']}/commit")
     check("commit creates the draft outlet_sales", st == 200 and len(c.get("records", [])) == 1, (st, c))
     if st != 200:
@@ -2589,12 +2589,14 @@ def scenario_outlet_sales(api):
     check("imported record is a draft (docstatus 0, no stock moved yet)", sales["docstatus"] == 0 and not moves_of(api, sales["name"]), sales)
     eq("imported totals: gross 259.000, discount 16.000, refund 15.000", (sales["gross_total"], sales["discount_total"], sales["refund_total"]), (259_000, 16_000, 15_000))
     eq("imported net_total 228.000 (= Moka's Net Sales)", sales["net_total"], 228_000)
-    eq("imported qty_total 13", sales["qty_total"], 13)
-    eq("imported lines match items by sku", [l["item"] for l in sales["lines"]], ["BRG-0007", "BRG-0008", "BRG-0009", "BRG-0008", "BRG-0007", "BRG-0010"])
+    eq("imported qty_total 12 (the refund line counts -1)", sales["qty_total"], 12)
+    eq("refund line kept as Moka wrote it: qty -1, gross 0, refund 15.000, net -15.000",
+       [(l["qty"], l["gross"], l["refund"], l["net"]) for l in sales["lines"] if l["refund"]], [(-1, 0, 15_000, -15_000)])
+    eq("imported lines match items by sku", [l["item"] for l in sales["lines"]], ["BRG-0007", "BRG-0008", "BRG-0009", "BRG-0008", "BRG-0007", "BRG-0007", "BRG-0010"])
 
     # the same file again
     st, pv2 = preview(hq, "moka_item_details", "moka-sample.csv", moka, DAGO)
-    check("the same file again: duplicate true (skipped rows 6)", st == 200 and pv2["duplicate"] is True and pv2["skipped"] == 6, (st, pv2))
+    check("the same file again: duplicate true (skipped rows 7)", st == 200 and pv2["duplicate"] is True and pv2["skipped"] == 7, (st, pv2))
     st, c2 = hq.call("POST", f"/api/v1/imports/moka_item_details/{pv2['id']}/commit")
     check("committing the duplicate -> 409 already_imported", st == 409 and c2["error"]["code"] == "already_imported", (st, c2))
     eq("still one imported record", len(api.find("outlet_sales", "source == 'moka' && outlet == '%s'" % DAGO)), 1)
@@ -2615,11 +2617,11 @@ def scenario_outlet_sales(api):
     # submit: stock moves through the recipes, cogs, margin
     sn = submit_doc(api, "outlet_sales", sales["name"], "submit the imported sales record")
     s2 = api.get("outlet_sales", sn)
-    eq("recipes explode: line cogs [3.396, 2.280, 7.740, 4.560, 1.698, 15.680]", [l["cogs"] for l in s2["lines"]], [3396, 2280, 7740, 4560, 1698, 15680])
+    eq("recipes explode: line cogs [3.396, 2.280, 7.740, 4.560, 1.698, 0, 15.680] (no cogs on the refund line)", [l["cogs"] or 0 for l in s2["lines"]], [3396, 2280, 7740, 4560, 1698, 0, 15680])
     eq("cogs_total 35.354", s2["cogs_total"], 35_354)
     eq("margin = net 228.000 - cogs 35.354 = 192.646", s2["margin"], 192_646)
     mv = moves_of(api, sn)
-    check("moves: one per line and material (6 lines -> 22 moves), all reason sale, none negative",
+    check("moves: one per sold line and material (6 sold lines -> 22 moves; the refund line posts none: materials stay used), all reason sale, none negative",
           len(mv) == 22 and all(x["reason"] == "sale" and not x["negative"] for x in mv), [(x["item"], x["qty"]) for x in mv])
     b = balance(api, DAGO, "BRG-0001")
     eqf("tahu mentah at Dago: 100 - 1,85 = 98,15 kg", b["qty"], 98.15)
@@ -2673,6 +2675,37 @@ def scenario_outlet_sales(api):
     check("discount above gross -> 422 'Diskon tidak boleh melebihi penjualan kotor'", st == 422 and any("Diskon tidak boleh" in x for x in messages(resp)), (st, resp))
     st, resp = api.create("outlet_sales", {"date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
     check("outlet_sales without an outlet -> 422", st == 422, (st, resp))
+    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": -1, "gross": 0}]})
+    check("a negative qty without a refund -> 422 'hanya boleh negatif di baris retur'", st == 422 and any("hanya boleh negatif di baris retur" in x for x in messages(resp)), (st, resp))
+    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 1}]})
+    check("a negative qty with a refund on a daily form (not Moka) -> 422", st == 422 and any("hanya boleh negatif di baris retur" in x for x in messages(resp)), (st, resp))
+    # real refund shapes: a discounted line refunded (Discounts negative) and two partial refunds of one item on one
+    # receipt at different times; the record's totals equal the file's (Net Sales sum 0 + 30.000 - 30.000)
+    st, pvr = preview(hq, "moka_item_details", "moka-sample-refunds.csv", read_sample("moka-sample-refunds.csv"), DAGO)
+    check("refund shapes: preview 5 rows, no errors (two partial refunds are not 'Baris ganda')", st == 200 and pvr["rows"] == 5 and pvr["errors"] == [], (st, pvr))
+    if st == 200 and pvr["errors"] == []:
+        st, cr = hq.call("POST", f"/api/v1/imports/moka_item_details/{pvr['id']}/commit")
+        if check("refund shapes committed", st == 200 and len(cr.get("records", [])) == 1, (st, cr)):
+            r = api.get("outlet_sales", cr["records"][0])
+            eq("refund shapes: gross 90.000, discount 0, refund 90.000, net 0 (= Moka Net Sales)", (r["gross_total"], r["discount_total"], r["refund_total"], r["net_total"]), (90_000, 0, 90_000, 0))
+            eq("imported record keeps source moka", r["source"], "moka")
+    # source moka is the importer's (head office): outlet staff cannot type it to book a negative net (audit round 2
+    # of #7, S1 and S1b)
+    dago = CTX.get("staff_dago")
+    if dago:
+        st, resp = dago.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "source": "moka",
+                                                "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 500_000}]})
+        check("outlet staff creating a source moka record with net -500.000 -> 403", st == 403, (st, resp))
+        st, own = dago.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
+        if check("outlet staff creates a daily form record", st == 201 and own["source"] == "form", (st, own)):
+            st, resp = dago.patch("outlet_sales", own["name"], {"source": "moka", "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 900_000}]})
+            check("outlet staff turning it into source moka with net -900.000 -> 403", st == 403, (st, resp))
+            eq("the form record keeps net 15.000 (1 x 15.000)", api.get("outlet_sales", own["name"])["net_total"], 15_000)
+            api.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(own['name'])}")
+        moka_rec = next(iter(api.find("outlet_sales", "source == 'moka' && outlet == '%s'" % DAGO)), None)
+        if moka_rec:
+            st, resp = dago.call("GET", f"/api/v1/r/outlet_sales/{Api.q(moka_rec['name'])}")
+            check("outlet staff still reads its outlet's Moka records", st == 200, (st, resp))
     st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": []})
     if st == 201:
         fail("min_rows 1: an outlet_sales without lines is refused", "201: the kernel saved it")
