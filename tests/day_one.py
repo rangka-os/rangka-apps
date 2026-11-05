@@ -1894,6 +1894,16 @@ def scenario_tax_jasa(api):
            (fx["pph23_dpp"], fx["pph23_amount"], float(fx["pph23_amount_fx"])), (1_600_000, 32_000, 2.0))
     else:
         fail("USD manpower invoice created", (st, fx))
+    # a USD DP (150 wages excluded + 50 fee at 16.000 = 3.200.000, base 800.000) deducted in full by a rupiah final
+    # (wages 10.000.000 excluded + fee 2.000.000): base 2.000.000 - 800.000 = 1.200.000, PPh 23 24.000
+    st, dpx = api.create("sales_invoice", {"customer": customer, "kind": "down_payment", "currency": "USD", "exchange_rate": 16000, "pph23_applies": True, "items": [
+        {"item": ndt, "qty": 1, "rate_fx": 150, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate_fx": 50}]})
+    dpxn = submit_doc(api, "sales_invoice", dpx["name"], "submit a USD DP invoice") if st == 201 else None
+    if dpxn:
+        st, fin = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "dp_invoice": dpxn, "down_payment": 3_200_000, "items": [
+            {"item": ndt, "qty": 1, "rate": 10_000_000, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate": 2_000_000}]})
+        eq("rupiah final deducting a USD DP: DP base 800.000, base 1.200.000, PPh 23 24.000",
+           (fin.get("pph23_dp_base"), fin.get("pph23_dpp"), fin.get("pph23_amount")), (800_000, 1_200_000, 24_000))
     # a down payment invoice's own amount is its dpp / grand_total
     st, dp = api.create("sales_invoice", invoice_body(customer, ndt, rate=3_000_000, kind="down_payment"))
     eq("down_payment invoice: dpp 3.000.000, ppn 330.000, grand_total 3.330.000", (dp.get("dpp"), dp.get("ppn"), dp.get("grand_total")), (3_000_000, 330_000, 3_330_000))

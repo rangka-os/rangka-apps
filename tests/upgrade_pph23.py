@@ -13,7 +13,12 @@ def before(api):
     st, dpr = api.verb("sales_invoice", dp["name"], "submit", {"force": True})
     dpn = dpr.get("name", dp["name"])
     st, fin = api.create("sales_invoice", dict(body, dp_invoice=dpn, down_payment=3_000_000))
-    return {"submitted": resp.get("name", sub["name"]), "draft": draft["name"], "dp": dpn, "final_draft": fin["name"], "ndt": ndt}
+    # a USD down payment (200 x 15.000 = 3.000.000) invoiced before the upgrade: its stored PPh 23 base is empty too
+    st, dpx = api.create("sales_invoice", {"customer": "CUST-0001", "kind": "down_payment", "currency": "USD", "exchange_rate": 15000, "pph23_applies": True,
+                                           "items": [{"item": ndt, "qty": 1, "rate_fx": 200}]})
+    st, dpxr = api.verb("sales_invoice", dpx["name"], "submit", {"force": True})
+    return {"submitted": resp.get("name", sub["name"]), "draft": draft["name"], "dp": dpn, "final_draft": fin["name"], "ndt": ndt,
+            "dp_fx": dpxr.get("name", dpx["name"])}
 
 
 def after(api, s, d1):
@@ -34,3 +39,10 @@ def after(api, s, d1):
     st, upd = api.call("PATCH", f"/api/v1/r/sales_invoice/{d1.Api.q(s['final_draft'])}", {"po_number": "PO-UPG-2"})
     d1.check("old final draft deducting an old DP, edited after migrate: base 7.000.000, PPh 23 140.000",
              st == 200 and (upd.get("pph23_dpp"), upd.get("pph23_amount")) == (7_000_000, 140_000), (st, upd))
+    # the same for a foreign-currency DP from before the upgrade: 10.000.000 - 3.000.000 = 7.000.000, 2% = 140.000
+    dpx = api.get("sales_invoice", s["dp_fx"])
+    d1.eq("old USD DP invoice: dpp 3.000.000", dpx.get("dpp"), 3_000_000)
+    st, fin = api.create("sales_invoice", {"customer": "CUST-0001", "pph23_applies": True, "dp_invoice": s["dp_fx"], "down_payment": 3_000_000,
+                                          "items": [{"item": s["ndt"], "qty": 1, "rate": 10_000_000}]})
+    d1.check("new final invoice deducting an old USD DP: base 7.000.000, PPh 23 140.000 (as before the upgrade)",
+             st == 201 and (fin.get("pph23_dpp"), fin.get("pph23_amount")) == (7_000_000, 140_000), (st, fin))
