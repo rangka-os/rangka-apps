@@ -1538,7 +1538,7 @@ def money_bodies(api, site):
         "outlet_sales": ({"outlet": DAGO, "date": "2026-11-04", "source": "moka", "moka_outlet": "Tahu Contoh - Dago", "lines": [{"item": "BRG-0007", "qty": 1}]} if site != "demo-ritel"
                          else {"outlet": CLY, "date": "2026-11-04", "source": "file", "lines": [{"item": "BRG-0001", "qty": 1}]}),
         "outlet_takings": {"outlet": CLY, "date": "2026-11-04", "lines": [{"method": "cash", "expected": 1_000, "received": 1_000}]},
-        "consignment_settlement": {"consignor": "VND-0006", "period_start": "2026-10-01", "period_end": "2026-10-31", "items": [{"item": "BRG-0193", "qty_received": 1, "qty_sold": 1}]},
+        "consignment_settlement": {"consignor": "VND-0006", "month": "2026-01", "items": [{"item": "BRG-0193", "qty_received": 1, "qty_sold": 1}]},
     }
     return {m: v for m, v in b.items() if installed(api, m)}
 
@@ -3012,10 +3012,9 @@ def scenario_ritel_settlement(api):
             sold[m["item"]] = sold.get(m["item"], 0) + m["sold_qty"]
     want_sold = {i["name"]: CTX.get("consigned_sold", {}).get(i["sku"], 0) for i in by.values()}
     eq("consigned qty sold (stock_move.sold_qty, as the chart sums it) = the POS sales", {k: round(q, 6) for k, q in sold.items() if q}, {k: q for k, q in want_sold.items() if q})
-    start = (today - datetime.timedelta(days=g.DAYS)).isoformat()
-    end = (today - datetime.timedelta(days=1)).isoformat()
+    month = (today - datetime.timedelta(days=1)).isoformat()[:7]
     lines = [{"item": n, "qty_received": want_sold[n] + 12, "qty_sold": sold.get(n, 0), "qty_returned": 12} for n in by if want_sold.get(n)]
-    st, ks = hq.create("consignment_settlement", {"consignor": v, "outlet": CBR, "period_start": start, "period_end": end, "items": lines})
+    st, ks = hq.create("consignment_settlement", {"consignor": v, "month": month, "items": lines})
     if not check("settlement for Bu Sari: draft", st == 201, (st, ks)):
         return
     total = sum(round(sold.get(n, 0) * by[n]["consignment_cost"]) for n in by)
@@ -3025,29 +3024,41 @@ def scenario_ritel_settlement(api):
     check("sold + returned above what came in -> 422", st == 422, (st, bad))
     st, bad = hq.patch("consignment_settlement", ks["name"], {"items": [dict(lines[0], rate=0)]})
     check("a sold line without a consignment price -> 422", st == 422, (st, bad))
+    st, bad = hq.patch("consignment_settlement", ks["name"], {"month": "2026-13"})
+    check("month must read YYYY-MM -> 422", st == 422, (st, bad))
     st, resp = hq.verb("consignment_settlement", ks["name"], "submit")
     check("submit the settlement", st == 200, (st, resp))
     ksn = resp.get("name", ks["name"]) if st == 200 else ks["name"]
-    ref = api.get("consignment_settlement", ksn)["bill_ref"]
+    st, dup = hq.create("consignment_settlement", {"consignor": v, "month": month, "items": lines})
+    check("a second settlement for the same consignor and month is refused (one live settlement per month)", st in (409, 422), (st, dup))
     bills = rows_all(api, "vendor_bill", f"vendor == '{v}'")
-    check("flow consignment_bill: a draft vendor_bill for the consignor, bill_no = the period's bill_ref, amount = settlement total",
-          len(bills) == 1 and bills[0]["docstatus"] == 0 and bills[0]["bill_no"] == ref and bills[0]["amount_due"] == total, (ref, bills))
-    # a corrected settlement for the same period (one unit less of the first item) updates that draft, no second bill
-    fix = [dict(lines[0], qty_sold=lines[0]["qty_sold"] - 1, qty_returned=13)] + lines[1:]
+    check("flow consignment_bill: a draft vendor_bill, bill_no TTP/<month>, amount = settlement total",
+          len(bills) == 1 and bills[0]["docstatus"] == 0 and bills[0]["bill_no"] == "TTP/" + month and bills[0]["amount_due"] == total, bills)
+    if not bills:
+        return
+    bn = submit_doc(hq, "vendor_bill", bills[0]["name"], "submit the consignor's bill")
+    eq("payable to the consignor = settlement total", api.get("vendor", v)["outstanding"], total)
+    st, resp = hq.verb("consignment_settlement", ksn, "cancel")
+    check("a settlement whose bill is submitted cannot be cancelled", st >= 400 and api.get("consignment_settlement", ksn)["docstatus"] == 1, (st, resp))
+    eq("payable unchanged after the refused cancel", api.get("vendor", v)["outstanding"], total)
+    # correction: cancel the bill, then the settlement, amend it with one unit less of the first item
+    st, resp = hq.verb("vendor_bill", bn, "cancel")
+    check("cancel the bill first", st == 200, (st, resp))
+    st, resp = hq.verb("consignment_settlement", ksn, "cancel")
+    check("then the settlement cancels", st == 200, (st, resp))
+    st, am = hq.verb("consignment_settlement", ksn, "amend")
+    check("amend the cancelled settlement", st in (200, 201), (st, am))
+    amn = (am.get("record") or am).get("name") if isinstance(am, dict) else None
     total2 = total - by[lines[0]["item"]]["consignment_cost"]
-    st, k2 = hq.create("consignment_settlement", {"consignor": v, "outlet": CBR, "period_start": start, "period_end": end, "items": fix})
-    if check("a corrected settlement for the same period", st == 201, (st, k2)):
-        submit_doc(hq, "consignment_settlement", k2["name"], "submit the corrected settlement")
-    bills = rows_all(api, "vendor_bill", f"vendor == '{v}'")
-    check("still one bill for the period, its draft lines follow the corrected settlement", len(bills) == 1 and bills[0]["amount_due"] == total2, [(b["name"], b["docstatus"], b["amount_due"]) for b in bills])
-    if bills:
-        submit_doc(hq, "vendor_bill", bills[0]["name"], "submit the consignor's bill")
-        eq("payable to the consignor = corrected settlement total", api.get("vendor", v)["outstanding"], total2)
-    st, k3 = hq.create("consignment_settlement", {"consignor": v, "outlet": CBR, "period_start": start, "period_end": end, "items": fix})
-    if st == 201:
-        submit_doc(hq, "consignment_settlement", k3["name"], "submit a third settlement after the bill is submitted")
-    eq("a submitted bill for the period is never doubled: one bill, payable unchanged",
-       (len(rows_all(api, "vendor_bill", f"vendor == '{v}' && docstatus != 2")), api.get("vendor", v)["outstanding"]), (1, total2))
+    fix = [dict(lines[0], qty_sold=lines[0]["qty_sold"] - 1, qty_returned=13)] + lines[1:]
+    st, resp = hq.patch("consignment_settlement", amn, {"items": fix})
+    check("the amended copy takes the corrected lines", st == 200, (st, resp))
+    submit_doc(hq, "consignment_settlement", amn, "submit the amended settlement")
+    live = rows_all(api, "vendor_bill", f"vendor == '{v}' && docstatus != 2")
+    check("one live bill for the month, from the corrected settlement", len(live) == 1 and live[0]["amount_due"] == total2 and live[0]["docstatus"] == 0, [(b["name"], b["docstatus"], b["amount_due"]) for b in live])
+    if live:
+        submit_doc(hq, "vendor_bill", live[0]["name"], "submit the corrected bill")
+    eq("payable to the consignor = corrected total", api.get("vendor", v)["outstanding"], total2)
     st, adj = hq.create("stock_adjustment", {"outlet": CBR, "reason": "consignment_return", "items": [{"item": n, "qty": 12} for n in by if want_sold.get(n)]})
     if check("unsold goods back to the consignor: stock_adjustment reason consignment_return", st == 201, (st, adj)):
         submit_doc(hq, "stock_adjustment", adj["name"], "submit the return")
@@ -3116,7 +3127,7 @@ def scenario_dashboards_ritel(api):
     ws = dashboard(api, "ritel_tax", 30)
     if ws:
         eq("ritel_tax turnover (30 days)", num(ws["turnover"]), sum(s["net_total"] for s in in30))
-        eq("ritel_tax PPh final 0,5% = sum of round(net x 0,5%) per record (non-PKP org)", num(ws["pph_final_total"]), sum((s["net_total"] * 5 + 500) // 1000 for s in in30))   # kernel round() is half up
+        eq("ritel_tax PPh final 0,5% = sum of round(net x 0,5%) per record (non-PKP org)", num(ws["pph_final_total"]), sum(((s["net_total"] - s["ppn_in_sales"]) * 5 + 500) // 1000 for s in in30))   # kernel round() is half up
         eq("ritel_tax PPN Digunggung 0 for a non-PKP org", num(ws["ppn_total"]), 0)
 
 

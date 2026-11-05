@@ -1,12 +1,14 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 name: consignment_bill_cancelled
 label: {id: Setoran titipan dibatalkan}
-# A cancelled settlement leaves its bill alone (a flow cannot cancel a document); head office is told which bill to
-# check, cancel or amend, so the payable follows the settlement.
+# Runs in the canceller's transaction. While the month's bill is submitted the cancel is refused: the update step
+# writes to a submitted vendor_bill, which the engine refuses, and that rolls the cancel back. Cancel (or pay back)
+# the bill first, then the settlement; its amended copy then makes a new draft bill. A draft bill is left for the
+# amended settlement to fill.
 on: consignment_settlement.cancelled
 steps:
-  - {find: vendor_bill, where: "vendor == event.consignor && bill_no == event.bill_ref && docstatus != 2", as: bill}
-  - notify: head_office
+  - {find: vendor_bill, where: "vendor == event.consignor && bill_no == event.bill_ref && docstatus == 1", as: bill}
+  - update: bill
     if: bill != null
-    channel: in_app
-    template: {id: 'Setoran titipan {event.name} dibatalkan. Cek tagihan {bill.name}: batalkan kalau sudah diajukan, atau ubah drafnya'}
+    set:
+      notes: "'Batalkan tagihan ini dulu sebelum setoran titipan ' + event.name + ' dibatalkan'"

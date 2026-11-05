@@ -88,7 +88,8 @@ fields:
     in_list: true
   # Monthly tax recap (no file): a PKP shop's sales prices include PPN, so the PPN inside net sales is
   # net x rate x dpp / (100 + rate x dpp) (Digunggung amounts). The 0,5% final PPh of PP 55/2022 depends on turnover
-  # (up to Rp 4,8 miliar a year), not on PKP status, so it is shown for every shop; one above the limit ignores it.
+  # (up to Rp 4,8 miliar a year), not on PKP status, so it is shown for every shop on turnover without PPN; a shop
+  # above the limit ignores it.
   # The XML for Coretax needs a kernel export.
   - name: ppn_in_sales
     type: currency
@@ -97,7 +98,7 @@ fields:
   - name: pph_final
     type: currency
     label: {id: 'PPh final 0,5%'}
-    compute: round(net_total * 5 / 1000)
+    compute: round((net_total - ppn_in_sales) * 5 / 1000)
 rules:
   - name: moka_outlet_matches
     on: save
