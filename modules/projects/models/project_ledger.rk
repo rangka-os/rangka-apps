@@ -6,9 +6,12 @@ naming: PL-{YYYY}-{######}
 title_field: project
 # One signed row per submitted document that changes a project's result: revenue + (invoice dpp, retention releases
 # excluded), costs - (timesheet cost, project expense not on a vendor bill, vendor bill dpp). Cancelling the document
-# writes the opposite row, so the sum per project is always its margin. Rows are written by flows inside the
-# document's submit or cancel; people only read them. create is granted to the roles whose submits write rows (a flow
-# runs as the person submitting), never write or delete.
+# writes the opposite row on the document's own date, so the sum per project (and per period) is its margin. Rows are
+# written by flows inside the document's submit or cancel. A flow runs as the person submitting, so those roles hold
+# create; the rules make a row only valid as the flow writes it: it links its source document, which must be on the
+# same project, submitted for a + row or cancelled for a - row, with exactly its amount, and entry_key is unique, so
+# no row can be made up or doubled by hand. Documents submitted before this model existed have no row; their cancel
+# writes none either (the cancel flows look for the + row first).
 permissions:
   - {role: project_admin, read: true, create: true, export: true}
   - {role: finance_manager, read: true, create: true, export: true}
@@ -46,15 +49,45 @@ fields:
     label: {id: No. dokumen}
     required: true
     in_list: true
+  - name: sales_invoice
+    type: link
+    to: sales_invoice
+    label: {id: Faktur}
+  - name: timesheet
+    type: link
+    to: timesheet
+    label: {id: Timesheet}
+  - name: project_expense
+    type: link
+    to: project_expense
+    label: {id: Biaya proyek}
+  - name: vendor_bill
+    type: link
+    to: vendor_bill
+    label: {id: Tagihan pemasok}
+  - name: entry_key
+    type: data
+    label: {id: Kunci baris}
+    hidden: true
+    unique: true
+    compute: "source_name + (amount < 0 ? ':-' : ':+')"
   - name: amount
     type: currency
     label: {id: 'Nilai (+ pendapatan, - biaya)'}
     in_list: true
 rules:
-  - name: sign_by_kind
+  - name: source_matches
     on: save
-    check: "source_model != '' && (kind == 'revenue' || amount != 0)"
-    message: {id: Baris buku untung proyek tidak valid}
+    check: >-
+      (kind == 'revenue' && sales_invoice != '' && source_name == sales_invoice && sales_invoice.project == project && sales_invoice.kind != 'retention'
+        && ((sales_invoice.docstatus == 1 && amount == sales_invoice.dpp) || (sales_invoice.docstatus == 2 && amount == 0 - sales_invoice.dpp)))
+      || (kind == 'labor' && timesheet != '' && source_name == timesheet && timesheet.project == project
+        && ((timesheet.docstatus == 1 && amount == 0 - timesheet.cost_amount) || (timesheet.docstatus == 2 && amount == timesheet.cost_amount)))
+      || (kind == 'expense' && project_expense != '' && source_name == project_expense && project_expense.project == project && project_expense.vendor_bill == ''
+        && ((project_expense.docstatus == 1 && amount == 0 - project_expense.amount) || (project_expense.docstatus == 2 && amount == project_expense.amount)))
+      || (kind == 'vendor' && vendor_bill != '' && source_name == vendor_bill && vendor_bill.project == project
+        && ((vendor_bill.docstatus == 1 && amount == 0 - vendor_bill.dpp) || (vendor_bill.docstatus == 2 && amount == vendor_bill.dpp)))
+    message: {id: Baris buku untung proyek hanya dibuat sistem dari dokumen yang diajukan atau dibatalkan}
 views:
   list:
     columns: [name, project, posting_date, kind, source_name, amount]

@@ -1529,6 +1529,17 @@ def scenario_project_margin(api):
     eq("margin unchanged by anything not submitted", margin(), 35_000_000)
     st, resp = pa.call("PATCH", f"/api/v1/r/project_ledger/{Api.q(rows()[0]['name'])}", {"amount": 1})
     check("people cannot edit a ledger row (no write)", st == 403, (st, resp))
+    # no row can be made up by hand, even by a role that holds create (flows run as that role)
+    for who, cl in (("project_admin", pa), ("finance_manager", fm), ("sales_manager", CTX.get("sm"))):
+        st, resp = cl.create("project_ledger", {"project": p, "posting_date": "2026-11-20", "kind": "revenue", "source_model": "manual", "source_name": "manual", "amount": 100_000_000})
+        check(f"{who} cannot make up a revenue row -> 422", st == 422, (st, resp))
+    if invn:
+        st, resp = fm.create("project_ledger", {"project": p, "posting_date": "2026-11-20", "kind": "revenue", "source_model": "sales_invoice", "source_name": invn, "sales_invoice": invn, "amount": 40_000_000})
+        check("a second copy of the invoice's own row -> 422 (entry_key unique)", st == 422, (st, resp))
+    # an expense cannot point at a vendor bill of no project (its cost would reach no ledger)
+    st, nb = pm.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "NOPRJ-1", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 1_000_000}]})
+    st, resp = pa.create("project_expense", {"project": p, "description": "x", "amount": 1_000_000, "vendor_bill": nb.get("name", "")})
+    check("an expense linking a bill without the project -> 422", st == 422 and any("proyek yang sama" in m for m in messages(resp)), (st, resp))
     ws = dashboard(api, "project_margin", 365)
     eq("project_margin margin_by_project shows the project's margin", chart_map(ws.get("margin_by_project", {})).get(p), 35_000_000)
 
