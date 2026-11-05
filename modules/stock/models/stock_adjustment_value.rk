@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: stock_adjustment_value
+label: {id: Nilai penyesuaian stok, en: Stock adjustment value}
+icon: stock
+naming: SAV-{YYYY}-{######}
+title_field: stock_adjustment
+# The value a stock adjustment moved, on the adjustment's own date: a post row when it is submitted (the sum of its
+# stock moves), a reverse row with the opposite value when it is cancelled. The kernel dates a reversal move on the
+# cancel day, so a sum over moves leaves a cancelled adjustment in another period; these rows net in the period of
+# the adjustment. Written by flows inside the submit and cancel (a flow runs as the person submitting, so those roles
+# hold create); rule source_state and the unique entry_key keep every slot taken by the flow's own row.
+permissions:
+  - {role: head_office, read: true, create: true, export: true}
+  - {role: outlet_staff, read: true, create: true}
+fields:
+  - name: stock_adjustment
+    type: link
+    to: stock_adjustment
+    label: {id: Penyesuaian stok}
+    required: true
+    in_list: true
+  - name: entry
+    type: select
+    label: {id: Baris}
+    required: true
+    options:
+      - {value: post, label: {id: Diajukan}}
+      - {value: reverse, label: {id: Dibatalkan}}
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    required: true
+    in_list: true
+  - name: posting_date
+    type: date
+    label: {id: Tanggal}
+    required: true
+    in_list: true
+  - name: reason
+    type: data
+    label: {id: Alasan}
+    in_list: true
+  - name: value
+    type: currency
+    label: {id: 'Nilai (negatif = keluar)'}
+    in_list: true
+  - name: entry_key
+    type: data
+    label: {id: Kunci baris}
+    hidden: true
+    unique: true
+    compute: "stock_adjustment + ':' + entry"
+rules:
+  - name: source_state
+    on: save
+    check: >-
+      stock_adjustment.outlet == outlet && posting_date == stock_adjustment.adjustment_date
+      && ((entry == 'post' && stock_adjustment.docstatus == 1) || (entry == 'reverse' && stock_adjustment.docstatus == 2))
+    message: {id: Nilai penyesuaian stok hanya dibuat sistem saat penyesuaian diajukan atau dibatalkan}
+views:
+  list:
+    columns: [name, stock_adjustment, entry, outlet, posting_date, reason, value]
+    filters: [outlet, entry]
+    sort: -posting_date

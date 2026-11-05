@@ -1483,6 +1483,7 @@ MATRIX = {
     "stock_transfer": {"head_office": _ALL, "outlet_staff": _R},
     "stock_transfer_receipt": {"head_office": _ALL, "outlet_staff": _RCWS | {"cancel"}},
     "stock_count": _STOCK_DOC, "stock_adjustment": _STOCK_DOC,
+    "stock_adjustment_value": {"head_office": {"read", "create", "export"}, "outlet_staff": {"read", "create"}},
     "outlet_sales": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
 }
 _CHECKED = ("read", "create", "write", "delete", "submit", "cancel", "amend", "export", "import", "print")
@@ -2076,22 +2077,31 @@ def scenario_dashboards_fnb(api):
     check("fnb_overview 'Stok minus' list is not empty (the stock scenario made a negative balance)", len(negs) >= 1, negs)
     eq("fnb_overview negative_count", ws["negative_count"]["value"], len(negs))
 
-    # adjustments of every reason count in waste_by_outlet; a cancelled one nets to zero
-    for reason, qty, cancel in (("expired", 2, False), ("damage", 1, True)):
-        st, adj = api.create("stock_adjustment", {"outlet": DAGO, "reason": reason, "items": [{"item": "BRG-0001", "qty": qty}]})
-        if check(f"setup: {reason} adjustment of {qty} kg at Dago", st == 201, (st, adj)):
-            an = submit_doc(api, "stock_adjustment", adj["name"], f"submit the {reason} adjustment")
-            if cancel and an:
-                st, resp = api.verb("stock_adjustment", an, "cancel")
-                check(f"cancel the {reason} adjustment", st == 200, (st, resp))
+    # adjustments of every reason count in waste_by_outlet, in the adjustment's own period; a cancelled one nets to
+    # zero there even when it is cancelled weeks later. The expected value comes from the stock balance, not from the
+    # rows the widget reads.
+    before = balance(api, DAGO, "BRG-0001")["value"]
+    st, adj = api.create("stock_adjustment", {"outlet": DAGO, "reason": "expired", "items": [{"item": "BRG-0001", "qty": 2}]})
+    if check("setup: expired adjustment of 2 kg at Dago today", st == 201, (st, adj)):
+        submit_doc(api, "stock_adjustment", adj["name"], "submit the expired adjustment")
+    expired_value = balance(api, DAGO, "BRG-0001")["value"] - before
+    check("the expired adjustment took value out of Dago's stock", expired_value < 0, expired_value)
+    if st == 201:
+        st2, resp = api.create("stock_adjustment_value", {"stock_adjustment": adj["name"], "entry": "post", "outlet": DAGO,
+                                                          "posting_date": adj["adjustment_date"], "value": -1})
+        check("a second value row for the same adjustment cannot be made by hand -> 422", st2 == 422, (st2, resp))
+    for days in (100, 20):
+        d = (today - datetime.timedelta(days=days)).isoformat()
+        st, old = api.create("stock_adjustment", {"outlet": DAGO, "reason": "damage", "adjustment_date": d, "items": [{"item": "BRG-0001", "qty": 1}]})
+        on = submit_doc(api, "stock_adjustment", old["name"], f"submit a damage adjustment dated {days} days ago") if st == 201 else None
+        if on:
+            st, resp = api.verb("stock_adjustment", on, "cancel")
+            check(f"cancel it today ({days} days later)", st == 200, (st, resp))
+    for period in (7, 30, 90):
+        ws_p = dashboard(api, "stock_recap", period)
+        eq(f"waste_by_outlet Dago over {period} days = the expired adjustment only ({expired_value}); the back-dated cancelled ones net to 0",
+           chart_map(ws_p.get("waste_by_outlet", {})).get(DAGO, 0), expired_value)
     ws = dashboard(api, "stock_recap", 90)
-    adj_moves = api.find("stock_move", "voucher_type == 'stock_adjustment' && posting_date >= '%s'" % since90)
-    want = {}
-    for m in adj_moves:
-        want[m["outlet"]] = want.get(m["outlet"], 0) + m["value"]
-    eq("stock_recap waste_by_outlet = adjustment moves of every reason, cancelled ones netted", chart_map(ws["waste_by_outlet"]), {o: v for o, v in want.items() if v})
-    waste_only = sum(m["value"] for m in adj_moves if m["outlet"] == DAGO and m["reason"] == "waste")
-    check("waste_by_outlet at Dago includes the expired adjustment (not only reason waste)", chart_map(ws["waste_by_outlet"]).get(DAGO, 0) < waste_only, (chart_map(ws["waste_by_outlet"]).get(DAGO), waste_only))
     bal = api.list("stock_balance")
     val = {}
     for b in bal:
