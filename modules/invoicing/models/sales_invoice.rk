@@ -40,10 +40,20 @@ fields:
     label: {id: Proyek}
     default: billing_milestone.project
   # The billing milestone this invoice bills (projects module); flows mark it invoiced on submit, ready on cancel.
+  # milestone_claim (unique) holds the milestone from the invoice's first save: one invoice per milestone, draft or
+  # submitted, and the database refuses a second one even when both are made at the same moment. The claim stays on a
+  # cancelled invoice (the kernel does not recompute on cancel), so billing a milestone again after a cancel is done by
+  # amending that invoice: an amendment claims milestone:<cancelled invoice>, and only one amendment can.
   - name: billing_milestone
     type: link
     to: billing_milestone
     label: {id: Termin tagihan}
+  - name: milestone_claim
+    type: data
+    label: {id: Faktur untuk termin ini}
+    hidden: true
+    unique: true
+    compute: "billing_milestone == '' ? '' : (amended_from == '' ? billing_milestone : billing_milestone + ':' + amended_from)"
   - name: acceptance
     type: link
     to: acceptance
