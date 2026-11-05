@@ -33,12 +33,14 @@ fields:
     label: {id: Jumlah}
     compute: round(qty * rate * (1 - discount / 100))
   # PPh 23 is withheld on the fee for a service, not on what the firm passes through: the workers' wages billed on their
-  # own line (jasa tenaga kerja, PMK 141/2015) or a reimbursed cost. Unticked lines stay out of the invoice's PPh 23 base.
-  - name: pph23_base
+  # own line (jasa tenaga kerja, PMK 141/2015) or a reimbursed cost. Ticked lines stay out of the invoice's PPh 23 base.
+  # The flag says "excluded" so that a line written before the field existed (NULL after migrate, read as false) keeps
+  # the old behaviour: part of the base.
+  - name: pph23_exclude
     type: check
-    label: {id: Kena PPh 23}
-    help: {id: 'Matikan untuk baris gaji tenaga kerja yang dirinci terpisah atau penggantian biaya'}
-    default: 'true'
+    label: {id: Bukan dasar PPh 23}
+    help: {id: 'Centang untuk baris gaji tenaga kerja yang dirinci terpisah atau penggantian biaya'}
+    default: 'false'
 
   - {name: rate_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Harga (valas)}, default: '0'}
   - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah (valas)}, compute: "round(qty * rate_fx * (1 - discount / 100), 2)"}
