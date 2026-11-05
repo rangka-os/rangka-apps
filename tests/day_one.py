@@ -3064,6 +3064,12 @@ def scenario_ritel_settlement(api):
     check("head office cannot delete the cancelled settlement (its month stays taken) -> 403", denied(st, resp), (st, resp))
     st, dup = hq.create("consignment_settlement", {"consignor": v, "month": month, "items": lines})
     check("a new settlement for the month is still refused while the amended one is live", st in (409, 422), (st, dup))
+    st, resp = api.call("DELETE", f"/api/v1/r/consignment_settlement/{Api.q(ksn)}")
+    if st in (200, 204):
+        gap("owner deletes a cancelled settlement with an amended copy", "rangka-os#59", "kernel without has_amendments: the month's key is freed")
+    else:
+        check("not even the owner can delete a cancelled settlement that has an amended copy -> 409 has_amendments (rangka-os#59)",
+              st == 409 and (resp or {}).get("error", {}).get("code") == "has_amendments", (st, resp))
     st, adj = hq.create("stock_adjustment", {"outlet": CBR, "reason": "consignment_return", "items": [{"item": n, "qty": 12} for n in by if want_sold.get(n)]})
     if check("unsold goods back to the consignor: stock_adjustment reason consignment_return", st == 201, (st, adj)):
         submit_doc(hq, "stock_adjustment", adj["name"], "submit the return")
