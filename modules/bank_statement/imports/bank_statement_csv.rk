@@ -3,9 +3,10 @@
 # Bank exports differ by bank and channel (KlikBCA, Livin, BRImo), so each gets its own import once a real export
 # is in hand; until then the owner pastes the bank's rows into this layout (template in the module docs).
 # Same file twice -> duplicate (file hash). Overlapping exports -> only rows whose key is new. Urutan (the number of
-# the line within its day in the bank's export: 1, 2, 3, ...) is in the key, Saldo is not: two equal transfers on
-# one day differ by their Urutan whether or not the export has a running balance. A bank export always starts a
-# day at its first line, so a later export of the same day numbers the old lines the same and only adds new ones.
+# the line within its day in the bank's export: 1, 2, 3, ...) is in the key, so two equal transfers on one day
+# differ whether or not the export has a running balance. Saldo is in the key too when it is filled: it tells lines
+# apart even if a pasted part of a day is numbered from 1 again, so a column more in the key can only add a line
+# (visible, can be ignored), never drop one. Without Saldo, Urutan must be the line's place in the whole day.
 # A file without Urutan is refused (missing column), never deduplicated by content alone.
 name: bank_statement_csv
 label: {id: Mutasi rekening (CSV), en: Bank statement (CSV)}
@@ -13,7 +14,7 @@ model: bank_transaction
 source: csv
 header_row: 1
 per: org
-key: [Rekening, Tanggal, Urutan, Keterangan, Masuk, Keluar]
+key: [Rekening, Tanggal, Urutan, Keterangan, Masuk, Keluar, Saldo]
 map:
   account: Rekening
   date: Tanggal

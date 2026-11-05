@@ -1448,6 +1448,14 @@ def scenario_money_rail(api):
     st, c5 = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv5['id']}/commit")
     check("evening export adds the second equal transfer", st == 200 and len(c5.get("records", [])) == 1, (st, c5))
     eq("both equal transfers are kept", len(api.find("bank_transaction", "description == 'TRSF CR SAMA'")), 2)
+    # a part of a day pasted and numbered from 1 again, with Saldo: no equal transfer is dropped
+    q = ("06/12/2026", "QRIS CR SAMA", 50_000, 0)
+    st, pv7 = api.upload("/api/v1/imports/bank_statement_csv", {}, "qris-pagi.csv", statement_csv([q + (1_050_000,), q + (1_100_000,)]))
+    api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv7['id']}/commit")
+    st, pv8 = api.upload("/api/v1/imports/bank_statement_csv", {}, "qris-siang.csv", statement_csv([q + (1_100_000,), q + (1_150_000,), q + (1_200_000,)]))
+    st, c8 = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv8['id']}/commit")
+    check("partial paste renumbered from 1, Saldo filled: the two new equal transfers are added, none dropped",
+          len(api.find("bank_transaction", "description == 'QRIS CR SAMA'")) >= 4, (st, c8))
     st, pv6 = api.upload("/api/v1/imports/bank_statement_csv", {}, "tanpa-urutan.csv", statement_csv([("07/12/2026", "TRSF CR LAIN", 1_000, 0, "")], seq=False))
     check("a statement without the Urutan column is refused, not deduplicated silently",
           st == 200 and any(e.get("column") == "Urutan" for e in pv6.get("errors", [])), (st, pv6))
