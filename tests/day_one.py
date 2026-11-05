@@ -2693,6 +2693,20 @@ def scenario_outlet_sales(api):
                   st == 409 and resp["error"]["code"] == "duplicate_sales", (st, resp))
     st, again = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), CIMAHI)
     check("the daily form file again: duplicate true", st == 200 and again["duplicate"] is True, (st, again))
+    # a corrected sheet: cancel the submitted form and drop the draft, then the corrected file imports and submits
+    st, resp = api.verb("outlet_sales", dfn, "cancel")
+    check("cancel the submitted daily form of Cimahi 04/11", st == 200, (st, resp))
+    for d in api.find("outlet_sales", "outlet == '%s' && source == 'form' && docstatus == 0" % CIMAHI):
+        api.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(d['name'])}")
+    fixed = read_sample("daily-form-sample.csv").replace(b"TH-ORI,40,600000", b"TH-ORI,42,630000") + b"04/11/2026,TH-ISI,1,20000,0\n"
+    st, pvc = preview(hq, "daily_form", "koreksi.csv", fixed, CIMAHI)
+    check("corrected sheet (a qty changed, TH-ISI on two rows): previewed, not a duplicate, nothing skipped, no errors",
+          st == 200 and pvc["duplicate"] is False and pvc["skipped"] == 0 and pvc["errors"] == [] and len(pvc["preview"]) == 1 and len(pvc["preview"][0]["lines"]) == 4, (st, pvc))
+    if st == 200:
+        st, cc = hq.call("POST", f"/api/v1/imports/daily_form/{pvc['id']}/commit")
+        if check("corrected sheet committed", st == 200 and len(cc.get("records", [])) == 1, (st, cc)):
+            cn = submit_doc(api, "outlet_sales", cc["records"][0], "submit the corrected daily form")
+            eq("corrected form: gross 1.340.000 (630.000 + 450.000 + 240.000 + 20.000)", api.get("outlet_sales", cn)["gross_total"], 1_340_000)
     st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1, "discount": 99_999_999}]})
     check("discount above gross -> 422 'Diskon tidak boleh melebihi penjualan kotor'", st == 422 and any("Diskon tidak boleh" in x for x in messages(resp)), (st, resp))
     # a Moka outlet takes no daily form, by REST or by import (one sales source per outlet)
