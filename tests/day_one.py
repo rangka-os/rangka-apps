@@ -1439,8 +1439,8 @@ def scenario_money_rail(api):
     st, resp = api.patch("bank_transaction", la["name"], {"status": "confirmed"})
     check("confirm the suggested line", st == 200, (st, resp))
     la = api.get("bank_transaction", la["name"])
-    check("confirming drafts a payment linked to the line", bool(la.get("payment")), la)
-    p = api.get("payment", la["payment"])
+    check("confirming drafts a payment linked to the line (not yet the matched payment)", bool(la.get("draft_payment")) and not la.get("payment"), la)
+    p = api.get("payment", la["draft_payment"])
     check("drafted payment: customer, amount, reference = line, one allocation to the invoice",
           p["docstatus"] == 0 and p["customer"] == customer and p["amount"] == 2_750_000 and p["reference"] == la["name"]
           and [(r["sales_invoice"], r["amount"]) for r in p["allocations"]] == [(inv_a, 2_750_000)], p)
@@ -1451,6 +1451,17 @@ def scenario_money_rail(api):
     check("invoice A lunas: outstanding 0, status paid", inv["outstanding"] == 0 and inv["status"] == "paid", inv)
     la = api.get("bank_transaction", la["name"])
     check("line matched to the submitted payment", la["status"] == "matched" and la["payment"] == pname, la)
+    # another payment that only names the line in its reference does not take the line over
+    st, other = api.create("payment", {"direction": "receive", "customer": customer, "amount": 100_000, "reference": la["name"],
+                                       "allocations": [{"sales_invoice": inv_d, "amount": 100_000}]})
+    st, resp = api.verb("payment", other.get("name", ""), "submit")
+    check("other payment with reference = the line submitted", st == 200, (st, resp))
+    other_name = resp.get("name", "")
+    la = api.get("bank_transaction", la["name"])
+    check("the line stays matched to its own payment", la["status"] == "matched" and la["payment"] == pname, la)
+    st, resp = api.verb("payment", other_name, "cancel")
+    la = api.get("bank_transaction", la["name"])
+    check("cancelling the other payment leaves the line matched", st == 200 and la["status"] == "matched" and la["payment"] == pname, (st, la))
     st, page, _ = api.print_html("sales_invoice", inv_a, "sales_invoice_whatsapp")
     check("WhatsApp print of a paid invoice thanks the customer", st == 200 and "sudah lunas" in page, page[:400])
 
@@ -1458,7 +1469,8 @@ def scenario_money_rail(api):
     st, resp = api.patch("bank_transaction", ld["name"], {"status": "confirmed"})
     check("confirm without an invoice -> 422", st == 422, (st, resp))
     st, resp = api.patch("bank_transaction", ld["name"], {"suggested_invoice": inv_e, "status": "confirmed"})
-    check("owner picks invoice E and confirms", st == 200 and bool(api.get("bank_transaction", ld["name"]).get("payment")), (st, resp))
+    ld = api.get("bank_transaction", ld["name"])
+    check("owner picks invoice E and confirms", st == 200 and bool(ld.get("draft_payment")), (st, ld))
     st, resp = api.patch("bank_transaction", lf["name"], {"suggested_invoice": inv_d, "status": "confirmed"})
     check("money out cannot be confirmed against a sales invoice", st == 422, (st, resp))
 

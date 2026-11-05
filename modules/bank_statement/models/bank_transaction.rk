@@ -1,8 +1,10 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
 # One line of the bank statement. Money in is positive, money out negative. Status:
 #   unmatched -> suggested (flow bank_transaction_suggest found exactly one invoice) -> confirmed (the owner agrees,
-#   flow bank_transaction_confirm drafts the payment) -> matched (that payment is submitted). ignored = not a sale.
-# Cancelling the payment sends the line back to unmatched.
+#   flow bank_transaction_confirm drafts the payment into draft_payment) -> matched (that very draft is submitted;
+#   flow bank_transaction_matched sets payment). ignored = not a sale.
+# payment is only ever a submitted payment and only flows write it, so "Cocok" cannot be set by hand. Cancelling the
+# payment sends the line back to unmatched.
 name: bank_transaction
 label: {id: Mutasi bank, en: Bank transaction}
 icon: bank
@@ -64,6 +66,12 @@ fields:
     help: {id: 'Diisi otomatis kalau tepat satu faktur cocok; boleh diganti sebelum konfirmasi.'}
     peek: [customer, outstanding, due_date]
     in_list: true
+  # data, not link: the draft may be deleted (and is renamed on submit); a link to a missing record would make the
+  # line unsavable.
+  - name: draft_payment
+    type: data
+    label: {id: Draf pembayaran}
+    read_only: true
   - name: payment
     type: link
     to: payment
@@ -99,4 +107,4 @@ views:
       - section: {id: Pencocokan}
         columns:
           - [status, suggested_invoice]
-          - [payment]
+          - [draft_payment, payment]

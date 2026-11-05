@@ -4,7 +4,7 @@ name: bank_transaction_unmatched
 label: {id: Mutasi kembali belum cocok saat pembayaran dibatalkan}
 on: payment.cancelled
 steps:
-  - {find: bank_transaction, where: name == event.reference && payment == event.name, as: line}
+  - {find: bank_transaction, where: payment == event.name && status == 'matched', as: line}
   - update: line
     if: line != null
     set: {status: "'unmatched'", payment: "''"}

@@ -2,6 +2,7 @@
 # The owner sets a line to "Dikonfirmasi": draft a payment from the customer of the chosen invoice, for the line's
 # amount, allocated to that invoice (up to what it still owes; any rest stays unallocated on the payment).
 # The draft is submitted by a person (finance), which settles the invoice through payments.allocate.
+# The draft goes into draft_payment (payment is only the submitted one, see bank_transaction_matched).
 name: bank_transaction_confirm
 label: {id: Mutasi dikonfirmasi jadi pembayaran}
 on: bank_transaction.updated
@@ -23,4 +24,4 @@ steps:
     as: pay
   - update: line
     if: inv != null
-    set: {payment: pay.name}
+    set: {draft_payment: pay.name}
