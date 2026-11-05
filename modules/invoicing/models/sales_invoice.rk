@@ -231,6 +231,10 @@ rules:
     on: save
     check: billing_milestone == '' || dpp <= billing_milestone.amount
     message: {id: DPP faktur tidak boleh melebihi nilai termin}
+  - name: milestone_ready_to_bill
+    on: save
+    check: billing_milestone == '' || billing_milestone.trigger != 'acceptance' || billing_milestone.state == 'ready' || (billing_milestone.sales_invoice != '' && billing_milestone.sales_invoice == name)
+    message: {id: Termin ini belum siap ditagih (berita acaranya belum ada atau sudah dibatalkan)}
   - name: milestone_not_invoiced
     on: save
     check: billing_milestone == '' || billing_milestone.state != 'invoiced' || billing_milestone.sales_invoice == name
