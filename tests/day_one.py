@@ -1640,11 +1640,22 @@ def scenario_milestone_money(api):
     check("an amendment re-pointed at a milestone that already has an invoice -> 422", st == 422, (st, resp))
     # retainer: the contract value is the monthly fee; every month may bill it, no month more
     p = project("Uang retainer", cv=15_000_000, model="retainer")
-    res = [ms(p, 10 + i, amount=15_000_000, trig="date", due_date=f"2026-1{i}-28", kind="retainer")[0] for i in (0, 1)]
-    st, resp = ms(p, 20, amount=20_000_000, trig="date", due_date="2027-01-28", kind="retainer")
+    res = [ms(p, 10 + i, amount=15_000_000, trig="date", due_date=f"2026-1{i}-28", kind="retainer", period_from=f"2026-1{i}-01", period_to=f"2026-1{i}-28")[0] for i in (0, 1)]
+    st, resp = ms(p, 20, amount=20_000_000, trig="date", due_date="2027-01-28", kind="retainer", period_from="2027-01-01", period_to="2027-01-31")
     check("retainer: months of 15.000.000 on a 15.000.000 monthly fee are accepted, a 20.000.000 month -> 422", res == [201, 201] and st == 422, (res, st, resp))
-    st, ri = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 20_000_000}]})
-    check("retainer: an invoice above the monthly fee -> 422", st == 422 or fm.verb("sales_invoice", ri["name"], "submit", {"force": True})[0] == 422, (st, ri))
+    st, ri = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 10_000_000}]})
+    check("retainer: an invoice without a monthly milestone -> 422", st == 422 or fm.verb("sales_invoice", ri["name"], "submit", {"force": True})[0] == 422, (st, ri))
+    st, resp = ms(p, 30, amount=15_000_000, trig="date", due_date="2027-02-27", kind="retainer", period_from="2027-02-01", period_to="2027-02-28")
+    st2, resp2 = ms(p, 31, amount=15_000_000, trig="date", due_date="2027-02-28", kind="retainer", period_from="2027-02-01", period_to="2027-02-28")
+    check("retainer: one milestone per month (a second for February -> 422)", st == 201 and st2 == 422, (st, st2, resp2))
+    st, resp = ms(p, 32, amount=15_000_000, trig="date", due_date="2026-12-28", kind="retainer", period_from="2026-12-15", period_to="2027-01-14")
+    check("retainer: a month starts on the 1st (period_from 15 Dec -> 422)", st == 422, (st, resp))
+    # a retention release belongs to the project of the invoice it releases
+    pr1 = project("Retensi asal", cv=0); pr2 = project("Retensi lain", cv=100_000_000)
+    st, src = fm.create("sales_invoice", {"customer": customer, "project": pr1, "retention_percent": 10, "items": [{"item": ndt, "qty": 1, "rate": 20_000_000}]})
+    srcn = fm.verb("sales_invoice", src["name"], "submit", {"force": True})[1].get("name") if st == 201 else None
+    st, resp = fm.create("sales_invoice", {"customer": customer, "project": pr2, "kind": "retention", "retention_of": srcn, "items": [{"item": ndt, "qty": 1, "rate": 2_000_000}]})
+    check("a retention release on another project than its invoice's -> 422", st == 422, (st, resp))
 
 
 def scenario_project_margin(api):
@@ -1698,9 +1709,16 @@ def scenario_project_margin(api):
     # recorded without the project (that bill reaches no ledger), a draft or a smaller one, never a bill of this project
     before_m = margin()
     st, draft_bill = pm.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "DRAFT-BILL", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 8_000_000}]})
-    st, e1 = pa.create("project_expense", {"project": p, "description": "Ke tagihan draft", "amount": 8_000_000, "vendor_bill": draft_bill.get("name", "")})
-    e1n = submit_doc(pa, "project_expense", e1["name"], "expense of 8.000.000 linked to a draft bill") if st == 201 else None
-    st, e2 = pa.create("project_expense", {"project": p, "description": "Ke tagihan kecil", "amount": 9_000_000, "vendor_bill": nb.get("name", "")})
+    st, resp = pa.create("project_expense", {"project": p, "description": "Ke tagihan draft", "amount": 8_000_000, "vendor_bill": draft_bill.get("name", "")})
+    check("D1: an expense cannot link a draft bill (it could gain the project later, and its name changes at submit) -> 422", st == 422, (st, resp))
+    sb = submit_doc(pm, "vendor_bill", draft_bill["name"], "submit the project-less bill") if draft_bill.get("name") else None
+    st, e1 = pa.create("project_expense", {"project": p, "description": "Ke tagihan tanpa proyek", "amount": 8_000_000, "vendor_bill": sb or ""})
+    e1n = submit_doc(pa, "project_expense", e1["name"], "expense of 8.000.000 linked to a submitted bill without project") if st == 201 else None
+    if sb:
+        st, resp = pm.verb("vendor_bill", sb, "cancel")
+        check("D2: a bill linked by a live expense cannot be cancelled (it could come back with the project) -> 422", st == 422, (st, resp))
+    nbn = submit_doc(pm, "vendor_bill", nb["name"], "submit the small bill without project") if nb.get("name") else ""
+    st, e2 = pa.create("project_expense", {"project": p, "description": "Ke tagihan kecil", "amount": 9_000_000, "vendor_bill": nbn or ""})
     submit_doc(pa, "project_expense", e2["name"], "expense of 9.000.000 linked to a 1.000.000 bill without project") if st == 201 else None
     eq("both expenses lower the margin by their full amount (17.000.000)", before_m - margin(), 17_000_000)
     st, vbp = pm.create("vendor_bill", {"vendor": "VND-0001", "project": p, "bill_no": "PRJ-BILL", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 1_000_000}]})
@@ -1709,6 +1727,9 @@ def scenario_project_margin(api):
     if e1n:
         pa.verb("project_expense", e1n, "cancel")
         eq("cancelling the 8.000.000 expense gives it back", before_m - margin(), 9_000_000)
+        if sb:
+            st, resp = pm.verb("vendor_bill", sb, "cancel")
+            check("once the expense is cancelled, its bill can be cancelled", st == 200, (st, resp))
     # a project invoice with DPP 0 (fully discounted) submits and cancels: its post and reverse rows have distinct keys
     st, z = fm.create("sales_invoice", {"customer": customer, "project": p, "discount_amount": 1_000_000, "items": [{"item": ndt, "qty": 1, "rate": 1_000_000}]})
     zn = submit_doc(fm, "sales_invoice", z["name"], "finance submits a DPP 0 project invoice") if st == 201 else None
@@ -1887,10 +1908,11 @@ MATRIX = {
     "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
     **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("assignment", "timesheet", "acceptance")},
     "project": {"project_admin": _ALL, "sales_manager": {"read", "write"}, "finance_manager": {"read", "write"}},   # write for the billing flows
-    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R},
     "project_ledger": {"project_admin": {"read", "create", "export"}, "finance_manager": {"read", "create", "export"},
                        "sales_manager": {"read", "create", "export"}, "purchasing_manager": {"read", "create"}},
-    "project_expense": {"project_admin": _ALL, "finance_manager": _ALL - {"delete"}, "sales_manager": _R},
+    "project_expense": {"project_admin": _ALL, "finance_manager": _ALL - {"delete"}, "sales_manager": _R, "purchasing_manager": _R},
+    "project_guard": {"purchasing_manager": {"create"}, "finance_manager": {"create"}},
+    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R},
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
                           "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
