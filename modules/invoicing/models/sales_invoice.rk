@@ -223,6 +223,14 @@ rules:
     on: save
     check: billing_milestone == '' || billing_milestone.project == project
     message: {id: Termin harus milik proyek yang sama}
+  - name: milestone_same_customer
+    on: save
+    check: billing_milestone == '' || billing_milestone.customer == customer
+    message: {id: Termin harus milik pelanggan yang sama}
+  - name: milestone_amount_cap
+    on: save
+    check: billing_milestone == '' || dpp <= billing_milestone.amount
+    message: {id: DPP faktur tidak boleh melebihi nilai termin}
   - name: milestone_not_invoiced
     on: save
     check: billing_milestone == '' || billing_milestone.state != 'invoiced' || billing_milestone.sales_invoice == name

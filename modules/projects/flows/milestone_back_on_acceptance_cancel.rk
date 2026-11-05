@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: milestone_back_on_acceptance_cancel
+label: {id: Termin kembali direncanakan saat berita acara dibatalkan}
+# A cancelled acceptance report gives back the milestone it made ready (not yet invoiced): planned again, no report.
+# An invoiced milestone keeps its link; the amended report takes it over (milestone_ready_on_acceptance).
+on: acceptance.cancelled
+steps:
+  - find: billing_milestone
+    where: project == event.project && acceptance == event.name && state == 'ready'
+    as: ms
+  - if: ms != null
+    update: ms
+    set:
+      state: "'planned'"
+      acceptance: "''"

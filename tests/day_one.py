@@ -1380,12 +1380,38 @@ def scenario_billing_milestones(api):
     check("finance cancels the milestone invoice", st == 200, (st, resp))
     m2 = api.get("billing_milestone", ms[2]["name"])
     eq("cancel reopens milestone 2: ready, no invoice", (m2["state"], m2["sales_invoice"]), ("ready", ""))
+    st, resp = fm.create("sales_invoice", dict(body, items=[{"item": ndt, "qty": 1, "rate": 45_000_000}]))
+    check("an invoice above the milestone (45.000.000 > 40.000.000) -> 422 'melebihi nilai termin'", st == 422 and any("melebihi nilai termin" in m for m in messages(resp)), (st, resp))
+    st, resp = fm.create("sales_invoice", dict(body, customer="CUST-0002"))
+    check("another customer than the milestone's -> 422", st == 422, (st, resp))
+    # the report is cancelled and amended: the amended report takes over milestone 2, milestone 3 stays planned
+    st, resp = pa.verb("acceptance", ban, "cancel")
+    check("project admin cancels the acceptance report", st == 200, (st, resp))
+    m2 = api.get("billing_milestone", ms[2]["name"])
+    eq("cancelled report gives milestone 2 back: planned, no report", (m2["state"], m2["acceptance"]), ("planned", ""))
+    st, am = pa.verb("acceptance", ban, "amend")
+    amn = (am or {}).get("name") or ((am or {}).get("open") or {}).get("name")
+    if check("amend the report", st in (200, 201) and amn, (st, am)):
+        ban2 = submit_doc(pa, "acceptance", amn, "submit the amended report")
+        m2, m3 = api.get("billing_milestone", ms[2]["name"]), api.get("billing_milestone", ms[3]["name"])
+        eq("amended report: milestone 2 ready again with it, milestone 3 still planned", (m2["state"], m2["acceptance"], m3["state"]), ("ready", ban2, "planned"))
+        # the audit case: milestone 2 is invoiced, then its report is cancelled and amended -> milestone 3 must not move
+        st, inv2 = fm.create("sales_invoice", body)
+        inv2n = submit_doc(fm, "sales_invoice", inv2["name"], "finance invoices milestone 2 again") if st == 201 else None
+        st, resp = pa.verb("acceptance", ban2, "cancel")
+        m2 = api.get("billing_milestone", ms[2]["name"])
+        eq("cancelling the report of an invoiced milestone keeps it invoiced", (m2["state"], m2["sales_invoice"]), ("invoiced", inv2n))
+        st, am = pa.verb("acceptance", ban2, "amend")
+        amn = (am or {}).get("name") or ((am or {}).get("open") or {}).get("name")
+        ban3 = submit_doc(pa, "acceptance", amn, "submit the second amendment") if amn else None
+        m2, m3 = api.get("billing_milestone", ms[2]["name"]), api.get("billing_milestone", ms[3]["name"])
+        eq("second amendment takes over invoiced milestone 2; milestone 3 stays planned", (m2["state"], m2["acceptance"], m3["state"]), ("invoiced", ban3, "planned"))
 
     # monthly retainers from a sheet
     sheet = ("Proyek,Urutan,Judul,Jenis,Nominal,Jatuh tempo,Periode dari,Periode sampai\n"
-             f"{p},11,Retainer November,retainer,15000000,30-11-2026,01-11-2026,30-11-2026\n"
-             f"{p},12,Retainer Desember,retainer,15000000,31-12-2026,01-12-2026,31-12-2026\n"
-             f"{p},13,Retainer Januari,retainer,15000000,31-01-2027,01-01-2027,31-01-2027\n").encode()
+             f"{p},11,Retainer November,retainer,15000000,30/11/2026,01/11/2026,30/11/2026\n"
+             f"{p},12,Retainer Desember,retainer,15000000,31/12/2026,01/12/2026,31/12/2026\n"
+             f"{p},13,Retainer Januari,retainer,15000000,31/01/2027,01/01/2027,31/01/2027\n").encode()
     st, pv = fm.upload("/api/v1/imports/billing_milestone", {}, "retainer.csv", sheet)
     if check("retainer sheet: preview 3 rows, no errors", st == 200 and pv.get("rows") == 3 and pv.get("errors") == [], (st, pv)):
         st, c = fm.call("POST", f"/api/v1/imports/billing_milestone/{pv['id']}/commit")
