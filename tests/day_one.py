@@ -1349,11 +1349,44 @@ def scenario_money_rail(api):
     check("gateway payment created with gateway_ref", st == 201, (st, gp))
     st, resp = api.verb("payment", gp["name"], "submit")
     check("gateway payment submitted", st == 200, (st, resp))
+    gp_name = resp.get("name", gp["name"])
     eq("gateway payment settles its invoice (outstanding 0)", api.get("sales_invoice", inv_c)["outstanding"], 0)
     st, resp = api.create("payment", body)
     check("the same callback again (same gateway_ref) is refused", st in (409, 422), (st, resp))
     st, resp = api.create("payment", dict(body, gateway_ref="", amount=1))
     check("a gateway payment without gateway_ref is refused", st == 422, (st, resp))
+
+    # a gateway payment allocated to the wrong invoice is cancelled and amended under the same gateway id
+    st, resp = api.verb("payment", gp_name, "cancel")
+    check("cancel the gateway payment", st == 200, (st, resp))
+    eq("cancelled gateway payment reopens its invoice", api.get("sales_invoice", inv_c)["outstanding"], 990_000)
+    st, am = api.verb("payment", gp_name, "amend")
+    check("amend a cancelled gateway payment: a draft with the same gateway_ref (no 500)",
+          st in (200, 201) and am.get("gateway_ref") == body["gateway_ref"], (st, am))
+    st, resp = api.verb("payment", am.get("name", ""), "submit")
+    check("the amended gateway payment submits", st == 200, (st, resp))
+    am_name = resp.get("name", "") if isinstance(resp, dict) else ""
+    eq("amended gateway payment settles the invoice again", api.get("sales_invoice", inv_c)["outstanding"], 0)
+    st, resp = api.create("payment", body)
+    check("after the amend the same callback is still refused", st in (409, 422), (st, resp))
+    # cancel again, then the callback is recorded afresh as a new payment (no amend)
+    st, resp = api.verb("payment", am_name, "cancel")
+    check("cancel the amended gateway payment", st == 200, (st, resp))
+    st, again = api.create("payment", body)
+    check("a cancelled gateway id can be recorded again as a new payment", st == 201, (st, again))
+    st, resp = api.verb("payment", again.get("name", ""), "submit")
+    check("the re-recorded gateway payment submits", st == 200, (st, resp))
+    eq("re-recorded gateway payment settles the invoice", api.get("sales_invoice", inv_c)["outstanding"], 0)
+    # a draft with a gateway id that is deleted does not keep the id
+    body2 = dict(body, gateway_ref="va-draft-deleted-0002", allocations=[])
+    st, d = api.create("payment", body2)
+    check("draft gateway payment created", st == 201, (st, d))
+    st, resp = api.call("DELETE", f"/api/v1/r/payment/{api.q(d.get('name', ''))}")
+    check("draft gateway payment deleted", st in (200, 204), (st, resp))
+    st, d2 = api.create("payment", body2)
+    check("the gateway id of a deleted draft can be used again", st == 201, (st, d2))
+    st, resp = api.create("payment", body2)
+    check("but not twice", st in (409, 422), (st, resp))
 
     if not installed(api, "bank_transaction"):
         return
@@ -1599,6 +1632,8 @@ MATRIX = {
     **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("project", "assignment", "timesheet", "acceptance")},
     "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
+    "gateway_ref_claim": {"finance_manager": {"read", "create", "write", "export"}, "sales_manager": {"read", "create", "write", "export"},
+                          "head_office": {"read", "create", "write"}},
     "invoice_reminder": {"finance_manager": {"read", "create", "write", "delete", "export"}, "sales_manager": {"read", "create", "write", "delete", "export"},
                          "sales_rep": {"read", "create"}},
     "payment": {"finance_manager": _ALL, "sales_manager": _ALL, "head_office": {"read", "create", "write", "submit", "print"}},   # head_office: if direction == 'pay'
