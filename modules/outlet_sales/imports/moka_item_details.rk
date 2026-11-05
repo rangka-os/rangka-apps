@@ -5,6 +5,7 @@
 # Sales Type, Collected By, Served By, Customer, Payment Method, Event Type, Reason of Refund) come from code that reads
 # real exports; columns are matched by name, so their order does not matter. Dates are dd-mm-yyyy (rangka-os #32).
 # When a pilot's real export differs, fix the headers here, not in the kernel.
+# Time is in the key: two partial refunds of one item on one receipt are two rows, not a "Baris ganda".
 # Same file twice -> duplicate (file hash). Overlapping exports -> only rows whose key is new. Records arrive as drafts.
 name: moka_item_details
 label: {id: Penjualan Moka (detail item), en: Moka sales (item details)}
@@ -12,7 +13,7 @@ model: outlet_sales
 source: csv
 header_row: 1
 per: outlet
-key: [Date, Receipt Number, Items, Variant, Modifier Applied]
+key: [Date, Time, Receipt Number, Items, Variant, Modifier Applied]
 group: [Date]
 map:
   date: Date
