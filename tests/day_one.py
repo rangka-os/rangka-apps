@@ -1299,11 +1299,14 @@ def scenario_procurement(api):
 
 # ---------- scenario: the money rail (Tahap 1): remind, get paid by transfer or gateway, match the bank statement
 
-def statement_csv(rows):
-    """A bank_statement_csv file: rows of (date dd/mm/yyyy, note, credit, debit, balance)."""
-    out = ["Rekening,Tanggal,Keterangan,Masuk,Keluar,Saldo"]
+def statement_csv(rows, seq=True):
+    """A bank_statement_csv file: rows of (date dd/mm/yyyy, note, credit, debit, balance). Urutan is the number of
+    the line within its day, as the owner copies the bank's export (seq=False leaves the column out)."""
+    out = ["Rekening,Tanggal,Urutan,Keterangan,Masuk,Keluar,Saldo" if seq else "Rekening,Tanggal,Keterangan,Masuk,Keluar,Saldo"]
+    per_day = {}
     for d, note, cr, db, bal in rows:
-        out.append(f'1110000001,{d},"{note}",{cr},{db},{bal}')
+        per_day[d] = per_day.get(d, 0) + 1
+        out.append(f'1110000001,{d},{per_day[d]},"{note}",{cr},{db},{bal}' if seq else f'1110000001,{d},"{note}",{cr},{db},{bal}')
     return ("\n".join(out) + "\n").encode()
 
 
@@ -1434,6 +1437,20 @@ def scenario_money_rail(api):
           lb["status"] == "suggested" and lb["suggested_invoice"] == inv_b, lb)
     check("line whose amount fits two invoices: no suggestion", ld["status"] == "unmatched" and not ld["suggested_invoice"], ld)
     eq("money out: no suggestion", lf["status"], "unmatched")
+
+    # two equal transfers on one day, statement without Saldo: Urutan keeps them apart, so neither is lost
+    same = ("06/12/2026", "TRSF CR SAMA", 500_000, 0, "")
+    st, pv4 = api.upload("/api/v1/imports/bank_statement_csv", {}, "pagi.csv", statement_csv([same]))
+    st, c4 = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv4['id']}/commit")
+    check("morning export without Saldo: 1 line", st == 200 and len(c4.get("records", [])) == 1, (st, c4))
+    st, pv5 = api.upload("/api/v1/imports/bank_statement_csv", {}, "sore.csv", statement_csv([same, same]))
+    check("evening export with a second equal transfer: no error", st == 200 and pv5["errors"] == [], (st, pv5))
+    st, c5 = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv5['id']}/commit")
+    check("evening export adds the second equal transfer", st == 200 and len(c5.get("records", [])) == 1, (st, c5))
+    eq("both equal transfers are kept", len(api.find("bank_transaction", "description == 'TRSF CR SAMA'")), 2)
+    st, pv6 = api.upload("/api/v1/imports/bank_statement_csv", {}, "tanpa-urutan.csv", statement_csv([("07/12/2026", "TRSF CR LAIN", 1_000, 0, "")], seq=False))
+    check("a statement without the Urutan column is refused, not deduplicated silently",
+          st == 200 and any(e.get("column") == "Urutan" for e in pv6.get("errors", [])), (st, pv6))
 
     # 4. cocok -> pembayaran -> lunas
     st, resp = api.patch("bank_transaction", la["name"], {"status": "confirmed"})

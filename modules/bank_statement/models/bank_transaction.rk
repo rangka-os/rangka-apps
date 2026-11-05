@@ -25,6 +25,11 @@ fields:
     label: {id: Tanggal}
     required: true
     in_list: true
+  - name: seq
+    type: int
+    label: {id: Urutan}
+    help: {id: 'Nomor baris transaksi di hari itu sesuai mutasi bank (1, 2, 3, ...). Membedakan dua transfer yang sama di hari yang sama.'}
+    required: true
   - name: description
     type: data
     label: {id: Keterangan}
@@ -95,6 +100,10 @@ rules:
     on: save
     check: (status == 'matched') == (payment != '')
     message: {id: Status Cocok diisi otomatis saat pembayarannya diajukan dan hanya lepas saat pembayaran itu dibatalkan}
+  - name: seq_positive
+    on: save
+    check: seq > 0
+    message: {id: Urutan mulai dari 1}
 views:
   list:
     columns: [date, description, amount, status, suggested_invoice, payment]
@@ -103,7 +112,7 @@ views:
     layout:
       - section: {id: Mutasi}
         columns:
-          - [date, account, description]
+          - [date, seq, account, description]
           - [credit, debit, amount, balance]
       - section: {id: Pencocokan}
         columns:
