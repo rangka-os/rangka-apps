@@ -135,13 +135,24 @@ fields:
     type: percent
     label: {id: Tarif PPh 23}
     default: '2'
-  # The share of dpp that PPh 23 applies to: dpp x (lines with pph23_base / all lines). Equal to dpp when every line
-  # is ticked (the default). Foreign-currency documents take the share from the *_fx line amounts (the IDR line amount
-  # is not used there). dpp * 1.0 keeps dpp x amount in float, clear of int64 overflow.
+  # The PPh 23 base: (subtotal - header discount) x the share of lines not marked pph23_exclude, minus the base already
+  # taken on the down-payment invoice this one deducts (that invoice's pph23_dpp in proportion to down_payment). Equal
+  # to dpp when no line is excluded and the DP invoice had none either. Foreign-currency documents take the share from
+  # the *_fx line amounts. "* 1.0" keeps the products in float, clear of int64 overflow.
+  - name: pph23_lines_base
+    type: currency
+    label: {id: Dasar PPh 23 baris}
+    hidden: true
+    compute: "currency != '' && currency != 'IDR' ? (subtotal_fx == 0 ? 0 : round((subtotal - discount_amount) * 1.0 * sum(items.map(i, i.pph23_exclude ? 0 : i.amount_fx)) / subtotal_fx)) : (subtotal == 0 ? 0 : round((subtotal - discount_amount) * 1.0 * items.map(i, i.pph23_exclude ? 0 : i.amount).sum() / subtotal))"
+  - name: pph23_dp_base
+    type: currency
+    label: {id: Dasar PPh 23 di faktur uang muka}
+    hidden: true
+    compute: "dp_invoice == '' || dp_invoice.dpp == 0 ? 0 : round(dp_invoice.pph23_dpp * 1.0 * down_payment / dp_invoice.dpp)"
   - name: pph23_dpp
     type: currency
     label: {id: Dasar PPh 23}
-    compute: "currency != '' && currency != 'IDR' ? (subtotal_fx == 0 ? 0 : round(dpp * 1.0 * sum(items.map(i, i.pph23_base ? i.amount_fx : 0)) / subtotal_fx)) : (subtotal == 0 ? 0 : round(dpp * 1.0 * items.map(i, i.pph23_base ? i.amount : 0).sum() / subtotal))"
+    compute: "pph23_lines_base > pph23_dp_base ? pph23_lines_base - pph23_dp_base : 0"
   - name: pph23_amount
     type: currency
     label: {id: PPh 23 dipotong pelanggan}
@@ -212,6 +223,14 @@ rules:
     on: save
     check: billing_milestone == '' || billing_milestone.project == project
     message: {id: Termin harus milik proyek yang sama}
+  - name: milestone_same_customer
+    on: save
+    check: billing_milestone == '' || billing_milestone.customer == customer
+    message: {id: Termin harus milik pelanggan yang sama}
+  - name: milestone_amount_cap
+    on: save
+    check: billing_milestone == '' || dpp <= billing_milestone.amount
+    message: {id: DPP faktur tidak boleh melebihi nilai termin}
   - name: milestone_not_invoiced
     on: save
     check: billing_milestone == '' || billing_milestone.state != 'invoiced' || billing_milestone.sales_invoice == name

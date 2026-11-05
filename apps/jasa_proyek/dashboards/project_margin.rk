@@ -8,7 +8,7 @@ widgets:
   - name: margin_total
     type: number
     label: {id: Untung proyek}
-    description: {id: 'Pendapatan dikurangi biaya tenaga kerja, biaya proyek dan pemasok'}
+    description: {id: 'Pendapatan dikurangi biaya tenaga kerja, proyek dan pemasok (DPP), dari dokumen yang diajukan sejak buku ini aktif'}
     model: project_ledger
     aggregate: sum
     field: amount

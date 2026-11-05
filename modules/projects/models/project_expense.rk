@@ -7,8 +7,8 @@ naming: EXP-{YYYY}-{#####}
 title_field: description
 # A cost spent on a project outside a vendor bill (travel, lodging, printing, a freelancer paid in cash), and whether
 # it is billed on to the client. A reimbursable cost needs its receipt. When the cost is also on a vendor bill, link
-# it: margin then counts the bill, not this record. On the invoice a re-billed cost is a line with pph23_base off
-# (Kena PPh 23 unticked), so PPh 23 is not withheld on it.
+# it: margin then counts the bill, not this record. On the invoice a re-billed cost is a line marked pph23_exclude
+# (Bukan dasar PPh 23), so PPh 23 is not withheld on it.
 permissions:
   - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: finance_manager, read: true, create: true, write: true, submit: true, cancel: true, amend: true, export: true, print: true}
@@ -95,8 +95,8 @@ rules:
     message: {id: Faktur penagihan harus untuk proyek yang sama}
   - name: bill_same_project
     on: save
-    check: vendor_bill == '' || vendor_bill.project == '' || vendor_bill.project == project
-    message: {id: Tagihan pemasok itu untuk proyek lain}
+    check: vendor_bill == '' || vendor_bill.project == project
+    message: {id: Tagihan pemasok harus untuk proyek yang sama (isi Proyek di tagihannya)}
 views:
   list:
     columns: [name, project, expense_date, category, amount, rebill_amount, status]

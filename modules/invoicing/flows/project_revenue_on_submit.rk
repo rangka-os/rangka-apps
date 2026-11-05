@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 name: project_revenue_on_submit
 label: {id: Pendapatan proyek dari faktur}
-# Project ledger row (projects): the sum of a project's rows is its margin; a cancel writes the opposite row. Retention releases are skipped: their DPP was counted on the original invoice.
+# Project ledger row (projects): the sum of a project's rows is its margin.
 on: sales_invoice.submitted
 if: event.project != '' && event.kind != 'retention'
 steps:
@@ -12,4 +12,5 @@ steps:
       kind: "'revenue'"
       source_model: event.model
       source_name: event.name
+      sales_invoice: event.name
       amount: "event.dpp"

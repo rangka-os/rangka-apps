@@ -1,15 +1,20 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 name: project_expense_on_cancel
 label: {id: Biaya proyek batal}
-# Project ledger row (projects): the sum of a project's rows is its margin; a cancel writes the opposite row.
+# Project ledger row (projects): a cancel writes the opposite row on the document's date, only when the document has a + row (documents submitted before the ledger existed have none).
 on: project_expense.cancelled
 if: event.vendor_bill == ''
 steps:
-  - create: project_ledger
+  - find: project_ledger
+    where: source_name == event.name && kind == 'expense'
+    as: orig
+  - if: orig != null
+    create: project_ledger
     set:
       project: event.project
-      posting_date: today()
+      posting_date: event.expense_date
       kind: "'expense'"
       source_model: event.model
       source_name: event.name
+      project_expense: event.name
       amount: "event.amount"
