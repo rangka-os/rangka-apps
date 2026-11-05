@@ -2,8 +2,8 @@
 # A payment drafted from a statement line is submitted: the line is matched, whatever status it was moved to in
 # between (the draft holds the line's money, so the line must not be confirmed into a second payment). The draft's
 # name changes on submit, so the line is found by the draft's name (event.before.name) in draft_payment, or, for the
-# amend of a cancelled payment of the line, by amended_from (bank_transaction_unmatched keeps the cancelled name in
-# draft_payment). reference is free text that any payment can carry (and amend copies), so it never picks the line:
+# amend of a cancelled payment of the line, by amended_from == cancelled_payment (bank_transaction_amend_guard has
+# refused that amend already when the line has another live draft). reference is free text that any payment can carry (and amend copies), so it never picks the line:
 # another payment naming the line cannot take it over.
 name: bank_transaction_matched
 label: {id: Mutasi cocok saat pembayaran diajukan}
@@ -11,7 +11,7 @@ on: payment.submitted
 if: event.direction == 'receive' && event.before != null
 steps:
   - find: bank_transaction
-    where: "payment == '' && draft_payment != '' && (draft_payment == event.before.name || draft_payment == event.amended_from)"
+    where: "payment == '' && ((draft_payment != '' && draft_payment == event.before.name) || (cancelled_payment != '' && cancelled_payment == event.amended_from))"
     as: line
   - update: line
     if: line != null

@@ -11,7 +11,7 @@ on: bank_transaction.updated
 if: event.status == 'confirmed' && event.payment == '' && event.suggested_invoice != ''
 steps:
   - find: payment
-    where: "event.draft_payment != '' && (name == event.draft_payment || amended_from == event.draft_payment) && docstatus == 0"
+    where: "docstatus == 0 && ((event.draft_payment != '' && name == event.draft_payment) || (event.cancelled_payment != '' && amended_from == event.cancelled_payment))"
     as: draft
   - {find: sales_invoice, where: name == event.suggested_invoice, as: inv}
   - {find: bank_transaction, where: name == event.name, as: line}

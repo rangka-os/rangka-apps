@@ -1549,6 +1549,27 @@ def scenario_money_rail(api):
           st == 200 and lo["status"] == "matched" and lo["payment"] == resp.get("name"), (st, lo))
     eq("invoices: the first untouched, the last paid 400.000", (api.get("sales_invoice", inv_o)["outstanding"], api.get("sales_invoice", inv_o2)["outstanding"]), (1_000_001, 600_002))
 
+    # paid, cancelled, confirmed again to another invoice, then the cancelled payment amended: still one live payment
+    inv_p, inv_q = submitted_invoice(1_000_003), submitted_invoice(1_000_004)
+    st, lp = api.create("bank_transaction", {"account": "1110000001", "date": "2026-11-09", "seq": 1, "description": "TRSF CR BATAL AMEND", "credit": 300_000})
+    api.patch("bank_transaction", lp["name"], {"suggested_invoice": inv_p, "status": "confirmed"})
+    st, resp = api.verb("payment", api.get("bank_transaction", lp["name"])["draft_payment"], "submit")
+    p_first = resp.get("name", "")
+    st, resp = api.verb("payment", p_first, "cancel")
+    check("cancel the payment of the line", st == 200 and api.get("bank_transaction", lp["name"])["status"] == "unmatched", (st, resp))
+    api.patch("bank_transaction", lp["name"], {"suggested_invoice": inv_q, "status": "confirmed"})
+    d2 = api.get("bank_transaction", lp["name"])["draft_payment"]
+    st, am = api.verb("payment", p_first, "amend")
+    st, resp = api.verb("payment", am.get("name", ""), "submit")
+    check("the amend of the cancelled payment is refused while the line has another draft", st in (409, 422) and "amend" in str(resp), (st, resp))
+    st, resp = api.verb("payment", d2, "submit")
+    lp = api.get("bank_transaction", lp["name"])
+    check("the line's new draft submits and matches", st == 200 and lp["status"] == "matched" and lp["payment"] == resp.get("name"), (st, lp))
+    st, resp = api.verb("payment", am.get("name", ""), "submit")
+    check("the amend stays refused once the line is matched", st in (409, 422), (st, resp))
+    eq("one transfer, one payment: first invoice owed in full, second paid 300.000",
+       (api.get("sales_invoice", inv_p)["outstanding"], api.get("sales_invoice", inv_q)["outstanding"]), (1_000_003, 700_004))
+
 
 def setup_demo_jasa(api, k):
     """One member per jasa role in PT Contoh Inspeksi (rangka user add), signed in: the owner self-approves, so only these can show a held approval."""
