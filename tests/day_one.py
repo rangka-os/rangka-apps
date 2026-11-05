@@ -1570,6 +1570,34 @@ def scenario_money_rail(api):
     eq("one transfer, one payment: first invoice owed in full, second paid 300.000",
        (api.get("sales_invoice", inv_p)["outstanding"], api.get("sales_invoice", inv_q)["outstanding"]), (1_000_003, 700_004))
 
+    # chained: paid to A, cancelled, confirmed to B, paid, cancelled again; the older cancelled payment's amend is refused
+    for label, older_first in (("H2", True), ("H3", False)):
+        ia, ib = submitted_invoice(1_000_010 + (0 if older_first else 2)), submitted_invoice(1_000_011 + (0 if older_first else 2))
+        st, lc = api.create("bank_transaction", {"account": "1110000001", "date": "2026-11-10", "seq": 1 if older_first else 2,
+                                                 "description": f"TRSF CR BERANTAI {label}", "credit": 300_000})
+        api.patch("bank_transaction", lc["name"], {"suggested_invoice": ia, "status": "confirmed"})
+        st, r = api.verb("payment", api.get("bank_transaction", lc["name"])["draft_payment"], "submit")
+        p0 = r.get("name", "")
+        api.verb("payment", p0, "cancel")
+        api.patch("bank_transaction", lc["name"], {"suggested_invoice": ib, "status": "confirmed"})
+        st, r = api.verb("payment", api.get("bank_transaction", lc["name"])["draft_payment"], "submit")
+        p2 = r.get("name", "")
+        api.verb("payment", p2, "cancel")
+        st, a0 = api.verb("payment", p0, "amend")
+        st0, r0 = api.verb("payment", a0.get("name", ""), "submit")
+        check(f"{label}: the amend of the older cancelled payment is refused", st0 in (409, 422), (st0, r0))
+        if older_first:
+            st, a2 = api.verb("payment", p2, "amend")
+            st, r = api.verb("payment", a2.get("name", ""), "submit")
+        else:
+            api.patch("bank_transaction", lc["name"], {"suggested_invoice": ib, "status": "confirmed"})
+            st, r = api.verb("payment", api.get("bank_transaction", lc["name"])["draft_payment"], "submit")
+        lc = api.get("bank_transaction", lc["name"])
+        check(f"{label}: the line ends matched once", st == 200 and lc["status"] == "matched", (st, lc))
+        eq(f"{label}: one transfer paid once (A owed in full, B 300.000 paid)",
+           (api.get("sales_invoice", ia)["outstanding"], api.get("sales_invoice", ib)["outstanding"]),
+           (1_000_010 + (0 if older_first else 2), 700_011 + (0 if older_first else 2)))
+
 
 def setup_demo_jasa(api, k):
     """One member per jasa role in PT Contoh Inspeksi (rangka user add), signed in: the owner self-approves, so only these can show a held approval."""
