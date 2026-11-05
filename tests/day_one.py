@@ -845,6 +845,22 @@ def scenario_projects(api):
     st, half = api.create("timesheet", {"project": p["name"], "worker": worker, "work_date": "2026-11-11", "days": 1.5, "day_rate": 1_000_001, "description": "lembur"})
     eq("timesheet 1,5 days rounds to whole rupiah", half.get("amount"), 1_500_002)
 
+    # hourly time entry (consultants) and the internal cost behind margin
+    st, cw = api.create("worker", {"worker_name": "Konsultan Contoh", "day_rate": 3_000_000, "hour_rate": 400_000, "cost_day_rate": 1_000_000, "cost_hour_rate": 150_000})
+    check("create a consultant: 400.000/hour, costs 150.000/hour", st == 201, (st, cw))
+    st, ha = api.create("assignment", {"project": p["name"], "worker": cw["name"], "start_date": "2026-11-10", "end_date": "2026-11-30", "rate_basis": "hour"})
+    if check("assignment billed per hour", st == 201, (st, ha)):
+        eq("hour_rate and cost_rate default from the worker (cost per hour on an hourly assignment)", (ha["hour_rate"], ha["cost_rate"]), (400_000, 150_000))
+        st, ht = api.create("timesheet", {"project": p["name"], "worker": cw["name"], "assignment": ha["name"], "work_date": "2026-11-12", "hours": 20, "description": "Review SPT"})
+        if check("hourly timesheet 20 hours created", st == 201, (st, ht)):
+            eq("20 h x 400.000 = 8.000.000 billed, x 150.000 = 3.000.000 cost, rate_basis from the assignment",
+               (ht["rate_basis"], ht["amount"], ht["cost_amount"], ht["billable_amount"]), ("hour", 8_000_000, 3_000_000, 8_000_000))
+        st, resp = api.create("timesheet", {"project": p["name"], "worker": cw["name"], "assignment": ha["name"], "work_date": "2026-11-13", "hours": 25, "description": "x"})
+        check("25 hours in a day -> 422 'Jam kerja'", st == 422 and any("Jam kerja" in m for m in messages(resp)), (st, resp))
+        st, nb = api.create("timesheet", {"project": p["name"], "worker": cw["name"], "assignment": ha["name"], "work_date": "2026-11-14", "hours": 2, "billable": False, "description": "Internal"})
+        eq("a non-billable hour still costs: billable_amount 0, cost 300.000", (nb.get("billable_amount"), nb.get("cost_amount")), (0, 300_000))
+    eq("a daily timesheet keeps rate_basis day and no cost without a cost rate", (half.get("rate_basis"), half.get("cost_amount")), ("day", 0))
+
     st, b = api.create("acceptance", {"project": p["name"], "accepted_on": "2026-11-21", "accepted_by": "Bambang Contoh", "scope": "Inspeksi tahap 1", "amount": 15_000_000})
     check("create acceptance", st == 201, b)
     if st == 201:

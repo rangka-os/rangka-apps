@@ -54,16 +54,44 @@ fields:
     type: currency
     label: {id: Tarif per hari}
     default: assignment.day_rate
+  # Per hour when the assignment bills per hour (consultants); per day otherwise, as before.
+  - name: rate_basis
+    type: select
+    label: {id: Satuan tarif}
+    default: "assignment != '' ? assignment.rate_basis : 'day'"
+    options:
+      - {value: day, label: {id: Per hari}}
+      - {value: hour, label: {id: Per jam}}
+  - name: hour_rate
+    type: currency
+    label: {id: Tarif per jam}
+    default: assignment.hour_rate
+  - name: cost_rate
+    type: currency
+    label: {id: Biaya per satuan}
+    default: assignment.cost_rate
   - name: amount
     type: currency
     label: {id: Jumlah}
-    compute: round(days * day_rate)
+    compute: "rate_basis == 'hour' ? round(hours * hour_rate) : round(days * day_rate)"
     in_list: true
+  - name: cost_amount
+    type: currency
+    label: {id: Biaya}
+    compute: "round((rate_basis == 'hour' ? hours : days) * cost_rate)"
+  - name: billable_amount
+    type: currency
+    label: {id: Jumlah dapat ditagih}
+    compute: "billable ? amount : 0"
 rules:
   - name: days_range
     on: save
-    check: days > 0 && days <= 1.5
+    check: rate_basis == 'hour' || (days > 0 && days <= 1.5)
     message: {id: 'Hari kerja harus lebih dari 0 dan paling banyak 1,5'}
+  - name: hours_range
+    on: save
+    check: rate_basis != 'hour' || (hours > 0 && hours <= 24)
+    message: {id: 'Jam kerja harus lebih dari 0 dan paling banyak 24'}
 views:
   list:
     columns: [name, project, worker, work_date, days, status, amount]
@@ -79,4 +107,7 @@ views:
           - [description, evidence]
       - section: {id: Tagihan}
         columns:
-          - [billable, day_rate, amount]
+          - [billable, rate_basis, day_rate, hour_rate, amount]
+      - section: {id: Biaya internal}
+        columns:
+          - [cost_rate, cost_amount]

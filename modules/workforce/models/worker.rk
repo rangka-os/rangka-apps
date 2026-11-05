@@ -32,6 +32,20 @@ fields:
     type: currency
     label: {id: Tarif per hari}
     in_list: true
+  # Selling rate per hour, and what an hour or a day of this person costs the firm (pay divided by working days or
+  # hours, entered by the owner): project margin reads the cost, the invoice reads the selling rate.
+  - name: hour_rate
+    type: currency
+    label: {id: Tarif per jam}
+    default: '0'
+  - name: cost_day_rate
+    type: currency
+    label: {id: Biaya per hari}
+    default: '0'
+  - name: cost_hour_rate
+    type: currency
+    label: {id: Biaya per jam}
+    default: '0'
   - name: active
     type: check
     label: {id: Aktif}
@@ -48,6 +62,9 @@ views:
       - section: {id: Identitas}
         columns:
           - [worker_name, employee_no, role_title]
-          - [phone, day_rate, active]
+          - [phone, day_rate, hour_rate, active]
+      - section: {id: Biaya internal}
+        columns:
+          - [cost_day_rate, cost_hour_rate]
       - section: {id: Sertifikasi}
         fields: [certifications]
