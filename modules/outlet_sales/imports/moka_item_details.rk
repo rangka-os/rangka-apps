@@ -1,6 +1,10 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
-# Moka Backoffice "Export Item Details", one file per outlet and day (or several days). The headers are the English
-# Backoffice headers assumed in contract 0012; when the pilot's first real export arrives, fix them here, not in the kernel.
+# Moka Backoffice "Export Item Details" (Reports > Transactions > Export > Item Details), one file per outlet and day
+# (or several days), unzipped. The 25 English headers (Outlet, Receipt Number, Date, Time, Category, Brand, Items,
+# Variant, SKU, Quantity, Modifier Applied, Discount Applied, Gross Sales, Discounts, Refunds, Net Sales, Gratuity, Tax,
+# Sales Type, Collected By, Served By, Customer, Payment Method, Event Type, Reason of Refund) come from code that reads
+# real exports; columns are matched by name, so their order does not matter. Dates are dd-mm-yyyy (rangka-os #32).
+# When a pilot's real export differs, fix the headers here, not in the kernel.
 # Same file twice -> duplicate (file hash). Overlapping exports -> only rows whose key is new. Records arrive as drafts.
 name: moka_item_details
 label: {id: Penjualan Moka (detail item), en: Moka sales (item details)}
@@ -8,7 +12,7 @@ model: outlet_sales
 source: csv
 header_row: 1
 per: outlet
-key: [Date, Receipt Number, Item, Variant, Modifiers]
+key: [Date, Receipt Number, Items, Variant, Modifier Applied]
 group: [Date]
 map:
   date: Date
