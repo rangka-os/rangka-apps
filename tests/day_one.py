@@ -2689,6 +2689,23 @@ def scenario_outlet_sales(api):
             r = api.get("outlet_sales", cr["records"][0])
             eq("refund shapes: gross 90.000, discount 0, refund 90.000, net 0 (= Moka Net Sales)", (r["gross_total"], r["discount_total"], r["refund_total"], r["net_total"]), (90_000, 0, 90_000, 0))
             eq("imported record keeps source moka", r["source"], "moka")
+    # source moka is the importer's (head office): outlet staff cannot type it to book a negative net (audit round 2
+    # of #7, S1 and S1b)
+    dago = CTX.get("staff_dago")
+    if dago:
+        st, resp = dago.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "source": "moka",
+                                                "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 500_000}]})
+        check("outlet staff creating a source moka record with net -500.000 -> 403", st == 403, (st, resp))
+        st, own = dago.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
+        if check("outlet staff creates a daily form record", st == 201 and own["source"] == "form", (st, own)):
+            st, resp = dago.patch("outlet_sales", own["name"], {"source": "moka", "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 900_000}]})
+            check("outlet staff turning it into source moka with net -900.000 -> 403", st == 403, (st, resp))
+            eq("the form record keeps net 15.000 (1 x 15.000)", api.get("outlet_sales", own["name"])["net_total"], 15_000)
+            api.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(own['name'])}")
+        moka_rec = next(iter(api.find("outlet_sales", "source == 'moka' && outlet == '%s'" % DAGO)), None)
+        if moka_rec:
+            st, resp = dago.call("GET", f"/api/v1/r/outlet_sales/{Api.q(moka_rec['name'])}")
+            check("outlet staff still reads its outlet's Moka records", st == 200, (st, resp))
     st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": []})
     if st == 201:
         fail("min_rows 1: an outlet_sales without lines is refused", "201: the kernel saved it")
