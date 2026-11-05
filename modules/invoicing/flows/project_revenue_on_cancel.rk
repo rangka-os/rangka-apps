@@ -6,15 +6,17 @@ on: sales_invoice.cancelled
 if: event.project != '' && event.kind != 'retention'
 steps:
   - find: project_ledger
-    where: source_name == event.name && kind == 'revenue'
+    where: source_name == event.name && kind == 'revenue' && entry == 'post'
     as: orig
   - if: orig != null
     create: project_ledger
     set:
       project: event.project
-      posting_date: event.posting_date
+      posting_date: orig.posting_date
+      entry: "'reverse'"
+      reverses: orig.name
       kind: "'revenue'"
       source_model: event.model
       source_name: event.name
       sales_invoice: event.name
-      amount: "0 - event.dpp"
+      amount: "0 - orig.amount"

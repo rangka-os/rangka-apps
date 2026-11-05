@@ -9,6 +9,7 @@ steps:
     set:
       project: event.project
       posting_date: event.expense_date
+      entry: "'post'"
       kind: "'expense'"
       source_model: event.model
       source_name: event.name

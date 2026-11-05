@@ -9,6 +9,7 @@ steps:
     set:
       project: event.project
       posting_date: event.bill_date
+      entry: "'post'"
       kind: "'vendor'"
       source_model: event.model
       source_name: event.name

@@ -6,15 +6,17 @@ on: timesheet.cancelled
 if: event.cost_amount != 0
 steps:
   - find: project_ledger
-    where: source_name == event.name && kind == 'labor'
+    where: source_name == event.name && kind == 'labor' && entry == 'post'
     as: orig
   - if: orig != null
     create: project_ledger
     set:
       project: event.project
-      posting_date: event.work_date
+      posting_date: orig.posting_date
+      entry: "'reverse'"
+      reverses: orig.name
       kind: "'labor'"
       source_model: event.model
       source_name: event.name
       timesheet: event.name
-      amount: "event.cost_amount"
+      amount: "0 - orig.amount"
