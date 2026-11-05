@@ -9,8 +9,8 @@ title_field: project
 # writes the opposite row on the document's own date, so the sum per project (and per period) is its margin. Rows are
 # written by flows inside the document's submit or cancel. A flow runs as the person submitting, so those roles hold
 # create, and a rule cannot tell a flow from a person; the rules therefore make every row true to its document:
-# - a post row links its source document, on the same project, submitted, with exactly the document's amount; one per
-#   document (entry_key = source:post);
+# - a post row links its source document, on the same project, submitted, with exactly the document's amount and
+#   date; one per document (entry_key = source:post);
 # - a reverse row links the post row it reverses (reverses, unique) for the same document, now cancelled, with the
 #   opposite amount; one per post row (entry_key = source:reverse).
 # So each cancelled document has exactly one reversal, and only if it had a post row: a document submitted before
@@ -91,6 +91,11 @@ fields:
     label: {id: Nilai dokumen}
     hidden: true
     compute: "kind == 'revenue' ? sales_invoice.dpp : (kind == 'labor' ? 0 - timesheet.cost_amount : (kind == 'expense' ? 0 - project_expense.amount : 0 - vendor_bill.dpp))"
+  - name: source_date
+    type: date
+    label: {id: Tanggal dokumen}
+    hidden: true
+    compute: "kind == 'revenue' ? sales_invoice.posting_date : (kind == 'labor' ? timesheet.work_date : (kind == 'expense' ? project_expense.expense_date : vendor_bill.bill_date))"
   - name: entry_key
     type: data
     label: {id: Kunci baris}
@@ -107,18 +112,18 @@ rules:
     check: >-
       (kind == 'revenue' && sales_invoice != '' && source_name == sales_invoice && sales_invoice.project == project && sales_invoice.kind != 'retention')
       || (kind == 'labor' && timesheet != '' && source_name == timesheet && timesheet.project == project)
-      || (kind == 'expense' && project_expense != '' && source_name == project_expense && project_expense.project == project && project_expense.vendor_bill == '')
+      || (kind == 'expense' && project_expense != '' && source_name == project_expense && project_expense.project == project)
       || (kind == 'vendor' && vendor_bill != '' && source_name == vendor_bill && vendor_bill.project == project)
     message: {id: Baris buku untung proyek harus menunjuk dokumen sumbernya di proyek yang sama}
   - name: post_matches_document
     on: save
-    check: entry != 'post' || (reverses == '' && source_status == 1 && amount == source_amount)
+    check: entry != 'post' || (reverses == '' && source_status == 1 && amount == source_amount && posting_date == source_date)
     message: {id: Baris diajukan hanya untuk dokumen yang diajukan dengan nilai yang sama}
   - name: reverse_matches_post
     on: save
     check: >-
       entry != 'reverse' || (reverses != '' && source_status == 2 && reverses.entry == 'post' && reverses.source_name == source_name
-        && reverses.kind == kind && reverses.project == project && amount == 0 - reverses.amount)
+        && reverses.kind == kind && reverses.project == project && amount == 0 - reverses.amount && posting_date == reverses.posting_date)
     message: {id: Baris pembalik hanya untuk dokumen yang dibatalkan dan harus menunjuk baris aslinya}
 views:
   list:

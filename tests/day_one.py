@@ -1694,8 +1694,21 @@ def scenario_project_margin(api):
         check("a second copy of the invoice's own row -> 422 (entry_key unique)", st == 422, (st, resp))
     # an expense cannot point at a vendor bill of no project (its cost would reach no ledger)
     st, nb = pm.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "NOPRJ-1", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 1_000_000}]})
-    st, resp = pa.create("project_expense", {"project": p, "description": "x", "amount": 1_000_000, "vendor_bill": nb.get("name", "")})
-    check("an expense linking a bill without the project -> 422", st == 422 and any("proyek yang sama" in m for m in messages(resp)), (st, resp))
+    # an expense counts at its own full amount whatever its linked bill does (audit round 3): it may link a bill
+    # recorded without the project (that bill reaches no ledger), a draft or a smaller one, never a bill of this project
+    before_m = margin()
+    st, draft_bill = pm.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "DRAFT-BILL", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 8_000_000}]})
+    st, e1 = pa.create("project_expense", {"project": p, "description": "Ke tagihan draft", "amount": 8_000_000, "vendor_bill": draft_bill.get("name", "")})
+    e1n = submit_doc(pa, "project_expense", e1["name"], "expense of 8.000.000 linked to a draft bill") if st == 201 else None
+    st, e2 = pa.create("project_expense", {"project": p, "description": "Ke tagihan kecil", "amount": 9_000_000, "vendor_bill": nb.get("name", "")})
+    submit_doc(pa, "project_expense", e2["name"], "expense of 9.000.000 linked to a 1.000.000 bill without project") if st == 201 else None
+    eq("both expenses lower the margin by their full amount (17.000.000)", before_m - margin(), 17_000_000)
+    st, vbp = pm.create("vendor_bill", {"vendor": "VND-0001", "project": p, "bill_no": "PRJ-BILL", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 1_000_000}]})
+    st, resp = pa.create("project_expense", {"project": p, "description": "x", "amount": 1_000_000, "vendor_bill": vbp.get("name", "")})
+    check("an expense linking a bill of this project (counted on its own) -> 422", st == 422, (st, resp))
+    if e1n:
+        pa.verb("project_expense", e1n, "cancel")
+        eq("cancelling the 8.000.000 expense gives it back", before_m - margin(), 9_000_000)
     # a project invoice with DPP 0 (fully discounted) submits and cancels: its post and reverse rows have distinct keys
     st, z = fm.create("sales_invoice", {"customer": customer, "project": p, "discount_amount": 1_000_000, "items": [{"item": ndt, "qty": 1, "rate": 1_000_000}]})
     zn = submit_doc(fm, "sales_invoice", z["name"], "finance submits a DPP 0 project invoice") if st == 201 else None
@@ -1716,11 +1729,11 @@ def scenario_project_margin(api):
     revs = [r for r in allr if r["entry"] == "reverse"]
     check("every reversal points at the post row of the same document, with the opposite amount",
           all(r["reverses"] in posts and posts[r["reverses"]]["source_name"] == r["source_name"] and r["amount"] == -posts[r["reverses"]]["amount"] for r in revs), revs)
-    eq("no document has two reversals; the cancelled ones here (bill, DPP 0 invoice, expense) have one each",
+    eq("no document has two reversals; each cancelled one here has one",
        sorted(r["source_name"] for r in revs), sorted({r["source_name"] for r in revs}))
-    eq("three reversals: the subcontract bill, the DPP 0 invoice and the expense", len(revs), 3)
+    eq("four reversals: the subcontract bill, the DPP 0 invoice, the 500.000 expense and the 8.000.000 expense", len(revs), 4)
     ws = dashboard(api, "project_margin", 365)
-    eq("project_margin margin_by_project shows the project's margin", chart_map(ws.get("margin_by_project", {})).get(p), 35_000_000)
+    eq("project_margin margin_by_project shows the project's margin (35.000.000 - the 9.000.000 expense = 26.000.000)", chart_map(ws.get("margin_by_project", {})).get(p), 26_000_000)
 
 
 def scenario_roles_jasa(api):

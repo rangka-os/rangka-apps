@@ -3,7 +3,6 @@ name: project_expense_on_submit
 label: {id: Biaya proyek tercatat}
 # Project ledger row (projects): the sum of a project's rows is its margin.
 on: project_expense.submitted
-if: event.vendor_bill == ''
 steps:
   - create: project_ledger
     set:
