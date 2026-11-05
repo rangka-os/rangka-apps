@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: project_billed_on_submit
+label: {id: Tagihan proyek bertambah}
+# Inside the invoice's submit: adds its DPP to project.billed_amount; the project's rule billing_within_contract then
+# refuses the submit when the project would be billed above its contract (with or without a billing milestone).
+on: sales_invoice.submitted
+if: event.project != '' && event.kind != 'retention'
+steps:
+  - {find: project, where: name == event.project, as: prj}
+  - update: prj
+    set:
+      billed_amount: prj.billed_amount + event.dpp

@@ -12,3 +12,4 @@ steps:
     set:
       state: "'invoiced'"
       sales_invoice: event.name
+      over_billed: ms.amount < event.dpp
