@@ -7,14 +7,17 @@ naming: EXP-{YYYY}-{#####}
 title_field: description
 # A cost spent on a project outside a vendor bill (travel, lodging, printing, a freelancer paid in cash), and whether
 # it is billed on to the client. A reimbursable cost needs its receipt. Margin always counts this record at its own
-# full amount, whatever a linked vendor bill does (draft, cancelled, smaller). A vendor bill may be linked only when
-# it carries no project (so its cost reaches the project through this record); a bill of this project is counted on
-# its own and is never linked here. On the invoice a re-billed cost is a line marked pph23_exclude (Bukan dasar PPh 23),
+# full amount. A vendor bill may be linked only when it is submitted and carries no project (so its cost reaches the
+# project through this record); a bill of this project is counted on its own and is never linked here. A linked bill
+# cannot be cancelled while this record is live (flow vendor_bill_cancel_guard), so it cannot come back with the
+# project and be counted twice. On the invoice a re-billed cost is a line marked pph23_exclude (Bukan dasar PPh 23),
 # so PPh 23 is not withheld on it.
 permissions:
   - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: finance_manager, read: true, create: true, write: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: sales_manager, read: true}
+  # purchasing reads expenses: the guard flow on a vendor bill's cancel looks for expenses linking it, as them
+  - {role: purchasing_manager, read: true}
 fields:
   - name: project
     type: link
@@ -97,8 +100,8 @@ rules:
     message: {id: Faktur penagihan harus untuk proyek yang sama}
   - name: bill_same_project
     on: save
-    check: vendor_bill == '' || vendor_bill.project == ''
-    message: {id: 'Tagihan pemasok ini sudah berproyek dan dihitung sendiri; jangan dicatat lagi sebagai biaya proyek'}
+    check: vendor_bill == '' || (vendor_bill.project == '' && vendor_bill.docstatus == 1)
+    message: {id: 'Tautkan hanya tagihan pemasok yang sudah diajukan dan tanpa proyek (tagihan berproyek dihitung sendiri)'}
 views:
   list:
     columns: [name, project, expense_date, category, amount, rebill_amount, status]
