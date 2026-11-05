@@ -65,11 +65,11 @@ fields:
   - name: hour_rate
     type: currency
     label: {id: Tarif per jam}
-    default: assignment.hour_rate
+    default: "assignment != '' ? assignment.hour_rate : worker.hour_rate"
   - name: cost_rate
     type: currency
     label: {id: Biaya per satuan}
-    default: assignment.cost_rate
+    default: "assignment != '' ? assignment.cost_rate : (rate_basis == 'hour' ? worker.cost_hour_rate : worker.cost_day_rate)"
   - name: amount
     type: currency
     label: {id: Jumlah}
@@ -88,6 +88,10 @@ rules:
     on: save
     check: rate_basis == 'hour' || (days > 0 && days <= 1.5)
     message: {id: 'Hari kerja harus lebih dari 0 dan paling banyak 1,5'}
+  - name: hour_rate_for_billable_hours
+    on: save
+    check: rate_basis != 'hour' || !billable || hour_rate > 0
+    message: {id: 'Timesheet per jam yang ditagih butuh tarif per jam (isi di tenaga kerja atau penugasan)'}
   - name: hours_range
     on: save
     check: rate_basis != 'hour' || (hours > 0 && hours <= 24)

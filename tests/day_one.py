@@ -859,6 +859,10 @@ def scenario_projects(api):
         check("25 hours in a day -> 422 'Jam kerja'", st == 422 and any("Jam kerja" in m for m in messages(resp)), (st, resp))
         st, nb = api.create("timesheet", {"project": p["name"], "worker": cw["name"], "assignment": ha["name"], "work_date": "2026-11-14", "hours": 2, "billable": False, "description": "Internal"})
         eq("a non-billable hour still costs: billable_amount 0, cost 300.000", (nb.get("billable_amount"), nb.get("cost_amount")), (0, 300_000))
+    st, na = api.create("timesheet", {"project": p["name"], "worker": cw["name"], "rate_basis": "hour", "work_date": "2026-11-15", "hours": 3, "description": "Tanpa penugasan"})
+    eq("an hourly timesheet without assignment takes the worker's rates: 3 h = 1.200.000, cost 450.000", (na.get("amount"), na.get("cost_amount")), (1_200_000, 450_000))
+    st, resp = api.create("timesheet", {"project": p["name"], "worker": worker, "rate_basis": "hour", "work_date": "2026-11-15", "hours": 3, "description": "x"})
+    check("a billable hourly timesheet with no hour rate anywhere -> 422 'butuh tarif per jam'", st == 422 and any("tarif per jam" in m for m in messages(resp)), (st, resp))
     eq("a daily timesheet keeps rate_basis day and no cost without a cost rate", (half.get("rate_basis"), half.get("cost_amount")), ("day", 0))
 
     st, b = api.create("acceptance", {"project": p["name"], "accepted_on": "2026-11-21", "accepted_by": "Bambang Contoh", "scope": "Inspeksi tahap 1", "amount": 15_000_000})
@@ -2394,6 +2398,11 @@ def receive(api, outlet, lines, label, vendor="VND-0001"):
 
 
 def scenario_fnb_fixtures(api):
+    st, meta = api.call("GET", "/api/v1/meta")
+    models = (meta or {}).get("models") or {}
+    pf = {f["name"]: f for f in (models.get("purchase_order") or {}).get("fields", [])}.get("project") or {}
+    check("F&B has no projects module: the PO's Proyek field is hidden (depends_on app_installed('projects'))",
+          "project" not in models and pf.get("depends_on") == "app_installed('projects')", pf)
     outlets = api.list("outlet")
     check("fixtures: 3 outlets, one head office", len(outlets) == 3 and [o["name"] for o in outlets if o.get("is_head_office") in (True, "true")] == [HO], outlets)
     eq("fixtures: uoms Kg, Gram, Karung, Liter, Pcs, Porsi", sorted(u["uom_name"] for u in api.list("uom")), ["Gram", "Karung", "Kg", "Liter", "Pcs", "Porsi"])

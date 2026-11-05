@@ -27,6 +27,7 @@ fields:
     to: project
     label: {id: Proyek}
     default: purchase_request.project
+    depends_on: app_installed('projects')
   - name: outlet
     type: link
     to: outlet
