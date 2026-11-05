@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: consignment_settlement
+label: {id: Setoran titipan, en: Consignment settlement}
+icon: invoice
+is_submittable: true
+naming: KNS-{YYYY}-{####}
+title_field: consignor
+# One consignor, one period. Per item: received, sold and returned in the period, and what is left on the shelf; the
+# shop owes qty_sold x rate. Submitting creates a draft vendor_bill for the consignor (flow consignment_bill), which
+# head office checks, submits and pays. qty_sold is typed from the "Titipan terjual" list of the retail dashboard;
+# filling it from the stock moves needs a kernel hook (draft contract 0021, K-o).
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+fields:
+  - name: consignor
+    type: link
+    to: vendor
+    label: {id: Penitip}
+    required: true
+    in_list: true
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    help: {id: 'Kosongkan kalau setoran untuk semua outlet'}
+    in_list: true
+  - name: period_start
+    type: date
+    label: {id: Dari tanggal}
+    required: true
+  - name: period_end
+    type: date
+    label: {id: Sampai tanggal}
+    required: true
+    in_list: true
+  - name: items
+    type: table
+    of: consignment_settlement_item
+    label: {id: Barang titipan}
+    min_rows: 1
+  - name: qty_sold_total
+    type: float
+    label: {id: Total terjual}
+    compute: items.map(i, i.qty_sold).sum()
+  - name: total
+    type: currency
+    label: {id: Nilai setor}
+    compute: items.map(i, i.amount).sum()
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: period_order
+    on: save
+    check: period_end >= period_start
+    message: {id: Tanggal akhir periode tidak boleh sebelum tanggal awal}
+  - name: qty_not_negative
+    on: save
+    check: "items.map(i, i.qty_received < 0 || i.qty_sold < 0 || i.qty_returned < 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang tidak boleh negatif}
+  - name: sold_within_stock
+    on: save
+    check: "items.map(i, i.qty_left < 0 ? 1 : 0).sum() == 0"
+    message: {id: 'Terjual ditambah dikembalikan melebihi stok awal ditambah diterima'}
+views:
+  list:
+    columns: [name, consignor, outlet, period_end, status, total]
+    filters: [consignor, outlet]
+    sort: -period_end
+  form:
+    layout:
+      - section: {id: Setoran titipan}
+        columns:
+          - [consignor, outlet]
+          - [period_start, period_end]
+      - section: {id: Barang titipan}
+        fields: [items]
+      - section: {id: Ringkasan}
+        columns:
+          - [qty_sold_total, total]
+      - section: {id: Catatan}
+        fields: [notes]

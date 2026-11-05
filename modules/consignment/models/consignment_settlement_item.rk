@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: consignment_settlement_item
+is_child: true
+fields:
+  - name: item
+    type: link
+    to: item
+    label: {id: Barang}
+    required: true
+  - name: qty_opening
+    type: float
+    label: {id: Stok awal periode}
+    default: '0'
+  - name: qty_received
+    type: float
+    label: {id: Diterima}
+    default: '0'
+  - name: qty_sold
+    type: float
+    label: {id: Terjual}
+    required: true
+  - name: qty_returned
+    type: float
+    label: {id: Dikembalikan}
+    default: '0'
+  - name: qty_left
+    type: float
+    label: {id: Sisa di rak}
+    compute: qty_opening + qty_received - qty_sold - qty_returned
+  - name: rate
+    type: currency
+    label: {id: Harga setor}
+    default: item.consignment_cost
+  - name: amount
+    type: currency
+    label: {id: Jumlah}
+    compute: round(qty_sold * rate)
