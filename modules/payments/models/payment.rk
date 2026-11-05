@@ -48,10 +48,24 @@ fields:
       - {value: transfer, label: {id: Transfer}}
       - {value: cash, label: {id: Tunai}}
       - {value: giro, label: {id: Giro}}
+      - {value: qris, label: {id: QRIS}}
+      - {value: va, label: {id: Virtual account}}
+      - {value: ewallet, label: {id: E-wallet}}
       - {value: other, label: {id: Lainnya}}
   - name: reference
     type: data
     label: {id: No. bukti/transfer}
+  # Payments that arrive through a payment gateway (Xendit VA, QRIS, payment link) carry the gateway's id, so a
+  # callback delivered twice finds the payment it already made instead of paying the invoice again.
+  - name: gateway
+    type: select
+    label: {id: Gateway pembayaran}
+    options:
+      - {value: xendit, label: {id: Xendit}}
+  - name: gateway_ref
+    type: data
+    label: {id: ID transaksi gateway}
+    unique: true
   - name: amount
     type: currency
     label: {id: Jumlah uang}
@@ -84,6 +98,10 @@ fields:
   - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency
   - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah uang (valas)}, default: '0'}
 rules:
+  - name: gateway_has_ref
+    on: save
+    check: gateway == '' || gateway_ref != ''
+    message: {id: Pembayaran lewat gateway wajib punya ID transaksi gateway}
   - name: foreign_needs_rate
     on: save
     check: currency == '' || currency == 'IDR' || exchange_rate > 1
@@ -141,7 +159,7 @@ views:
       - section: {id: Pembayaran}
         columns:
           - [direction, customer, vendor, payment_date]
-          - [method, reference, amount]
+          - [method, reference, amount, gateway, gateway_ref]
       - section: {id: Alokasi}
         fields: [allocations]
       - section: {id: Ringkasan}

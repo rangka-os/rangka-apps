@@ -22,6 +22,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | project, assignment, timesheet, acceptance | r | r | | all | | | |
 | sales_invoice | all | all | | | | | r |
 | withholding | r p | all | | | | | |
+| invoice_reminder | r c w d e | r c w d e | | | | | r c |
 | payment | all | all | | | r c w s p if `direction == 'pay'` (vendor payments only) | | |
 | purchase_request | | | all | r c w s | all | r c w s | |
 | purchase_order | | r p | all | | all | | |

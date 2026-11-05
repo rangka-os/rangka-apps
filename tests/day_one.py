@@ -1297,6 +1297,134 @@ def scenario_procurement(api):
 
 # ---------- scenarios: roles and approvals on demo-jasa (non-owner members, contract 0007)
 
+# ---------- scenario: the money rail (Tahap 1): remind, get paid by transfer or gateway, match the bank statement
+
+def statement_csv(rows):
+    """A bank_statement_csv file: rows of (date dd/mm/yyyy, note, credit, debit, balance)."""
+    out = ["Rekening,Tanggal,Keterangan,Masuk,Keluar,Saldo"]
+    for d, note, cr, db, bal in rows:
+        out.append(f'1110000001,{d},"{note}",{cr},{db},{bal}')
+    return ("\n".join(out) + "\n").encode()
+
+
+def scenario_money_rail(api):
+    item = services(api)[0]["name"]
+    st, cust = api.create("customer", {"customer_name": "PT Contoh Lunas", "phone": "081200001111"})
+    check("money rail: create customer with a WhatsApp number", st == 201, cust)
+    customer = cust["name"]
+
+    def submitted_invoice(rate, **extra):
+        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0, **extra))
+        check(f"money rail: create invoice {rate}", st == 201, inv)
+        st, resp = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        check(f"money rail: submit invoice {rate}", st == 200, resp)
+        return resp.get("name", inv["name"])
+
+    past = "2026-01-05"
+    inv_a = submitted_invoice(2_750_000, posting_date="2026-01-01", due_date=past)   # paid by transfer, number in the note
+    inv_b = submitted_invoice(1_234_000)                                               # paid by transfer, amount only
+    inv_c = submitted_invoice(990_000)                                                 # paid through the gateway
+    inv_d = submitted_invoice(500_000)
+    inv_e = submitted_invoice(500_000)                                                 # same amount as inv_d: no suggestion
+
+    # 1. tagih: the WhatsApp reminder print and the reminder log
+    st, page, _ = api.print_html("sales_invoice", inv_a, "sales_invoice_whatsapp")
+    check("WhatsApp print: wa.me link to 62812..., text filled in", st == 200 and "https://wa.me/6281200001111?text=" in page and "Halo%20PT%20Contoh%20Lunas" in page, (st, page[:400]))
+    check("WhatsApp print of an overdue invoice says how late and asks for the number in the note",
+          "lewat" in page and "hari dari jatuh tempo" in page and "berita transfer" in page, page[:600])
+    st, rem = api.create("invoice_reminder", {"sales_invoice": inv_a})
+    check("invoice_reminder: customer, overdue template and outstanding default from the invoice",
+          st == 201 and rem["customer"] == customer and rem["template"] == "pengingat_jatuh_tempo" and rem["outstanding"] == 2_750_000, (st, rem))
+    st, draft = api.create("sales_invoice", invoice_body(customer, item, rate=1000))
+    st, resp = api.create("invoice_reminder", {"sales_invoice": draft["name"]})
+    check("invoice_reminder refuses a draft invoice", st == 422, (st, resp))
+    st, run = api.call("POST", "/api/v1/flows/invoice_due_digest/run", {})
+    texts = [n.get("text", "") for n in (run or {}).get("notifications", [])]
+    check("invoice_due_digest lists the overdue invoice to the owner", st == 200 and any("faktur jatuh tempo" in t for t in texts), (st, run))
+
+    # 2. bayar lewat gateway (a Xendit callback turned into a payment): gateway_ref is unique
+    body = {"direction": "receive", "customer": customer, "amount": 990_000, "method": "va", "gateway": "xendit",
+            "gateway_ref": "va-paid-test-0001", "reference": inv_c, "allocations": [{"sales_invoice": inv_c, "amount": 990_000}]}
+    st, gp = api.create("payment", body)
+    check("gateway payment created with gateway_ref", st == 201, (st, gp))
+    st, resp = api.verb("payment", gp["name"], "submit")
+    check("gateway payment submitted", st == 200, (st, resp))
+    eq("gateway payment settles its invoice (outstanding 0)", api.get("sales_invoice", inv_c)["outstanding"], 0)
+    st, resp = api.create("payment", body)
+    check("the same callback again (same gateway_ref) is refused", st in (409, 422), (st, resp))
+    st, resp = api.create("payment", dict(body, gateway_ref="", amount=1))
+    check("a gateway payment without gateway_ref is refused", st == 422, (st, resp))
+
+    if not installed(api, "bank_transaction"):
+        return
+
+    # 3. mutasi: import the statement
+    rows = [("06/11/2026", f"TRSF E-BANKING CR {inv_a} PT CONTOH LUNAS", 2_750_000, 0, 12_750_000),
+            ("06/11/2026", "TRSF E-BANKING CR PT CONTOH LUNAS", 1_234_000, 0, 13_984_000),
+            ("06/11/2026", "TRSF E-BANKING CR PT CONTOH", 500_000, 0, 14_484_000),
+            ("06/11/2026", "BIAYA ADM", 0, 15_000, 14_469_000)]
+    csv = statement_csv(rows)
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi.csv", csv)
+    check("statement preview: 4 rows, no errors", st == 200 and pv["rows"] == 4 and pv["errors"] == [], (st, pv))
+    if st != 200:
+        return
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit")
+    check("statement commit creates 4 lines", st == 200 and len(c.get("records", [])) == 4, (st, c))
+    st, pv2 = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi.csv", csv)
+    check("the same statement again: duplicate", st == 200 and pv2["duplicate"] is True, (st, pv2))
+    more = statement_csv(rows + [("07/11/2026", "SETORAN TUNAI", 100_000, 0, 14_569_000)])
+    st, pv3 = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-2.csv", more)
+    st, c3 = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv3['id']}/commit")
+    check("an overlapping statement adds only the new line", st == 200 and len(c3.get("records", [])) == 1, (st, c3))
+    lines = {l["description"]: l for l in api.find("bank_transaction", "date >= '2026-11-06'")}
+    eq("5 statement lines", len(lines), 5)
+    la = lines[rows[0][1]]
+    lb = lines[rows[1][1]]
+    ld = lines[rows[2][1]]
+    lf = lines["BIAYA ADM"]
+    eq("money out is negative", lf["amount"], -15_000)
+    check("line with the invoice number in the note: suggested that invoice",
+          la["status"] == "suggested" and la["suggested_invoice"] == inv_a, la)
+    check("line with a unique amount: suggested the invoice of that amount",
+          lb["status"] == "suggested" and lb["suggested_invoice"] == inv_b, lb)
+    check("line whose amount fits two invoices: no suggestion", ld["status"] == "unmatched" and not ld["suggested_invoice"], ld)
+    eq("money out: no suggestion", lf["status"], "unmatched")
+
+    # 4. cocok -> pembayaran -> lunas
+    st, resp = api.patch("bank_transaction", la["name"], {"status": "confirmed"})
+    check("confirm the suggested line", st == 200, (st, resp))
+    la = api.get("bank_transaction", la["name"])
+    check("confirming drafts a payment linked to the line", bool(la.get("payment")), la)
+    p = api.get("payment", la["payment"])
+    check("drafted payment: customer, amount, reference = line, one allocation to the invoice",
+          p["docstatus"] == 0 and p["customer"] == customer and p["amount"] == 2_750_000 and p["reference"] == la["name"]
+          and [(r["sales_invoice"], r["amount"]) for r in p["allocations"]] == [(inv_a, 2_750_000)], p)
+    st, resp = api.verb("payment", p["name"], "submit")
+    check("submit the drafted payment", st == 200, (st, resp))
+    pname = resp.get("name", p["name"])
+    inv = api.get("sales_invoice", inv_a)
+    check("invoice A lunas: outstanding 0, status paid", inv["outstanding"] == 0 and inv["status"] == "paid", inv)
+    la = api.get("bank_transaction", la["name"])
+    check("line matched to the submitted payment", la["status"] == "matched" and la["payment"] == pname, la)
+    st, page, _ = api.print_html("sales_invoice", inv_a, "sales_invoice_whatsapp")
+    check("WhatsApp print of a paid invoice thanks the customer", st == 200 and "sudah lunas" in page, page[:400])
+
+    # the owner picks the invoice for the ambiguous line
+    st, resp = api.patch("bank_transaction", ld["name"], {"status": "confirmed"})
+    check("confirm without an invoice -> 422", st == 422, (st, resp))
+    st, resp = api.patch("bank_transaction", ld["name"], {"suggested_invoice": inv_e, "status": "confirmed"})
+    check("owner picks invoice E and confirms", st == 200 and bool(api.get("bank_transaction", ld["name"]).get("payment")), (st, resp))
+    st, resp = api.patch("bank_transaction", lf["name"], {"suggested_invoice": inv_d, "status": "confirmed"})
+    check("money out cannot be confirmed against a sales invoice", st == 422, (st, resp))
+
+    # cancel the payment: the line goes back to unmatched, the invoice is owed again
+    st, resp = api.verb("payment", pname, "cancel")
+    check("cancel the payment of line A", st == 200, (st, resp))
+    la = api.get("bank_transaction", la["name"])
+    check("line A back to unmatched, payment cleared", la["status"] == "unmatched" and not la.get("payment"), la)
+    eq("invoice A owed again", api.get("sales_invoice", inv_a)["outstanding"], 2_750_000)
+
+
 def setup_demo_jasa(api, k):
     """One member per jasa role in PT Contoh Inspeksi (rangka user add), signed in: the owner self-approves, so only these can show a held approval."""
     CTX.update(kernel=k, org=k.orgs[0][0])
@@ -1471,6 +1599,8 @@ MATRIX = {
     **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("project", "assignment", "timesheet", "acceptance")},
     "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
+    "invoice_reminder": {"finance_manager": {"read", "create", "write", "delete", "export"}, "sales_manager": {"read", "create", "write", "delete", "export"},
+                         "sales_rep": {"read", "create"}},
     "payment": {"finance_manager": _ALL, "sales_manager": _ALL, "head_office": {"read", "create", "write", "submit", "print"}},   # head_office: if direction == 'pay'
     "purchase_request": {"purchasing_manager": _ALL, "project_admin": _RCWS, "head_office": _ALL, "outlet_staff": _RCWS},
     "purchase_order": {"purchasing_manager": _ALL, "finance_manager": _RP, "head_office": _ALL},
@@ -2706,7 +2836,7 @@ def setup_demo_fnb(api, k):
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
 }
 

@@ -59,5 +59,6 @@
 {{if .Doc.notes}}<p class="note">{{.Doc.notes}}</p>{{end}}
 <p class="note">Bila pembayaran dipotong PPh Pasal 23, mohon kirimkan bukti potongnya kepada kami.</p>
 {{template "bank_accounts" .}}
+{{if .Letterhead.bank}}<p class="note">Mohon tulis nomor faktur <strong>{{.Doc.name}}</strong> di berita transfer supaya pembayaran langsung tercatat.</p>{{end}}
 {{if taxrate .Doc .Tax}}<p class="note">Faktur pajak (e-Faktur) diterbitkan terpisah.</p>{{end}}
 {{template "signature" .}}

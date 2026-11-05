@@ -1,0 +1,24 @@
+{{define "style"}}
+.msg { white-space: pre-wrap; border: 1px solid #d6d3d1; border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 1.05em; }
+.wa { display: inline-block; padding: 8px 14px; border-radius: 6px; background: #128c7e; color: #fff; text-decoration: none; font-weight: 700; }
+.muted { color: #78716c; font-size: 0.9em; }
+{{end}}
+{{- $c := .Links.customer -}}
+{{- $p := "" -}}{{- with $c.phone -}}{{- $p = . -}}{{- end -}}
+{{- if and $p (eq (slice $p 0 1) "+") -}}{{- $p = slice $p 1 -}}{{- end -}}
+{{- if and $p (eq (slice $p 0 1) "0") -}}{{- $p = printf "62%s" (slice $p 1) -}}{{- end -}}
+{{- $bank := "" -}}{{- with .Letterhead.bank -}}{{- with index . 0 -}}{{- $bank = printf "%s %s a.n. %s" .bank .account .holder -}}{{- end -}}{{- end -}}
+{{- $late := overdue .Doc.due_date -}}
+{{- $msg := "" -}}
+{{- if not .Doc.outstanding -}}
+{{- $msg = printf "Halo %s, terima kasih. Pembayaran faktur %s sudah kami terima dan faktur ini sudah lunas.\n\n%s" $c.customer_name .Doc.name .Letterhead.legal_name -}}
+{{- else if gt $late 0 -}}
+{{- $msg = printf "Halo %s, kami mengingatkan faktur %s sebesar %s sudah lewat %d hari dari jatuh tempo (%s).\n\nPembayaran ke %s. Mohon tulis %s di berita transfer.\n\nAbaikan pesan ini kalau sudah membayar. Terima kasih.\n%s" $c.customer_name .Doc.name (rupiah .Doc.outstanding) $late (date .Doc.due_date) $bank .Doc.name .Letterhead.legal_name -}}
+{{- else -}}
+{{- $msg = printf "Halo %s, berikut tagihan %s no. %s sebesar %s, jatuh tempo %s.\n\nPembayaran ke %s. Mohon tulis %s di berita transfer.\n\nTerima kasih." $c.customer_name .Letterhead.legal_name .Doc.name (rupiah .Doc.outstanding) (date .Doc.due_date) $bank .Doc.name -}}
+{{- end -}}
+<h1>Pesan tagihan WhatsApp</h1>
+<p>Untuk: <strong>{{$c.customer_name}}</strong>{{if $p}} · +{{$p}}{{else}} · <em>nomor WhatsApp pelanggan belum diisi</em>{{end}}</p>
+<div class="msg">{{$msg}}</div>
+{{if $p}}<p><a class="wa" href="https://wa.me/{{$p}}?text={{$msg}}">Buka di WhatsApp</a></p>{{end}}
+<p class="muted">Setelah terkirim, catat di Pengingat tagihan supaya tidak menagih dua kali di hari yang sama.</p>
