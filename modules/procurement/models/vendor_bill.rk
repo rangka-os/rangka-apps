@@ -23,6 +23,12 @@ fields:
     type: link
     to: purchase_order
     label: {id: Pesanan pembelian}
+  # The project this purchase is for (projects module, optional): subcontract and material costs land in its margin.
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+    default: purchase_order.project
   - name: goods_receipt
     type: link
     to: goods_receipt
@@ -106,6 +112,10 @@ fields:
   - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_fx + ppn_fx"}
   - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "currency != '' && currency != 'IDR' ? round(grand_total_fx - pph23_amount / exchange_rate, 2) : 0"}  # pph23_amount is entered in rupiah only
 rules:
+  - name: project_open
+    on: save
+    check: project == '' || project.state != 'closed'
+    message: {id: Proyek yang sudah ditutup tidak bisa dipakai untuk pembelian baru}
   - name: foreign_needs_rate
     on: save
     check: currency == '' || currency == 'IDR' || exchange_rate > 1
@@ -150,7 +160,7 @@ views:
     layout:
       - section: {id: Pemasok}
         columns:
-          - [vendor, bill_no, purchase_order, goods_receipt]
+          - [vendor, bill_no, purchase_order, goods_receipt, project]
           - [bill_date, due_date]
       - section: {id: Barang/jasa}
         fields: [items]

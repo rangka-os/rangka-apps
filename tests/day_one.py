@@ -1411,6 +1411,56 @@ def scenario_billing_milestones(api):
            [("2026-11-30", 15_000_000, "planned"), ("2026-12-31", 15_000_000, "planned"), ("2027-01-31", 15_000_000, "planned")])
 
 
+def scenario_project_costs(api):
+    """Tahap 2 J4: project expenses (re-billed with markup, receipt required) and the project carried from purchase
+    request to purchase order (make_po) to vendor bill."""
+    customer, ndt = "CUST-0001", services(api)[0]["name"]
+    st, prj = api.create("project", {"project_name": "Audit internal 2026", "customer": customer, "contract_value": 50_000_000})
+    if not check("project for the cost checks", st == 201, (st, prj)):
+        return
+    p = prj["name"]
+    body = {"project": p, "category": "lodging", "description": "Hotel tim audit 2 malam", "amount": 2_000_000, "reimbursable": True, "markup_percent": 10}
+    st, resp = api.create("project_expense", body)
+    check("a re-billed expense without its receipt -> 422 'wajib punya bukti'", st == 422 and any("wajib punya bukti" in m for m in messages(resp)), (st, resp))
+    st, ex = api.create("project_expense", dict(body, receipt="nota-hotel.pdf"))
+    if check("re-billed expense with its receipt created", st == 201, (st, ex)):
+        eq("2.000.000 with 10% markup is billed 2.200.000", ex["rebill_amount"], 2_200_000)
+        submit_doc(api, "project_expense", ex["name"], "submit the expense")
+    st, own = api.create("project_expense", {"project": p, "category": "travel", "description": "Bensin", "amount": 300_000})
+    eq("an expense not billed on: rebill_amount 0", own.get("rebill_amount"), 0)
+    # the re-billed line stays out of PPh 23 (pph23_base off)
+    st, inv = api.create("sales_invoice", {"customer": customer, "project": p, "pph23_applies": True, "items": [
+        {"item": ndt, "qty": 1, "rate": 20_000_000, "description": "Jasa audit tahap 1"},
+        {"item": ndt, "qty": 1, "rate": 2_200_000, "description": "Penggantian biaya hotel", "pph23_base": False}]})
+    if check("invoice with the fee and the re-billed hotel", st == 201, (st, inv)):
+        eq("PPh 23 base excludes the re-billed 2.200.000: base 20.000.000, PPh 23 400.000", (inv["pph23_dpp"], inv["pph23_amount"]), (20_000_000, 400_000))
+        st, upd = api.call("PATCH", f"/api/v1/r/project_expense/{Api.q(own['name'])}", {"rebill_invoice": inv["name"]})
+        check("an expense links the invoice of its own project", st == 200, (st, upd))
+    st, other = api.create("project", {"project_name": "Proyek lain biaya", "customer": customer})
+    if inv.get("name"):
+        st, resp = api.create("project_expense", {"project": other["name"], "description": "x", "amount": 1, "rebill_invoice": inv["name"]})
+        check("an invoice of another project -> 422", st == 422 and any("proyek yang sama" in m for m in messages(resp)), (st, resp))
+    # subcontract: the project travels from the request to the PO (make_po) to the vendor bill
+    st, pr = api.create("purchase_request", {"needed_by": "2026-12-01", "project": p, "purpose": "Auditor lepas", "items": [{"item": "BRG-0004", "qty": 1}]})
+    if not check("purchase request for the project", st == 201, (st, pr)):
+        return
+    prn = submit_doc(api, "purchase_request", pr["name"], "submit the project's purchase request")
+    st, resp = api.action("purchase_request", prn, "make_po", {"vendor": "VND-0001"})
+    if check("make_po from the project's request", st == 200, (st, resp)):
+        po = api.get("purchase_order", resp["open"]["name"])
+        eq("the PO made by make_po carries the project", po["project"], p)
+        api.call("PATCH", f"/api/v1/r/purchase_order/{Api.q(po['name'])}", {"items": [dict(po["items"][0], rate=25_000_000)]})
+        pon = submit_doc(api, "purchase_order", po["name"], "submit the project's PO")
+        st, vb = api.create("vendor_bill", {"vendor": "VND-0001", "purchase_order": pon, "bill_no": "INV-SUB-01", "bill_date": "2026-11-20",
+                                            "items": [{"item": "BRG-0004", "qty": 1, "rate": 25_000_000}]})
+        if check("vendor bill from the PO", st == 201, (st, vb)):
+            eq("the vendor bill carries the project from the PO", vb["project"], p)
+    st, resp = api.create("purchase_request", {"needed_by": "2026-12-01", "project": p, "items": [{"item": "BRG-0004", "qty": 1}]})
+    api.call("PATCH", f"/api/v1/r/project/{Api.q(p)}", {"state": "closed"})
+    st, resp = api.create("purchase_request", {"needed_by": "2026-12-01", "project": p, "items": [{"item": "BRG-0004", "qty": 1}]})
+    check("a closed project takes no new purchase -> 422", st == 422 and any("sudah ditutup" in m for m in messages(resp)), (st, resp))
+
+
 def scenario_roles_jasa(api):
     sm, fm, pm, pa = (CTX.get(x) for x in ("sm", "fm", "pm", "pa"))
     if not all((sm, fm, pm, pa)):
@@ -1562,6 +1612,7 @@ MATRIX = {
     "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
     **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("project", "assignment", "timesheet", "acceptance")},
     "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R},
+    "project_expense": {"project_admin": _ALL, "finance_manager": _ALL - {"delete"}, "sales_manager": _R},
     "billing_milestone": {"project_admin": {"read", "create", "write", "delete", "export", "import"},
                           "finance_manager": {"read", "create", "write", "delete", "export", "import"}, "sales_manager": {"read", "write"}},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
@@ -2829,7 +2880,7 @@ def setup_demo_fnb(api, k):
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_permissions, scenario_dashboards_jasa],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_permissions, scenario_dashboards_jasa],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
 }
 

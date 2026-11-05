@@ -27,7 +27,7 @@ menu:
   - group: {id: Penjualan}
     items: [quotation, customer_order, sales_invoice]
   - group: {id: Proyek}
-    items: [project, billing_milestone, assignment, timesheet, acceptance]
+    items: [project, billing_milestone, assignment, timesheet, project_expense, acceptance]
   - group: {id: Tenaga kerja}
     items: [worker]
   - group: {id: Keuangan}
