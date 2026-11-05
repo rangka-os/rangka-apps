@@ -3,7 +3,7 @@
 name: bank_transaction_release
 label: {id: Lepas klaim mutasi saat pembayaran dibatalkan}
 on: payment.cancelled
-if: event.bank_transaction != ''
+if: event.direction == 'receive' && event.bank_transaction != ''
 steps:
   - {find: bank_transaction_claim, where: bank_transaction == event.bank_transaction && payment == event.name, as: held}
   - update: held

@@ -11,6 +11,9 @@ on: bank_transaction.updated
 if: event.status == 'confirmed' && event.payment == '' && event.suggested_invoice != ''
 steps:
   - {find: payment, where: "docstatus == 0 && bank_transaction == event.name", as: draft}
+  # a live payment already names the line (it is matched then, or a payment typed by hand carries the line in its
+  # reference): no new draft, so the same transfer is never drafted twice
+  - {find: payment, where: "docstatus == 1 && direction == 'receive' && (bank_transaction == event.name || reference == event.name)", as: paid}
   - {find: sales_invoice, where: name == event.suggested_invoice, as: inv}
   - {find: bank_transaction, where: name == event.name, as: line}
   - update: draft
@@ -20,7 +23,7 @@ steps:
       amount: event.amount
       allocations: "[{'sales_invoice': inv.name, 'amount': min(event.amount, inv.outstanding)}]"
   - create: payment
-    if: inv != null && draft == null
+    if: inv != null && draft == null && paid == null
     set:
       direction: "'receive'"
       customer: inv.customer
@@ -36,5 +39,5 @@ steps:
     if: inv != null && draft != null && draft.name != event.draft_payment
     set: {draft_payment: draft.name}
   - update: line
-    if: inv != null && draft == null
+    if: inv != null && draft == null && paid == null
     set: {draft_payment: pay.name}

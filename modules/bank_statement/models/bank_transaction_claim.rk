@@ -5,6 +5,9 @@
 # index on bank_transaction refuses the submit (422) when another live payment holds the line, whatever path made the
 # payment (a new draft, an amend, an old draft left behind, two submits at once). Cancelling the payment releases the
 # claim (bank_transaction emptied, the name kept in released_line). Only flows write it.
+# A claim is also only valid for the line's own payment: the draft the line made (line.draft_payment) or the amend of
+# a payment of that line, for the line's amount. The flows set `valid` and the rule refuses the save otherwise; the
+# same rule refuses a change of payment.bank_transaction (flow bank_transaction_link_locked).
 name: bank_transaction_claim
 label: {id: Klaim mutasi bank, en: Bank transaction claim}
 icon: bank
@@ -31,6 +34,16 @@ fields:
     label: {id: Mutasi yang dilepas}
     read_only: true
     in_list: true
+  - name: valid
+    type: check
+    label: {id: Sah}
+    default: 'true'
+    read_only: true
+rules:
+  - name: own_payment_only
+    on: save
+    check: valid
+    message: {id: 'Mutasi bank hanya bisa dibayar oleh draf dari mutasi itu (atau amend-nya) sebesar nilai mutasi, dan tidak bisa diubah'}
 views:
   list:
     columns: [bank_transaction, payment, released_line]

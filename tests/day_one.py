@@ -1642,6 +1642,37 @@ def scenario_money_rail(api):
     st, resp = api.verb("payment", intr.get("name", ""), "submit")
     check("a second payment naming a matched line is refused (422)", st == 422, (st, resp))
 
+    # only the line's own draft (or the amend of its payment) may claim it, and the link cannot be edited
+    ia = submitted_invoice(1_000_051)
+    ln = new_line("TRSF CR A1", 6, 400_000)
+    st, fp = api.create("payment", {"direction": "receive", "customer": customer, "amount": 1, "bank_transaction": ln,
+                                    "allocations": [{"sales_invoice": ia, "amount": 1}]})
+    st, resp = api.verb("payment", fp.get("name", ""), "submit")
+    check("A1: a payment that is not the line's draft cannot claim the line", st == 422 and api.get("bank_transaction", ln)["status"] != "matched", (st, resp))
+    d1 = confirm(ln, ia)
+    st, resp = api.patch("payment", d1, {"bank_transaction": ""})
+    check("A2: the line of a draft from the statement cannot be cleared", st == 422, (st, resp))
+    ln2 = new_line("TRSF CR A3", 7, 250_000)
+    st, resp = api.patch("payment", d1, {"bank_transaction": ln2})
+    check("A3: nor moved to another line", st == 422, (st, resp))
+    st, resp = api.patch("payment", d1, {"amount": 1, "allocations": [{"sales_invoice": ia, "amount": 1}]})
+    st, resp = api.verb("payment", d1, "submit")
+    check("N4: the line's draft with an amount other than the transfer is refused", st == 422, (st, resp))
+    st, resp = api.patch("payment", d1, {"amount": 400_000, "allocations": [{"sales_invoice": ia, "amount": 400_000}]})
+    st, resp = api.verb("payment", d1, "submit")
+    check("A2/A3/N4: the untouched draft submits and matches", st == 200 and api.get("bank_transaction", ln)["status"] == "matched", (st, resp))
+    vend = api.list("vendor")
+    st, pp = api.create("payment", {"direction": "pay", "vendor": vend[0]["name"], "amount": 10, "bank_transaction": ln2})
+    st, resp = api.verb("payment", pp.get("name", ""), "submit")
+    claims = api.find("bank_transaction_claim", f"bank_transaction == '{ln2}'")
+    check("A4: a vendor payment never claims a statement line", not claims, (st, resp, claims))
+    ib = submitted_invoice(1_000_052)
+    st, resp = api.patch("bank_transaction", ln2, {"suggested_invoice": ib, "status": "confirmed"})
+    st, resp = api.verb("payment", api.get("bank_transaction", ln2)["draft_payment"], "submit")
+    check("A4: nor keeps the line from being confirmed and paid", st == 200 and api.get("bank_transaction", ln2)["status"] == "matched", (st, resp))
+    st, resp = CTX["fm"].call("DELETE", f"/api/v1/r/bank_transaction/{api.q(ln)}") if CTX.get("fm") else (403, None)
+    check("S9: a matched statement line cannot be deleted", st in (403, 409, 422) and api.get("bank_transaction", ln) is not None, (st, resp))
+
 def setup_demo_jasa(api, k):
     """One member per jasa role in PT Contoh Inspeksi (rangka user add), signed in: the owner self-approves, so only these can show a held approval."""
     CTX.update(kernel=k, org=k.orgs[0][0])

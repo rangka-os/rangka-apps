@@ -13,7 +13,9 @@ icon: bank
 naming: MUT-{YYYY}-{#####}
 title_field: description
 permissions:
-  - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true, import: true}
+  - {role: finance_manager, read: true, create: true, write: true, export: true, import: true}
+  # a line that is paid (payment set) is never deleted: its payment and claim would point at nothing
+  - {role: finance_manager, delete: true, if: payment == ''}
   - {role: sales_manager, read: true, create: true, write: true, export: true, import: true}
   - {role: head_office, read: true, create: true, write: true, export: true, import: true}
 fields:

@@ -1,10 +1,19 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # A payment that names a statement line is submitted: it claims the line (bank_transaction_claim). The unique index
-# refuses the claim, and with it the whole submit, when another live payment already holds the line.
+# refuses the claim, and with it the whole submit, when another live payment already holds the line. The claim's
+# rule refuses it too when the payment is not the line's own: not the draft the line made (line.draft_payment, the
+# draft's name before submit) nor the amend of a payment of the same line, or not for the line's amount.
 name: bank_transaction_claim
 label: {id: Klaim mutasi saat pembayaran diajukan}
 on: payment.submitted
-if: event.bank_transaction != ''
+if: event.direction == 'receive' && event.bank_transaction != ''
 steps:
+  - {find: bank_transaction, where: name == event.bank_transaction, as: line}
+  - find: payment
+    where: "event.amended_from != '' && name == event.amended_from && bank_transaction == event.bank_transaction"
+    as: source
   - create: bank_transaction_claim
-    set: {bank_transaction: event.bank_transaction, payment: event.name}
+    set:
+      bank_transaction: event.bank_transaction
+      payment: event.name
+      valid: "line != null && line.amount == event.amount && (line.draft_payment == event.before.name || source != null)"
