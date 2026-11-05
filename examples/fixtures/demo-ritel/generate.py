@@ -340,11 +340,11 @@ def pos_file_csv(end):
     rows = []
     for d, sold in daily_sales(end, CILEUNYI).items():
         for it, q in sold:
-            rows.append([ddmmyyyy(d, "/"), "", it["sku"], q, it["rate"] * q, 0, 0])
+            rows.append([ddmmyyyy(d, "/"), "", "Jual", it["sku"], q, it["rate"] * q, 0, 0])
         if d.day % 7 == 0 and sold:
             it = sold[0][0]
-            rows.append([ddmmyyyy(d, "/"), "", it["sku"], -1, 0, 0, it["rate"]])
-    return csv_bytes(["Tanggal", "No struk", "SKU", "Qty", "Penjualan kotor", "Diskon", "Retur"], rows)
+            rows.append([ddmmyyyy(d, "/"), "", "Retur", it["sku"], -1, 0, 0, it["rate"]])
+    return csv_bytes(["Tanggal", "No struk", "Jenis", "SKU", "Qty", "Penjualan kotor", "Diskon", "Retur"], rows)
 
 
 def sales_net(end, outlet):

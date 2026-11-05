@@ -4,8 +4,9 @@ label: {id: Stok dan barang laku, en: Stock and best sellers}
 default_period: 30
 cache: 5m
 # Stock value is the current balance (no period). Best sellers are the sale moves of the period per item (a sale
-# moves qty out, so the most sold item has the lowest sum). Slow movers need stock_balance.last_sale_date, written by
-# the kernel on each sale (rangka-os#59); on an older kernel that list stays empty.
+# moves qty out). Slow movers need stock_balance.last_sale_date, written by
+# the kernel on each sale (rangka-os#59); on an older kernel that list stays empty. Best sellers sum
+# stock_move.sold_qty / sold_cost (positive, cancelled sales net to zero).
 widgets:
   - name: stock_value_total
     type: number
@@ -52,11 +53,11 @@ widgets:
     model: stock_move
     group_by: item
     aggregate: sum
-    field: qty
-    filter: reason == 'sale'
+    field: sold_qty
+    filter: voucher_type == 'outlet_sales'
     period: posting_date
-    sort: value
-    limit: 15
+    sort: -value
+    limit: 10
     span: 6
   - name: best_sellers_value
     type: chart
@@ -66,11 +67,11 @@ widgets:
     model: stock_move
     group_by: item
     aggregate: sum
-    field: value
-    filter: reason == 'sale'
+    field: sold_cost
+    filter: voucher_type == 'outlet_sales'
     period: posting_date
-    sort: value
-    limit: 15
+    sort: -value
+    limit: 10
     span: 6
   - name: slow_movers
     type: list
@@ -81,6 +82,18 @@ widgets:
     sort: last_sale_date
     limit: 20
     columns: [outlet, item, qty, value, last_sale_date]
+    span: 12
+  # With rangka-os#59 an empty last_sale_date means no sale that was not cancelled (old sales are backfilled on
+  # migrate), so these balances are stock that never sold since it came in.
+  - name: never_sold
+    type: list
+    label: {id: Belum pernah terjual}
+    description: {id: 'Ada stok, belum ada penjualan sama sekali'}
+    model: stock_balance
+    filter: qty > 0 && last_sale_date == null
+    sort: -value
+    limit: 20
+    columns: [outlet, item, qty, value]
     span: 12
   - name: stock_value_by_outlet
     type: chart
@@ -104,14 +117,14 @@ widgets:
     type: chart
     chart: bar
     label: {id: Titipan terjual}
-    description: {id: 'Qty titipan terjual per barang pada periode: isi ke setoran titipan bulanan'}
+    description: {id: 'Penjualan batal sudah dikurangi, retur pelanggan belum'}
     model: stock_move
     group_by: item
     aggregate: sum
-    field: qty
-    filter: reason == 'sale' && item.consignor != ''
+    field: sold_qty
+    filter: voucher_type == 'outlet_sales' && item.consignor != ''
     period: posting_date
-    sort: value
+    sort: -value
     span: 6
   - name: consigned_stock
     type: list

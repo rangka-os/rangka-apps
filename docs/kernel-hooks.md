@@ -185,7 +185,8 @@ Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill`
     of its material (reason `sale`); with no recipe a good, material or product consumes itself and a service is skipped. The line `cogs` is the sum of the values consumed and the
     header `cogs_total` the sum of the lines; `margin` is a compute. A line with `qty <= 0` (a refund from a POS file) posts nothing, so returned goods stay out of stock.
 - **`stock_balance.last_sale_date`:** every `sale` move out of a balance sets it to the move's `posting_date` when that is later than the stored date (an earlier
-  sale leaves it, a reversal keeps it). Written only when the model has the field, like `last_move`; needs rangka-os#59. The retail
+  sale leaves it); sales whose document was cancelled do not count (a cancel derives the date again from the moves left), and `rangka migrate` backfills
+  it from existing sale moves when the column is added. Written only when the model has the field, like `last_move`; needs rangka-os#59. The retail
   dashboard lists slow movers with `qty > 0 && last_sale_date < today() - duration('30d')`.
 - **Never refuses for lack of stock:** a balance may go below zero. That is the negative-stock exception: the move and the balance carry `negative = true`, and head office
   reads them from a "Stok minus" list (`stock_balance` filtered on `negative`). The alert flow `stock_negative_alert` (`on: stock_move.created`) runs in the writer's transaction

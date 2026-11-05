@@ -50,6 +50,13 @@ fields:
   - name: notes
     type: text
     label: {id: Catatan}
+  # The bill number of this consignor, outlet and period. The flow consignment_bill keeps one vendor_bill per
+  # bill_ref, so a second or amended settlement for the same period updates that bill instead of adding one.
+  - name: bill_ref
+    type: data
+    label: {id: Nomor tagihan titipan}
+    compute: "'TTP/' + period_start + '/' + period_end + (outlet == '' ? '' : '/' + outlet)"
+    in_list: true
 rules:
   - name: period_order
     on: save
@@ -59,6 +66,10 @@ rules:
     on: save
     check: "items.map(i, i.qty_received < 0 || i.qty_sold < 0 || i.qty_returned < 0 ? 1 : 0).sum() == 0"
     message: {id: Jumlah barang tidak boleh negatif}
+  - name: rate_for_sold_items
+    on: save
+    check: "items.map(i, i.qty_sold > 0 && i.rate <= 0 ? 1 : 0).sum() == 0"
+    message: {id: 'Harga setor wajib diisi untuk barang yang terjual'}
   - name: sold_within_stock
     on: save
     check: "items.map(i, i.qty_left < 0 ? 1 : 0).sum() == 0"

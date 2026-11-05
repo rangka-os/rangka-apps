@@ -2886,6 +2886,12 @@ def scenario_ritel_sales(api):
         submit_all(api, "outlet_sales", c["records"], "POS file Cileunyi")
     st, pv = hq.upload("/api/v1/imports/pos_sales_file", {"outlet": CLY}, "lagi.csv", posf)
     check("the POS file again: duplicate", st == 200 and pv["duplicate"] is True, (st, pv.get("duplicate")))
+    # a re-export of the last day whose totals changed (qty +2 on every row) skips the rows already imported: no double count
+    lines = posf.decode().splitlines()
+    last = lines[-1].split(",")[0]
+    redo = [lines[0]] + [",".join(r[:4] + [str(int(r[4]) + 2)] + r[5:]) for r in (l.split(",") for l in lines[1:]) if r[0] == last and r[2] == "Jual"]
+    st, pv = hq.upload("/api/v1/imports/pos_sales_file", {"outlet": CLY}, "ulang.csv", ("\n".join(redo) + "\n").encode())
+    check("a re-export of a day with changed totals: every row skipped (key without Qty), nothing to add", st == 200 and pv["skipped"] == len(redo) - 1 and pv["duplicate"] is True, (st, pv.get("skipped"), pv.get("duplicate")))
     sales = rows_all(api, "outlet_sales", "docstatus == 1")
     for outlet, label in ((CBR, "Cibiru"), (CLY, "Cileunyi")):
         want = {d.isoformat(): v for d, v in g.sales_net(today, outlet).items()}
@@ -3001,11 +3007,11 @@ def scenario_ritel_settlement(api):
     v = g.PENITIP[0]
     by = {i["name"]: i for i in rows_all(api, "item", f"consignor == '{v}'")}
     sold = {}
-    for m in rows_all(api, "stock_move", f"reason == 'sale' && outlet == '{CBR}'"):
+    for m in rows_all(api, "stock_move", f"voucher_type == 'outlet_sales' && outlet == '{CBR}'"):
         if m["item"] in by:
-            sold[m["item"]] = sold.get(m["item"], 0) - m["qty"]
+            sold[m["item"]] = sold.get(m["item"], 0) + m["sold_qty"]
     want_sold = {i["name"]: CTX.get("consigned_sold", {}).get(i["sku"], 0) for i in by.values()}
-    eq("consigned qty sold from the sale moves = the POS sales", {k: round(q, 6) for k, q in sold.items() if q}, {k: q for k, q in want_sold.items() if q})
+    eq("consigned qty sold (stock_move.sold_qty, as the chart sums it) = the POS sales", {k: round(q, 6) for k, q in sold.items() if q}, {k: q for k, q in want_sold.items() if q})
     start = (today - datetime.timedelta(days=g.DAYS)).isoformat()
     end = (today - datetime.timedelta(days=1)).isoformat()
     lines = [{"item": n, "qty_received": want_sold[n] + 12, "qty_sold": sold.get(n, 0), "qty_returned": 12} for n in by if want_sold.get(n)]
@@ -3017,15 +3023,31 @@ def scenario_ritel_settlement(api):
        (ks["total"], [l["qty_left"] for l in ks["items"]]), (total, [0] * len(lines)))
     st, bad = hq.patch("consignment_settlement", ks["name"], {"items": [dict(lines[0], qty_returned=999)]})
     check("sold + returned above what came in -> 422", st == 422, (st, bad))
+    st, bad = hq.patch("consignment_settlement", ks["name"], {"items": [dict(lines[0], rate=0)]})
+    check("a sold line without a consignment price -> 422", st == 422, (st, bad))
     st, resp = hq.verb("consignment_settlement", ks["name"], "submit")
     check("submit the settlement", st == 200, (st, resp))
     ksn = resp.get("name", ks["name"]) if st == 200 else ks["name"]
+    ref = api.get("consignment_settlement", ksn)["bill_ref"]
     bills = rows_all(api, "vendor_bill", f"vendor == '{v}'")
-    check("flow consignment_bill: a draft vendor_bill for the consignor, bill_no = settlement number, amount = settlement total",
-          len(bills) == 1 and bills[0]["docstatus"] == 0 and bills[0]["bill_no"] == ksn and bills[0]["amount_due"] == total, bills)
+    check("flow consignment_bill: a draft vendor_bill for the consignor, bill_no = the period's bill_ref, amount = settlement total",
+          len(bills) == 1 and bills[0]["docstatus"] == 0 and bills[0]["bill_no"] == ref and bills[0]["amount_due"] == total, (ref, bills))
+    # a corrected settlement for the same period (one unit less of the first item) updates that draft, no second bill
+    fix = [dict(lines[0], qty_sold=lines[0]["qty_sold"] - 1, qty_returned=13)] + lines[1:]
+    total2 = total - by[lines[0]["item"]]["consignment_cost"]
+    st, k2 = hq.create("consignment_settlement", {"consignor": v, "outlet": CBR, "period_start": start, "period_end": end, "items": fix})
+    if check("a corrected settlement for the same period", st == 201, (st, k2)):
+        submit_doc(hq, "consignment_settlement", k2["name"], "submit the corrected settlement")
+    bills = rows_all(api, "vendor_bill", f"vendor == '{v}'")
+    check("still one bill for the period, its draft lines follow the corrected settlement", len(bills) == 1 and bills[0]["amount_due"] == total2, [(b["name"], b["docstatus"], b["amount_due"]) for b in bills])
     if bills:
         submit_doc(hq, "vendor_bill", bills[0]["name"], "submit the consignor's bill")
-        eq("payable to the consignor = settlement total", api.get("vendor", v)["outstanding"], total)
+        eq("payable to the consignor = corrected settlement total", api.get("vendor", v)["outstanding"], total2)
+    st, k3 = hq.create("consignment_settlement", {"consignor": v, "outlet": CBR, "period_start": start, "period_end": end, "items": fix})
+    if st == 201:
+        submit_doc(hq, "consignment_settlement", k3["name"], "submit a third settlement after the bill is submitted")
+    eq("a submitted bill for the period is never doubled: one bill, payable unchanged",
+       (len(rows_all(api, "vendor_bill", f"vendor == '{v}' && docstatus != 2")), api.get("vendor", v)["outstanding"]), (1, total2))
     st, adj = hq.create("stock_adjustment", {"outlet": CBR, "reason": "consignment_return", "items": [{"item": n, "qty": 12} for n in by if want_sold.get(n)]})
     if check("unsold goods back to the consignor: stock_adjustment reason consignment_return", st == 201, (st, adj)):
         submit_doc(hq, "stock_adjustment", adj["name"], "submit the return")
@@ -3082,9 +3104,15 @@ def scenario_dashboards_ritel(api):
                     for it, q in rows:
                         qty[it["name"]] = qty.get(it["name"], 0) + q
         most = max(qty.values())
-        check("ritel_stock best seller by qty (30 days) = an item the POS files sold most",
-              -round(top.get("value", 0)) == most and qty.get(top.get("key")) == most, (top, most))
+        check("ritel_stock best seller by qty (30 days) = an item the POS files sold most (positive sold_qty)",
+              round(top.get("value", 0)) == most and qty.get(top.get("key")) == most, (top, most))
+        check("ritel_stock best sellers are positive and sorted high to low", [p["value"] for p in ws["best_sellers_qty"]["data"]] == sorted((p["value"] for p in ws["best_sellers_qty"]["data"]), reverse=True)
+              and all(p["value"] > 0 for p in ws["best_sellers_qty"]["data"]), ws["best_sellers_qty"]["data"][:3])
         check("ritel_stock consigned sold chart has data", ws["consigned_sold"].get("data"), ws["consigned_sold"])
+        if not CTX.get("no_last_sale"):
+            never = {i["name"] for i in rows_all(api, "item") if i["sku"] in g.NEVER}
+            listed = {r["item"] for r in ws["never_sold"].get("rows", [])}
+            check("ritel_stock never-sold list holds the generated never-sold items", never <= listed, (sorted(never - listed), ws["never_sold"].get("total")))
     ws = dashboard(api, "ritel_tax", 30)
     if ws:
         eq("ritel_tax turnover (30 days)", num(ws["turnover"]), sum(s["net_total"] for s in in30))

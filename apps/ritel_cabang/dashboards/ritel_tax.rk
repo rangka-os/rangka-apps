@@ -21,7 +21,7 @@ widgets:
   - name: pph_final_total
     type: number
     label: {id: 'PPh final 0,5%'}
-    description: {id: 'Untuk usaha non-PKP; belum dikurangi bebas Rp 500 juta orang pribadi'}
+    description: {id: 'PP 55/2022, omzet sampai Rp 4,8 miliar setahun; belum dikurangi bebas Rp 500 juta orang pribadi'}
     model: outlet_sales
     aggregate: sum
     field: pph_final
