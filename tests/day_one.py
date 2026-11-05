@@ -1461,6 +1461,48 @@ def scenario_project_costs(api):
     check("a closed project takes no new purchase -> 422", st == 422 and any("sudah ditutup" in m for m in messages(resp)), (st, resp))
 
 
+def scenario_project_margin(api):
+    """Tahap 2 J5: project_ledger rows written by flows inside each submit and cancel; their sum is the margin.
+    Each document is submitted by the role that does it, so the flows' create permission is exercised."""
+    pa, fm, pm = CTX.get("pa"), CTX.get("fm"), CTX.get("pm")
+    if None in (pa, fm, pm):
+        fail("project margin: members", CTX.get("login_error", "members missing"))
+        return
+    customer, ndt = "CUST-0001", services(api)[0]["name"]
+    st, prj = pa.create("project", {"project_name": "Konsultasi transfer pricing", "customer": customer, "state": "running", "contract_value": 60_000_000})
+    if not check("project for the margin checks", st == 201, (st, prj)):
+        return
+    p = prj["name"]
+    def rows():
+        return api.find("project_ledger", "project == '%s'" % p)
+    def margin():
+        return sum(r["amount"] for r in rows())
+    st, inv = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 40_000_000}]})
+    invn = submit_doc(fm, "sales_invoice", inv["name"], "finance submits a 40.000.000 project invoice") if st == 201 else None
+    st, cw = api.create("worker", {"worker_name": "Konsultan TP", "hour_rate": 500_000, "cost_hour_rate": 150_000})
+    st, asg = pa.create("assignment", {"project": p, "worker": cw["name"], "start_date": "2026-11-01", "end_date": "2026-11-30", "rate_basis": "hour"})
+    st, ts = pa.create("timesheet", {"project": p, "worker": cw["name"], "assignment": asg["name"], "work_date": "2026-11-05", "hours": 20, "description": "Analisis"})
+    tsn = submit_doc(pa, "timesheet", ts["name"], "project admin submits 20 hours (cost 3.000.000)") if st == 201 else None
+    st, ex = pa.create("project_expense", {"project": p, "category": "travel", "description": "Tiket", "amount": 2_000_000})
+    submit_doc(pa, "project_expense", ex["name"], "project admin submits a 2.000.000 expense") if st == 201 else None
+    st, vb = pm.create("vendor_bill", {"vendor": "VND-0001", "project": p, "bill_no": "SUB-TP-1", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 25_000_000}]})
+    vbn = submit_doc(pm, "vendor_bill", vb["name"], "purchasing submits a 25.000.000 subcontract bill") if st == 201 else None
+    got = sorted((r["kind"], r["amount"]) for r in rows())
+    eq("ledger rows: revenue +40.000.000, labor -3.000.000, expense -2.000.000, vendor -25.000.000", got,
+       sorted([("revenue", 40_000_000), ("labor", -3_000_000), ("expense", -2_000_000), ("vendor", -25_000_000)]))
+    eq("margin 10.000.000", margin(), 10_000_000)
+    if vbn:
+        st, resp = pm.verb("vendor_bill", vbn, "cancel")
+        check("purchasing cancels the subcontract bill", st == 200, (st, resp))
+        eq("cancel writes the opposite row: margin 35.000.000", margin(), 35_000_000)
+    st, ret = fm.create("sales_invoice", {"customer": customer, "project": p, "kind": "retention", "retention_of": invn, "items": [{"item": ndt, "qty": 1, "rate": 0}]})
+    eq("margin unchanged by anything not submitted", margin(), 35_000_000)
+    st, resp = pa.call("PATCH", f"/api/v1/r/project_ledger/{Api.q(rows()[0]['name'])}", {"amount": 1})
+    check("people cannot edit a ledger row (no write)", st == 403, (st, resp))
+    ws = dashboard(api, "project_margin", 365)
+    eq("project_margin margin_by_project shows the project's margin", chart_map(ws.get("margin_by_project", {})).get(p), 35_000_000)
+
+
 def scenario_roles_jasa(api):
     sm, fm, pm, pa = (CTX.get(x) for x in ("sm", "fm", "pm", "pa"))
     if not all((sm, fm, pm, pa)):
@@ -1612,6 +1654,8 @@ MATRIX = {
     "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
     **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("project", "assignment", "timesheet", "acceptance")},
     "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R},
+    "project_ledger": {"project_admin": {"read", "create", "export"}, "finance_manager": {"read", "create", "export"},
+                       "sales_manager": {"read", "create", "export"}, "purchasing_manager": {"read", "create"}},
     "project_expense": {"project_admin": _ALL, "finance_manager": _ALL - {"delete"}, "sales_manager": _R},
     "billing_milestone": {"project_admin": {"read", "create", "write", "delete", "export", "import"},
                           "finance_manager": {"read", "create", "write", "delete", "export", "import"}, "sales_manager": {"read", "write"}},
@@ -2880,7 +2924,7 @@ def setup_demo_fnb(api, k):
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_permissions, scenario_dashboards_jasa],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_permissions, scenario_dashboards_jasa],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
 }
 

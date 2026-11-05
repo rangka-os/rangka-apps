@@ -20,14 +20,14 @@ modules:
   projects: ^1.0
   payments: ^1.0
   procurement: ^1.0
-dashboards: [jasa_overview, ar_aging]
+dashboards: [jasa_overview, ar_aging, project_margin]
 roles: [sales_manager, finance_manager, purchasing_manager, project_admin]
 home: {dashboard: jasa_overview}
 menu:
   - group: {id: Penjualan}
     items: [quotation, customer_order, sales_invoice]
   - group: {id: Proyek}
-    items: [project, billing_milestone, assignment, timesheet, project_expense, acceptance]
+    items: [project, billing_milestone, assignment, timesheet, project_expense, acceptance, project_ledger]
   - group: {id: Tenaga kerja}
     items: [worker]
   - group: {id: Keuangan}

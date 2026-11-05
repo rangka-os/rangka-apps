@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: project_vendor_cost_on_submit
+label: {id: Biaya pemasok proyek}
+# Project ledger row (projects): the sum of a project's rows is its margin; a cancel writes the opposite row.
+on: vendor_bill.submitted
+if: event.project != ''
+steps:
+  - create: project_ledger
+    set:
+      project: event.project
+      posting_date: event.bill_date
+      kind: "'vendor'"
+      source_model: event.model
+      source_name: event.name
+      amount: "0 - event.dpp"

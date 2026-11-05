@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: project_ledger
+label: {id: Buku untung proyek, en: Project ledger}
+icon: chart
+naming: PL-{YYYY}-{######}
+title_field: project
+# One signed row per submitted document that changes a project's result: revenue + (invoice dpp, retention releases
+# excluded), costs - (timesheet cost, project expense not on a vendor bill, vendor bill dpp). Cancelling the document
+# writes the opposite row, so the sum per project is always its margin. Rows are written by flows inside the
+# document's submit or cancel; people only read them. create is granted to the roles whose submits write rows (a flow
+# runs as the person submitting), never write or delete.
+permissions:
+  - {role: project_admin, read: true, create: true, export: true}
+  - {role: finance_manager, read: true, create: true, export: true}
+  - {role: sales_manager, read: true, create: true, export: true}
+  - {role: purchasing_manager, read: true, create: true}
+fields:
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+    required: true
+    in_list: true
+  - name: posting_date
+    type: date
+    label: {id: Tanggal}
+    required: true
+    in_list: true
+  - name: kind
+    type: select
+    label: {id: Jenis}
+    required: true
+    in_list: true
+    chip: true
+    options:
+      - {value: revenue, label: {id: Pendapatan}}
+      - {value: labor, label: {id: Biaya tenaga kerja}}
+      - {value: expense, label: {id: Biaya proyek}}
+      - {value: vendor, label: {id: Biaya pemasok}}
+  - name: source_model
+    type: data
+    label: {id: Dokumen}
+    required: true
+  - name: source_name
+    type: data
+    label: {id: No. dokumen}
+    required: true
+    in_list: true
+  - name: amount
+    type: currency
+    label: {id: 'Nilai (+ pendapatan, - biaya)'}
+    in_list: true
+rules:
+  - name: sign_by_kind
+    on: save
+    check: "source_model != '' && (kind == 'revenue' || amount != 0)"
+    message: {id: Baris buku untung proyek tidak valid}
+views:
+  list:
+    columns: [name, project, posting_date, kind, source_name, amount]
+    filters: [project, kind]
+    sort: -posting_date

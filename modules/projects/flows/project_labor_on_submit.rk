@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: project_labor_on_submit
+label: {id: Biaya tenaga kerja proyek}
+# Project ledger row (projects): the sum of a project's rows is its margin; a cancel writes the opposite row.
+on: timesheet.submitted
+if: event.cost_amount != 0
+steps:
+  - create: project_ledger
+    set:
+      project: event.project
+      posting_date: event.work_date
+      kind: "'labor'"
+      source_model: event.model
+      source_name: event.name
+      amount: "0 - event.cost_amount"
