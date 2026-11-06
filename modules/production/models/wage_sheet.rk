@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Piece-rate wages earned in one submitted batch, one line per worker and stage, dated the production day. Made by
+# the flow wage_sheet_on_batch_submitted; a cancelled batch marks its lines cancelled. The weekly recap per worker
+# (dashboard produksi_upah) reads the lines. Every field is read_only: wages are changed on the batch, not here.
+name: wage_sheet
+label: {id: Lembar upah borongan, en: Piece-rate wage sheet}
+icon: card
+naming: UPAH-{YYYY}-{#####}
+title_field: production_batch
+permissions:
+  - {role: head_office, read: true, create: true, write: true, export: true, print: true}
+  # staff submitting a batch makes its sheet (the flow), but only head office reads wages
+  - {role: outlet_staff, create: true}
+fields:
+  - {name: production_batch, type: data, label: {id: Batch}, read_only: true, in_list: true}
+  - {name: work_date, type: date, label: {id: Tanggal kerja}, read_only: true, in_list: true}
+  - {name: cancelled, type: check, label: {id: Batal}, read_only: true, in_list: true}
+  - {name: lines, type: table, of: wage_line, label: {id: Upah}, read_only: true}
+  - {name: total, type: currency, label: {id: Total upah}, compute: "cancelled ? 0 : lines.map(l, l.amount).sum()", in_list: true}
+rules:
+  - name: made_by_batch
+    on: save
+    check: production_batch != ''
+    message: {id: Lembar upah dibuat dari batch yang diajukan}
+views:
+  list:
+    columns: [name, production_batch, work_date, total, cancelled]
+    sort: -work_date

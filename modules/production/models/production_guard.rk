@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Never stored: a flow that must refuse a batch cancel creates one with a reason, and the matching rule fails with
+# its message, rolling the cancel back (like project_guard).
+name: production_guard
+label: {id: Penjaga produksi, en: Production guard}
+icon: check
+naming: PGR-{######}
+title_field: reason
+permissions:
+  - {role: head_office, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: output_used, label: {id: Hasil batch sudah terpakai}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: output_used
+    on: save
+    check: reason != 'output_used'
+    message: {id: 'Hasil batch ini sudah terpakai atau terjual (stoknya di bawah qty hasil); batalkan dokumen pemakainya dulu'}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Day-one integration test against a live kernel (Python stdlib only).
 
-    python3 tests/day_one.py [--site kopi-senja|demo-jasa|demo-fnb|demo-ritel|demo-grosir] [--strict] [--keep]
+    python3 tests/day_one.py [--site kopi-senja|demo-jasa|demo-fnb|demo-ritel|demo-grosir|demo-produksi] [--strict] [--keep]
     DAY_ONE_PORT=9201 python3 tests/day_one.py --site demo-grosir --keep     # a demo on a fixed port
 
 Starts a throwaway Postgres (rangka-os/kernel/scripts/pgtemp.sh), runs `rangka migrate`, `seed` and
@@ -93,6 +93,7 @@ SITE_ORGS = {
     "demo-fnb": [("tahu_contoh", "demo-fnb")],
     "demo-ritel": [("toko_contoh", "demo-ritel")],
     "demo-grosir": [("niaga_contoh", "demo-grosir")],
+    "demo-produksi": [("pangan_contoh", "demo-produksi")],
 }
 
 
@@ -2324,6 +2325,14 @@ MATRIX = {
     "delivery_guard": {"head_office": {"create"}, "sales_manager": {"create"}, "finance_manager": {"create"}},   # never stored (a flow's refusal)
     "order_fulfilment": {"sales_manager": {"read", "create", "write", "export"}, "finance_manager": {"read", "create", "write", "export"},
                          "head_office": {"read", "create", "write", "export"}, "field_sales": {"read", "create", "write"}},
+    # production (produksi): head office plans (BOM, SPK), the production room's staff record batches at their outlet;
+    # a batch's wage sheet is made by the flow of whoever submits it, but only head office reads wages
+    **{m: {"head_office": {"read", "create", "write", "delete", "export", "print"}, "outlet_staff": _RP} for m in ("bom",)},
+    "production_stage": {"head_office": {"read", "create", "write", "delete", "export"}, "outlet_staff": _R},
+    "work_order": {"head_office": _ALL, "outlet_staff": _RP},
+    "production_batch": {"head_office": _ALL, "outlet_staff": {"read", "create", "write", "submit", "print"}},
+    "production_guard": {"head_office": {"create"}},   # never stored (a flow's refusal of a batch cancel)
+    "wage_sheet": {"head_office": {"read", "create", "write", "export", "print"}, "outlet_staff": {"create"}},
     "giro": {"finance_manager": {"read", "create", "write", "export", "print"}, "sales_manager": {"read", "create", "write", "export", "print"},
              "field_sales": _R},
     **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("assignment", "timesheet", "acceptance")},
@@ -2391,6 +2400,7 @@ SITE_MEMBERS = {
     "demo-fnb": [("hq", "head_office"), ("staff_dago", "outlet_staff")],
     "demo-ritel": [("hq", "head_office"), ("staff_cly", "outlet_staff")],
     "demo-grosir": [("sm", "sales_manager"), ("fm", "finance_manager"), ("hq", "head_office"), ("asep", "field_sales")],
+    "demo-produksi": [("hq", "head_office"), ("staff", "outlet_staff")],
 }
 
 
@@ -2399,16 +2409,16 @@ def money_bodies(api, site):
     item = {"demo-fnb": "BRG-0001", "demo-jasa": "BRG-0001"}.get(site) or api.list("item")[0]["name"]
     customer = "CUST-0001" if site in ("demo-jasa", "demo-grosir") else (api.list("customer") or [{"name": ""}])[0]["name"]
     vendor = "VND-0002" if site != "kopi-senja" else ""
-    outlet = {"outlet": DAGO} if site in ("demo-fnb", "demo-ritel") else {}
+    outlet = {"outlet": DAGO} if site in ("demo-fnb", "demo-ritel", "demo-produksi") else {}
     b = {
         "quotation": {"customer": customer, "subject": "Uji izin", "items": [{"item": item, "qty": 1, "rate": 1_000_000}]},
         "customer_order": {"customer": customer, "po_number": "PO-IZIN", "po_date": "2026-11-03", "items": [{"item": item, "qty": 1, "rate": 1_000_000}]},
         "sales_invoice": invoice_body(customer, item),
-        "payment": ({"direction": "pay", "vendor": vendor, "amount": 1_000} if site in ("demo-fnb", "demo-ritel", "demo-grosir") else {"direction": "receive", "customer": customer, "amount": 1_000}),
+        "payment": ({"direction": "pay", "vendor": vendor, "amount": 1_000} if site in ("demo-fnb", "demo-ritel", "demo-grosir", "demo-produksi") else {"direction": "receive", "customer": customer, "amount": 1_000}),
         "purchase_request": dict({"needed_by": "2026-11-30", "items": [{"item": item, "qty": 1, "est_rate": 1_000}]}, **outlet),
         "purchase_order": dict({"vendor": vendor, "items": [{"item": item, "qty": 1, "rate": 1_000}]}, **outlet),
         "vendor_bill": {"vendor": vendor, "bill_no": "IZIN-1", "bill_date": "2026-11-03", "items": [{"item": item, "qty": 1, "rate": 1_000}]},
-        "goods_receipt": {"vendor": vendor, "outlet": DAGO if site in ("demo-fnb", "demo-ritel") else (api.list("outlet") or [{"name": ""}])[0]["name"], "items": [{"item": item, "qty": 1, "rate": 1_000}]},
+        "goods_receipt": {"vendor": vendor, "outlet": DAGO if site in ("demo-fnb", "demo-ritel", "demo-produksi") else (api.list("outlet") or [{"name": ""}])[0]["name"], "items": [{"item": item, "qty": 1, "rate": 1_000}]},
         "outlet_sales": ({"outlet": DAGO, "date": "2026-11-04", "source": "moka", "moka_outlet": "Tahu Contoh - Dago", "lines": [{"item": "BRG-0007", "qty": 1}]} if site != "demo-ritel"
                          else {"outlet": CLY, "date": "2026-11-04", "source": "file", "lines": [{"item": "BRG-0001", "qty": 1}]}),
         "outlet_takings": {"outlet": CLY, "date": "2026-11-04", "lines": [{"method": "cash", "expected": 1_000, "received": 1_000}]},
@@ -4352,7 +4362,9 @@ def setup_demo_fnb(api, k):
 # Scenarios of the newer sites live in their own files (tests/day_one_<app>.py) and take this file's helpers.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import day_one_grosir  # noqa: E402
+import day_one_produksi  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
+day_one_produksi.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
@@ -4363,6 +4375,7 @@ SCENARIOS = {
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
                    scenario_permissions],
     "demo-grosir": day_one_grosir.SCENARIOS + [scenario_permissions],
+    "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions],
 }
 
 
@@ -4392,6 +4405,8 @@ def main():
         setup_demo_ritel(api, k)
     if a.site == "demo-grosir":
         day_one_grosir.setup_demo_grosir(api, k)
+    if a.site == "demo-produksi":
+        day_one_produksi.setup_demo_produksi(api, k)
     for sc in SCENARIOS[a.site]:
         if a.only and a.only not in sc.__name__:
             continue

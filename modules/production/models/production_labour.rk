@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: production_labour
+is_child: true
+fields:
+  - {name: worker, type: link, to: worker, label: {id: Pekerja}, required: true}
+  - {name: stage, type: link, to: production_stage, label: {id: Tahap}, required: true}
+  - {name: qty, type: float, label: {id: Qty dikerjakan}}
+  # always the stage's rate: the piece rate is head office's (production_stage), not typed on the batch
+  - {name: rate, type: currency, label: {id: Tarif}, compute: stage.rate}
+  - {name: amount, type: currency, label: {id: Upah}, compute: round(qty * rate)}

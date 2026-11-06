@@ -6,7 +6,7 @@ and may do everything. A model without `permissions:` would be open to every mem
 
 All roles live in the `users` module, which every module requires, so a permission never names a role the site lacks.
 An app lists the roles it uses in `roles:` (`crm`: sales_rep, sales_manager; `jasa_proyek`: sales_manager,
-finance_manager, purchasing_manager, project_admin; `fnb_cabang` and `ritel_cabang`: head_office, outlet_staff;
+finance_manager, purchasing_manager, project_admin; `fnb_cabang`, `ritel_cabang` and `produksi_pabrik`: head_office, outlet_staff;
 `grosir_distribusi`: sales_manager, finance_manager, head_office, field_sales).
 
 Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e export, p print, i import.
@@ -50,7 +50,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | consignment_settlement | | | | | all except d (a deleted cancelled settlement would free its month) | | |
 | lead, deal, activity | all | r | r | r | r | r | r c w on own records (`owner == user.name`) |
 
-### Distributor (grosir_distribusi)
+### Distributor and factory (grosir_distribusi, produksi_pabrik)
 
 `field_sales` (Salesman) has a row scope `salesman` from `[user.name]` (its own user record): it sees only the customers,
 orders, invoices, payments, giro and delivery notes whose `salesman` is itself. On models without that field it reads
@@ -66,6 +66,11 @@ masters (`item`, `item_category`, `uom`, `outlet`, `user`: r).
 | order_fulfilment (every field read_only; written by the delivery flows of whoever submits) | r c w e | r c w e | r c w e | | r c w |
 | return_credit (credited value of a sales return; opened by the return's flow, written by the payment flows) | r c w e | r c w e | r c w | | |
 | delivery_guard (never stored; a flow's refusal of a cancel or submit) | c | c | c | | |
+| bom | | | r c w d e p | r p | |
+| production_stage | | | r c w d e | r | |
+| work_order | | | all | r p | |
+| production_batch | | | all | r c w s p (own outlet) | |
+| wage_sheet (made by the flow of whoever submits a batch; only head office reads wages) | | | r c w e p | c | |
 
 `customer_order` approvals (module distribution): `credit_hold`, `overdue` and `over_credit_limit` → `sales_manager`
 or `finance_manager`; a salesman never releases his own held order.

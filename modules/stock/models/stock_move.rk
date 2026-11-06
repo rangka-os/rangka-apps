@@ -41,6 +41,8 @@ fields:
       - {value: reversal, label: {id: Pembatalan}}
       - {value: delivery, label: {id: Pengiriman (surat jalan)}}
       - {value: return_in, label: {id: Retur penjualan masuk}}
+      - {value: production_out, label: {id: Bahan ke produksi}}
+      - {value: production_in, label: {id: Hasil produksi}}
 views:
   list:
     columns: [name, posting_date, outlet, item, qty, value, balance_qty, negative, voucher_type, voucher, reason]
