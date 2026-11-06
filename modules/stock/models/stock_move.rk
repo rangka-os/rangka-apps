@@ -20,6 +20,11 @@ fields:
   - {name: negative, type: check, label: {id: Stok minus}, read_only: true, in_list: true}
   - {name: voucher_type, type: data, label: {id: Jenis dokumen}, read_only: true, in_list: true}
   - {name: voucher, type: data, label: {id: Dokumen}, read_only: true, in_list: true}
+  # Sold quantity and cost as positive numbers, for best-seller charts (a chart draws positive values). Every move of
+  # an outlet_sales document counts: its sales take out (qty < 0) and the reversal of a cancelled one puts back, so a
+  # cancelled sale nets to zero.
+  - {name: sold_qty, type: float, label: {id: Qty terjual}, compute: "voucher_type == 'outlet_sales' ? -qty : 0"}
+  - {name: sold_cost, type: currency, label: {id: Harga pokok terjual}, compute: "voucher_type == 'outlet_sales' ? -value : 0"}
   - name: reason
     type: select
     label: {id: Sebab}

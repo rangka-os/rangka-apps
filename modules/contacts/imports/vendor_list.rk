@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# The opening supplier list: one row per supplier.
+# Duplicates are detected against earlier imports only (contract 0012): a supplier typed in by hand with the same name is
+# not matched and would be created again; check the list before importing into an installation that is already in use.
+name: vendor_list
+label: {id: Daftar pemasok, en: Supplier list}
+model: vendor
+source: csv
+header_row: 1
+key: [Nama pemasok]
+map:
+  vendor_name: Nama pemasok
+  city: Kota
+  phone: WhatsApp
+  payment_days: Tempo (hari)
+  npwp: NPWP

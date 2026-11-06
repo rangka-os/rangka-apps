@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: outlet_takings_line
+is_child: true
+fields:
+  - name: method
+    type: select
+    label: {id: Metode bayar}
+    required: true
+    options:
+      - {value: cash, label: {id: Tunai}}
+      - {value: qris, label: {id: QRIS}}
+      - {value: debit, label: {id: Kartu debit}}
+      - {value: credit, label: {id: Kartu kredit}}
+      - {value: transfer, label: {id: Transfer bank}}
+      - {value: ewallet, label: {id: Dompet digital}}
+      - {value: other, label: {id: Lainnya}}
+  - name: expected
+    type: currency
+    label: {id: Menurut POS}
+    required: true
+  - name: received
+    type: currency
+    label: {id: Disetor atau diterima}
+    default: '0'
+  - name: fee
+    type: currency
+    label: {id: Potongan MDR}
+    help: {id: 'Potongan bank atau penyedia QRIS/EDC, kalau ada'}
+    default: '0'
+  - name: difference
+    type: currency
+    label: {id: Selisih}
+    compute: received + fee - expected
+  - name: bank_ref
+    type: data
+    label: {id: Referensi mutasi bank}
+    help: {id: 'Keterangan atau nomor di mutasi rekening, untuk dicocokkan'}

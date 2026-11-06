@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Morning list of invoices to chase: submitted, money still owed, due today or earlier. Goes to the owner today
+# (notify writes the audit log and email); the WhatsApp reminder to the customer waits for the connector runtime.
+name: invoice_due_digest
+label: {id: Daftar tagih pagi, en: Morning collection list}
+schedule: 0 8 * * 1-6
+steps:
+  - {find_all: sales_invoice, where: "docstatus == 1 && outstanding > 0 && due_date <= today()", sort: due_date, as: due}
+  - if: size(due) > 0
+    notify: owner
+    channel: email
+    template: {id: 'Tagih hari ini: {size(due)} faktur jatuh tempo, sisa Rp {due.map(i, i.outstanding).sum()}. Cetak "Pesan tagihan WA" di tiap faktur.'}

@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# Juragan's item list template (one row per item or variant), the way a shop moves its POS item list or its Excel in.
+# Headers: SKU, Barcode, Nama barang, Kategori, Grup varian, Varian, Satuan, Harga jual, Harga pokok, Penitip, Harga
+# setor. Satuan, Kategori and Penitip (a vendor) must already exist, by name; empty cells leave the field empty. Imports only create: an SKU already imported is skipped (key), so an updated
+# list adds the new items and leaves the old ones as they are. Columns are matched by name, so the order is free.
+# Not checked against a real POS item export yet: Moka, Loyverse and majoo each name these columns differently.
+name: item_master
+label: {id: Daftar barang, en: Item list}
+model: item
+source: csv
+header_row: 1
+key: [SKU]
+map:
+  sku: SKU
+  barcode: Barcode
+  item_name: Nama barang
+  kind: "='good'"
+  category: {value: Kategori, match: category_name}
+  variant_group: Grup varian
+  variant_label: Varian
+  stock_uom: {value: Satuan, match: uom_name}
+  rate: Harga jual
+  standard_cost: Harga pokok
+  consignor: {value: Penitip, match: vendor_name}
+  consignment_cost: Harga setor

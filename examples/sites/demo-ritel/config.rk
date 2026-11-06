@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for retail Jalur A (the shop keeps its POS, Juragan is the back office): one CV with two branches,
+# Cibiru (Moka, also the head office and stock room) and Cileunyi (another POS, sales as a file in Juragan's template).
+# The outlets, ~200 items and the suppliers are data (examples/fixtures/demo-ritel, made by its generate.py).
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: CV Toko Contoh Sejahtera}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: false}
+numbering:
+  purchase_order: {pattern: "PO/{ORG}/{YY}{MM}/{###}", reset: monthly}
+orgs:
+  toko_contoh:
+    name: CV Toko Contoh Sejahtera
+    code: TKC
+    config:
+      org: {legal_name: CV Toko Contoh Sejahtera}
+      tax: {pkp: false}
+apps: [ritel_cabang]
+plan: tumbuh
+sso: {domains: [tokocontoh.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, head_office]}
