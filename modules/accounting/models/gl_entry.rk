@@ -51,8 +51,10 @@ fields:
       - {value: '21200', label: {id: '2-1200 PPN keluaran'}}
       - {value: '21300', label: {id: '2-1300 Utang PPh 23'}}
       - {value: '21310', label: {id: '2-1310 Utang PPh final'}}
+      - {value: '21320', label: {id: '2-1320 Utang PPh 21'}}
       - {value: '21400', label: {id: '2-1400 Uang muka pelanggan'}}
       - {value: '21500', label: {id: '2-1500 Utang upah'}}
+      - {value: '21600', label: {id: '2-1600 Utang BPJS'}}
       - {value: '21900', label: {id: '2-1900 Utang lain-lain'}}
       - {value: '22100', label: {id: '2-2100 Utang bank'}}
       - {value: '31100', label: {id: '3-1100 Modal disetor'}}
