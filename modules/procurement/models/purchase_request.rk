@@ -20,6 +20,12 @@ fields:
     to: outlet
     label: {id: Outlet}
     in_list: true
+  # The project this purchase is for (projects module, optional): subcontract and material costs land in its margin.
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+    depends_on: app_installed('projects')
   - name: needed_by
     type: date
     label: {id: Dibutuhkan tanggal}
@@ -50,6 +56,10 @@ fields:
       - {value: ordered, label: {id: Sudah dipesan}}
       - {value: closed, label: {id: Ditutup}}
 rules:
+  - name: project_open
+    on: save
+    check: project == '' || project.state != 'closed'
+    message: {id: Proyek yang sudah ditutup tidak bisa dipakai untuk pembelian baru}
   - name: qty_positive
     on: save
     check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
@@ -70,7 +80,7 @@ views:
     layout:
       - section: {id: Permintaan}
         columns:
-          - [requested_by, outlet]
+          - [requested_by, outlet, project]
           - [needed_by, state]
       - section: {id: Barang}
         fields: [items]
