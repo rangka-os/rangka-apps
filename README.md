@@ -24,15 +24,15 @@ Every module requires `users`, which holds all roles (`sales_manager`, `sales_re
 | Module | Requires (besides `users`) | Models |
 | --- | --- | --- |
 | `users` | none | `user`; every role |
-| `contacts` | none | `customer`, `vendor` (`pkp`), `contact_person` |
-| `catalogue` | contacts | `item`, `uom`, `uom_conversion`, `price_list` (+ `price_list_item`) |
+| `contacts` | none | `customer`, `vendor` (`pkp`), `contact_person`; imports `customer_list` and `vendor_list` |
+| `catalogue` | contacts | `item`, `uom`, `uom_conversion`, `price_list` (+ `price_list_item`); import `item_list` (opening item list, units matched by name) |
 | `outlets` | none | `outlet` |
 | `invoicing` | contacts, catalogue (optional: outlets, tax_id, currency, orders, projects) | `sales_invoice` (+ `sales_invoice_item`): PPN from config, PPh 23 on the lines not marked `pph23_exclude` (wages and reimbursed costs can stay out; a down payment's base is deducted), down payment, retention (no PPN again, bounded by the origin), header discount; print format; finance approval above Rp 100.000.000; foreign-currency `*_fx` totals; numbering series `invoice`; `invoice_reminder` (who was reminded, when, how); flow `invoice_due_digest` (morning list of due invoices); print *Pesan tagihan WA* (reminder text and a `wa.me` link with the text filled in) |
 | `tax_id` | none | `tax_code` |
 | `currency` | none | `currency` (named by ISO code), `exchange_rate` |
 | `quotation` | contacts, catalogue (optional: tax_id, currency) | `quotation` (+ `quotation_item`): line discounts only (no header discount), revisions, outcome, manager approval, numbering series `quotation`, foreign-currency `*_fx` totals, print *Surat penawaran harga* |
 | `orders` | contacts, catalogue (optional: quotation) | `customer_order` (+ `customer_order_item`): customer PO, action `make_invoice`; refuses a foreign quotation |
-| `workforce` | none | `worker`, `certification` (expiry flag) |
+| `workforce` | none | `worker`, `certification` (expiry flag); import `worker_list` |
 | `projects` | contacts, workforce (optional: orders) | `project`, `assignment`, `timesheet`, `acceptance` (berita acara) |
 | `payments` | contacts, invoicing, procurement (optional: currency) | `payment` (+ `payment_allocation`), `withholding` (PPh 23 certificate); foreign-currency `amount_fx`; methods QRIS, VA, e-wallet and `gateway_ref` held by one live payment at a time (`gateway_ref_claim`, released on cancel so the payment can be amended); hooks `payments.allocate` and `payments.unallocate`; print *Statement* |
 | `bank_statement` | contacts, invoicing, payments | `bank_transaction` (one statement line; money in positive): import `bank_statement_csv` (Tanggal, Urutan, Keterangan, Masuk, Keluar, Saldo, Rekening; duplicates by file and by row, the key is Rekening, Tanggal, Urutan, Keterangan, Masuk, Keluar, Saldo, and Saldo may be empty); flow `bank_transaction_suggest` (invoice number in the note, else exactly one open invoice of that amount); confirming a line drafts a payment into `draft_payment` (flow `bank_transaction_confirm`), submitting a payment that names the line (`payment.bank_transaction`) sets `payment` and marks the line matched, cancelling it unmatched; only those flows set Cocok. `bank_transaction_claim` allows one live payment per line (unique, checked on submit), whatever path made the payment. A statement line never settles an invoice by itself |
@@ -51,7 +51,7 @@ Every module requires `users`, which holds all roles (`sales_manager`, `sales_re
 modules/<m>/module.rk               manifest: name, version, title, requires, optional, hooks
 modules/<m>/models|roles|flows/     the module's metadata (roles only in modules/users/roles/)
 modules/<m>/print/                  print formats (contract 0008; rendered by the kernel)
-modules/<m>/imports/                spreadsheet imports (kind import, contract 0012)
+modules/<m>/imports/                spreadsheet imports (kind import, contract 0012); sample files in examples/fixtures/imports/
 apps/<a>/app.rk, dashboards/        what a customer installs: modules, menu, dashboards, connectors, roles, home, onboarding
 apps/<a>/processes/                 named stages for the process canvas (kind process, contract 0014; found by folder, not listed in app.rk)
 examples/sites/<site>/              example installations: system.rk, features.rk, config.rk (+ letterhead.rk, letterheads/<org>.rk, themes/, layouts/)
