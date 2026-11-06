@@ -16,7 +16,8 @@ map:
   worker: {value: No. pegawai, match: employee_no}
   work_date: Dari tanggal
   period_to: Sampai tanggal
-  days: Hari hadir
+  # An empty cell must not become the model's default of 1 day: -1 makes the row fail recap_days with its message.
+  days: "=row['Hari hadir'] == '' ? '-1' : row['Hari hadir']"
   overtime_hours: "='Jam lembur' in row && row['Jam lembur'] != '' ? row['Jam lembur'] : '0'"
   rate_basis: "='day'"
   description: "='Rekap absensi ' + row['Dari tanggal'] + ' s.d. ' + row['Sampai tanggal']"

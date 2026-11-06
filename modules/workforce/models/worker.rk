@@ -72,6 +72,12 @@ fields:
     type: table
     of: certification
     label: {id: Sertifikasi}
+rules:
+  # A negative pay would raise the project margin instead of lowering it (audit 6 Nov).
+  - name: rates_not_negative
+    on: save
+    check: day_rate >= 0 && hour_rate >= 0 && cost_day_rate >= 0 && cost_hour_rate >= 0 && overtime_rate >= 0 && overtime_cost_rate >= 0
+    message: {id: 'Tarif dan upah tidak boleh negatif'}
 views:
   list:
     columns: [name, worker_name, role_title, day_rate, active]

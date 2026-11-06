@@ -108,11 +108,16 @@ fields:
     label: {id: Jumlah dapat ditagih}
     compute: "billable ? amount : 0"
 rules:
+  - name: rates_not_negative
+    on: save
+    check: day_rate >= 0 && hour_rate >= 0 && cost_rate >= 0 && overtime_rate >= 0 && overtime_cost_rate >= 0
+    message: {id: 'Tarif dan upah tidak boleh negatif'}
   - name: days_range
     on: save
     check: rate_basis == 'hour' || period_to != '' || (days > 0 && days <= 1.5)
     message: {id: 'Hari kerja harus lebih dari 0 dan paling banyak 1,5'}
   # A recap covers at most 31 days, never runs backwards, and cannot hold more days present than days in the period.
+  # date + duration drops a fraction of a day, so days are rounded up first (round(x + 0.49): 1,5 -> 2, 1,9 -> 2).
   - name: recap_period
     on: save
     check: period_to == '' || (period_to >= work_date && period_to < work_date + duration(31))
@@ -121,11 +126,11 @@ rules:
     on: save
     check: >-
       period_to == '' || rate_basis == 'hour'
-      || (days >= 0 && (days > 0 || overtime_hours > 0) && work_date + duration(days - 1) <= period_to)
+      || (days >= 0 && (days > 0 || overtime_hours > 0) && work_date + duration(round(days + 0.49) - 1) <= period_to)
     message: {id: 'Hari hadir rekap harus lebih dari 0 dan tidak melebihi jumlah hari di periodenya'}
   - name: overtime_range
     on: save
-    check: "overtime_hours >= 0 && overtime_hours <= (period_to == '' ? 24 : 744)"
+    check: "overtime_hours >= 0 && (period_to == '' ? overtime_hours <= 24 : work_date + duration(round(overtime_hours / 24 + 0.49) - 1) <= period_to)"
     message: {id: 'Jam lembur tidak boleh negatif atau melebihi jam di periodenya'}
   - name: hour_rate_for_billable_hours
     on: save

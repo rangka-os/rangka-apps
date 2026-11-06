@@ -2219,6 +2219,28 @@ def scenario_manpower_recap(api):
     st, resp = pa.verb("timesheet", t1n, "cancel") if t1n else (0, "not submitted")
     check("a recap timesheet can be cancelled", st == 200, (st, resp))
     eq("cancel reverses its cost: labor rows sum 0", sum(r["amount"] for r in rows()), 0)
+    # audit 6 Nov: no negative money, no silent default days, no fraction past the period, overtime within the period
+    neg = (b"Nama,Nomor karyawan,Jabatan,WhatsApp,Tarif harian,Upah harian,Tarif lembur per jam,Upah lembur per jam\n"
+           b"Upah Minus,MP-NEG,Helper,+620000000039,225000,-150000,,\n")
+    st, pv = api.upload("/api/v1/imports/worker_list", {}, "upah-minus.csv", neg)
+    check("worker list: a negative pay is an error on its row, not a cost that raises the margin", st == 200 and [e["row"] for e in pv.get("errors", [])] == [2], (st, pv))
+    for model, body in (("worker", {"worker_name": "Minus", "day_rate": 1, "overtime_cost_rate": -1}),
+                        ("assignment", {"project": p, "worker": ws["MP-002"]["name"], "start_date": "2026-10-21", "end_date": "2026-10-22", "overtime_rate": -1}),
+                        ("timesheet", {"project": p, "worker": ws["MP-002"]["name"], "work_date": "2026-11-10", "days": 1, "cost_rate": -1, "description": "x"})):
+        st, resp = pa.create(model, body) if model != "worker" else api.create(model, body)
+        check(f"{model}: a negative rate -> 422", st == 422, (st, resp))
+    edge = (head + f"{p},MP-002,Operator Dua,21/12/2026,20/01/2027,,\n"         # Hari hadir empty
+                 + f"{p},MP-002,Operator Dua,22/12/2026,22/12/2026,1.9,\n"      # 1,9 days in a 1-day period
+                 + f"{p},MP-002,Operator Dua,23/12/2026,23/12/2026,1,30\n").encode()  # 30 h overtime in one day
+    st, pv = pa.upload("/api/v1/imports/attendance_recap", {}, "rekap-tepi.csv", edge)
+    eq("recap edges: empty days, a fraction past the period, overtime longer than the period are each refused (rows 2-4)",
+       sorted({e["row"] for e in (pv or {}).get("errors", [])}), [2, 3, 4])
+    st, ok15 = pa.create("timesheet", {"project": p, "worker": ws["MP-002"]["name"], "work_date": "2026-12-24", "period_to": "2026-12-25", "days": 1.5, "description": "x"})
+    check("1,5 days in a 2-day recap period is fine", st == 201, (st, ok15))
+    st, hasg = pa.create("assignment", {"project": p, "worker": ws["MP-003"]["name"] if "MP-003" in ws else ws["MP-002"]["name"], "start_date": "2027-01-01", "end_date": "2027-01-31", "rate_basis": "hour", "hour_rate": 50_000, "day_rate": 300_000})
+    if check("an hourly assignment", st == 201, (st, hasg)):
+        st, ht = pa.create("timesheet", {"project": p, "worker": hasg["worker"], "work_date": "2027-01-01", "period_to": "2027-01-20", "days": 15, "description": "Rekap"})
+        check("a recap for an hourly assignment stays per day at the assignment's day rate (15 x 300.000)", st == 201 and (ht.get("rate_basis"), ht.get("amount"), ht.get("assignment")) == ("day", 4_500_000, hasg["name"]), (st, ht))
     # a daily timesheet keeps its 1,5-day limit; a recap period may not run backwards
     st, resp = pa.create("timesheet", {"project": p, "worker": ws["MP-001"]["name"], "work_date": "2026-11-10", "days": 2, "description": "x"})
     check("a daily timesheet of 2 days is still refused", st == 422, (st, resp))

@@ -4,7 +4,8 @@ label: {id: Absensi memakai tarif penugasan}
 # An attendance recap import (or a timesheet typed without its assignment) names only the project and the worker. This
 # finds the worker's assignment on that project covering the start of the work and takes its rates, so the client's
 # rate and the project's pay apply instead of the worker's general ones. No assignment found: the worker's rates
-# (the timesheet defaults) stay. Runs on the draft, before anyone submits it. Only for recaps (period_to set): a daily
+# (the timesheet defaults) stay. A recap counts days, so it stays per day: an hourly assignment gives its day rate
+# and the worker's pay per day stays (an hourly assignment's cost_rate is per hour). Runs on the draft, before anyone submits it. Only for recaps (period_to set): a daily
 # timesheet typed by hand keeps the rates its author typed.
 on: timesheet.created
 if: event.assignment == '' && event.period_to != '' && event.docstatus == 0
@@ -20,9 +21,8 @@ steps:
     update: ts
     set:
       assignment: asg.name
-      rate_basis: asg.rate_basis
       day_rate: asg.day_rate
       hour_rate: asg.hour_rate
-      cost_rate: asg.cost_rate
+      cost_rate: "asg.rate_basis == 'day' ? asg.cost_rate : ts.cost_rate"
       overtime_rate: asg.overtime_rate
       overtime_cost_rate: asg.overtime_cost_rate

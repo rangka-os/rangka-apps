@@ -70,6 +70,10 @@ fields:
     type: text
     label: {id: Catatan}
 rules:
+  - name: rates_not_negative
+    on: save
+    check: day_rate >= 0 && hour_rate >= 0 && cost_rate >= 0 && overtime_rate >= 0 && overtime_cost_rate >= 0
+    message: {id: 'Tarif dan upah tidak boleh negatif'}
   - name: end_after_start
     on: save
     check: end_date >= start_date
