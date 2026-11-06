@@ -40,7 +40,7 @@ item:
   - {name: BRG-0008, item_name: Mi goreng pedas isi 40, sku: CND-0008, category: KTG-001, kind: good, stock_uom: UOM-001, standard_cost: 106000, rate: 118700, rate_wholesale: 114500, rate_agent: 111300}
   - {name: BRG-0009, item_name: Mi telur keriting isi 20, sku: CND-0009, category: KTG-001, kind: good, stock_uom: UOM-001, standard_cost: 76000, rate: 85100, rate_wholesale: 82100, rate_agent: 79800}
   - {name: BRG-0010, item_name: Air mineral 600 ml isi 24, sku: CND-0010, category: KTG-002, kind: good, stock_uom: UOM-003, standard_cost: 52000, rate: 58200, rate_wholesale: 56200, rate_agent: 54600}
-  - {name: BRG-0011, item_name: Air mineral 1,5 liter isi 12, sku: CND-0011, category: KTG-002, kind: good, stock_uom: UOM-003, standard_cost: 54000, rate: 60500, rate_wholesale: 58300, rate_agent: 56700}
+  - {name: BRG-0011, item_name: 'Air mineral 1,5 liter isi 12', sku: CND-0011, category: KTG-002, kind: good, stock_uom: UOM-003, standard_cost: 54000, rate: 60500, rate_wholesale: 58300, rate_agent: 56700}
   - {name: BRG-0012, item_name: Teh kotak 200 ml isi 24, sku: CND-0012, category: KTG-002, kind: good, stock_uom: UOM-003, standard_cost: 61000, rate: 68300, rate_wholesale: 65900, rate_agent: 64000}
   - {name: BRG-0013, item_name: Minuman isotonik 500 ml isi 24, sku: CND-0013, category: KTG-002, kind: good, stock_uom: UOM-003, standard_cost: 146000, rate: 163500, rate_wholesale: 157700, rate_agent: 153300}
   - {name: BRG-0014, item_name: Minuman soda kaleng isi 24, sku: CND-0014, category: KTG-002, kind: good, stock_uom: UOM-003, standard_cost: 118000, rate: 132200, rate_wholesale: 127400, rate_agent: 123900}
