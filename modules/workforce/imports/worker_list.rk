@@ -1,7 +1,9 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
 # The opening list of field workers (manpower, inspectors, trainers): one row per person. Certifications are added on
 # the worker afterwards (a table field, not part of this file). Name plus employee number is the duplicate key, so
-# workers without a number can share a file.
+# workers without a number can share a file. Tarif harian is the selling rate per day; Upah harian (pay per day) and
+# the overtime rates per hour are optional columns, so a file in the older template still imports: a worker without
+# pay is flagged on the project margin dashboard instead of counting as zero cost.
 name: worker_list
 label: {id: Daftar tenaga kerja, en: Worker list}
 model: worker
@@ -14,3 +16,6 @@ map:
   role_title: Jabatan
   phone: WhatsApp
   day_rate: Tarif harian
+  cost_day_rate: "='Upah harian' in row && row['Upah harian'] != '' ? row['Upah harian'] : '0'"
+  overtime_rate: "='Tarif lembur per jam' in row && row['Tarif lembur per jam'] != '' ? row['Tarif lembur per jam'] : '0'"
+  overtime_cost_rate: "='Upah lembur per jam' in row && row['Upah lembur per jam'] != '' ? row['Upah lembur per jam'] : '0'"
