@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: payroll
+version: 1.0.0
+title: {id: Penggajian, en: Payroll}
+# Monthly pay of outsourced workers from the attendance recap (projects.timesheet with period_to): payslips with BPJS and
+# PPh 21 TER, the deposits of the month, the extra employer cost on the project margin and the client invoice (wages +
+# BPJS + fee, or fee only). Rules and sources: docs/payroll.md.
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, workforce: ^1.0, projects: ^1.0, invoicing: ^1.0}

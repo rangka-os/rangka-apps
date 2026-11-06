@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payroll_totals_on_payslip_submit
+label: {id: Total periode gaji dihitung ulang}
+# The run's totals are the sums of its submitted slips, recomputed inside every slip submit and cancel while the run is
+# a draft (a slip cannot be submitted into a submitted run, rule run_open, nor cancelled out of it, payslip_cancel_guard).
+on: payslip.submitted
+steps:
+  - find: payroll_run
+    where: name == event.payroll_run && docstatus == 0
+    as: run
+  - if: run != null
+    find_all: payslip
+    where: payroll_run == event.payroll_run && docstatus == 1
+    as: slips
+  - if: run != null
+    update: run
+    set:
+      headcount: "size(slips)"
+      total_cash_gross: "slips.map(s, s.cash_gross).sum()"
+      total_employer_bpjs: "slips.map(s, s.employer_bpjs).sum()"
+      total_employee_bpjs: "slips.map(s, s.employee_bpjs).sum()"
+      total_pph21: "slips.map(s, s.pph21).sum()"
+      total_net_pay: "slips.map(s, s.net_pay).sum()"
+      total_employer_cost: "slips.map(s, s.employer_cost).sum()"
+      total_timesheet_cost: "slips.map(s, s.timesheet_cost).sum()"
+      deposit_bpjs_tk: "slips.map(s, s.deposit_bpjs_tk).sum()"
+      deposit_bpjs_kes: "slips.map(s, s.deposit_bpjs_kes).sum()"

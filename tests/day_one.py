@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Day-one integration test against a live kernel (Python stdlib only).
 
-    python3 tests/day_one.py [--site kopi-senja|demo-jasa|demo-fnb|demo-ritel|demo-grosir|demo-produksi] [--strict] [--keep]
+    python3 tests/day_one.py [--site kopi-senja|demo-jasa|demo-fnb|demo-ritel|demo-grosir|demo-produksi|demo-manpower] [--strict] [--keep]
     DAY_ONE_PORT=9201 python3 tests/day_one.py --site demo-grosir --keep     # a demo on a fixed port
 
 Starts a throwaway Postgres (rangka-os/kernel/scripts/pgtemp.sh), runs `rangka migrate`, `seed` and
@@ -95,6 +95,7 @@ SITE_ORGS = {
     "demo-ritel": [("toko_contoh", "demo-ritel")],
     "demo-grosir": [("niaga_contoh", "demo-grosir")],
     "demo-produksi": [("pangan_contoh", "demo-produksi")],
+    "demo-manpower": [("tenaga_contoh", "demo-manpower")],
 }
 
 
@@ -2700,6 +2701,12 @@ MATRIX = {
     "outlet_sales": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     "outlet_takings": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     "consignment_settlement": {"head_office": _ALL - {"delete"}},
+    # payroll (manpower): pay and tax data are finance's; the project admin reads them because the payslip of a recap is
+    # made inside the recap's submit, as that person (create, no submit)
+    "payroll_profile": {"finance_manager": {"read", "create", "write", "export", "import", "print"}, "project_admin": _R},
+    "payroll_run": {"finance_manager": _ALL, "project_admin": _R},
+    "payslip": {"finance_manager": _ALL, "project_admin": {"read", "create"}},
+    "payroll_guard": {"finance_manager": {"create"}},   # never stored (a flow's refusal)
 }
 _CHECKED = ("read", "create", "write", "delete", "submit", "cancel", "amend", "export", "import", "print")
 
@@ -2731,6 +2738,7 @@ SITE_MEMBERS = {
     "demo-ritel": [("hq", "head_office"), ("staff_cly", "outlet_staff")],
     "demo-grosir": [("sm", "sales_manager"), ("fm", "finance_manager"), ("hq", "head_office"), ("asep", "field_sales")],
     "demo-produksi": [("hq", "head_office"), ("staff", "outlet_staff")],
+    "demo-manpower": [("fm", "finance_manager"), ("pa", "project_admin"), ("sm", "sales_manager")],
 }
 
 
@@ -4759,8 +4767,10 @@ def setup_demo_fnb(api, k):
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import day_one_grosir  # noqa: E402
 import day_one_produksi  # noqa: E402
+import day_one_payroll  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
+day_one_payroll.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -4772,6 +4782,7 @@ SCENARIOS = {
                    scenario_permissions, scenario_payment_methods],
     "demo-grosir": day_one_grosir.SCENARIOS + [scenario_payment_instruction, scenario_permissions, scenario_payment_methods],
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
+    "demo-manpower": day_one_payroll.SCENARIOS + [scenario_permissions],
 }
 
 
@@ -4804,6 +4815,8 @@ def main():
         day_one_grosir.setup_demo_grosir(api, k)
     if a.site == "demo-produksi":
         day_one_produksi.setup_demo_produksi(api, k)
+    if a.site == "demo-manpower":
+        day_one_payroll.setup_demo_manpower(api, k)
     for sc in SCENARIOS[a.site]:
         if a.only and a.only not in sc.__name__:
             continue

@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payslip_ytd_on_create
+label: {id: Slip gaji membaca penghasilan sebelumnya tahun ini}
+# Year to date for the December (last) recomputation: the sums of this worker's submitted slips of the same tax year in
+# earlier tax months whose run was submitted (a cancelled run's slips do not count). Filled on every new slip, so a
+# slip made by hand gets them too.
+on: payslip.created
+steps:
+  - find_all: payslip
+    where: worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && payroll_run.docstatus == 1
+    as: prev
+  - find: payslip
+    where: name == event.name
+    as: me
+  - update: me
+    set:
+      ytd_gross: "prev.map(p, p.gross_taxable).sum()"
+      ytd_pph21: "prev.map(p, p.pph21).sum()"
+      ytd_pension: "prev.map(p, p.jht_employee + p.jp_employee).sum()"
+      ytd_months: "size(prev)"

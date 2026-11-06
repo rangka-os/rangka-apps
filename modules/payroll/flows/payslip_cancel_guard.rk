@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payslip_cancel_guard
+label: {id: Slip di periode yang sudah diajukan tidak bisa dibatalkan}
+# The run's totals, its project ledger row and the client invoice were made from its slips: cancel the run first.
+on: payslip.cancelled
+steps:
+  - find: payroll_run
+    where: name == event.payroll_run && docstatus == 1
+    as: run
+  - if: run != null
+    create: payroll_guard
+    set:
+      reason: "'run_submitted'"
+      document: run.name

@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payroll_run_on_cancel
+label: {id: Periode gaji dibatalkan}
+# Refused while the client invoice of this run is submitted (cancel that invoice first); otherwise the project ledger
+# row is reversed. A draft invoice is left for the owner to delete.
+on: payroll_run.cancelled
+steps:
+  - find: sales_invoice
+    where: project == event.project && docstatus == 1 && notes.contains('(' + event.name + ')')
+    as: inv
+  - if: inv != null
+    create: payroll_guard
+    set:
+      reason: "'invoice_submitted'"
+      document: inv.name
+  - find: project_ledger
+    where: source_name == event.name && kind == 'payroll' && entry == 'post'
+    as: orig
+  - if: orig != null
+    create: project_ledger
+    set:
+      project: event.project
+      posting_date: orig.posting_date
+      entry: "'reverse'"
+      reverses: orig.name
+      kind: "'payroll'"
+      source_model: event.model
+      source_name: event.name
+      payroll_run: event.name
+      amount: "0 - orig.amount"

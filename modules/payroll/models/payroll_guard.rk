@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: payroll_guard
+label: {id: Penjaga penggajian, en: Payroll guard}
+icon: check
+naming: PGD-{######}
+title_field: reason
+# Never stored (the pattern of projects.project_guard): a flow that must refuse the action it runs in creates one, and
+# the rule of its reason fails with that message, which rolls the whole action back.
+permissions:
+  - {role: finance_manager, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: run_submitted, label: {id: Periode gaji sudah diajukan}}
+      - {value: invoice_submitted, label: {id: Faktur klien sudah diajukan}}
+  - name: document
+    type: data
+    label: {id: Dokumen}
+rules:
+  - name: run_submitted
+    on: save
+    check: reason != 'run_submitted'
+    message: {id: 'Periode gaji slip ini sudah diajukan; batalkan periode gajinya dulu'}
+  - name: invoice_submitted
+    on: save
+    check: reason != 'invoice_submitted'
+    message: {id: 'Faktur klien periode gaji ini sudah diajukan; batalkan fakturnya dulu'}

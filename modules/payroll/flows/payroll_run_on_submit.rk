@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payroll_run_on_submit
+label: {id: 'Periode gaji diajukan, biaya ke untung proyek dan faktur klien'}
+# 1. The project ledger gets the employer cost the recaps did not book (allowances, THR, employer BPJS), so the margin
+#    is revenue minus the full cost of the workers.
+# 2. The client invoice is made as a draft (a flow cannot submit): wages on their own line, outside the PPh 23 base
+#    (PMK 141/2015), the employer BPJS and the fee inside it; PPN comes from the invoice on the whole amount
+#    (docs/payroll.md). Fee only: one fee line. The notes carry the run's number, which payroll_run_on_cancel looks for.
+on: payroll_run.submitted
+steps:
+  - if: event.extra_cost != 0
+    create: project_ledger
+    set:
+      project: event.project
+      posting_date: event.period_to
+      entry: "'post'"
+      kind: "'payroll'"
+      source_model: event.model
+      source_name: event.name
+      payroll_run: event.name
+      amount: "0 - event.extra_cost"
+  - if: event.billing_mode == 'wages_plus_fee'
+    create: sales_invoice
+    set:
+      customer: event.customer
+      project: event.project
+      posting_date: "event.invoice_date != '' ? event.invoice_date : today()"
+      pph23_applies: event.pph23_applies
+      pph23_rate: '2'
+      notes: "'Tagihan tenaga kerja periode ' + event.period_from + ' s.d. ' + event.period_to + ' (' + event.name + ')'"
+      items: >-
+        [{'item': event.wage_item, 'description': 'Gaji, tunjangan, lembur dan THR tenaga kerja', 'qty': 1, 'rate': event.total_cash_gross, 'pph23_exclude': true},
+         {'item': event.bpjs_item, 'description': 'Iuran BPJS Ketenagakerjaan dan Kesehatan bagian perusahaan', 'qty': 1, 'rate': event.total_employer_bpjs, 'pph23_exclude': false},
+         {'item': event.fee_item, 'description': 'Management fee', 'qty': 1, 'rate': event.fee_amount, 'pph23_exclude': false}]
+  - if: event.billing_mode == 'fee_only'
+    create: sales_invoice
+    set:
+      customer: event.customer
+      project: event.project
+      posting_date: "event.invoice_date != '' ? event.invoice_date : today()"
+      pph23_applies: event.pph23_applies
+      pph23_rate: '2'
+      notes: "'Management fee tenaga kerja periode ' + event.period_from + ' s.d. ' + event.period_to + ' (' + event.name + ')'"
+      items: "[{'item': event.fee_item, 'description': 'Management fee', 'qty': 1, 'rate': event.fee_amount, 'pph23_exclude': false}]"
