@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A cancelled batch cancels its wage sheet, line by line (the weekly recap reads the lines).
+name: wage_sheet_on_batch_cancelled
+label: {id: Upah borongan batch dibatalkan}
+on: production_batch.cancelled
+steps:
+  - {find: wage_sheet, where: production_batch == event.name && !cancelled, as: ws}
+  - update: ws
+    if: ws != null
+    set: {cancelled: true}
+  - update: ws
+    if: ws != null
+    set:
+      lines: "ws.lines.map(l, {'name': l.name, 'worker': l.worker, 'stage': l.stage, 'qty': l.qty, 'rate': l.rate, 'amount': l.amount, 'work_date': l.work_date, 'cancelled': true})"

@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: production_material
+is_child: true
+fields:
+  - {name: item, type: link, to: item, label: {id: Bahan}, required: true}
+  - {name: qty, type: float, label: {id: Qty terpakai}}
+  - {name: uom, type: link, to: uom, label: {id: Satuan}, default: item.stock_uom}
+  - {name: cogs, type: currency, label: {id: Biaya bahan}, read_only: true}

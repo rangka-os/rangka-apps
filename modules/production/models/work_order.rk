@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Surat perintah kerja (SPK): make qty of a product with a BOM, for stock or for a customer order. The material need
+# is filled from the BOM scaled to qty (flow work_order_materials) and can be edited before release (submit). A
+# semi-finished line is made with its own SPK first. Batches (production_batch) report what was made against it.
+name: work_order
+label: {id: SPK produksi, en: Work order}
+icon: stock
+is_submittable: true
+naming: SPK-{YYYY}-{#####}
+title_field: item
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: outlet_staff, read: true, print: true}
+fields:
+  - {name: item, type: link, to: item, label: {id: Produk}, required: true, in_list: true}
+  - {name: bom, type: link, to: bom, label: {id: Resep (BOM)}, default: item.default_bom, required: true}
+  - {name: qty, type: float, label: {id: Qty rencana}, required: true, in_list: true}
+  - {name: uom, type: link, to: uom, label: {id: Satuan}, default: item.stock_uom}
+  - {name: outlet, type: link, to: outlet, label: {id: Tempat produksi}, required: true, in_list: true}
+  - {name: start_date, type: date, label: {id: Mulai}, default: today(), required: true, in_list: true}
+  - {name: due_date, type: date, label: {id: Target selesai}, in_list: true}
+  - name: customer_order
+    type: link
+    to: customer_order
+    label: {id: Untuk pesanan}
+    depends_on: app_installed('orders')
+  - {name: size_notes, type: text, label: {id: Rincian ukuran / spesifikasi}}
+  - {name: materials, type: table, of: work_order_material, label: {id: Kebutuhan bahan}}
+  # the qty and BOM the material need was last filled for (flow work_order_materials); a change refills it
+  - {name: materials_qty, type: float, label: {id: Bahan dihitung untuk qty}, read_only: true}
+  - {name: materials_bom, type: data, label: {id: Bahan dihitung dari resep}, read_only: true}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: qty_positive
+    on: save
+    check: qty > 0
+    message: {id: Qty rencana harus lebih dari 0}
+  - name: bom_of_item
+    on: save
+    check: bom == '' || bom.item == item
+    message: {id: Resep ini untuk produk lain}
+  - name: bom_active
+    on: submit
+    check: bom.active
+    message: {id: Resep tidak aktif}
+  - name: due_after_start
+    on: save
+    check: due_date == '' || due_date >= start_date
+    message: {id: Target selesai tidak boleh sebelum tanggal mulai}
+views:
+  list:
+    columns: [name, item, qty, outlet, start_date, due_date, status]
+    sort: -start_date
+  form:
+    layout:
+      - section: {id: SPK}
+        columns:
+          - [item, bom, qty, uom]
+          - [outlet, start_date, due_date, customer_order]
+      - section: {id: Kebutuhan bahan}
+        fields: [materials]
+      - section: {id: Spesifikasi}
+        fields: [size_notes, notes]

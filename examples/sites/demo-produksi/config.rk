@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for a small frozen-food factory: a materials store, a production room and a cold store for finished goods,
+# dimsum with a two-level recipe (dough and filling are made first), nugget with a by-product, beef meatballs, eight
+# piece-rate workers. Data: examples/fixtures/demo-produksi (synthetic, made by its generate.py).
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: CV Contoh Pangan Beku}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: false}
+orgs:
+  pangan_contoh:
+    name: CV Contoh Pangan Beku
+    code: CPB
+    config:
+      org: {legal_name: CV Contoh Pangan Beku}
+      tax: {pkp: false}
+apps: [produksi_pabrik]
+plan: tumbuh
+sso: {domains: [contohpangan.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, head_office]}

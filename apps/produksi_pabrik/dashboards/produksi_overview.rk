@@ -1,0 +1,96 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: produksi_overview
+label: {id: Ringkasan produksi, en: Production overview}
+default_period: 30
+cache: 5m
+# The owner's questions: how much did we make, what did it really cost, how much went to waste, what expires soon.
+widgets:
+  - name: batches
+    type: number
+    label: {id: Batch selesai}
+    model: production_batch
+    aggregate: count
+    filter: docstatus == 1
+    period: production_date
+    span: 3
+  - name: good_qty
+    type: number
+    label: {id: Hasil baik}
+    model: production_batch
+    aggregate: sum
+    field: good_qty
+    filter: docstatus == 1
+    period: production_date
+    span: 3
+  - name: hpp_total
+    type: number
+    label: {id: HPP produksi}
+    description: {id: 'Bahan, upah borongan dan overhead'}
+    model: production_batch
+    aggregate: sum
+    field: hpp_total
+    filter: docstatus == 1
+    period: production_date
+    compact: true
+    span: 3
+  - name: reject_qty
+    type: number
+    label: {id: Reject}
+    model: production_batch
+    aggregate: sum
+    field: reject_qty
+    filter: docstatus == 1
+    period: production_date
+    good_when: down
+    span: 3
+  - name: hpp_by_product
+    type: chart
+    chart: bar
+    label: {id: HPP per produk}
+    model: production_batch
+    group_by: item
+    aggregate: sum
+    field: hpp_total
+    filter: docstatus == 1
+    period: production_date
+    span: 6
+  - name: output_by_product
+    type: chart
+    chart: bar
+    label: {id: Hasil baik per produk}
+    model: production_batch
+    group_by: item
+    aggregate: sum
+    field: good_qty
+    filter: docstatus == 1
+    period: production_date
+    span: 6
+  - name: recent_batches
+    type: list
+    label: {id: Batch terakhir}
+    description: {id: 'HPP aktual per satuan dibanding standar resep'}
+    model: production_batch
+    filter: docstatus == 1
+    sort: -production_date
+    limit: 10
+    columns: [name, item, good_qty, hpp_per_unit, standard_unit_cost, expiry_date]
+    span: 12
+  - name: expiring
+    type: list
+    label: {id: Batch mendekati kedaluwarsa}
+    description: {id: Kedaluwarsa dalam 30 hari}
+    model: production_batch
+    filter: "docstatus == 1 && expiry_date != '' && expiry_date <= today() + duration('30d')"
+    sort: expiry_date
+    limit: 10
+    columns: [name, item, good_qty, expiry_date]
+    span: 6
+  - name: open_work_orders
+    type: list
+    label: {id: SPK berjalan}
+    model: work_order
+    filter: docstatus == 1
+    sort: due_date
+    limit: 10
+    columns: [name, item, qty, due_date]
+    span: 6

@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: work_order_material
+is_child: true
+fields:
+  - {name: item, type: link, to: item, label: {id: Bahan}, required: true}
+  - {name: qty, type: float, label: {id: Qty dibutuhkan}}
+  - {name: uom, type: link, to: uom, label: {id: Satuan}, default: item.stock_uom}
+  - {name: semi_finished, type: check, label: {id: Setengah jadi (SPK sendiri)}, compute: "item.default_bom != ''"}

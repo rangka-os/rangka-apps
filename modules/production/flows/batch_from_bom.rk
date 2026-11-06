@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A new batch with no lines yet is drafted from its BOM, scaled to the planned qty: materials, the main product with
+# the BOM's material share and the by-products with theirs. Outlet staff fill a batch by hand (they cannot read a BOM
+# back through an update, see work_order_materials_created).
+name: batch_from_bom
+label: {id: Batch diisi dari resep}
+on: production_batch.created
+if: "event.bom != '' && event.planned_qty > 0 && size(event.materials) == 0 && size(event.outputs) == 0 && !('outlet_staff' in user.roles)"
+steps:
+  - {find: bom, where: name == event.bom, as: b}
+  - {find: production_batch, where: name == event.name, as: pb}
+  - update: b
+    if: b != null
+    set: {bom_name: b.bom_name}
+  - update: pb
+    if: b != null && b.output_qty > 0
+    set:
+      materials: "b.lines.map(l, {'item': l.item, 'qty': round(l.qty * event.planned_qty / b.output_qty * 1000) / 1000, 'uom': l.uom})"
+      outputs: "[{'item': event.item, 'qty': event.planned_qty, 'cost_share': 100 - b.byproduct_share}] + b.byproducts.map(x, {'item': x.item, 'qty': round(x.qty * event.planned_qty / b.output_qty * 1000) / 1000, 'cost_share': x.cost_share})"
