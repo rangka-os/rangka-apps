@@ -2248,6 +2248,71 @@ def scenario_manpower_recap(api):
     check("a recap whose end is before its start -> 422", st == 422, (st, resp))
 
 
+def scenario_cost_visibility(api):
+    """Audit re-pin L1 (t_9c6fc6d5): pay and labour cost are read only by owner, finance and project admin. hidden_for is
+    not enforced by the kernel, so the models carrying pay (worker, assignment, timesheet) are not readable by sales or
+    purchasing, and the project ledger shows sales only revenue rows and purchasing only vendor rows (row-level `if`),
+    which is what their submit and cancel flows need. No CSV export of the ledger for sales."""
+    sm, pm, fm, pa = (CTX.get(x) for x in ("sm", "pm", "fm", "pa"))
+    if None in (sm, pm, fm, pa):
+        fail("cost visibility: members", CTX.get("login_error", "members missing"))
+        return
+    eq("sales_manager: worker, assignment and timesheet (pay, cost rates) -> 403",
+       [sm.call("GET", f"/api/v1/r/{m}?limit=1")[0] for m in ("worker", "assignment", "timesheet")], [403, 403, 403])
+    eq("purchasing_manager: worker (pay) -> 403", pm.call("GET", "/api/v1/r/worker?limit=1")[0], 403)
+    for who, cl in (("finance_manager", fm), ("project_admin", pa)):
+        st, r = cl.call("GET", "/api/v1/r/worker?limit=50")
+        check(f"{who} still reads the workers' pay", st == 200 and all("cost_day_rate" in w for w in r.get("data", [])), (st, r if st != 200 else len(r.get("data", []))))
+    # one project with a revenue, a labour and a vendor row, each written by the role that does the work
+    ndt = services(api)[0]["name"]
+    st, prj = pa.create("project", {"project_name": "Visibilitas biaya", "customer": "CUST-0001", "state": "running"})
+    if not check("project for the visibility checks", st == 201, (st, prj)):
+        return
+    p = prj["name"]
+    st, w = api.create("worker", {"worker_name": "Upah Rahasia", "day_rate": 300_000, "cost_day_rate": 200_000})
+    st, ts = pa.create("timesheet", {"project": p, "worker": w["name"], "work_date": "2026-11-05", "days": 1, "description": "Shift"})
+    submit_doc(pa, "timesheet", ts["name"], "project admin submits a timesheet (labour row -200.000)") if st == 201 else None
+    st, vb = pm.create("vendor_bill", {"vendor": "VND-0001", "project": p, "bill_no": "VIS-1", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 1_000_000}]})
+    submit_doc(pm, "vendor_bill", vb["name"], "purchasing submits a project vendor bill (vendor row)") if st == 201 else None
+    st, inv = sm.create("sales_invoice", {"customer": "CUST-0001", "project": p, "items": [{"item": ndt, "qty": 1, "rate": 5_000_000}]})
+    invn = submit_doc(sm, "sales_invoice", inv["name"], "sales_manager submits a project invoice (revenue row by its flow)", force=True) if st == 201 else None
+    flt = "&filter=" + urllib.parse.quote("project == '%s'" % p)
+    eq("owner sees the three kinds", sorted({r["kind"] for r in api.find("project_ledger", "project == '%s'" % p)}), ["labor", "revenue", "vendor"])
+    for who, cl, want in (("sales_manager", sm, ["revenue"]), ("purchasing_manager", pm, ["vendor"])):
+        st, rows = cl.call("GET", "/api/v1/r/project_ledger?limit=500" + flt)
+        eq(f"{who} reads only {want[0]} rows of the project ledger", sorted({r["kind"] for r in rows.get("data", [])}) if st == 200 else st, want)
+    st, r = sm.call("GET", "/api/v1/r/project_ledger?limit=500&filter=" + urllib.parse.quote("kind == 'labor'"))
+    check("sales_manager: a filter for labour rows finds nothing", st != 200 or not r.get("data"), (st, r))
+    req = urllib.request.Request(sm.base + "/api/v1/export/r/project_ledger", headers=sm.headers())
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            est = resp.status
+    except urllib.error.HTTPError as e:
+        est = e.code
+    eq("sales_manager cannot export the project ledger", est, 403)
+    st, d = sm.call("GET", "/api/v1/dashboards/project_margin")
+    shown = sorted(w["name"] for w in d.get("widgets", []) if not w.get("hidden")) if st == 200 else st
+    eq("project_margin for sales_manager: only the contract backlog shows (no margin made of revenue rows, no pay)", shown, ["backlog_total"])
+    fmd = dashboard(fm, "project_margin", 365)
+    check("project_margin for finance: margin widgets show", not fmd.get("margin_total", {}).get("hidden") and "margin_total" in fmd, list(fmd))
+    st, d = sm.call("GET", "/api/v1/dashboards/jasa_overview")
+    ws = {w["name"]: w for w in d.get("widgets", [])} if st == 200 else {}
+    eq("jasa_overview for sales_manager: no widget errors", {n: w["error"] for n, w in ws.items() if "error" in w}, {})
+    eq("jasa_overview for sales_manager: the worker widgets are hidden", [bool(ws.get(n, {}).get("hidden")) for n in ("active_workers", "workers_certifications")], [True, True])
+    st, d = pa.call("GET", "/api/v1/dashboards/jasa_overview")
+    ws = {w["name"]: w for w in d.get("widgets", [])} if st == 200 else {}
+    eq("jasa_overview for project_admin: the worker widgets show", [bool(ws.get(n, {}).get("hidden")) for n in ("active_workers", "workers_certifications")], [False, False])
+    # the flows still work for sales: the invoice cancelled by sales_manager reverses its revenue row
+    if invn:
+        st, resp = sm.verb("sales_invoice", invn, "cancel")
+        check("sales_manager cancels it (the reversing flow finds the revenue row)", st == 200, (st, resp))
+    rev = [r["amount"] for r in api.find("project_ledger", "project == '%s' && kind == 'revenue'" % p)]
+    eq("its revenue rows: +5.000.000 and -5.000.000", sorted(rev), [-5_000_000, 5_000_000])
+    prj = {"name": p}
+    st, resp = sm.create("project_ledger", {"project": prj["name"], "posting_date": "2026-11-20", "kind": "labor", "source_model": "manual", "source_name": "manual", "amount": 1})
+    check("sales_manager cannot write a labour row -> 403/422", st in (403, 422), (st, resp))
+
+
 def scenario_roles_jasa(api):
     sm, fm, pm, pa = (CTX.get(x) for x in ("sm", "fm", "pm", "pa"))
     if not all((sm, fm, pm, pa)):
@@ -2399,7 +2464,9 @@ _PIPE = dict({r: _R for r in ("finance_manager", "purchasing_manager", "project_
              sales_manager=_ALL, sales_rep={"read", "create", "write"})          # sales_rep: own records (if: owner == user.name)
 _STOCK_DOC = {"head_office": _ALL, "outlet_staff": _RCWS}
 MATRIX = {
-    **{m: _MASTER for m in ("vendor", "uom_conversion", "price_list", "tax_code", "currency", "exchange_rate", "worker")},
+    **{m: _MASTER for m in ("vendor", "uom_conversion", "price_list", "tax_code", "currency", "exchange_rate")},
+    # worker carries pay (hidden_for is not enforced): not readable by sales or purchasing (audit L1)
+    "worker": {r: v for r, v in _MASTER.items() if r not in ("sales_manager", "purchasing_manager")},
     "uom": dict(_MASTER, field_sales=_R),
     # field_sales (distribution): a salesman reads his own customers (role scope salesman) and cannot change their credit
     "customer": dict(_MASTER, sales_rep={"read", "create", "write"}, field_sales=_R),     # crm.convert_lead makes customers for sales reps
@@ -2426,11 +2493,12 @@ MATRIX = {
     "wage_sheet": {"head_office": {"read", "create", "write", "export", "print"}, "outlet_staff": {"create"}},
     "giro": {"finance_manager": {"read", "create", "write", "export", "print"}, "sales_manager": {"read", "create", "write", "export", "print"},
              "field_sales": _R},
-    **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("assignment", "acceptance")},
-    "timesheet": {"project_admin": _ALL | {"import"}, "sales_manager": _R, "finance_manager": _R},
+    "acceptance": {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R},
+    "assignment": {"project_admin": _ALL, "finance_manager": _R},                     # cost rates: not for sales (audit L1)
+    "timesheet": {"project_admin": _ALL | {"import"}, "finance_manager": _R},
     "project": {"project_admin": _ALL, "sales_manager": {"read", "write"}, "finance_manager": {"read", "write"}},   # write for the billing flows
     "project_ledger": {"project_admin": {"read", "create", "export"}, "finance_manager": {"read", "create", "export"},
-                       "sales_manager": {"read", "create", "export"}, "purchasing_manager": {"read", "create"}},
+                       "sales_manager": {"read", "create"}, "purchasing_manager": {"read", "create"}},   # rows: revenue / vendor only
     "project_expense": {"project_admin": _ALL, "finance_manager": _ALL - {"delete"}, "sales_manager": _R, "purchasing_manager": _R},
     "project_guard": {"purchasing_manager": {"create"}, "finance_manager": {"create"}},
     "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R, "field_sales": _RP},
@@ -4461,7 +4529,7 @@ day_one_produksi.bind(sys.modules[__name__])
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
