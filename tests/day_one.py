@@ -2467,11 +2467,11 @@ def scenario_cost_visibility(api):
         st, ex = pa.create("project_expense", dict({"project": p, "category": "travel", "description": desc, "amount": 700_000}, **extra))
         exp[desc] = submit_doc(pa, "project_expense", ex["name"], f"project admin submits expense '{desc}'") if st == 201 else None
     def expenses(cl, extra=""):
-        st, r = cl.call("GET", "/api/v1/r/project_expense?limit=500" + flt + extra)
+        st, r = cl.call("GET", "/api/v1/r/project_expense?limit=500&filter=" + urllib.parse.quote(("project == '%s'" % p) + extra))
         return sorted(x["description"] for x in r.get("data", [])) if st == 200 else st
     eq("project_admin reads both expenses", expenses(pa), ["Bensin internal", "Hotel ditagihkan"])
     eq("sales_manager reads only the expense billed on to the client", expenses(sm), ["Hotel ditagihkan"])
-    eq("sales_manager: a filter for the internal cost finds nothing", expenses(sm, "&filter=" + urllib.parse.quote("description == 'Bensin internal'")), [])
+    eq("sales_manager: a filter for the internal cost finds nothing", expenses(sm, " && description == 'Bensin internal'"), [])
     eq("purchasing_manager reads no expense that links no vendor bill", expenses(pm), [])
     if exp.get("Bensin internal"):
         st, r = sm.call("GET", f"/api/v1/r/project_expense/{Api.q(exp['Bensin internal'])}")
@@ -4008,13 +4008,16 @@ def scenario_credit_limit_warning(api):
         [t.join() for t in th]
         check(f"round {rnd}: never 500", all(st != 500 for st, _ in out), out)
         eq(f"round {rnd}: at most one of the two goes through without the credit warning", sum(1 for st, _ in out if st == 200) <= 1, True)
+        live = [b.get("name") for st, b in out if st == 200]
         for (st, b), d in zip(out, drafts):
-            if st == 200:
-                fm.verb("sales_invoice", b.get("name"), "cancel")
-            elif st == 422 and not b.get("needs_force"):
+            if st == 422 and not b.get("needs_force"):
                 check(f"round {rnd}: the refused invoice says the credit limit was just used", any("batas kredit" in m.lower() for m in messages(b)), b)
                 st2, b2 = fm.verb("sales_invoice", d["name"], "submit")
-                check(f"round {rnd}: submitted again it shows the credit warning (needs_force)", st2 == 422 and b2.get("needs_force") is True, (st2, b2))
+                check(f"round {rnd}: submitted again (the other still live) it shows the credit warning (needs_force)", st2 == 422 and b2.get("needs_force") is True, (st2, b2))
+                if st2 == 200:
+                    live.append(b2.get("name"))
+        for n in live:
+            fm.verb("sales_invoice", n, "cancel")
 
 
 def scenario_po_approval_fnb(api):
