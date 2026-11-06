@@ -6,7 +6,7 @@ and may do everything. A model without `permissions:` would be open to every mem
 
 All roles live in the `users` module, which every module requires, so a permission never names a role the site lacks.
 An app lists the roles it uses in `roles:` (`crm`: sales_rep, sales_manager; `jasa_proyek`: sales_manager,
-finance_manager, purchasing_manager, project_admin; `fnb_cabang`: head_office, outlet_staff).
+finance_manager, purchasing_manager, project_admin; `fnb_cabang` and `ritel_cabang`: head_office, outlet_staff).
 
 Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e export, p print, i import.
 **all** = r c w d s x a e p (no import unless written). `outlet_staff` has a row scope
@@ -15,7 +15,9 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | Model | sales_manager | finance_manager | purchasing_manager | project_admin | head_office | outlet_staff | sales_rep |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | customer (with contact_person) | r c w p | r c w p | r c w p | r c w p | r c w p | r | r c w (`crm.convert_lead` makes customers) |
-| item, outlet | r c w p | r c w p | r c w p | r c w p | r c w p | r | r |
+| item | r c w p | r c w p | r c w p | r c w p | r c w p i (`item_master` import) | r | r |
+| outlet | r c w p | r c w p | r c w p | r c w p | r c w p | r | r |
+| item_category | r c w p | r c w p | r c w p | r c w p | r c w d p | r | r |
 | vendor, uom, uom_conversion, price_list, tax_code, currency, exchange_rate, worker | r c w p | r c w p | r c w p | r c w p | r c w p | r | |
 | user | r | r | r | r | r | r | r |
 | quotation, customer_order | all | r p | | r c w s (submit held by `manager_approval`) | | | |
@@ -30,14 +32,16 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | purchase_request | | | all | r c w s | all | r c w s | |
 | purchase_order | | r p | all | | all | | |
 | vendor_bill | | r s p | all | | all | | |
-| goods_receipt | | | all | | all | r c w s | |
+| goods_receipt | | | all | | all + i (`opening_stock` import) | r c w s | |
 | stock_move, stock_balance (written by hooks only) | | | | | r e | r | |
 | stock_transfer | | | | | all | r | |
 | stock_transfer_receipt | | | | | all | r c w s x | |
 | stock_count, stock_adjustment | | | | | all | r c w s | |
 | stock_adjustment_value (rows written by flows only: every field read_only; old adjustments by flow `adjustment_value_backfill`) | | | | | r c e | r c | |
 | recipe | | | | | r c w d e | r | |
-| outlet_sales | | | | | all + i | r c w s while `source != 'moka'`, else r | |
+| outlet_sales | | | | | all + i | r c w s while `source == 'form'`, else r (records from Moka, a POS file or Loyverse are head office's imports) | |
+| outlet_takings | | | | | all + i | r c w s | |
+| consignment_settlement | | | | | all except d (a deleted cancelled settlement would free its month) | | |
 | lead, deal, activity | all | r | r | r | r | r | r c w on own records (`owner == user.name`) |
 
 Approvals (contract 0007) decide on top of this: `quotation` submit → `sales_manager`; `sales_invoice` above

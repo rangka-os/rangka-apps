@@ -66,3 +66,6 @@ jobs:
       - name: day_one demo-fnb
         working-directory: rangka-apps
         run: python tests/day_one.py --site demo-fnb
+      - name: day_one demo-ritel
+        working-directory: rangka-apps
+        run: python tests/day_one.py --site demo-ritel

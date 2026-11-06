@@ -14,7 +14,7 @@ fields:
   - name: qty
     type: float
     label: {id: Qty}
-    help: {id: 'Negatif di baris retur dari Moka. Bahan tidak dikembalikan ke stok'}
+    help: {id: 'Negatif di baris retur dari file POS. Barang atau bahan tidak dikembalikan ke stok'}
     required: true
     stock: true
   - name: gross

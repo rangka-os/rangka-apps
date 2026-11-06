@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: outlet_takings
+label: {id: Setoran harian, en: Daily takings}
+icon: wallet
+is_submittable: true
+naming: STR-{YYYY}-{#####}
+title_field: date
+# What each payment method should have brought in per outlet per day (the POS's payment report) against what was
+# deposited or credited (cash banked, QRIS/EDC settlement after MDR). The difference per line is the shortfall head
+# office follows up. Matching a line to a bank statement line is manual for now (bank_ref holds the statement's
+# reference); a link to bank_statement comes with the money rail (plan Tahap 1). No stock, no ledger: submit only
+# freezes the day.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, import: true, print: true}
+  - {role: outlet_staff, read: true, create: true, write: true, submit: true}
+fields:
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    required: true
+    in_list: true
+  - name: date
+    type: date
+    label: {id: Tanggal}
+    required: true
+    default: today()
+    in_list: true
+  - name: lines
+    type: table
+    of: outlet_takings_line
+    label: {id: Per metode bayar}
+    min_rows: 1
+  - name: expected_total
+    type: currency
+    label: {id: Menurut POS}
+    compute: lines.map(l, l.expected).sum()
+    in_list: true
+  - name: received_total
+    type: currency
+    label: {id: Disetor atau diterima}
+    compute: lines.map(l, l.received).sum()
+    in_list: true
+  - name: fee_total
+    type: currency
+    label: {id: Potongan MDR}
+    compute: lines.map(l, l.fee).sum()
+  - name: difference_total
+    type: currency
+    label: {id: Selisih}
+    help: {id: 'Diterima ditambah potongan dikurangi menurut POS. Minus berarti setoran kurang'}
+    compute: lines.map(l, l.difference).sum()
+    in_list: true
+  - name: short
+    type: check
+    label: {id: Setoran kurang}
+    compute: difference_total < 0
+    in_list: true
+  - name: note
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: amounts_not_negative
+    on: save
+    check: "lines.map(l, l.expected < 0 || l.received < 0 || l.fee < 0 ? 1 : 0).sum() == 0"
+    message: {id: Nilai setoran dan potongan tidak boleh negatif}
+views:
+  list:
+    columns: [name, outlet, date, status, expected_total, received_total, difference_total, short]
+    filters: [outlet, short]
+    sort: -date
+  form:
+    layout:
+      - section: {id: Setoran}
+        columns:
+          - [outlet, date]
+          - [note]
+      - section: {id: Per metode bayar}
+        fields: [lines]
+      - section: {id: Ringkasan}
+        columns:
+          - [expected_total, received_total]
+          - [fee_total, difference_total]
