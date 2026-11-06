@@ -119,3 +119,23 @@ widgets:
     limit: 10
     columns: [name, worker_name, role_title, day_rate]
     span: 5
+  # Billing schedule (billing_milestone): what can be billed now, and what is due by date.
+  - name: ready_to_bill
+    type: number
+    label: {id: Siap ditagih}
+    description: {id: 'Termin yang berita acaranya sudah ada, belum ada fakturnya'}
+    model: billing_milestone
+    aggregate: sum
+    field: amount
+    filter: state == 'ready'
+    compact: true
+    span: 3
+  - name: milestones_due
+    type: list
+    label: {id: Termin jatuh tempo}
+    model: billing_milestone
+    filter: state == 'ready' || (state == 'planned' && trigger == 'date' && due_date <= today())
+    sort: due_date
+    limit: 10
+    columns: [project, title, amount, due_date, state]
+    span: 12

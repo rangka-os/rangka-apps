@@ -21,8 +21,10 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | vendor, uom, uom_conversion, price_list, tax_code, currency, exchange_rate, worker | r c w p | r c w p | r c w p | r c w p | r c w p | r | |
 | user | r | r | r | r | r | r | r |
 | quotation, customer_order | all | r p | | r c w s (submit held by `manager_approval`) | | | |
-| project, assignment, timesheet, acceptance | r | r | | all | | | |
-| sales_invoice | all | all | | | | | r |
+| project (finance and sales write only for the invoice flows that keep `billed_amount`; contract terms freeze once billed) | r w | r w | | all | | | |
+| assignment, timesheet, acceptance | r | r | | all | | | |
+| billing_milestone (state written by flows; no delete; finance and sales write only through the invoice flows, an amount edit by them is refused) | r w | r w e | | r c w e i | | | |
+| sales_invoice | all | all | | r | | | r |
 | withholding | r p | all | | | | | |
 | invoice_reminder | r c w d e | r c w d e | | | | | r c |
 | bank_transaction | r c w e i | r c w d e i | | | r c w e i | | |

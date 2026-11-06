@@ -11,6 +11,8 @@ permissions:
   - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: sales_rep, read: true}
+  # project admins read invoices: the project flows that freeze contract terms read them as the project admin
+  - {role: project_admin, read: true}
 fields:
   - name: kind
     type: select
@@ -29,6 +31,7 @@ fields:
     required: true
     in_list: true
     peek: [outstanding, payment_days, npwp]
+    default: billing_milestone.customer
   - name: customer_order
     type: link
     to: customer_order
@@ -37,10 +40,27 @@ fields:
     type: link
     to: project
     label: {id: Proyek}
+    default: billing_milestone.project
+  # The billing milestone this invoice bills (projects module); flows mark it invoiced on submit, ready on cancel.
+  # milestone_claim (unique) = milestone:<its bill_token> from the invoice's first save: one invoice per milestone, draft
+  # or submitted, and the database refuses a second one even when both are made at the same moment (an amendment
+  # re-pointed at the milestone included). A cancelled invoice keeps its claim (the kernel does not recompute on
+  # cancel); the cancel flow sets the milestone's bill_token to that invoice, so the next invoice claims a new key.
+  - name: billing_milestone
+    type: link
+    to: billing_milestone
+    label: {id: Termin tagihan}
+  - name: milestone_claim
+    type: data
+    label: {id: Faktur untuk termin ini}
+    hidden: true
+    unique: true
+    compute: "billing_milestone == '' ? '' : billing_milestone + ':' + billing_milestone.bill_token"
   - name: acceptance
     type: link
     to: acceptance
     label: {id: Berita acara}
+    default: billing_milestone.acceptance
   - name: po_number
     type: data
     label: {id: No. PO pelanggan}
@@ -222,6 +242,42 @@ rules:
     on: save
     check: project == '' || project.customer == customer
     message: {id: Proyek harus milik pelanggan yang sama}
+  - name: milestone_same_project
+    on: save
+    check: billing_milestone == '' || billing_milestone.project == project
+    message: {id: Termin harus milik proyek yang sama}
+  - name: milestone_same_customer
+    on: save
+    check: billing_milestone == '' || billing_milestone.customer == customer
+    message: {id: Termin harus milik pelanggan yang sama}
+  - name: milestone_amount_cap
+    on: save
+    check: billing_milestone == '' || dpp <= billing_milestone.amount
+    message: {id: DPP faktur tidak boleh melebihi nilai termin}
+  - name: retainer_invoice_via_milestone
+    on: save
+    check: project == '' || project.billing_model != 'retainer' || billing_milestone != '' || kind == 'retention'
+    message: {id: 'Faktur proyek retainer dibuat dari termin bulanannya (satu termin, satu faktur per bulan)'}
+  - name: retainer_invoice_monthly
+    on: save
+    check: project == '' || project.billing_model != 'retainer' || billing_milestone == '' || billing_milestone.kind == 'retainer'
+    message: {id: 'Faktur proyek retainer hanya dari termin jenis Retainer (satu per bulan)'}
+  - name: retention_same_project
+    on: save
+    check: retention_of == '' || retention_of.project == project
+    message: {id: Faktur retensi harus untuk proyek yang sama dengan faktur asalnya}
+  - name: retainer_invoice_within_fee
+    on: save
+    check: project == '' || project.billing_model != 'retainer' || project.contract_value == 0 || dpp <= project.contract_value
+    message: {id: Faktur retainer tidak boleh melebihi fee bulanan (nilai kontrak)}
+  - name: milestone_ready_to_bill
+    on: save
+    check: billing_milestone == '' || billing_milestone.trigger != 'acceptance' || billing_milestone.state == 'ready' || (billing_milestone.sales_invoice != '' && billing_milestone.sales_invoice == name)
+    message: {id: Termin ini belum siap ditagih (berita acaranya belum ada atau sudah dibatalkan)}
+  - name: milestone_not_invoiced
+    on: save
+    check: billing_milestone == '' || billing_milestone.state != 'invoiced' || billing_milestone.sales_invoice == name
+    message: {id: Termin ini sudah ditagih di faktur lain}
   - name: dp_base_above_lines
     on: save
     level: warn
@@ -304,7 +360,7 @@ views:
     layout:
       - section: {id: Pelanggan}
         columns:
-          - [kind, customer, po_number, customer_order, project]
+          - [kind, customer, po_number, customer_order, project, billing_milestone]
           - [posting_date, due_date, outlet, acceptance]
       - section: {id: Barang/jasa}
         fields: [items]
