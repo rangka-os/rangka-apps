@@ -4709,6 +4709,27 @@ def scenario_ritel_access(api):
         check("outlet staff submitting a source file draft -> 403", denied(st, resp), (st, resp))
         if api.get("outlet_sales", imported["name"]).get("date") == "2026-11-05":
             api.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(imported['name'])}")
+    # Audit L2/L3 follow-up (card t_66667236): the form -> moka probe of fnb (Cimahi) for ritel's own POS sources. A
+    # third outlet on the daily form and its staff member: their form record must not become source file or loyverse
+    # (only the outlet_staff grant `if: source == 'form'`, read after the PATCH, stops it).
+    st, form_outlet = api.create("outlet", {"outlet_name": "Cinunuk (uji formulir)", "code": "CNK", "sales_source": "form"})
+    k = CTX.get("kernel")
+    if check("a daily-form outlet for the probe", st == 201, (st, form_outlet)) and k:
+        pw = secrets.token_urlsafe(18)
+        code, out = k.user_add("rina.cinunuk@tokocontoh.test", "outlet_staff", CTX["org"], "Rina Contoh", outlets=form_outlet["name"], password=pw)
+        cnk = Api.login(k.base, "rina.cinunuk@tokocontoh.test", pw) if code == 0 else None
+        if check("Cinunuk staff signed in", cnk is not None, out):
+            st, own = cnk.create("outlet_sales", {"outlet": form_outlet["name"], "date": "2026-11-06", "lines": [{"item": "BRG-0001", "qty": 1}]})
+            if check("Cinunuk staff creates a daily form record (201, source form)", st == 201 and own.get("source") == "form", (st, own)):
+                net = own.get("net_total")
+                for src in ("file", "loyverse"):
+                    st, resp = cnk.patch("outlet_sales", own["name"], {"source": src, "lines": [{"item": "BRG-0001", "qty": -5, "gross": 0, "refund": 900_000}]})
+                    check(f"Cinunuk staff turning the form record into source {src} with a refund -> 403", denied(st, resp), (st, resp))
+                    st, resp = cnk.patch("outlet_sales", own["name"], {"source": src})
+                    check(f"Cinunuk staff changing only source to {src} -> 403", denied(st, resp), (st, resp))
+                kept = api.get("outlet_sales", own["name"])
+                eq("the form record keeps source form and its net", (kept["source"], kept["net_total"]), ("form", net))
+                api.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(own['name'])}")
 
 
 def setup_demo_ritel(api, k):
