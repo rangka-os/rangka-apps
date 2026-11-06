@@ -39,8 +39,9 @@ widgets:
     span: 3
   - name: takings_short
     type: number
-    label: {id: Setoran kurang}
-    description: {id: Jumlah selisih setoran yang minus}
+    # G10: label "kurang" + angka minus terbaca minus ganda; label netral, tanda minus yang menjelaskan
+    label: {id: Selisih setoran}
+    description: {id: 'Minus berarti setoran kurang dari laporan kasir'}
     model: outlet_takings
     aggregate: sum
     field: difference_total
