@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The wages of a submitted batch become a wage sheet (one line per labour row), dated the production day.
+name: wage_sheet_on_batch_submitted
+label: {id: Upah borongan dari batch}
+on: production_batch.submitted
+if: size(event.labour) > 0
+steps:
+  - create: wage_sheet
+    set:
+      production_batch: event.name
+      work_date: event.production_date
+      lines: "event.labour.map(l, {'worker': l.worker, 'stage': l.stage, 'qty': l.qty, 'rate': l.rate, 'amount': l.amount, 'work_date': event.production_date, 'cancelled': false})"

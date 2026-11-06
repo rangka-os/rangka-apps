@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside a batch's cancel: refused when the finished-goods outlet no longer holds the batch's outputs (they were used
+# by a later batch or sold), or the reversal would leave that stock below zero while its value sits elsewhere.
+name: batch_cancel_guard
+label: {id: Batch yang hasilnya sudah terpakai tidak bisa dibatalkan}
+on: production_batch.cancelled
+steps:
+  # the cancel has already reversed the moves: a balance of any output (product or by-product) below zero means it was used
+  - {find_all: stock_balance, where: "outlet == event.output_outlet && item in event.outputs.map(o, o.item) && qty < -0.0005", as: used}
+  - if: size(used) > 0
+    create: production_guard
+    set: {reason: "'output_used'", document: event.name}

@@ -1,0 +1,149 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Hasil produksi per batch. The batch number is the production code printed on the pack; the expiry date follows the
+# product's shelf life. Submit takes the materials out of the production outlet at their moving average and puts
+# the outputs into the finished-goods outlet at the value of those materials, split by cost_share (contract 0021,
+# K-o). The actual cost (HPP) of the batch adds the piece-rate wages and the overhead rate to the material cost; the
+# stock value holds the material cost only until K-r. Cancel reverses the stock (stock.reverse_moves).
+name: production_batch
+label: {id: Hasil produksi (batch), en: Production batch}
+icon: stock
+is_submittable: true
+naming: BATCH-{YY}{MM}-{####}
+title_field: item
+on_submit: [stock.post_moves]
+on_cancel: [stock.reverse_moves]
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: outlet_staff, read: true, create: true, write: true, submit: true, print: true}
+fields:
+  - {name: work_order, type: link, to: work_order, label: {id: SPK}, required: true, in_list: true, peek: [qty, due_date]}
+  - {name: item, type: link, to: item, label: {id: Produk}, default: work_order.item, read_only: true, in_list: true}
+  - {name: bom, type: link, to: bom, label: {id: Resep (BOM)}, default: work_order.bom, read_only: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Tempat produksi (bahan keluar)}, default: work_order.outlet, required: true}
+  - {name: output_outlet, type: link, to: outlet, label: {id: Gudang barang jadi}, required: true}
+  - {name: production_date, type: date, label: {id: Tanggal produksi}, default: today(), required: true, in_list: true}
+  - {name: shelf_life_days, type: int, label: {id: Umur simpan (hari)}, default: item.shelf_life_days}
+  - name: expiry_date
+    type: date
+    label: {id: Kedaluwarsa}
+    compute: "shelf_life_days > 0 ? production_date + duration(shelf_life_days) : ''"
+    in_list: true
+  # the SPK's qty, not typed on the batch: output, materials and wages are checked against it
+  - {name: planned_qty, type: float, label: {id: Qty rencana}, default: work_order.qty, read_only: true}
+  # no min_rows: a batch created empty is drafted from its BOM by the flow batch_from_bom (rules check at submit)
+  - {name: materials, type: table, of: production_material, label: {id: Bahan terpakai}}
+  - {name: outputs, type: table, of: production_output, label: {id: Hasil}}
+  - {name: reject_qty, type: float, label: {id: Qty reject}}
+  - {name: labour, type: table, of: production_labour, label: {id: Upah borongan}}
+  - {name: good_qty, type: float, label: {id: Hasil baik (produk utama)}, compute: "outputs.map(o, o.item == item ? o.qty : 0).sum()", in_list: true}
+  - {name: yield_percent, type: float, label: {id: Rendemen aktual (%)}, compute: "planned_qty > 0 ? round(good_qty * 10000 / planned_qty) / 100 : 0"}
+  - {name: share_total, type: float, label: {id: Total porsi biaya (%)}, compute: "outputs.map(o, o.cost_share).sum()"}
+  - {name: main_share, type: float, label: {id: Porsi biaya produk utama (%)}, compute: "outputs.map(o, o.item == item ? o.cost_share : 0).sum()"}
+  - {name: material_cost, type: currency, label: {id: Biaya bahan (aktual)}, read_only: true}
+  - {name: labour_cost, type: currency, label: {id: Upah borongan}, compute: "labour.map(l, l.amount).sum()"}
+  - {name: overhead_rate, type: currency, label: {id: Overhead per satuan}, default: bom.overhead_per_unit}
+  - {name: overhead_cost, type: currency, label: {id: Overhead}, compute: round(good_qty * overhead_rate)}
+  # The product's share of the materials, plus all wages and overhead (by-products carry only their material share).
+  - name: hpp_total
+    type: currency
+    label: {id: HPP batch (produk utama)}
+    compute: "round(material_cost * main_share / 100) + labour_cost + overhead_cost"
+    in_list: true
+  - {name: hpp_per_unit, type: currency, label: {id: HPP per satuan}, compute: "good_qty > 0 ? round(hpp_total / good_qty) : 0", in_list: true}
+  - {name: standard_unit_cost, type: currency, label: {id: HPP standar per satuan}, default: bom.unit_cost, read_only: true}
+  - {name: notes, type: text, label: {id: Catatan}}
+stock:
+  date: production_date
+  moves:
+    - {lines: materials, out: outlet, reason: production_out, cogs: cogs}
+    - {lines: outputs, in: output_outlet, reason: production_in, cost: {consumed: true, split: cost_share}}
+  cogs_total: material_cost
+# Deviations from the plan wait for head office: materials that are not in the BOM, or more good output than 110% of
+# the planned qty (a batch puts stock in at the value of what it took out, so an inflated output dilutes the cost).
+approvals:
+  - name: material_outside_bom
+    on: submit
+    when: "materials.map(m, bom.lines.map(b, b.item == m.item ? 1 : 0).sum() > 0 ? 0 : 1).sum() > 0"
+    approvers: [head_office]
+    label: {id: Bahan di luar resep, en: Material not in the BOM}
+  # materials per BOM line against the recipe scaled to the good output: under 90% (output inflated against what was
+  # used, so the stock comes in too cheap) or over 120% (waste, or materials booked to the wrong batch)
+  - name: material_off_bom
+    on: submit
+    when: "good_qty > 0 && bom.output_qty > 0 && bom.lines.map(b, materials.map(m, m.item == b.item ? m.qty : 0).sum() < b.qty * good_qty / bom.output_qty * 0.9 || materials.map(m, m.item == b.item ? m.qty : 0).sum() > b.qty * good_qty / bom.output_qty * 1.2 ? 1 : 0).sum() > 0"
+    approvers: [head_office]
+    label: {id: Pemakaian bahan menyimpang dari resep, en: Materials off the BOM}
+  # wages above the BOM's standard piece cost for the good output (+10%)
+  - name: labour_above_standard
+    on: submit
+    when: labour_cost > round(bom.labour_per_unit * good_qty * 1.1)
+    approvers: [head_office]
+    label: {id: Upah borongan di atas standar, en: Piece-rate wages above standard}
+  # outputs against the BOM: the product's cost share is 100% less the by-products', each by-product keeps its share and
+  # at most 120% of its standard qty for the good output (a share or qty moved between outputs shifts stock value)
+  - name: output_off_bom
+    on: submit
+    when: "main_share < 100 - bom.byproduct_share - 0.005 || main_share > 100 - bom.byproduct_share + 0.005 || bom.byproducts.map(b, outputs.map(o, o.item == b.item ? o.cost_share : 0).sum() < b.cost_share - 0.005 || outputs.map(o, o.item == b.item ? o.cost_share : 0).sum() > b.cost_share + 0.005 || (bom.output_qty > 0 && outputs.map(o, o.item == b.item ? o.qty : 0).sum() > b.qty * good_qty / bom.output_qty * 1.2) ? 1 : 0).sum() > 0"
+    approvers: [head_office]
+    label: {id: Hasil atau porsi biaya menyimpang dari resep, en: Outputs off the BOM}
+  - name: over_planned_output
+    on: submit
+    when: good_qty > planned_qty * 1.1
+    approvers: [head_office]
+    label: {id: Hasil melebihi rencana, en: Output above plan}
+rules:
+  - name: outputs_of_bom
+    on: save
+    check: "outputs.map(o, o.item == item || bom.byproducts.map(b, b.item == o.item ? 1 : 0).sum() > 0 ? 0 : 1).sum() == 0"
+    message: {id: Hasil hanya produk SPK atau produk sampingan resepnya}
+  - name: output_outlet_of_staff
+    on: save
+    check: "!('outlet_staff' in user.roles) || output_outlet in user.outlets"
+    message: {id: Gudang barang jadi harus outlet tempat kamu bekerja}
+  - name: work_order_released
+    on: save
+    check: work_order.docstatus == 1 && item == work_order.item && bom == work_order.bom && planned_qty == work_order.qty
+    message: {id: 'Batch hanya untuk SPK yang sudah dirilis (diajukan); kalau SPK-nya diganti, buat batch baru'}
+  - name: has_lines
+    on: submit
+    check: size(materials) > 0 && size(outputs) > 0
+    message: {id: Isi bahan terpakai dan hasil}
+  - name: shares_add_up
+    on: save
+    check: "size(outputs) == 0 || (share_total > 99.995 && share_total < 100.005)"
+    message: {id: Porsi biaya semua hasil harus berjumlah 100%}
+  - name: main_product_out
+    on: submit
+    check: good_qty > 0
+    message: {id: Isi hasil baik produk utama}
+  - name: qty_positive
+    on: save
+    check: "materials.map(m, m.qty <= 0 ? 1 : 0).sum() + outputs.map(o, o.qty <= 0 ? 1 : 0).sum() + labour.map(l, l.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: 'Jumlah bahan, hasil dan upah harus lebih dari 0'}
+  - name: reject_not_negative
+    on: save
+    check: reject_qty >= 0
+    message: {id: Qty reject tidak boleh minus}
+views:
+  list:
+    columns: [name, production_date, item, good_qty, yield_percent, hpp_per_unit, expiry_date, status]
+    filters: [item, outlet, work_order]
+    sort: -production_date
+  form:
+    layout:
+      - section: {id: Batch}
+        columns:
+          - [work_order, item, bom, planned_qty]
+          - [production_date, shelf_life_days, expiry_date, outlet, output_outlet]
+      - section: {id: Bahan terpakai}
+        fields: [materials]
+      - section: {id: Hasil}
+        fields: [outputs, reject_qty]
+      - section: {id: Upah borongan}
+        fields: [labour]
+      - section: {id: HPP aktual}
+        columns:
+          - [material_cost, labour_cost, overhead_rate, overhead_cost]
+          - [good_qty, yield_percent, hpp_total, hpp_per_unit, standard_unit_cost]
+      - section: {id: Catatan}
+        fields: [notes]

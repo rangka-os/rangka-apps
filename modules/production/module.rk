@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+# Small-factory production: multi-level bills of materials with a rolled-up standard cost, work orders (SPK), batch
+# results with expiry, actual cost per batch (materials at the cost the kernel took them out, piece-rate wages and a
+# simple overhead rate) and piece-rate wage sheets per worker. A batch takes materials out and puts the products in
+# at the value of those materials through the declarative stock block of contract 0021 (K-o). Wages and overhead are
+# in the batch's actual cost (HPP) but not in the stock value until K-r.
+name: production
+version: 1.0.0
+title: {id: Produksi, en: Production}
+requires: {rangka: '>=0.5', users: ^1.0, catalogue: ^1.0, outlets: ^1.0, stock: ^1.0, workforce: ^1.0}
+optional: {orders: ^1.0}
+hooks: [stock.reverse_moves]
