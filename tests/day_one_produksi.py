@@ -291,7 +291,7 @@ def scenario_produksi_staff(api):
 
 def scenario_dashboards_produksi(api):
     ws = dashboard(api, "produksi_overview")
-    for w in ("batches", "yield_avg", "hpp_total", "reject_batches", "recent_batches", "expiring", "open_work_orders"):
+    for w in ("batches", "yield_avg", "hpp_total", "reject_batches", "recent_batches", "perlu_kedaluwarsa", "open_work_orders"):
         check(f"produksi_overview has {w}", w in ws, sorted(ws))
     # G10: tidak ada lagi angka yang menjumlah satuan berbeda; grafik hasil hanya produk jadi (bukan isi/adonan setengah jadi)
     check("produksi_overview has no mixed-unit good_qty total", "good_qty" not in ws, sorted(ws))

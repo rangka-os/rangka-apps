@@ -5,6 +5,17 @@ default_period: 30
 cache: 5m
 # The owner's questions: how much did we make, what did it really cost, how much went to waste, what expires soon.
 widgets:
+  # riset desain K-A2: "perlu_" lists open the home as "Perlu diurus" rows (P2); batch qty is left out (units differ)
+  - name: perlu_kedaluwarsa
+    type: list
+    label: {id: Batch mendekati kedaluwarsa}
+    description: {id: Kedaluwarsa dalam 30 hari}
+    model: production_batch
+    filter: "docstatus == 1 && expiry_date != '' && expiry_date <= today() + duration('30d')"
+    sort: expiry_date
+    limit: 10
+    columns: [item, expiry_date, name]
+    span: 12
   - name: batches
     type: number
     label: {id: Batch selesai}
@@ -79,16 +90,6 @@ widgets:
     limit: 10
     columns: [name, item, good_qty, hpp_per_unit, standard_unit_cost, expiry_date]
     span: 12
-  - name: expiring
-    type: list
-    label: {id: Batch mendekati kedaluwarsa}
-    description: {id: Kedaluwarsa dalam 30 hari}
-    model: production_batch
-    filter: "docstatus == 1 && expiry_date != '' && expiry_date <= today() + duration('30d')"
-    sort: expiry_date
-    limit: 10
-    columns: [name, item, good_qty, expiry_date]
-    span: 6
   - name: open_work_orders
     type: list
     label: {id: SPK berjalan}
@@ -97,4 +98,4 @@ widgets:
     sort: due_date
     limit: 10
     columns: [name, item, qty, due_date]
-    span: 6
+    span: 12

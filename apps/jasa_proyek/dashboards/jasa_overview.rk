@@ -4,6 +4,16 @@ label: {id: Ringkasan jasa proyek, en: Project services overview}
 default_period: 30
 cache: 5m
 widgets:
+  # riset desain K-A2: "perlu_" lists open the home as "Perlu diurus" rows (P2); the amount is the last money column
+  - name: perlu_lewat_jatuh_tempo
+    type: list
+    label: {id: Faktur lewat jatuh tempo}
+    model: sales_invoice
+    filter: docstatus == 1 && outstanding > 0 && due_date < today()
+    sort: due_date
+    limit: 10
+    columns: [customer, due_date, name, outstanding]
+    span: 12
   # Money first (P7, owner on a phone): receivables, overdue, ready to bill and billed, then what is overdue by name.
   # List columns lead with who and how much, so the first two fit a 375px screen without scrolling sideways.
   - name: outstanding_ar
@@ -46,15 +56,6 @@ widgets:
     period: posting_date
     compact: true
     span: 3
-  - name: overdue_invoices
-    type: list
-    label: {id: Faktur lewat jatuh tempo}
-    model: sales_invoice
-    filter: docstatus == 1 && outstanding > 0 && due_date < today()
-    sort: due_date
-    limit: 10
-    columns: [customer, outstanding, due_date, name, amount_due]
-    span: 12
   - name: milestones_due
     type: list
     label: {id: Termin jatuh tempo}

@@ -3535,7 +3535,7 @@ def scenario_dashboards_fnb(api):
         if x["date"] >= since30:
             by_day[x["date"]] = by_day.get(x["date"], 0) + x["net_total"]
     eq("fnb_overview net by day (chart, grain day)", chart_map(ws["net_by_day"]), by_day)
-    eq("fnb_overview 'Stok minus' list = balances below zero", (ws["negative_stock"]["total"], sorted(r["name"] for r in ws["negative_stock"]["rows"])), (len(negs), sorted(r["name"] for r in negs)))
+    eq("fnb_overview 'Stok minus' list = balances below zero", (ws["perlu_stok_minus"]["total"], sorted(r["name"] for r in ws["perlu_stok_minus"]["rows"])), (len(negs), sorted(r["name"] for r in negs)))
     check("fnb_overview 'Stok minus' list is not empty (the stock scenario made a negative balance)", len(negs) >= 1, negs)
     eq("fnb_overview negative_count", ws["negative_count"]["value"], len(negs))
 
@@ -4794,7 +4794,7 @@ def scenario_dashboards_ritel(api):
         eq("ritel_overview margin_period", num(ws["margin_period"]), sum(s["margin"] for s in in30))
         eq("ritel_overview net by outlet", chart_map(ws["net_by_outlet"]), {o: sum(s["net_total"] for s in in30 if s["outlet"] == o) for o in {s["outlet"] for s in in30}})
         eq("ritel_overview takings_short = -50.000", num(ws["takings_short"]), -50_000)
-        check("ritel_overview lists the Cileunyi bestseller as negative stock", ws["negative_stock"]["total"] >= 1, ws["negative_stock"].get("total"))
+        check("ritel_overview lists the Cileunyi bestseller as negative stock", ws["perlu_stok_minus"]["total"] >= 1, ws["perlu_stok_minus"].get("total"))
     ws = dashboard(api, "ritel_stock", 30)
     if ws:
         bal = rows_all(api, "stock_balance")

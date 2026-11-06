@@ -6,6 +6,28 @@ cache: 5m
 # The owner's weekly questions: how much did we sell, what did we make, where is stock wrong, who is short on
 # takings. Sales count once submitted (docstatus 1); drafts from an import are not sales yet.
 widgets:
+  # riset desain K-A2: "perlu_" lists open the home as "Perlu diurus" rows (P2), then the numbers
+  - name: perlu_setoran_kurang
+    type: list
+    label: {id: Setoran kurang}
+    description: {id: 'Hari dan cabang dengan setoran di bawah laporan kasir'}
+    model: outlet_takings
+    filter: docstatus == 1 && short == true
+    period: date
+    sort: difference_total
+    limit: 10
+    columns: [outlet, date, expected_total, received_total, difference_total]
+    span: 12
+  - name: perlu_stok_minus
+    type: list
+    label: {id: Stok minus}
+    description: {id: 'Saldo di bawah nol: penjualan tercatat sebelum barang diterima, atau stok belum dihitung'}
+    model: stock_balance
+    filter: negative == true
+    sort: qty
+    limit: 10
+    columns: [item, outlet, qty]
+    span: 12
   - name: net_today
     type: number
     label: {id: Penjualan bersih hari ini}
@@ -100,25 +122,4 @@ widgets:
     field: refund_total
     filter: docstatus == 1 && refund_total > 0
     period: date
-    span: 6
-  - name: takings_short_list
-    type: list
-    label: {id: Setoran kurang}
-    description: {id: 'Hari dan cabang dengan setoran di bawah laporan kasir'}
-    model: outlet_takings
-    filter: docstatus == 1 && short == true
-    period: date
-    sort: difference_total
-    limit: 10
-    columns: [date, outlet, expected_total, received_total, difference_total]
-    span: 6
-  - name: negative_stock
-    type: list
-    label: {id: Stok minus}
-    description: {id: 'Saldo di bawah nol: penjualan tercatat sebelum barang diterima, atau stok belum dihitung'}
-    model: stock_balance
-    filter: negative == true
-    sort: qty
-    limit: 10
-    columns: [outlet, item, qty, value]
     span: 6

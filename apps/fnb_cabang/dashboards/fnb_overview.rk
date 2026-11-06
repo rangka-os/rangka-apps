@@ -14,15 +14,27 @@ widgets:
     limit: 10
     columns: [outlet, date, net_total]
     span: 12
+  # The negative-stock exception for head office: a sale may push a balance below zero, it is never refused.
   - name: perlu_stok_minus
     type: list
     label: {id: Stok minus}
+    description: {id: 'Saldo stok di bawah nol, perlu dicek kantor pusat'}
     model: stock_balance
     filter: negative == true
     sort: qty
-    limit: 10
+    limit: 20
     columns: [item, outlet, qty]
     span: 12
+  # Then the numbers, today first (P7: the owner checks today on the phone).
+  - name: net_today
+    type: number
+    label: {id: Penjualan bersih hari ini}
+    model: outlet_sales
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1 && date == today()
+    compact: true
+    span: 3
   - name: net_period
     type: number
     label: {id: Penjualan bersih}
@@ -33,10 +45,10 @@ widgets:
     filter: docstatus == 1
     period: date
     compact: true
-    span: 4
+    span: 3
   - name: margin_period
     type: number
-    label: {id: Margin}
+    label: {id: Laba kotor}
     description: {id: Penjualan bersih dikurangi harga pokok bahan}
     model: outlet_sales
     aggregate: sum
@@ -44,7 +56,7 @@ widgets:
     filter: docstatus == 1
     period: date
     compact: true
-    span: 4
+    span: 3
   - name: negative_count
     type: number
     label: {id: Stok minus}
@@ -52,7 +64,7 @@ widgets:
     model: stock_balance
     filter: negative == true
     good_when: down
-    span: 4
+    span: 3
   - name: net_by_outlet
     type: chart
     chart: bar
