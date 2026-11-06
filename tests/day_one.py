@@ -2069,7 +2069,7 @@ def scenario_project_margin(api):
     def margin():
         return sum(r["amount"] for r in rows())
     st, inv = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 40_000_000}]})
-    invn = submit_doc(fm, "sales_invoice", inv["name"], "finance submits a 40.000.000 project invoice") if st == 201 else None
+    invn = submit_doc(fm, "sales_invoice", inv["name"], "finance submits a 40.000.000 project invoice", force=True) if st == 201 else None
     st, cw = api.create("worker", {"worker_name": "Konsultan TP", "hour_rate": 500_000, "cost_hour_rate": 150_000})
     st, asg = pa.create("assignment", {"project": p, "worker": cw["name"], "start_date": "2026-11-01", "end_date": "2026-11-30", "rate_basis": "hour"})
     st, ts = pa.create("timesheet", {"project": p, "worker": cw["name"], "assignment": asg["name"], "work_date": "2026-11-05", "hours": 20, "description": "Analisis"})
@@ -2126,7 +2126,7 @@ def scenario_project_margin(api):
             check("once the expense is cancelled, its bill can be cancelled", st == 200, (st, resp))
     # a project invoice with DPP 0 (fully discounted) submits and cancels: its post and reverse rows have distinct keys
     st, z = fm.create("sales_invoice", {"customer": customer, "project": p, "discount_amount": 1_000_000, "items": [{"item": ndt, "qty": 1, "rate": 1_000_000}]})
-    zn = submit_doc(fm, "sales_invoice", z["name"], "finance submits a DPP 0 project invoice") if st == 201 else None
+    zn = submit_doc(fm, "sales_invoice", z["name"], "finance submits a DPP 0 project invoice", force=True) if st == 201 else None
     if zn:
         st, resp = fm.verb("sales_invoice", zn, "cancel")
         check("the DPP 0 project invoice can be cancelled (no entry_key clash)", st == 200, (st, resp))
