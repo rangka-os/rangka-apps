@@ -10,10 +10,12 @@ if: event.amount > 0 && event.status == 'unmatched'
 steps:
   # The invoice number is the payment reference (payment_instruction.reference). Customers type it as they like:
   # "INV-2026-00012", "inv 2026 00012", "INV202600012", "INV/2026/00012" all match, compared without case, spaces,
-  # dashes, slashes and dots on both sides.
+  # dashes, slashes and dots on both sides. The number decides only when the line fits what the invoice still owes
+  # (a part payment fits, an overpayment does not): "0004 2" typed for invoice 00042 must not pull a larger line
+  # to invoice 0004; such a line falls back to the amount match.
   - find_all: sales_invoice
     where: >-
-      docstatus == 1 && outstanding > 0 && (event.description.contains(name) ||
+      docstatus == 1 && outstanding >= event.amount && (event.description.contains(name) ||
       event.description.upperAscii().replace(' ', '').replace('-', '').replace('/', '').replace('.', '')
       .contains(name.upperAscii().replace(' ', '').replace('-', '').replace('/', '').replace('.', '')))
     as: by_number

@@ -109,9 +109,15 @@ rules:
     on: save
     check: "qris_payload == '' || qris_payload.emvcoTag('54') == ''"
     message: {id: 'QRIS ini memuat nominal tetap; pakai QRIS statis tanpa nominal supaya pelanggan mengisi jumlah tagihan'}
+  # 55 = tip or convenience indicator: 02 a fixed fee (amount in 56), 03 a percentage (in 57). Either makes the
+  # customer pay more than the invoice, so the transfer never matches it. 01 (the customer may add a tip) is allowed.
+  - name: qris_no_fee
+    on: save
+    check: "qris_payload == '' || (qris_payload.emvcoTag('55') != '02' && qris_payload.emvcoTag('55') != '03' && qris_payload.emvcoTag('56') == '' && qris_payload.emvcoTag('57') == '')"
+    message: {id: 'QRIS ini menambah biaya layanan ke pelanggan; pakai QRIS statis tanpa biaya supaya nominal transfer sama dengan tagihan'}
   - name: qris_has_merchant
     on: save
-    check: "qris_payload == '' || (qris_payload.emvcoTag('59') != '' && qris_payload.emvcoTag('51').emvcoTag('02') != '')"
+    check: "qris_payload == '' || (qris_payload.emvcoTag('59').trim() != '' && qris_payload.emvcoTag('51').emvcoTag('02').trim() != '')"
     message: {id: 'QRIS tanpa nama merchant atau NMID; pakai QRIS dari bank atau penyedia QRIS resmi'}
 views:
   list:
