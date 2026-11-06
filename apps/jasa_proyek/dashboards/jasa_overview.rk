@@ -63,6 +63,8 @@ widgets:
     filter: state == 'planned' || state == 'running'
     span: 3
   - name: active_workers
+    # worker carries pay: only roles that may read it (audit L1)
+    if: "'owner' in user.roles || 'finance_manager' in user.roles || 'project_admin' in user.roles"
     type: number
     label: {id: Tenaga kerja aktif}
     model: worker
@@ -110,6 +112,8 @@ widgets:
   # Certification expiry cannot be a widget: `expired` lives on child rows (certification) and is a stored compute that goes
   # stale once expires_on passes. The closest honest view is the list of active workers; open one to see its certifications.
   - name: workers_certifications
+    # worker carries pay: only roles that may read it (audit L1)
+    if: "'owner' in user.roles || 'finance_manager' in user.roles || 'project_admin' in user.roles"
     type: list
     label: {id: Tenaga kerja aktif}
     description: {id: Buka satu untuk melihat masa berlaku sertifikasinya}

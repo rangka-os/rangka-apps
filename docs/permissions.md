@@ -19,16 +19,18 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | item | r c w p | r c w p | r c w p | r c w p | r c w p i (`item_master` import) | r | r |
 | outlet | r c w p | r c w p | r c w p | r c w p | r c w p | r | r |
 | item_category | r c w p | r c w p | r c w p | r c w p | r c w d p | r | r |
-| vendor, uom, uom_conversion, price_list, tax_code, currency, exchange_rate, worker | r c w p | r c w p | r c w p | r c w p | r c w p | r | |
+| vendor, uom, uom_conversion, price_list, tax_code, currency, exchange_rate | r c w p | r c w p | r c w p | r c w p | r c w p | r | |
+| worker (carries pay; `hidden_for` is not enforced, so no access for sales and purchasing) | | r c w p | | r c w p | r c w p | r | |
 | user | r | r | r | r | r | r | r |
 | quotation, customer_order | all | r p | | r c w s (submit held by `manager_approval`) | | | |
 | project (finance and sales write only for the invoice flows that keep `billed_amount`; contract terms freeze once billed) | r w | r w | | all | | | |
-| assignment, acceptance | r | r | | all | | | |
-| timesheet | r | r | | all + i (`attendance_recap` import) | | | |
+| acceptance | r | r | | all | | | |
+| assignment (cost rates) | | r | | all | | | |
+| timesheet (pay and cost) | | r | | all + i (`attendance_recap` import) | | | |
 | billing_milestone (state written by flows; no delete; finance and sales write only through the invoice flows, an amount edit by them is refused) | r w | r w e | | r c w e i | | | |
 | project_expense | r | all but d | r | all | | | |
 | project_guard (never stored; a flow's refusal) | | c | c | | | | |
-| project_ledger (rows written by flows) | r c e | r c e | r c | r c e | | | |
+| project_ledger (rows written by flows; sales only `kind == 'revenue'`, purchasing only `kind == 'vendor'`) | r c | r c e | r c | r c e | | | |
 | sales_invoice | all | all | | r | | | r |
 | withholding | r p | all | | | | | |
 | invoice_reminder | r c w d e | r c w d e | | | | | r c |
