@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# An invoice drafted from an order (invoicing.from_order) bills what the order still has open; a distributor bills
+# what was delivered. This sets each line to what was delivered, less returns and earlier invoices, and drops the
+# lines with nothing to bill. The rule invoice_within_delivered on sales_invoice checks it again at submit.
+name: invoice_qty_from_deliveries
+label: {id: Faktur sesuai barang yang dikirim}
+on: sales_invoice.created
+if: "event.customer_order != '' && event.docstatus == 0"
+steps:
+  - {find: customer_order, where: name == event.customer_order, as: so}
+  - {find: order_fulfilment, where: "so != null && name == so.fulfilment", as: f}
+  # a find returns the record without its table rows: an update that changes nothing returns it whole
+  - update: f
+    if: f != null
+    set: {customer: f.customer}
+  - {find: sales_invoice, where: name == event.name, as: inv}
+  - update: inv
+    if: f != null
+    set:
+      items: "event.items.filter(l, f.items.map(b, b.item == l.item ? b.delivered_qty - b.invoiced_qty : 0).sum() > 0.0005).map(l, {'name': l.name, 'item': l.item, 'description': l.description, 'uom': l.uom, 'rate': l.rate, 'discount': l.discount, 'pph23_exclude': l.pph23_exclude, 'rate_fx': l.rate_fx, 'qty': min(l.qty, f.items.map(b, b.item == l.item ? b.delivered_qty - b.invoiced_qty : 0).sum())})"

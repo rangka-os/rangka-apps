@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: field_sales
+label: {id: Salesman}
+description: {id: Mengambil pesanan dan melihat piutang pelanggan yang dia pegang}
+# Contract 0010 §5: records whose salesman is the member's own user record (customers, orders, invoices, payments,
+# giro, delivery notes). user.name is the member's user record (rangka user add --record).
+scope: {field: salesman, from: '[user.name]'}

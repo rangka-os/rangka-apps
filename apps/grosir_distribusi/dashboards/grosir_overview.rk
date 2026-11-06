@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: grosir_overview
+label: {id: Ringkasan distribusi, en: Distribution overview}
+default_period: 30
+cache: 5m
+# The owner's daily questions: what did the salesmen sell, which orders wait, who pays late, which giro is due.
+widgets:
+  - name: sales_period
+    type: number
+    label: {id: Penjualan (faktur)}
+    description: {id: 'Nilai sebelum PPN, faktur yang sudah diterbitkan pada periode ini'}
+    model: sales_invoice
+    aggregate: sum
+    field: subtotal
+    filter: docstatus == 1
+    period: posting_date
+    compact: true
+    span: 3
+  - name: ar_open
+    type: number
+    label: {id: Piutang berjalan}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0
+    compact: true
+    span: 3
+  - name: overdue_ar
+    type: number
+    label: {id: Piutang lewat jatuh tempo}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && due_date < today()
+    compact: true
+    good_when: down
+    span: 3
+  - name: held_orders
+    type: number
+    label: {id: Pesanan belum jalan}
+    description: {id: Draft dan pesanan yang menunggu persetujuan kredit}
+    model: customer_order
+    aggregate: count
+    filter: docstatus == 0
+    span: 3
+  - name: sales_by_salesman
+    type: chart
+    chart: bar
+    label: {id: Penjualan per salesman}
+    model: sales_invoice
+    group_by: salesman
+    aggregate: sum
+    field: subtotal
+    filter: docstatus == 1
+    period: posting_date
+    span: 6
+  - name: ar_by_salesman
+    type: chart
+    chart: bar
+    label: {id: Piutang per salesman}
+    model: sales_invoice
+    group_by: salesman
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0
+    span: 6
+  - name: giro_due
+    type: list
+    label: {id: Giro belum cair}
+    description: {id: 'Giro diterima atau disetor, urut tanggal efektif'}
+    model: giro
+    filter: status == 'received' || status == 'deposited'
+    sort: effective_date
+    limit: 10
+    columns: [giro_no, customer, effective_date, amount, status]
+    span: 6
+  - name: late_customers
+    type: list
+    label: {id: Pelanggan telat bayar}
+    model: customer
+    filter: oldest_open_due != '' && oldest_open_due < today()
+    sort: oldest_open_due
+    limit: 10
+    columns: [customer_name, salesman, oldest_open_due, outstanding, credit_hold]
+    span: 6

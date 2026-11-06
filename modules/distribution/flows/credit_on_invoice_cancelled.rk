@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Keeps the customer's credit figures current for the credit approvals on customer_order: the earliest due date of
+# its open invoices and what its submitted, not fully invoiced orders will cost (with PPN). The same steps run on
+# every event that changes them (flows cannot call each other). A salesman cannot write customers, so his own order
+# submit does not run it; the order is counted at the next staff event (see plans/tahap-4-grosir.md).
+name: credit_on_invoice_cancelled
+label: {id: Perbarui kredit pelanggan (sales_invoice.cancelled)}
+on: sales_invoice.cancelled
+if: "event.customer != ''"
+steps:
+  - {find_all: sales_invoice, where: "docstatus == 1 && outstanding > 0 && customer == event.customer", as: open}
+  - {find_all: customer_order, where: "docstatus == 1 && customer == event.customer && invoiced_amount < subtotal", as: orders}
+  - {find: customer, where: name == event.customer, as: cust}
+  - update: cust
+    set:
+      oldest_open_due: "size(open) > 0 ? min(open.map(i, i.due_date)) : ''"
+      open_orders: "orders.map(o, o.subtotal > 0 ? round((o.subtotal - o.invoiced_amount) * o.estimated_total / o.subtotal) : 0).sum()"

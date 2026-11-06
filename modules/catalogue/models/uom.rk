@@ -5,6 +5,7 @@ icon: stock
 naming: UOM-{###}
 title_field: uom_name
 permissions:
+  - {role: field_sales, read: true}
   - {role: sales_manager, read: true, create: true, write: true, print: true}
   - {role: finance_manager, read: true, create: true, write: true, print: true}
   - {role: purchasing_manager, read: true, create: true, write: true, print: true}

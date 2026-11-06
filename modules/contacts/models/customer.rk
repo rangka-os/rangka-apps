@@ -12,6 +12,8 @@ permissions:
   - {role: head_office, read: true, create: true, write: true, print: true}
   - {role: outlet_staff, read: true}
   - {role: sales_rep, read: true, create: true, write: true}
+  # a salesman sees his own customers (role scope salesman) and cannot change their credit
+  - {role: field_sales, read: true}
 fields:
   - name: customer_name
     type: data
@@ -45,6 +47,57 @@ fields:
     label: {id: Piutang}
     read_only: true
     in_list: true
+  # Distributor sales (module distribution): the salesman who visits the customer, the route, the price tier, and
+  # the credit control that holds its orders (customer_order approvals). oldest_open_due is the earliest due date of
+  # its open invoices, kept by the distribution flows; an order is held while it is before today.
+  - name: salesman
+    type: link
+    to: user
+    label: {id: Salesman}
+    in_list: true
+    depends_on: app_installed('distribution')
+  - name: route_day
+    type: select
+    label: {id: Hari kunjungan}
+    depends_on: app_installed('distribution')
+    options:
+      - {value: mon_thu, label: {id: Senin dan Kamis}}
+      - {value: tue_fri, label: {id: Selasa dan Jumat}}
+      - {value: wed_sat, label: {id: Rabu dan Sabtu}}
+      - {value: daily, label: {id: Setiap hari}}
+  - name: price_tier
+    type: select
+    label: {id: Tier harga}
+    default: "'retail'"
+    depends_on: app_installed('distribution')
+    options:
+      - {value: retail, label: {id: Eceran}}
+      - {value: wholesale, label: {id: Grosir}}
+      - {value: agent, label: {id: Agen}}
+  - name: credit_hold
+    type: check
+    label: {id: Tahan kredit}
+    help: {id: Semua pesanan pelanggan ini butuh persetujuan sampai dicentang lagi}
+    depends_on: app_installed('distribution')
+  - name: credit_hold_reason
+    type: data
+    label: {id: Alasan tahan kredit}
+    depends_on: app_installed('distribution')
+  - name: oldest_open_due
+    type: date
+    label: {id: Jatuh tempo tertua yang belum lunas}
+    read_only: true
+    depends_on: app_installed('distribution')
+  - name: open_orders
+    type: currency
+    label: {id: Pesanan belum ditagih (dengan PPN)}
+    read_only: true
+    depends_on: app_installed('distribution')
+  - name: uninvoiced_deliveries
+    type: currency
+    label: {id: Terkirim belum ditagih (dengan PPN)}
+    read_only: true
+    depends_on: app_installed('delivery')
   - name: npwp
     type: npwp
     label: {id: NPWP}
@@ -66,7 +119,11 @@ views:
           - [npwp, phone, email]
       - section: {id: Pembayaran}
         columns:
-          - [payment_days]
+          - [payment_days, price_tier]
           - [credit_limit, outstanding]
+      - section: {id: Kredit dan salesman}
+        columns:
+          - [salesman, route_day, credit_hold, credit_hold_reason]
+          - [open_orders, uninvoiced_deliveries, oldest_open_due]
       - section: {id: Kontak person}
         fields: [contacts]

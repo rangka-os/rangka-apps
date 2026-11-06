@@ -9,6 +9,9 @@ permissions:
   - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: project_admin, read: true, create: true, write: true, submit: true}
   - {role: finance_manager, read: true, print: true}
+  # a salesman takes orders for his own customers (role scope salesman; rule customer_of_salesman)
+  - {role: field_sales, read: true, create: true, write: true, submit: true, print: true}
+  - {role: head_office, read: true, print: true}
 fields:
   - name: customer
     type: link
@@ -16,6 +19,35 @@ fields:
     label: {id: Pelanggan}
     required: true
     in_list: true
+  # Distributor sales (module distribution). salesman: the customer's, else the salesman taking the order. price_tier
+  # is the customer's; the lines are priced at it by the flow order_tier_pricing (a line cannot read the order).
+  - name: salesman
+    type: link
+    to: user
+    label: {id: Salesman}
+    default: "customer.salesman != '' ? customer.salesman : ('field_sales' in user.roles ? user.name : '')"
+    in_list: true
+    depends_on: app_installed('distribution')
+  - name: price_tier
+    type: select
+    label: {id: Tier harga}
+    compute: "customer.price_tier != '' ? customer.price_tier : 'retail'"
+    depends_on: app_installed('distribution')
+    options:
+      - {value: retail, label: {id: Eceran}}
+      - {value: wholesale, label: {id: Grosir}}
+      - {value: agent, label: {id: Agen}}
+  # What was delivered, returned and invoiced per item (module delivery); made with the order by a flow.
+  - name: fulfilment
+    type: link
+    to: order_fulfilment
+    label: {id: Pemenuhan pesanan}
+    read_only: true
+    depends_on: app_installed('delivery')
+  - name: delivery_date
+    type: date
+    label: {id: Tanggal kirim}
+    depends_on: app_installed('distribution')
   - name: quotation
     type: link
     to: quotation
@@ -52,6 +84,12 @@ fields:
     label: {id: Nilai pesanan (sebelum PPN)}
     compute: items.map(i, i.amount).sum()
     in_list: true
+  # What the order will cost the customer with PPN, for the credit limit check (customer.outstanding is with PPN).
+  - name: estimated_total
+    type: currency
+    label: {id: Perkiraan total (dengan PPN)}
+    compute: "tax.pkp ? round(subtotal * (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num) / (100 * tax.dpp_den)) : subtotal"
+    depends_on: app_installed('distribution')
   - name: invoiced_amount
     type: currency
     label: {id: Sudah ditagih}
@@ -59,7 +97,43 @@ fields:
   - name: notes
     type: text
     label: {id: Catatan}
+# Credit control of a distributor (module distribution): an order is held for the sales manager when the customer
+# is on hold, has an invoice past its due date, or would go over its credit limit (open invoices + orders not yet
+# invoiced + this order). The customer is read when the order is submitted, so the due date check is always current.
+approvals:
+  - name: credit_hold
+    on: submit
+    when: "app_installed('distribution') && customer.credit_hold"
+    approvers: [sales_manager, finance_manager]
+    label: {id: Pelanggan ditahan kreditnya, en: Customer on credit hold}
+  - name: overdue
+    on: submit
+    when: "app_installed('distribution') && customer.oldest_open_due != '' && customer.oldest_open_due < today()"
+    approvers: [sales_manager, finance_manager]
+    label: {id: Pelanggan punya tagihan lewat jatuh tempo, en: Customer has overdue invoices}
+  - name: below_tier_price
+    on: submit
+    when: "app_installed('distribution') && items.map(i, i.rate < i.list_rate ? 1 : 0).sum() > 0"
+    approvers: [sales_manager]
+    label: {id: Harga di bawah harga tier, en: Price below the tier price}
+  - name: over_credit_limit
+    on: submit
+    when: "app_installed('distribution') && customer.credit_limit > 0 && customer.outstanding + customer.open_orders + estimated_total > customer.credit_limit"
+    approvers: [sales_manager, finance_manager]
+    label: {id: Melewati batas kredit, en: Over the credit limit}
 rules:
+  - name: has_fulfilment
+    on: submit
+    check: "!app_installed('delivery') || fulfilment != ''"
+    message: {id: 'Simpan pesanan ini sekali lagi sebelum diajukan (catatan pemenuhan pesanan belum dibuat)'}
+  - name: one_line_per_item
+    on: save
+    check: "!app_installed('delivery') || items.map(i, items.map(x, x.item == i.item ? 1 : 0).sum() == 1 ? 0 : 1).sum() == 0"
+    message: {id: Satu barang cukup satu baris; jumlahkan qty-nya}
+  - name: customer_of_salesman
+    on: save
+    check: "!app_installed('distribution') || salesman == '' || customer.salesman == '' || customer.salesman == salesman"
+    message: {id: Pelanggan ini dipegang salesman lain}
   - name: quotation_same_customer
     on: save
     check: quotation == '' || quotation.customer == customer
@@ -83,7 +157,7 @@ actions:
     if: docstatus == 1 && app_installed('invoicing')
 views:
   list:
-    columns: [name, customer, po_number, po_date, status, subtotal, invoiced_amount]
+    columns: [name, customer, salesman, po_number, po_date, status, subtotal, invoiced_amount]
     sort: -po_date
   form:
     layout:
@@ -91,10 +165,14 @@ views:
         columns:
           - [customer, quotation, po_number, po_date]
           - [work_order, site, start_date, end_date]
+      - section: {id: Salesman}
+        columns:
+          - [salesman, price_tier]
+          - [delivery_date, fulfilment]
       - section: {id: Barang/jasa}
         fields: [items]
       - section: {id: Ringkasan}
         columns:
-          - [subtotal, invoiced_amount]
+          - [subtotal, estimated_total, invoiced_amount]
       - section: {id: Catatan}
         fields: [notes]

@@ -195,6 +195,17 @@ Flow: `purchase_request` -> `purchase_order` -> `goods_receipt` -> `vendor_bill`
 - **Reversal:** one `reversal` move per original move, opposite `qty` and `value`, at the original unit cost, dated the day of the cancel; the average is recomputed as
   `round(value / qty)` so cancelling a receipt restores value and average exactly. Line `cogs` and count `system_qty` are kept as history; a receipt's cancel takes its quantities off the PO.
 
+### Declared stock documents (`stock:` block, rangka-os contract 0021)
+`delivery_note` and `sales_return` (module delivery) have no Go rule: `stock.post_moves` reads
+their `stock:` block (needs rangka-os with contract 0021; on an older kernel submit answers "no rule for <model>").
+- `delivery_note`: out of `outlet` (warehouse or canvas van) at the average, reason `delivery`; line `cogs` and header `cogs_total`.
+- `sales_return`: good lines into `outlet`, damaged lines into `damaged_outlet`, reason `return_in`, each at the unit cost the delivery
+  note took the item out at (`cost: {source: delivery_note}`).
+- **One document per chain moves stock:** the delivery note moves it, the invoice never does (`sales_invoice` has no stock rule).
+  Quantities across the chain are kept in `order_fulfilment` by flows (a submitted order cannot be written): delivery notes, returns and
+  invoices check against it in rules. Kernel conversions with returned qty (K-p, contract 0022) will replace it.
+- Reversal is the generic `stock.reverse_moves`.
+
 ## quotation
 
 ### `quotation.revise` (action `new_revision` on `quotation`)

@@ -1,0 +1,94 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Surat jalan: goods leave a warehouse (or the canvas van) for a customer order, all or part of it. Submit takes the
+# stock out at the outlet's moving average and records the cost of goods per line (contract 0021, K-o); cancel puts
+# it back (stock.reverse_moves). A line may not deliver more than the order still has open (order_fulfilment).
+name: delivery_note
+label: {id: Surat jalan, en: Delivery note}
+icon: stock
+is_submittable: true
+naming: SJ-{YYYY}-{#####}
+title_field: customer
+on_submit: [stock.post_moves]
+on_cancel: [stock.reverse_moves]
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true, print: true}
+  - {role: field_sales, read: true, print: true}
+fields:
+  - {name: customer_order, type: link, to: customer_order, label: {id: Pesanan}, required: true, in_list: true, peek: [customer, po_number, delivery_date]}
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, default: customer_order.customer, read_only: true, in_list: true}
+  - {name: salesman, type: link, to: user, label: {id: Salesman}, default: customer_order.salesman, read_only: true, in_list: true}
+  - {name: fulfilment, type: link, to: order_fulfilment, label: {id: Pemenuhan pesanan}, default: customer_order.fulfilment, read_only: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Dikirim dari}, help: {id: Gudang atau mobil kanvas}, required: true, in_list: true}
+  - {name: delivery_date, type: date, label: {id: Tanggal kirim}, default: today(), required: true, in_list: true}
+  - {name: driver, type: data, label: {id: Sopir}}
+  - {name: vehicle_no, type: data, label: {id: No. kendaraan}}
+  - {name: ship_to, type: text, label: {id: Alamat kirim}, default: customer_order.customer.address}
+  - {name: items, type: table, of: delivery_note_item, label: {id: Barang}, min_rows: 1}
+  - {name: delivery_value, type: currency, label: {id: Nilai kiriman (harga pesanan)}, compute: "items.map(l, round(l.qty * fulfilment.items.map(b, b.item == l.item ? b.rate : 0).sum())).sum()"}
+  - {name: delivery_total, type: currency, label: {id: Nilai kiriman (dengan PPN)}, compute: "tax.pkp ? round(delivery_value * (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num) / (100 * tax.dpp_den)) : delivery_value"}
+  - {name: total_qty, type: float, label: {id: Total qty}, compute: "items.map(i, i.qty).sum()"}
+  - {name: cogs_total, type: currency, label: {id: Harga pokok barang dikirim}, read_only: true}
+  - {name: received_by, type: data, label: {id: Diterima oleh}}
+  - {name: notes, type: text, label: {id: Catatan}}
+stock:
+  date: delivery_date
+  moves:
+    - {lines: items, out: outlet, reason: delivery, cogs: cogs}
+  cogs_total: cogs_total
+# Credit control at the door (module distribution): goods do not leave for a customer on hold, overdue, or whose open
+# invoices + goods delivered and not yet invoiced + this delivery go over its limit, without the sales manager or
+# finance. The warehouse submits, so the figures are current even when salesmen's own orders were not yet counted.
+approvals:
+  - name: credit_hold
+    on: submit
+    when: "app_installed('distribution') && customer.credit_hold"
+    approvers: [sales_manager, finance_manager]
+    label: {id: Pelanggan ditahan kreditnya, en: Customer on credit hold}
+  - name: overdue
+    on: submit
+    when: "app_installed('distribution') && customer.oldest_open_due != '' && customer.oldest_open_due < today()"
+    approvers: [sales_manager, finance_manager]
+    label: {id: Pelanggan punya tagihan lewat jatuh tempo, en: Customer has overdue invoices}
+  - name: over_credit_limit
+    on: submit
+    when: "app_installed('distribution') && customer.credit_limit > 0 && customer.outstanding + customer.uninvoiced_deliveries + delivery_total > customer.credit_limit"
+    approvers: [sales_manager, finance_manager]
+    label: {id: Melewati batas kredit, en: Over the credit limit}
+rules:
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: order_submitted
+    on: save
+    check: customer_order.docstatus == 1 && fulfilment != '' && fulfilment == customer_order.fulfilment && customer == customer_order.customer && salesman == customer_order.salesman
+    message: {id: 'Surat jalan hanya untuk pesanan yang sudah diajukan; kalau pesanannya diganti, buat surat jalan baru'}
+  - name: items_on_order
+    on: save
+    check: "items.map(l, fulfilment.items.map(b, b.item == l.item ? 1 : 0).sum() > 0 ? 0 : 1).sum() == 0"
+    message: {id: Ada barang yang tidak ada di pesanan}
+  - name: within_open_qty
+    on: save
+    check: "items.map(l, items.map(x, x.item == l.item ? x.qty : 0).sum() <= fulfilment.items.map(b, b.item == l.item ? b.ordered_qty - b.delivered_qty : 0).sum() + 0.0005 ? 0 : 1).sum() == 0"
+    message: {id: Jumlah kirim melebihi sisa pesanan yang belum dikirim}
+views:
+  list:
+    columns: [name, delivery_date, customer, salesman, outlet, total_qty, status]
+    filters: [outlet, salesman, customer]
+    sort: -delivery_date
+  form:
+    layout:
+      - section: {id: Surat jalan}
+        columns:
+          - [customer_order, customer, salesman, ship_to]
+          - [outlet, delivery_date, driver, vehicle_no]
+      - section: {id: Barang}
+        fields: [items]
+      - section: {id: Ringkasan}
+        columns:
+          - [total_qty, delivery_value, delivery_total, cogs_total]
+          - [received_by]
+      - section: {id: Catatan}
+        fields: [notes]

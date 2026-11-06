@@ -12,6 +12,7 @@ permissions:
   - {role: head_office, read: true, create: true, write: true, import: true, print: true}
   - {role: outlet_staff, read: true}
   - {role: sales_rep, read: true}
+  - {role: field_sales, read: true}
 fields:
   - name: item_name
     type: data
@@ -68,6 +69,16 @@ fields:
     type: currency
     label: {id: Harga jual}
     in_list: true
+  # Tier prices of a distributor (module distribution): a customer's price_tier picks rate, rate_wholesale or
+  # rate_agent on its orders. Empty (0) falls back to rate.
+  - name: rate_wholesale
+    type: currency
+    label: {id: Harga grosir}
+    depends_on: app_installed('distribution')
+  - name: rate_agent
+    type: currency
+    label: {id: Harga agen}
+    depends_on: app_installed('distribution')
   - name: standard_cost
     type: currency
     label: {id: Harga pokok standar}

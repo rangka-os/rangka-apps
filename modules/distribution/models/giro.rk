@@ -1,0 +1,79 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Giro register (bilyet giro received). A line is made by the flow giro_from_payment when a payment by giro is
+# submitted; finance follows it to the bank (deposited, cleared). When the bank returns it, finance cancels the
+# payment: the kernel opens the invoices again (payments.unallocate) and the flow giro_bounced marks the line bounced
+# and puts the customer on credit hold. Lines are made by the flow (every field is read_only; a line must match its
+# giro payment), once per payment.
+name: giro
+label: {id: Giro masuk, en: Giro received}
+icon: card
+naming: GIRO-{YYYY}-{#####}
+title_field: giro_no
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
+  - {role: sales_manager, read: true, create: true, write: true, export: true, print: true}
+  - {role: field_sales, read: true}
+fields:
+  - {name: giro_no, type: data, label: {id: No. giro}, required: true, read_only: true, in_list: true}
+  - {name: bank, type: data, label: {id: Bank penerbit}, read_only: true, in_list: true}
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, required: true, read_only: true, in_list: true}
+  - {name: salesman, type: link, to: user, label: {id: Salesman}, read_only: true, in_list: true}
+  - {name: payment, type: link, to: payment, label: {id: Pembayaran}, required: true, read_only: true, peek: [amount, status]}
+  - {name: received_on, type: date, label: {id: Diterima}, read_only: true}
+  - {name: effective_date, type: date, label: {id: Tanggal efektif}, required: true, read_only: true, in_list: true}
+  - {name: amount, type: currency, label: {id: Nilai giro}, read_only: true, in_list: true}
+  - name: status
+    type: select
+    label: {id: Status}
+    default: "'received'"
+    required: true
+    in_list: true
+    chip: true
+    options:
+      - {value: received, label: {id: Diterima}, tone: neutral}
+      - {value: deposited, label: {id: Disetor ke bank}, tone: info}
+      - {value: cleared, label: {id: Cair}, tone: ok}
+      - {value: bounced, label: {id: Ditolak}, tone: bad}
+  - {name: deposited_on, type: date, label: {id: Tanggal setor}, depends_on: "status != 'received'"}
+  - {name: cleared_on, type: date, label: {id: Tanggal cair}, depends_on: "status == 'cleared'"}
+  - {name: bounced_on, type: date, label: {id: Tanggal ditolak}, read_only: true, depends_on: "status == 'bounced'"}
+  - {name: bounce_reason, type: data, label: {id: Alasan tolak}, depends_on: "status == 'bounced'"}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: matches_payment
+    on: save
+    check: "payment.method == 'giro' && payment.customer == customer && payment.reference == giro_no"
+    message: {id: Baris giro harus sama dengan pembayaran gironya}
+  - name: bounced_only_by_cancel
+    on: save
+    check: "status != 'bounced' || payment.docstatus == 2"
+    message: {id: Giro ditolak dicatat dengan membatalkan pembayarannya (faktur terbuka lagi)}
+  - name: live_payment_not_bounced
+    on: save
+    check: "status == 'bounced' || payment.docstatus != 2"
+    message: {id: Pembayaran giro ini sudah dibatalkan; statusnya Ditolak}
+  - name: deposit_not_before_effective
+    on: save
+    check: "deposited_on == '' || deposited_on >= effective_date"
+    message: {id: Giro baru bisa disetor pada atau setelah tanggal efektifnya}
+  - name: cleared_needs_deposit
+    on: save
+    check: "status != 'cleared' || (deposited_on != '' && cleared_on != '' && cleared_on >= deposited_on)"
+    message: {id: Isi tanggal setor dan tanggal cair (tidak sebelum tanggal setor)}
+views:
+  list:
+    columns: [name, giro_no, customer, salesman, effective_date, amount, status]
+    filters: [status, salesman, customer]
+    sort: effective_date
+  form:
+    layout:
+      - section: {id: Giro}
+        columns:
+          - [giro_no, bank, amount, effective_date]
+          - [customer, salesman, payment, received_on]
+      - section: {id: Ke bank}
+        columns:
+          - [status, deposited_on, cleared_on]
+          - [bounced_on, bounce_reason]
+      - section: {id: Catatan}
+        fields: [notes]

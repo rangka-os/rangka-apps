@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: grosir_ar
+label: {id: Piutang dan penagihan, en: Receivables and collections}
+cache: 5m
+widgets:
+  - name: ar_by_salesman
+    type: chart
+    chart: bar
+    label: {id: Piutang per salesman}
+    model: sales_invoice
+    group_by: salesman
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0
+    span: 6
+  - name: overdue_by_salesman
+    type: chart
+    chart: bar
+    label: {id: Lewat jatuh tempo per salesman}
+    model: sales_invoice
+    group_by: salesman
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && due_date < today()
+    span: 6
+  - name: collected_by_salesman
+    type: chart
+    chart: bar
+    label: {id: Tertagih per salesman (30 hari)}
+    model: payment
+    group_by: salesman
+    aggregate: sum
+    field: amount
+    filter: docstatus == 1 && direction == 'receive' && method != 'sales_return'
+    period: payment_date
+    span: 6
+  - name: on_hold
+    type: list
+    label: {id: Pelanggan ditahan kredit}
+    model: customer
+    filter: credit_hold == true
+    limit: 20
+    columns: [customer_name, salesman, credit_hold_reason, outstanding]
+    span: 6
+  - name: returns_not_credited
+    label: {id: Retur belum dipotongkan}
+    description: {id: 'Retur yang sudah diterima gudang tapi belum dipotong dari piutang (pembayaran metode Potong retur)'}
+    type: list
+    model: return_credit
+    filter: credited < return_total
+    limit: 20
+    columns: [sales_return, return_total, credited]
+    span: 12
+  - name: overdue_list
+    type: list
+    label: {id: Faktur lewat jatuh tempo}
+    model: sales_invoice
+    filter: docstatus == 1 && outstanding > 0 && due_date < today()
+    sort: due_date
+    limit: 20
+    columns: [name, customer, salesman, due_date, outstanding]
+    span: 12

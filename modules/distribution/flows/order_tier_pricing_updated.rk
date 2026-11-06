@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Prices the lines of a draft order at the customer's tier. A line cannot read its order, so this flow copies the
+# order's price_tier onto the lines (list_rate is then computed per line), and in a second step sets rate to the
+# list price once per tier (tier_applied): a price typed by hand afterwards stays, a new line or another customer is
+# priced again. Company fields (x_) on order lines are not carried (the rows are written whole).
+name: order_tier_pricing_updated
+label: {id: Harga pesanan sesuai tier pelanggan}
+on: customer_order.updated
+if: "event.docstatus == 0 && event.items.map(i, i.price_tier != event.price_tier || i.tier_applied != event.price_tier ? 1 : 0).sum() > 0"
+steps:
+  - {find: customer_order, where: name == event.name, as: so}
+  - update: so
+    set:
+      items: "event.items.map(i, {'name': i.name, 'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'rate': i.rate, 'tier_applied': i.tier_applied, 'price_tier': event.price_tier})"
+  - update: so
+    set:
+      items: "so.items.map(i, {'name': i.name, 'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'rate': i.tier_applied == i.price_tier ? i.rate : i.list_rate, 'tier_applied': i.price_tier, 'price_tier': i.price_tier})"

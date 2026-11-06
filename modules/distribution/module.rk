@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+# Sales controls of a distributor: salesmen and their customers (role field_sales), prices per tier, orders held when a
+# customer is on hold, overdue or over its limit (approvals on customer_order), and the giro register. The fields
+# this module switches on live in their own models (customer, item, customer_order, sales_invoice, payment) behind
+# app_installed('distribution'); the flows here keep them current.
+name: distribution
+version: 1.0.0
+title: {id: Distribusi, en: Distribution}
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, orders: ^1.0, invoicing: ^1.0, payments: ^1.0, procurement: ^1.0}

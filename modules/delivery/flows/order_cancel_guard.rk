@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside an order's cancel: refused while a live delivery note delivers it, or the amended copy would deliver it again.
+name: order_cancel_guard
+label: {id: Pesanan yang sudah dikirim tidak bisa dibatalkan}
+on: customer_order.cancelled
+steps:
+  - {find: delivery_note, where: customer_order == event.name && docstatus == 1, as: dn}
+  - if: dn != null
+    create: delivery_guard
+    set: {reason: "'order_delivered'", document: dn.name}
