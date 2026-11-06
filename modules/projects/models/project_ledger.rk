@@ -19,8 +19,11 @@ title_field: project
 permissions:
   - {role: project_admin, read: true, create: true, export: true}
   - {role: finance_manager, read: true, create: true, export: true}
-  - {role: sales_manager, read: true, create: true, export: true}
-  - {role: purchasing_manager, read: true, create: true}
+  # Sales and purchasing read (and their flows write) only the rows of their own documents: labour rows carry pay and
+  # cost rows the firm's margin (audit L1). Read stays because the cancel flows find the row they reverse as the person
+  # cancelling. No export for sales.
+  - {role: sales_manager, read: true, create: true, if: kind == 'revenue'}
+  - {role: purchasing_manager, read: true, create: true, if: kind == 'vendor'}
 fields:
   - name: project
     type: link
