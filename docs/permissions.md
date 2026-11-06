@@ -42,7 +42,8 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | bank_transaction_claim (written by the bank_statement flows) | r c w e | r c w e | | | r c w | | |
 | purchase_request | | | all | r c w s | all | r c w s | |
 | purchase_order | | r p | all | | all | | |
-| vendor_bill | | r s p | all | | all | | |
+| vendor_bill (finance exports it for the Coretax BPPU file) | | r s e p | all | | all | | |
+| tax_period (Coretax downloads: an export of the period's invoices and bills) | | r c w d e p | | | r c w d e p | | |
 | goods_receipt | | | all | | all + i (`opening_stock` import) | r c w s | |
 | stock_move, stock_balance (written by hooks only) | | | | | r e | r | |
 | stock_transfer | | | | | all | r | |
