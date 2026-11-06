@@ -6,7 +6,7 @@ naming: ASG-{#####}
 title_field: worker
 permissions:
   - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
-  - {role: sales_manager, read: true}
+  # No sales_manager: an assignment carries the cost rates (audit L1).
   - {role: finance_manager, read: true}
 fields:
   - name: project

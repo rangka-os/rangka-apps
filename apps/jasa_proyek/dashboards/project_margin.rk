@@ -3,9 +3,14 @@
 name: project_margin
 label: {id: Untung per proyek, en: Project margin}
 default_period: 365
+# Margin is cost: owner, finance and the project admin only. Sales and purchasing read only their own rows of the
+# ledger, so a sum would show them revenue as "untung"; `roles` is not enforced by the kernel yet, so every widget on
+# the ledger, timesheets or workers also carries the same `if` (they are hidden for other roles).
+roles: [finance_manager, project_admin]
 cache: 5m
 widgets:
   - name: margin_total
+    if: "'owner' in user.roles || 'finance_manager' in user.roles || 'project_admin' in user.roles"
     type: number
     label: {id: Untung proyek}
     description: {id: 'Pendapatan dikurangi biaya tenaga kerja, proyek dan pemasok (DPP), dari dokumen yang diajukan sejak buku ini aktif'}
@@ -16,6 +21,7 @@ widgets:
     compact: true
     span: 4
   - name: revenue_total
+    if: "'owner' in user.roles || 'finance_manager' in user.roles || 'project_admin' in user.roles"
     type: number
     label: {id: Pendapatan proyek}
     model: project_ledger
@@ -37,6 +43,7 @@ widgets:
     span: 4
   # A margin is only as good as its labour cost: absensi without pay add no cost, so they are counted here (G5).
   - name: timesheets_without_pay
+    if: "'owner' in user.roles || 'finance_manager' in user.roles || 'project_admin' in user.roles"
     type: number
     label: {id: Absensi tanpa upah}
     description: {id: 'Absensi diajukan yang upahnya belum diisi: untung proyek di atas belum termasuk biaya tenaga ini'}
@@ -45,6 +52,7 @@ widgets:
     good_when: down
     span: 6
   - name: workers_without_pay
+    if: "'owner' in user.roles || 'finance_manager' in user.roles || 'project_admin' in user.roles"
     type: number
     label: {id: Tenaga tanpa upah}
     description: {id: 'Tenaga aktif yang upah per hari dan per jamnya belum diisi'}
@@ -53,6 +61,7 @@ widgets:
     good_when: down
     span: 6
   - name: margin_by_project
+    if: "'owner' in user.roles || 'finance_manager' in user.roles || 'project_admin' in user.roles"
     type: chart
     chart: bar
     label: {id: Untung per proyek}
@@ -64,6 +73,7 @@ widgets:
     sort: -value
     span: 6
   - name: result_by_kind
+    if: "'owner' in user.roles || 'finance_manager' in user.roles || 'project_admin' in user.roles"
     type: chart
     chart: bar
     label: {id: Pendapatan dan biaya}
@@ -74,6 +84,7 @@ widgets:
     period: posting_date
     span: 6
   - name: latest_rows
+    if: "'owner' in user.roles || 'finance_manager' in user.roles || 'project_admin' in user.roles"
     type: list
     label: {id: Catatan terakhir}
     model: project_ledger
