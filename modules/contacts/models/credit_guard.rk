@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: credit_guard
+label: {id: Penjaga batas kredit, en: Credit guard}
+icon: check
+naming: CRG-{######}
+title_field: reason
+# Never stored: a flow that re-checks a customer's credit limit under its lock (contract 0025 §5, t_561e44ec) creates
+# one of these when the document it runs in went over the limit only because another document of the same customer
+# was submitted at the same moment; the matching rule fails with that reason's message, which rolls the whole submit
+# back. Create is granted to the roles whose submits run those flows (invoices, staff orders, deliveries).
+permissions:
+  - {role: finance_manager, create: true}
+  - {role: sales_manager, create: true}
+  - {role: project_admin, create: true}
+  - {role: head_office, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: invoice_over_limit, label: {id: Faktur melewati batas kredit}}
+      - {value: order_over_limit, label: {id: Pesanan melewati batas kredit}}
+      - {value: delivery_over_limit, label: {id: Kiriman melewati batas kredit}}
+  - name: document
+    type: data
+    label: {id: Dokumen}
+rules:
+  - name: invoice_over_limit
+    on: save
+    check: reason != 'invoice_over_limit'
+    message: {id: 'Batas kredit pelanggan baru saja terpakai faktur lain yang diajukan bersamaan. Ajukan lagi untuk melihat peringatan batas kredit.'}
+  - name: order_over_limit
+    on: save
+    check: reason != 'order_over_limit'
+    message: {id: 'Batas kredit pelanggan baru saja terpakai pesanan lain yang diajukan bersamaan. Ajukan lagi untuk minta persetujuan batas kredit.'}
+  - name: delivery_over_limit
+    on: save
+    check: reason != 'delivery_over_limit'
+    message: {id: 'Batas kredit pelanggan baru saja terpakai kiriman lain yang diajukan bersamaan. Ajukan lagi untuk minta persetujuan batas kredit.'}

@@ -9,6 +9,7 @@ Expected values are written out by hand (kg x 12.000), not computed from the row
 """
 import datetime
 import gc
+import time
 
 DAGO = "OUT-02"
 TODAY = datetime.date.today()
@@ -58,23 +59,28 @@ def after(api, s, d1):
     # the empty slots of old adjustments cannot be filled by hand (audit round 2 of #14, U1 and U4)
     st, resp = dago.create("stock_adjustment_value", {"stock_adjustment": s["A"], "entry": "post", "outlet": DAGO,
                                                       "posting_date": _day(10), "reason": "damage", "value": -99_000_000})
-    check("outlet staff cannot write a post row for an old adjustment (-99.000.000) -> 422", st == 422, (st, resp))
+    check("outlet staff cannot write a post row for an old adjustment (-99.000.000) -> 409 append_only", st == 409, (st, resp))
     st, resp = hq.create("stock_adjustment_value", {"stock_adjustment": s["C"], "entry": "reverse", "outlet": DAGO,
                                                     "posting_date": _day(3), "reason": "other", "value": 77_000_000})
-    check("head office cannot write a reverse row for an old cancelled adjustment (77.000.000) -> 422", st == 422, (st, resp))
+    check("head office cannot write a reverse row for an old cancelled adjustment (77.000.000) -> 409 append_only", st == 409, (st, resp))
     st, resp = api.create("stock_adjustment_value", {"stock_adjustment": s["B"], "entry": "post", "outlet": DAGO,
                                                      "posting_date": _day(5), "reason": "expired", "value": -1})
-    check("even the owner cannot write a value row through the API -> 422", st == 422, (st, resp))
+    check("even the owner cannot write a value row through the API -> 409 append_only", st == 409, (st, resp))
     eq("no row was made by hand", _rows(api), [])
 
-    # the schedule (every 5 minutes) does this on a live site; the test runs it as the owner
+    # append_only (contract 0026): a flow run by hand may not post ledger rows, the owner's included; the schedule
+    # (every 5 minutes) does it
     st, resp = api.call("POST", "/api/v1/flows/adjustment_value_backfill/run", {})
-    check("the owner runs the backfill", st == 200, (st, resp))
+    check("the owner cannot run the backfill by hand -> 409 append_only", st == 409, (st, resp))
+    eq("the refused run wrote nothing", _rows(api), [])
     want = sorted([(s["A"], "post", _day(10), "damage", -24000), (s["B"], "post", _day(5), "expired", -12000),
                    (s["D"], "post", _day(2), "waste", -12000)])
-    eq("backfill: one post row per live old adjustment, on its own date (2 kg, 1 kg, 1 kg x 12.000); none for cancelled C", _rows(api), want)
-    st, resp = api.call("POST", "/api/v1/flows/adjustment_value_backfill/run", {})
-    eq("a third run adds nothing", (st, _rows(api)), (200, want))
+    deadline = time.time() + 330
+    while _rows(api) != want and time.time() < deadline:
+        time.sleep(10)
+    eq("backfill by its schedule: one post row per live old adjustment, on its own date (2 kg, 1 kg, 1 kg x 12.000); none for cancelled C", _rows(api), want)
+    time.sleep(15)
+    eq("nothing more is added while waiting", _rows(api), want)
     eq("waste_by_outlet Dago over 30 days after backfill = -48.000", _waste(d1, api, 30), -48000)
     eq("waste_by_outlet Dago over 7 days after backfill = -24.000 (B and D)", _waste(d1, api, 7), -24000)
 

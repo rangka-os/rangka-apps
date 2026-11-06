@@ -11,6 +11,14 @@ steps:
   - {find_all: sales_invoice, where: "docstatus == 1 && outstanding > 0 && customer == event.customer", as: open}
   - {find_all: customer_order, where: "docstatus == 1 && customer == event.customer && invoiced_amount < subtotal", as: orders}
   - {find: customer, where: name == event.customer, as: cust}
+  # t_561e44ec: approval over_credit_limit was evaluated before this flow's locks. Read under them, the customer's
+  # figures include every order and invoice committed meanwhile; an order over the limit that did not match the policy
+  # went through only because another one ran at the same moment, so it is refused (submitted again, it is held).
+  - create: credit_guard
+    if: "cust != null && !event.credit_over_seen && cust.credit_limit > 0 && cust.outstanding + cust.open_orders + event.estimated_total > cust.credit_limit"
+    set:
+      reason: "'order_over_limit'"
+      document: event.name
   - update: cust
     set:
       oldest_open_due: "size(open) > 0 ? min(open.map(i, i.due_date)) : ''"
