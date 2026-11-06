@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# An invoice is submitted: copy the org's default bank account (rekening, QRIS, instruction) into its
+# payment_instruction, with the invoice number as payment reference. The copy is what the print and the WhatsApp
+# bill show, so an invoice keeps the account it was billed with. No default account: nothing is copied (the print
+# falls back to the letterhead). Runs in the submit's transaction as the submitter: if the copy fails, the submit does.
+name: payment_instruction_on_submit
+label: {id: Salin cara bayar saat faktur diajukan}
+on: sales_invoice.submitted
+steps:
+  - {find: bank_account, where: "default_claim == 'default'", as: acct}
+  - create: payment_instruction
+    if: acct != null
+    set:
+      sales_invoice: event.name
+      bank_account: acct.name
+      reference: event.name
+      amount: event.amount_due
+      bank: acct.bank
+      account_no: acct.account_no
+      holder: acct.holder
+      instructions: acct.instructions
+      qris_payload: acct.qris_payload
+      qris_nmid: acct.qris_nmid
+      qris_merchant_name: acct.qris_merchant_name

@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# "Cara bayar" of one submitted invoice: a copy of the default bank_account (rekening, QRIS, instruction) and the
+# payment reference, made by the flow payment_instruction_on_submit when the invoice is submitted. A submitted
+# invoice is immutable, so the copy lives here (one per invoice, unique), and editing or replacing the account
+# later never changes what an earlier invoice told the customer. Nobody writes or deletes it; the copied fields are
+# read-only (only the flow sets them) and must equal the account at creation, so it cannot be made up by hand.
+# An invoice submitted while the org has no default account has none: its print falls back to the letterhead.
+name: payment_instruction
+label: {id: Cara bayar faktur, en: Invoice payment instruction}
+icon: bank
+naming: CB-{YYYY}-{#####}
+title_field: sales_invoice
+permissions:
+  # create: the flow runs as whoever submits the invoice
+  - {role: finance_manager, read: true, create: true, export: true}
+  - {role: sales_manager, read: true, create: true, export: true}
+  - {role: head_office, read: true}
+  - {role: sales_rep, read: true}
+  # not field_sales: its row scope is salesman, which this model lacks, so it would read every invoice's amount
+  - {role: project_admin, read: true}
+fields:
+  - name: sales_invoice
+    type: link
+    to: sales_invoice
+    label: {id: Faktur}
+    required: true
+    unique: true
+    in_list: true
+  - name: bank_account
+    type: link
+    to: bank_account
+    label: {id: Rekening}
+    required: true
+    in_list: true
+  # Payment reference the customer writes in the transfer note; bank_transaction_suggest finds the invoice by it.
+  - {name: reference, type: data, label: {id: Referensi bayar}, read_only: true, in_list: true}
+  - {name: amount, type: currency, label: {id: Tagihan saat diajukan}, read_only: true}
+  - {name: bank, type: data, label: {id: Bank}, read_only: true}
+  - {name: account_no, type: data, label: {id: Nomor rekening}, read_only: true}
+  - {name: holder, type: data, label: {id: Atas nama}, read_only: true}
+  - {name: instructions, type: text, label: {id: Instruksi bayar}, read_only: true}
+  - {name: qris_payload, type: text, label: {id: Isi QRIS (teks)}, read_only: true}
+  - {name: qris_nmid, type: data, label: {id: NMID}, read_only: true}
+  - {name: qris_merchant_name, type: data, label: {id: Nama merchant QRIS}, read_only: true}
+rules:
+  - name: invoice_submitted
+    on: save
+    check: sales_invoice.docstatus == 1
+    message: {id: Cara bayar dibuat saat faktur diajukan}
+  - name: copy_of_invoice
+    on: save
+    check: reference == sales_invoice.name && amount == sales_invoice.amount_due
+    message: {id: Referensi dan nominal harus dari faktur ini}
+  - name: copy_of_account
+    on: save
+    check: >-
+      bank == bank_account.bank && account_no == bank_account.account_no && holder == bank_account.holder &&
+      instructions == bank_account.instructions && qris_payload == bank_account.qris_payload &&
+      qris_nmid == bank_account.qris_nmid && qris_merchant_name == bank_account.qris_merchant_name
+    message: {id: Cara bayar harus salinan rekening yang dipilih}
+  - name: account_active
+    on: save
+    check: bank_account.active
+    message: {id: Rekening tidak aktif}
+views:
+  list:
+    columns: [name, sales_invoice, reference, bank, account_no, qris_nmid]
+    sort: -name

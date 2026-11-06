@@ -1,14 +1,22 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # A new statement line with money in looks for the invoice it pays. First choice: an open invoice whose number is in
-# the transfer note. Otherwise: exactly one open invoice whose remaining amount equals the line. Two candidates of
-# the same amount -> no suggestion (the owner picks). It only suggests; the payment comes after the owner confirms.
+# the transfer note (written loosely, see below). Otherwise: exactly one open invoice whose remaining amount equals
+# the line. Two candidates of the same amount -> no suggestion (the owner picks). It only suggests; the payment comes after the owner confirms.
 # outstanding is already net of PPh 23, so a customer who withheld tax still matches.
 name: bank_transaction_suggest
 label: {id: Usulan cocok mutasi ke faktur}
 on: bank_transaction.created
 if: event.amount > 0 && event.status == 'unmatched'
 steps:
-  - {find_all: sales_invoice, where: "docstatus == 1 && outstanding > 0 && event.description.contains(name)", as: by_number}
+  # The invoice number is the payment reference (payment_instruction.reference). Customers type it as they like:
+  # "INV-2026-00012", "inv 2026 00012", "INV202600012", "INV/2026/00012" all match, compared without case, spaces,
+  # dashes, slashes and dots on both sides.
+  - find_all: sales_invoice
+    where: >-
+      docstatus == 1 && outstanding > 0 && (event.description.contains(name) ||
+      event.description.upperAscii().replace(' ', '').replace('-', '').replace('/', '').replace('.', '')
+      .contains(name.upperAscii().replace(' ', '').replace('-', '').replace('/', '').replace('.', '')))
+    as: by_number
   - {find_all: sales_invoice, where: "docstatus == 1 && outstanding == event.amount", as: by_amount}
   - {find: bank_transaction, where: name == event.name, as: line}
   - if: size(by_number) == 1
