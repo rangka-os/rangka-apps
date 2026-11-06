@@ -94,7 +94,7 @@
   <thead><tr><th>Uraian</th><th class="num">Qty</th><th>Satuan</th><th class="num">Harga satuan</th>{{if $disc}}<th class="num">Diskon</th>{{end}}<th class="num">Jumlah</th></tr></thead>
   <tbody>
   {{range $row := .Doc.items}}
-  {{- $u := $row.uom -}}{{- range $.Related.uoms -}}{{- if eq .name $row.uom -}}{{- $u = .uom_name -}}{{- end -}}{{- end -}}
+  {{- $u := or $row.uom_name $row.uom -}}
   <tr>
     <td>{{if $row.description}}{{$row.description}}{{else}}{{$row.item}}{{end}}</td>
     <td class="num">{{number $row.qty}}</td>

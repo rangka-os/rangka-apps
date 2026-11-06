@@ -30,7 +30,7 @@ body { font-size: 8.5pt; }
 <div class="row"><span>Pelanggan</span><span>{{.Links.customer.customer_name}}</span></div>
 <div class="rule"></div>
 {{range $row := .Doc.items}}
-{{- $u := $row.uom -}}{{- range $.Related.uoms -}}{{- if eq .name $row.uom -}}{{- $u = .uom_name -}}{{- end -}}{{- end -}}
+{{- $u := or $row.uom_name $row.uom -}}
 <div class="line">
   <div>{{if $row.description}}{{$row.description}}{{else}}{{$row.item}}{{end}}</div>
   <div class="row sub"><span>{{number $row.qty}} {{$u}} x {{rupiah $row.rate}}{{if $row.discount}} (-{{number $row.discount}}%){{end}}</span><span class="num">{{rupiah $row.amount}}</span></div>

@@ -11,8 +11,3 @@ related:
     model: payment_instruction
     match: {sales_invoice: name}
     limit: 1
-  # unit names for the lines (a related list needs a match; uom is not submittable, so docstatus 0 loads every unit)
-  uoms:
-    model: uom
-    match: {docstatus: docstatus}
-    limit: 1000

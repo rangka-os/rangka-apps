@@ -56,8 +56,7 @@
   <thead><tr><th>Pekerja</th><th>Tahap</th><th class="num">Hasil kerja</th><th class="num">Tarif</th><th class="num">Upah</th><th>Tanda terima</th></tr></thead>
   <tbody>
   {{range $l := .Doc.lines}}
-  {{- $who := $l.worker -}}{{- range $.Related.workers -}}{{- if eq .name $l.worker -}}{{- $who = .worker_name -}}{{- end -}}{{- end -}}
-  {{- $stage := $l.stage -}}{{- $unit := "" -}}{{- range $.Related.stages -}}{{- if eq .name $l.stage -}}{{- $stage = .stage_name -}}{{- $unit = .unit -}}{{- end -}}{{- end -}}
+  {{- $who := or $l.worker_name $l.worker -}}{{- $stage := or $l.stage_name $l.stage -}}{{- $unit := $l.unit -}}
   <tr{{if $l.cancelled}} class="cancel"{{end}}>
     <td><strong>{{$who}}</strong></td>
     <td>{{$stage}}</td>
