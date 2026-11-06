@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Retur di kasir: the refund lines of one submitted outlet_sales (a POS file, Moka or Loyverse refund, qty < 0), per
+# item, and how much of each has come back into stock with a Retur ke stok (outlet_return). Made by flow
+# refund_on_sales_submitted and kept by the return flows; every field is read_only, so no person can change it (the
+# flows write as the person who submitted the document). A refund that is never returned stays out of stock, as the
+# sale left it (goods thrown away, a dish that was eaten). Contract 0022 §2.
+name: pos_refund
+label: {id: Retur di kasir, en: Cashier refund}
+icon: stock
+naming: RTK-{YYYY}-{#####}
+title_field: sales
+permissions:
+  - {role: head_office, read: true, create: true, write: true, export: true}
+  # outlet staff put refunded goods back on their own outlet's shelf: the return's flow updates this record as them
+  - {role: outlet_staff, read: true, write: true}
+fields:
+  - {name: sales, type: link, to: outlet_sales, label: {id: Penjualan}, read_only: true, in_list: true, peek: [date, source]}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, read_only: true, in_list: true}
+  - {name: date, type: date, label: {id: Tanggal penjualan}, read_only: true, in_list: true}
+  - {name: items, type: table, of: pos_refund_item, label: {id: Barang diretur}, read_only: true}
+  - {name: refunded_qty, type: float, label: {id: Qty diretur}, compute: "items.map(i, i.refunded_qty).sum()", in_list: true}
+  - {name: open_qty, type: float, label: {id: Belum kembali ke stok}, compute: "items.map(i, i.refunded_qty - i.returned_qty).sum()", in_list: true}
+views:
+  list:
+    columns: [name, date, outlet, sales, refunded_qty, open_qty]
+    filters: [outlet]
+    sort: -date

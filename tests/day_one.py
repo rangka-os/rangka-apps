@@ -2938,6 +2938,11 @@ MATRIX = {
     "stock_adjustment_value": {"head_office": {"read", "create", "export"}, "outlet_staff": {"read", "create"}},
     "outlet_sales": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     "outlet_takings": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
+    # cashier refunds back into stock (contract 0022): pos_refund is written by the flows of whoever submits the sale
+    # or the return (all its fields are read_only); outlet staff put goods back at their outlet, head office cancels
+    "pos_refund": {"head_office": {"read", "create", "write", "export"}, "outlet_staff": {"read", "write"}},
+    "outlet_return": {"head_office": _ALL, "outlet_staff": {"read", "create", "write", "delete", "submit", "print"}},
+    "outlet_sales_guard": {"head_office": {"create"}, "outlet_staff": {"create"}},   # never stored (a flow's refusal)
     "consignment_settlement": {"head_office": _ALL - {"delete"}},
     # payroll (manpower): pay and tax data are finance's; the project admin reads them because the payslip of a recap is
     # made inside the recap's submit, as that person (create, no submit)
@@ -5343,19 +5348,21 @@ import day_one_grosir  # noqa: E402
 import day_one_produksi  # noqa: E402
 import day_one_accounting  # noqa: E402
 import day_one_payroll  # noqa: E402
+import day_one_returns  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
 day_one_payroll.bind(sys.modules[__name__])
+day_one_returns.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_coretax, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction, scenario_xendit_callbacks],
-    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods, scenario_bank_account_delete],
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods, scenario_bank_account_delete] + day_one_returns.SCENARIOS_FNB,
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
-                   scenario_permissions, scenario_payment_methods],
+                   scenario_permissions, scenario_payment_methods] + day_one_returns.SCENARIOS_RITEL,
     "demo-grosir": day_one_grosir.SCENARIOS + [scenario_payment_instruction, scenario_permissions, scenario_payment_methods],
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
     "demo-manpower": day_one_payroll.SCENARIOS + [scenario_permissions],
