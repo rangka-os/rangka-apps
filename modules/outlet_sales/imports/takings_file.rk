@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# Juragan's daily takings template, one outlet per file: Tanggal, Metode (Tunai, QRIS, Kartu debit, Kartu kredit,
+# Transfer bank, Dompet digital, Lainnya), Menurut POS, Disetor, Potongan, Referensi. Fill Menurut POS from the POS's
+# payment report (Moka "Payment Methods", Loyverse "Sales by payment type"); a native import of those reports waits
+# for a real export file.
+name: takings_file
+label: {id: Setoran harian (template), en: Daily takings (template)}
+model: outlet_takings
+source: csv
+header_row: 1
+per: outlet
+key: [Tanggal, Metode]
+group: [Tanggal]
+map:
+  date: Tanggal
+lines:
+  field: lines
+  map:
+    method: "=row['Metode'] == 'Tunai' ? 'cash' : row['Metode'] == 'QRIS' ? 'qris' : row['Metode'] == 'Kartu debit' ? 'debit' : row['Metode'] == 'Kartu kredit' ? 'credit' : row['Metode'] == 'Transfer bank' ? 'transfer' : row['Metode'] == 'Dompet digital' ? 'ewallet' : 'other'"
+    expected: Menurut POS
+    received: Disetor
+    fee: Potongan
+    bank_ref: Referensi

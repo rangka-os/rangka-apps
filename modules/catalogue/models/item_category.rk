@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: item_category
+label: {id: Kategori barang, en: Item category}
+icon: stock
+naming: KTG-{###}
+title_field: category_name
+# Flat list (no tree): shops group items as "Minuman", "Sembako", "Rokok". Margin and sales per category are read
+# from the item's category.
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, print: true}
+  - {role: purchasing_manager, read: true, create: true, write: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, print: true}
+  - {role: outlet_staff, read: true}
+  - {role: sales_rep, read: true}
+fields:
+  - name: category_name
+    type: data
+    label: {id: Nama kategori}
+    required: true
+    in_list: true
+    unique: true
+  - name: notes
+    type: text
+    label: {id: Catatan}

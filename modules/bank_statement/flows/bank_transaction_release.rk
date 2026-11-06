@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A payment that held a statement line is cancelled: its claim gives the line back.
+name: bank_transaction_release
+label: {id: Lepas klaim mutasi saat pembayaran dibatalkan}
+on: payment.cancelled
+if: event.direction == 'receive' && event.bank_transaction != ''
+steps:
+  - {find: bank_transaction_claim, where: bank_transaction == event.bank_transaction && payment == event.name, as: held}
+  - update: held
+    if: held != null
+    set: {bank_transaction: "''", released_line: event.bank_transaction}

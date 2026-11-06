@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# Opening stock of one outlet with its value: one goods receipt per file (rows grouped by Tanggal) from the vendor
+# named "Saldo awal", so the moving average starts at the shop's own cost price. A goods receipt is the only document
+# that brings valued stock in (stock_adjustment only takes out, stock_count has no cost column); without a purchase
+# order it moves stock and writes no payable (payables come only from vendor_bill).
+# Headers: Tanggal, SKU, Qty, Harga pokok (per stock unit). Each SKU once per outlet (key), so a second upload of the
+# same list is skipped. The receipt arrives as a draft: check it, then submit it to post the stock.
+name: opening_stock
+label: {id: Stok awal, en: Opening stock}
+model: goods_receipt
+source: csv
+header_row: 1
+per: outlet
+key: [SKU]
+group: [Tanggal]
+map:
+  received_on: Tanggal
+  vendor: {value: "='Saldo awal'", match: vendor_name}
+  notes: "='Stok awal per ' + row['Tanggal']"
+lines:
+  field: items
+  map:
+    item: {value: SKU, match: sku}
+    qty: Qty
+    rate: Harga pokok
