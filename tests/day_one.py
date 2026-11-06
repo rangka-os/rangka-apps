@@ -15,6 +15,7 @@ import argparse
 import atexit
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -1343,6 +1344,171 @@ def statement_csv(rows, seq=True):
     return ("\n".join(out) + "\n").encode()
 
 
+def qris_payload(name, nmid, city="BANDUNG", poi="11", amount=None):
+    """A synthetic QRIS (EMVCo merchant-presented) payload with a correct CRC-16/CCITT-FALSE: no real merchant."""
+    def tlv(tag, value):
+        return f"{tag}{len(value):02d}{value}"
+    def crc(text):
+        c = 0xFFFF
+        for b in text.encode():
+            c ^= b << 8
+            for _ in range(8):
+                c = ((c << 1) ^ 0x1021) & 0xFFFF if c & 0x8000 else (c << 1) & 0xFFFF
+        return f"{c:04X}"
+    p = (tlv("00", "01") + tlv("01", poi)
+         + tlv("26", tlv("00", "ID.CO.QRIS.WWW") + tlv("01", "936000000000000001") + tlv("02", "000000000000001") + tlv("03", "UMI"))
+         + tlv("51", tlv("00", "ID.CO.QRIS.WWW") + tlv("02", nmid) + tlv("03", "UMI"))
+         + tlv("52", "5812") + tlv("53", "360") + (tlv("54", amount) if amount else "") + tlv("58", "ID") + tlv("59", name) + tlv("60", city) + "6304")
+    return p + crc(p)
+
+
+def scenario_payment_instruction(api):
+    """G2 gladi (U1/U2 rel uang): the business's rekening and static QRIS, copied into each invoice when it is submitted,
+    so an old invoice keeps the account it was billed with; transfer notes that carry the invoice number loosely still match."""
+    if not installed(api, "bank_account"):
+        fail("payment instruction", "bank_account not installed on this site")
+        return
+    site = CTX["kernel"].site
+    customer = api.list("customer")[0]["name"]
+    item = (services(api) or api.list("item"))[0]["name"]
+    q1 = qris_payload("PT CONTOH TAGIH", "ID1020000000101")
+    good = {"bank": "BCA", "account_no": "1110000001", "holder": "PT Contoh Tagih", "is_default": True, "qris_payload": q1,
+            "instructions": "Kirim bukti transfer ke WhatsApp kami."}
+
+    # validation: rekening digits only, QRIS frame + CRC, static, rupiah, no fixed amount
+    for label, patch in (("account number with spaces", {"account_no": "111 000 0001"}), ("account number with dots", {"account_no": "111.000.0001"}),
+                         ("account number with letters", {"account_no": "BCA1110000001"}), ("account number too short", {"account_no": "1234"}),
+                         ("QRIS with a wrong CRC", {"qris_payload": q1[:-4] + ("0000" if q1[-4:] != "0000" else "1111")}),
+                         ("QRIS edited by hand (CRC no longer fits)", {"qris_payload": q1.replace("PT CONTOH TAGIH", "PT CONTOH TAGIX")}),
+                         ("QRIS cut short", {"qris_payload": q1[:-1]}),
+                         ("dynamic QRIS (one-off)", {"qris_payload": qris_payload("PT CONTOH TAGIH", "ID1020000000101", poi="12")}),
+                         ("QRIS with a fixed amount", {"qris_payload": qris_payload("PT CONTOH TAGIH", "ID1020000000101", amount="50000")}),
+                         ("QRIS with a leading space", {"qris_payload": " " + q1})):
+        st, resp = api.create("bank_account", dict(good, **patch))
+        check(f"bank_account refuses {label}", st == 422, (st, resp))
+    st, acct = api.create("bank_account", good)
+    check("bank_account: valid rekening + static QRIS saved as the default", st == 201, (st, acct))
+    if st != 201:
+        return
+    eq("NMID and merchant name are read from the QRIS", (acct.get("qris_nmid"), acct.get("qris_merchant_name")), ("ID1020000000101", "PT CONTOH TAGIH"))
+    st, resp = api.create("bank_account", dict(good, account_no="2220000002", qris_payload=""))
+    check("a second default account in the same org is refused", st in (409, 422), (st, resp))
+    st, resp = api.create("bank_account", dict(good, account_no="2220000002", qris_payload="", active=False))
+    check("a default account must be active", st == 422, (st, resp))
+    st, spare = api.create("bank_account", dict(good, bank="Mandiri", account_no="1230009876543", is_default=False, qris_payload=""))
+    check("a second, non-default account without QRIS is fine", st == 201, (st, spare))
+
+    # roles: only finance (and head office) change where customers pay
+    sm, fm = CTX.get("sm"), CTX.get("fm")
+    if sm:
+        st, resp = sm.create("bank_account", dict(good, account_no="3330000003", is_default=False))
+        check("sales_manager cannot add a bank account", st == 403, (st, resp))
+        st, resp = sm.patch("bank_account", acct["name"], {"account_no": "9999999999"})
+        check("sales_manager cannot change the rekening", st == 403, (st, resp))
+    if fm:
+        st, resp = fm.patch("bank_account", spare["name"], {"instructions": "Rekening cadangan."})
+        check("finance_manager edits a bank account", st == 200, (st, resp))
+
+    # submit: the invoice gets a copy of the default account, with its number as payment reference
+    def submitted(rate, as_api=None, **extra):
+        cl = as_api or api
+        st, inv = cl.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0, **extra))
+        check(f"payment instruction: create invoice {rate}", st == 201, (st, inv))
+        st, resp = cl.verb("sales_invoice", inv.get("name", ""), "submit", {"force": True})
+        check(f"payment instruction: submit invoice {rate}", st == 200, (st, resp))
+        return resp.get("name", inv.get("name")) if isinstance(resp, dict) else inv.get("name")
+
+    inv1 = submitted(1_111_000)
+    pis = api.find("payment_instruction", f"sales_invoice == '{inv1}'")
+    check("submitting copies the default account into one payment_instruction", len(pis) == 1, pis)
+    if not pis:
+        return
+    pi = pis[0]
+    eq("the copy holds rekening, QRIS, instruction, reference = invoice number, amount due",
+       (pi["bank"], pi["account_no"], pi["holder"], pi["qris_payload"], pi["qris_nmid"], pi["qris_merchant_name"], pi["instructions"], pi["reference"], pi["amount"]),
+       ("BCA", "1110000001", "PT Contoh Tagih", q1, "ID1020000000101", "PT CONTOH TAGIH", good["instructions"], inv1, api.get("sales_invoice", inv1)["amount_due"]))
+    if sm:
+        inv_sm = submitted(1_212_000, as_api=sm)
+        check("an invoice submitted by the sales_manager gets its copy too (the flow runs as the submitter)",
+              len(api.find("payment_instruction", f"sales_invoice == '{inv_sm}'")) == 1, inv_sm)
+
+    # the account changes: the old invoice keeps what it billed with, a new one takes the new account
+    q2 = qris_payload("PT CONTOH TAGIH BARU", "ID1020000000102", city="JAKARTA")
+    st, resp = api.patch("bank_account", acct["name"], {"account_no": "4440000004", "qris_payload": q2})
+    check("change the default account's number and QRIS", st == 200, (st, resp))
+    pi_old = api.get("payment_instruction", pi["name"])
+    eq("the earlier invoice's copy is unchanged", (pi_old["account_no"], pi_old["qris_payload"], pi_old["qris_nmid"]), ("1110000001", q1, "ID1020000000101"))
+    inv2 = submitted(2_222_000)
+    pi2 = (api.find("payment_instruction", f"sales_invoice == '{inv2}'") or [{}])[0]
+    eq("an invoice submitted after the change carries the new account", (pi2.get("account_no"), pi2.get("qris_nmid")), ("4440000004", "ID1020000000102"))
+
+    # the copy cannot be written, deleted, or made up by hand
+    st, resp = api.patch("payment_instruction", pi["name"], {"account_no": "5550000005"})
+    check("the copied account number is read-only", st in (200, 403, 422) and api.get("payment_instruction", pi["name"])["account_no"] == "1110000001", (st, resp))
+    st, resp = api.create("payment_instruction", {"sales_invoice": inv1, "bank_account": spare["name"]})
+    check("a second payment instruction for the same invoice is refused", st in (409, 422), (st, resp))
+    st, dr = api.create("sales_invoice", invoice_body(customer, item, rate=3_000))
+    st, resp = api.create("payment_instruction", {"sales_invoice": dr["name"], "bank_account": acct["name"]})
+    check("no payment instruction for a draft invoice", st == 422, (st, resp))
+
+    # no default account: the invoice submits without a copy (the print falls back to the letterhead)
+    st, resp = api.patch("bank_account", acct["name"], {"is_default": False})
+    check("unset the default account", st == 200, (st, resp))
+    inv3 = submitted(3_333_000)
+    eq("without a default account no copy is made", len(api.find("payment_instruction", f"sales_invoice == '{inv3}'")), 0)
+    st, resp = api.create("payment_instruction", {"sales_invoice": inv3, "bank_account": spare["name"], "account_no": "6660000006", "bank": "BANK PALSU"})
+    check("a hand-made copy with a made-up rekening is refused (the copied fields are read-only and must equal the account)",
+          st in (403, 422) and not api.find("payment_instruction", f"sales_invoice == '{inv3}' && account_no == '6660000006'"), (st, resp))
+    st, resp = api.patch("bank_account", acct["name"], {"is_default": True})
+    check("set the default account again", st == 200, (st, resp))
+
+    # cancel + amend: the amended invoice is a new submission with its own copy
+    st, resp = api.verb("sales_invoice", inv2, "cancel")
+    check("cancel an invoice with a payment instruction", st == 200, (st, resp))
+    st, am = api.verb("sales_invoice", inv2, "amend")
+    check("amend it", st in (200, 201), (st, am))
+    st, resp = api.verb("sales_invoice", am.get("name", ""), "submit", {"force": True})
+    am_name = resp.get("name", "") if isinstance(resp, dict) else ""
+    check("the amended invoice submits and gets its own copy", st == 200 and len(api.find("payment_instruction", f"sales_invoice == '{am_name}'")) == 1, (st, resp))
+
+    # a second org has its own default account (the default is per org)
+    if site == "demo-jasa":
+        org2 = Api.login(CTX["kernel"].base, CTX["kernel"].owner_email, CTX["kernel"].owner_pw, org="cv_contoh_pelatihan")
+        st, a2 = org2.create("bank_account", dict(good, holder="CV Contoh Pelatihan", account_no="7770000007",
+                                                  qris_payload=qris_payload("CV CONTOH PELATIHAN", "ID1020000000201")))
+        check("the second PT saves its own default account", st == 201, (st, a2))
+        eq("each PT sees only its own accounts", (sorted(a["account_no"] for a in api.list("bank_account")), [a["account_no"] for a in org2.list("bank_account")]),
+           (["1230009876543", "4440000004"], ["7770000007"]))
+
+    # mutasi: the invoice number written loosely in the transfer note still finds the invoice
+    if not installed(api, "bank_transaction"):
+        return
+    inv4 = submitted(4_444_123)
+    inv5 = submitted(4_444_123)            # same amount: only the number can tell them apart
+    inv6 = submitted(4_444_123)
+    # the series may be INV-2026-00012 or INV/CIN/26/0005: each note differs from the number as stored
+    loose4 = "TRSF E-BANKING CR " + re.sub(r"[-/]", " ", inv4).lower() + " BUDI"
+    loose5 = "QR TRF " + re.sub(r"[-/]", "", inv5)
+    loose6 = "TRF " + re.sub(r"[-/]", ".", inv6) + " LUNAS"
+    check("the notes do not contain the invoice numbers as stored", all(n not in t for n, t in ((inv4, loose4), (inv5, loose5), (inv6, loose6))), (loose4, loose5, loose6))
+    rows = [("06/11/2026", loose4, 4_444_123, 0, 50_000_000), ("06/11/2026", loose5, 4_444_123, 0, 54_444_123),
+            ("06/11/2026", loose6, 4_444_123, 0, 58_888_246),
+            ("06/11/2026", "TRSF CR 4444123 TANPA NOMOR", 4_444_123, 0, 63_332_369)]
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-referensi.csv", statement_csv(rows))
+    check("statement with loosely written references: preview without errors", st == 200 and pv.get("errors") == [], (st, pv))
+    if st != 200:
+        return
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit")
+    check("statement commit", st == 200 and len(c.get("records", [])) == 4, (st, c))
+    lines = {l["description"]: l for l in api.find("bank_transaction", "date == '2026-11-06' && amount == 4444123")}
+    eq("lower case with spaces instead of dashes: suggested that invoice", (lines.get(loose4, {}).get("status"), lines.get(loose4, {}).get("suggested_invoice")), ("suggested", inv4))
+    eq("without separators: suggested that invoice", (lines.get(loose5, {}).get("status"), lines.get(loose5, {}).get("suggested_invoice")), ("suggested", inv5))
+    l6 = lines.get(rows[2][1], {})
+    eq("dots instead of separators: suggested that invoice", (l6.get("status"), l6.get("suggested_invoice")), ("suggested", inv6))
+    l7 = lines.get(rows[3][1], {})
+    check("no number and three invoices of that amount: no suggestion", l7.get("status") == "unmatched" and not l7.get("suggested_invoice"), l7)
+
+
 def scenario_money_rail(api):
     if not installed(api, "bank_transaction"):
         fail("money rail", "bank_statement module not installed on this site")
@@ -2505,6 +2671,10 @@ MATRIX = {
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
                           "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
+    "bank_account": {"finance_manager": {"read", "create", "write", "delete", "export"}, "head_office": {"read", "create", "write", "delete", "export"},
+                     "sales_manager": _R, "sales_rep": _R, "field_sales": _R, "project_admin": _R},
+    "payment_instruction": {"finance_manager": {"read", "create", "export"}, "sales_manager": {"read", "create", "export"},
+                            "head_office": _R, "sales_rep": _R, "project_admin": _R},
     "gateway_ref_claim": {"finance_manager": {"read", "create", "write", "export"}, "sales_manager": {"read", "create", "write", "export"},
                           "head_office": {"read", "create", "write"}},
     "invoice_reminder": {"finance_manager": {"read", "create", "write", "delete", "export"}, "sales_manager": {"read", "create", "write", "delete", "export"},
@@ -4595,12 +4765,12 @@ day_one_produksi.bind(sys.modules[__name__])
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods],
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
                    scenario_permissions, scenario_payment_methods],
-    "demo-grosir": day_one_grosir.SCENARIOS + [scenario_permissions, scenario_payment_methods],
+    "demo-grosir": day_one_grosir.SCENARIOS + [scenario_payment_instruction, scenario_permissions, scenario_payment_methods],
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
 }
 
