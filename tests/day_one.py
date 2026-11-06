@@ -3726,6 +3726,54 @@ def preview(cl, imp, filename, content, outlet):
     return cl.upload(f"/api/v1/imports/{imp}", {"outlet": outlet}, filename, content)
 
 
+def scenario_payment_methods(api):
+    """Gladi 6 Nov (audit re-pin alpha.7, L2): "Potong retur" (method sales_return) only credits a sales return of the
+    delivery module, so only a site that installs it offers the option (demo-grosir, through custom/payment.rk). Elsewhere
+    the form must not offer a choice that is always refused."""
+    st, meta = api.call("GET", "/api/v1/meta")
+    fields = (((meta or {}).get("models") or {}).get("payment") or {}).get("fields") or []
+    if not fields:
+        check(f"{CTX.get('site')}: no payments module, no payment form", True)
+        return
+    method = next((f for f in fields if f.get("name") == "method"), {})
+    values = [o.get("value") for o in method.get("options") or []]
+    check("payment.method still offers transfer, cash, giro, qris", all(v in values for v in ("transfer", "cash", "giro", "qris")), values)
+    if CTX.get("site") == "demo-grosir":
+        check("demo-grosir: payment.method offers Potong retur (sales_return) from the site overlay", "sales_return" in values, values)
+        return
+    check(f"{CTX.get('site')}: payment.method does not offer Potong retur (sales_return) without the delivery module", "sales_return" not in values, values)
+    st, cust = api.call("GET", "/api/v1/r/customer?limit=1")
+    rows = (cust or {}).get("data") or []
+    if rows:
+        st, resp = api.call("POST", "/api/v1/r/payment", {"direction": "receive", "customer": rows[0]["name"], "method": "sales_return", "amount": 1000})
+        check("a payment with method sales_return is refused (422)", st == 422, (st, resp))
+
+
+def scenario_credit_limit_warning(api):
+    """Audit ulang test operator 6 Nov, finding 2: several submits pass force=True for the credit limit, so prove the
+    warn rule itself: an invoice past the customer's limit is held with needs_force and only credit_limit, stays a draft,
+    and goes through when the warning is acknowledged."""
+    fm = CTX.get("fm") or api
+    customer, ndt = "CUST-0001", services(api)[0]["name"]
+    c = api.get("customer", customer)
+    limit, owed = c.get("credit_limit") or 0, c.get("outstanding") or 0
+    if not check("CUST-0001 has a credit limit for the warning check", limit > 0, c):
+        return
+    over = max(limit - owed, 0) + 1_000_000
+    st, inv = fm.create("sales_invoice", {"customer": customer, "items": [{"item": ndt, "qty": 1, "rate": over, "description": "Uji batas kredit"}]})
+    if not check("invoice past the credit limit created as a draft", st == 201, (st, inv)):
+        return
+    st, resp = fm.verb("sales_invoice", inv["name"], "submit")
+    warns = [w.get("rule") for w in (resp or {}).get("warnings", [])]
+    check("submit without force -> 422 needs_force, warnings only credit_limit, no errors",
+          st == 422 and resp.get("needs_force") is True and warns == ["credit_limit"] and not resp.get("errors"), (st, resp))
+    eq("the held invoice is still a draft", api.get("sales_invoice", inv["name"]).get("docstatus"), 0)
+    st, resp = fm.verb("sales_invoice", inv["name"], "submit", {"force": True})
+    check("submit with force acknowledges the warning -> 200", st == 200, (st, resp))
+    if st == 200:
+        fm.verb("sales_invoice", resp.get("name", inv["name"]), "cancel")
+
+
 def scenario_po_approval_fnb(api):
     """demo-fnb's custom/purchase_order.rk: a head office PO above Rp 5.000.000 waits for the owner (contract 0007 §1)."""
     hq = CTX.get("hq")
@@ -4021,6 +4069,22 @@ def scenario_outlet_sales(api):
         if moka_rec:
             st, resp = dago.call("GET", f"/api/v1/r/outlet_sales/{Api.q(moka_rec['name'])}")
             check("outlet staff still reads its outlet's Moka records", st == 200, (st, resp))
+    # Audit #7 S1b, restored (audit ulang test operator 6 Nov, finding 1): staff of a daily-form outlet turn their own
+    # form record into source moka with a refund. Only the outlet_staff grant `if: source == 'form'`, read on the value
+    # after the PATCH, stops it (source_matches_outlet allows moka at any outlet), so this probe guards that grant.
+    cim = CTX.get("staff_cimahi")
+    if not cim:
+        fail("outlet staff of Cimahi signed in (form -> moka probe)", CTX.get("login_error", "no staff_cimahi"))
+    else:
+        st, own = cim.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-06", "lines": [{"item": "BRG-0007", "qty": 1}]})
+        if check("Cimahi staff creates a daily form record (201, source form)", st == 201 and own.get("source") == "form", (st, own)):
+            st, resp = cim.patch("outlet_sales", own["name"], {"source": "moka", "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 900_000}]})
+            check("Cimahi staff turning it into source moka with net -900.000 -> 403", st == 403, (st, resp))
+            st, resp = cim.patch("outlet_sales", own["name"], {"source": "moka"})
+            check("Cimahi staff changing only source to moka -> 403", st == 403, (st, resp))
+            kept = api.get("outlet_sales", own["name"])
+            eq("the form record keeps source form and net 15.000 (1 x 15.000)", (kept["source"], kept["net_total"]), ("form", 15_000))
+            api.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(own['name'])}")
     st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": []})
     if st == 201:
         fail("min_rows 1: an outlet_sales without lines is refused", "201: the kernel saved it")
@@ -4504,7 +4568,9 @@ def setup_demo_fnb(api, k):
     pw = secrets.token_urlsafe(18)   # a throwaway password for this run's throwaway database
     people = [("hq", "rina@tahucontoh.test", "head_office", "", "USR-001", "Rina Contoh"),
               ("staff_dago", "yusuf.dago@tahucontoh.test", "outlet_staff", DAGO, "USR-002", "Yusuf Contoh"),
-              ("staff_braga", "sinta.braga@tahucontoh.test", "outlet_staff", BRAGA, "USR-003", "Sinta Contoh")]
+              ("staff_braga", "sinta.braga@tahucontoh.test", "outlet_staff", BRAGA, "USR-003", "Sinta Contoh"),
+              # Cimahi keeps the daily form: its staff can make a form record, so the "form -> moka" probe has one
+              ("staff_cimahi", "dewi.cimahi@tahucontoh.test", "outlet_staff", CIMAHI, "", "Dewi Contoh")]
     for key, email, role, outlets, rec, name in people:
         code, out = k.user_add(email, role, org, name, outlets=outlets, record=rec, password=pw)
         if code != 0:
@@ -4527,15 +4593,15 @@ day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 
 SCENARIOS = {
-    "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
+    "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail],
-    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning],
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods],
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
-                   scenario_permissions],
-    "demo-grosir": day_one_grosir.SCENARIOS + [scenario_permissions],
-    "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions],
+                   scenario_permissions, scenario_payment_methods],
+    "demo-grosir": day_one_grosir.SCENARIOS + [scenario_permissions, scenario_payment_methods],
+    "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
 }
 
 
@@ -4555,6 +4621,7 @@ def main():
     k.start()
     api = Api(k.base)
     CTX["kernel"] = k
+    CTX["site"] = a.site
     if a.site == "demo-fnb":
         setup_demo_fnb(api, k)
     if a.site == "demo-jasa":

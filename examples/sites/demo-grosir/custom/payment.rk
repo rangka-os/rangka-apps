@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
+# "Potong retur": a sales return (module delivery) credited to the customer's invoice, no money moves. The payments
+# module leaves this method out because a select option cannot depend on an installed app; a site that installs
+# delivery (grosir_distribusi) adds it here. Juragan's provisioning copies the template site's custom/ to each tenant.
+model: payment
+options:
+  method:
+    - {value: sales_return, label: {id: Potong retur}}
