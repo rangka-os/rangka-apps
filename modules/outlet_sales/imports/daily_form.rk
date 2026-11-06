@@ -1,12 +1,14 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
 # The daily sales sheet an outlet fills in when it has no Moka export: one row per item sold, one file per day.
+# No key on purpose: import keys are never released, so with [Tanggal, SKU] a corrected sheet for a day could not
+# import again even after the old record was cancelled. The same file twice is still refused by its hash, and two
+# submitted forms for one outlet and day are refused at submit (409 duplicate_sales).
 name: daily_form
 label: {id: Formulir penjualan harian, en: Daily sales form}
 model: outlet_sales
 source: csv
 header_row: 1
 per: outlet
-key: [Tanggal, SKU]
 group: [Tanggal]
 map:
   date: Tanggal
