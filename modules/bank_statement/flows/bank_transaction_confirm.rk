@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The owner sets a line to "Dikonfirmasi": draft a payment from the customer of the chosen invoice, for the line's
+# amount, allocated to that invoice (up to what it still owes; any rest stays unallocated on the payment), naming the
+# line in payment.bank_transaction. The draft is submitted by a person (finance), which settles the invoice.
+# A draft of this line that is still open (an earlier draft, or the amend of a cancelled one) is pointed at the
+# invoice chosen last instead of drafting another. Extra drafts are harmless anyway: bank_transaction_claim lets only
+# one live payment per line be submitted.
+name: bank_transaction_confirm
+label: {id: Mutasi dikonfirmasi jadi pembayaran}
+on: bank_transaction.updated
+if: event.status == 'confirmed' && event.payment == '' && event.suggested_invoice != ''
+steps:
+  - {find: payment, where: "docstatus == 0 && bank_transaction == event.name", as: draft}
+  # a live payment already names the line (it is matched then, or a payment typed by hand carries the line in its
+  # reference): no new draft, so the same transfer is never drafted twice
+  - {find: payment, where: "docstatus == 1 && direction == 'receive' && (bank_transaction == event.name || reference == event.name)", as: paid}
+  - {find: sales_invoice, where: name == event.suggested_invoice, as: inv}
+  - {find: bank_transaction, where: name == event.name, as: line}
+  - update: draft
+    if: inv != null && draft != null
+    set:
+      customer: inv.customer
+      amount: event.amount
+      allocations: "[{'sales_invoice': inv.name, 'amount': min(event.amount, inv.outstanding)}]"
+  - create: payment
+    if: inv != null && draft == null && paid == null
+    set:
+      direction: "'receive'"
+      customer: inv.customer
+      payment_date: event.date
+      method: "'transfer'"
+      reference: event.name
+      bank_transaction: event.name
+      amount: event.amount
+      allocations: "[{'sales_invoice': inv.name, 'amount': min(event.amount, inv.outstanding)}]"
+      notes: "'Dari mutasi ' + event.name + ': ' + event.description"
+    as: pay
+  - update: line
+    if: inv != null && draft != null && draft.name != event.draft_payment
+    set: {draft_payment: draft.name}
+  - update: line
+    if: inv != null && draft == null && paid == null
+    set: {draft_payment: pay.name}

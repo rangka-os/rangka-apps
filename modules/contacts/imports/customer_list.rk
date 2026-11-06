@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# The opening customer list: one row per customer. WhatsApp numbers in +62 form, NPWP 16 digits (may be empty).
+# Duplicates are detected against earlier imports only (contract 0012): a customer typed in by hand with the same name is
+# not matched and would be created again; check the list before importing into an installation that is already in use.
+name: customer_list
+label: {id: Daftar pelanggan, en: Customer list}
+model: customer
+source: csv
+header_row: 1
+key: [Nama pelanggan]
+map:
+  customer_name: Nama pelanggan
+  city: Kota
+  phone: WhatsApp
+  email: Email
+  payment_days: Tempo (hari)
+  npwp: NPWP

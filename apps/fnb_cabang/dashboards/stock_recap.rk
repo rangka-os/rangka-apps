@@ -109,13 +109,15 @@ widgets:
   - name: waste_by_outlet
     type: chart
     chart: bar
-    label: {id: Barang rusak per outlet}
-    description: {id: Nilai bahan yang dibuang atau rusak}
-    model: stock_move
+    label: {id: Penyesuaian stok per outlet}
+    description: {id: 'Nilai stok keluar karena terbuang, rusak, kedaluwarsa atau lainnya (negatif = keluar); selisih opname tidak termasuk'}
+    # Every adjustment reason (waste, damage, expired, other), from stock_adjustment_value: one row per submitted
+    # adjustment and one opposite row when it is cancelled, both on the adjustment's date, so a cancelled one nets to
+    # zero in its own period. Count differences (opname) are not adjustments and are not here.
+    model: stock_adjustment_value
     group_by: outlet
     aggregate: sum
     field: value
-    filter: reason == 'waste'
     period: posting_date
     span: 6
   - name: negative_balances

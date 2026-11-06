@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: moka_legacy_key_overlap
+label: {id: Tandai impor Moka yang tumpang tindih dengan impor lama}
+# A Moka record written by the current import (key_version 2) for an outlet and day that already has a live Moka record
+# from before Time joined the import key: those keys never match, so the repeated rows came in again. The record is
+# marked and rule legacy_key_reviewed holds its submit until head office removed the repeated lines.
+on: outlet_sales.created
+if: event.source == 'moka' && event.key_version == 2
+steps:
+  - find: outlet_sales
+    where: >-
+      source == 'moka' && outlet == event.outlet && date == event.date && docstatus != 2 && name != event.name
+      && key_version != 2
+    as: old
+  - find: outlet_sales
+    if: old != null
+    where: name == event.name
+    as: rec
+  - update: rec
+    if: old != null
+    set:
+      legacy_key_overlap: "true"

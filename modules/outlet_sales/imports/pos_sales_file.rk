@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# Juragan's sales template for any POS without its own import (Kasir Pintar, Pawoon, majoo, Olsera, a spreadsheet):
+# one row per item sold per day, one outlet per file. Headers: Tanggal, No struk, Jenis (Jual or Retur), SKU, Qty,
+# Penjualan kotor, Diskon, Retur. A return is its own row (Jenis Retur) with a negative Qty, Penjualan kotor 0 and the
+# returned value in Retur, as Moka writes it. No struk may be empty when the POS only exports a daily total per item:
+# then each SKU appears once per day and Jenis. The key leaves Qty out on purpose: a re-export of a day whose totals
+# changed skips the rows already imported instead of adding them a second time; correct such a day on its draft.
+# The outlet must have Sumber penjualan = File POS. Same file twice -> duplicate; overlapping files -> only new rows.
+name: pos_sales_file
+label: {id: Penjualan dari file POS, en: Sales from a POS file}
+model: outlet_sales
+source: csv
+header_row: 1
+per: outlet
+key: [Tanggal, No struk, Jenis, SKU]
+group: [Tanggal]
+map:
+  date: Tanggal
+  source: "='file'"
+  note: "='File POS ' + row['Tanggal']"
+lines:
+  field: lines
+  map:
+    item: {value: SKU, match: sku}
+    qty: Qty
+    gross: Penjualan kotor
+    discount: Diskon
+    refund: Retur

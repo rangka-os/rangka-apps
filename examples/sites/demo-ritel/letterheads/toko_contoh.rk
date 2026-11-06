@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+# Letterhead of CV Toko Contoh Sejahtera (org toko_contoh): used on its purchase orders instead of the site letterhead.
+legal_name: CV Toko Contoh Sejahtera
+tagline: Toko kebutuhan sehari-hari
+address: |
+  Jl. Contoh Cibiru No. 10
+  Bandung 40614
+phone: '+62 22 000 0004'
+email: halo@tokocontoh.test
+website: tokocontoh.test
+bank:
+  - {bank: Bank Contoh, account: '444 000 0004', holder: CV Toko Contoh Sejahtera, branch: Bandung}
+signatory: {name: Dewi Contoh, title: Pemilik}
+footer: {id: Terima kasih atas kerja samanya}

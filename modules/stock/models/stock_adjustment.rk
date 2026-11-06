@@ -32,6 +32,7 @@ fields:
       - {value: waste, label: {id: Terbuang}}
       - {value: damage, label: {id: Rusak}}
       - {value: expired, label: {id: Kedaluwarsa}}
+      - {value: consignment_return, label: {id: Kembali ke penitip}}
       - {value: other, label: {id: Lainnya}}
   - name: items
     type: table

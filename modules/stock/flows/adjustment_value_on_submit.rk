@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: adjustment_value_on_submit
+label: {id: Nilai penyesuaian stok tercatat}
+# Inside the adjustment's submit, after stock.post_moves: one row with the sum of the moves it wrote, on its date.
+on: stock_adjustment.submitted
+steps:
+  - find_all: stock_move
+    where: voucher_type == 'stock_adjustment' && voucher == event.name
+    as: moves
+  - create: stock_adjustment_value
+    set:
+      stock_adjustment: event.name
+      entry: "'post'"
+      outlet: event.outlet
+      posting_date: event.adjustment_date
+      reason: event.reason
+      value: moves.map(m, m.value).sum()

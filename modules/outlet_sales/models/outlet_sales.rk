@@ -8,11 +8,20 @@ title_field: date
 # Created as a draft (by the daily form or by an import); stock moves only when head office or the outlet submits it.
 # stock.post_moves explodes each line through its active recipe, writes the line cogs and cogs_total, and refuses
 # a second submitted record for the same outlet and date when source is form (409 duplicate_sales).
+# A refund from a POS file (Moka, Loyverse, Juragan's template) is its own line (qty < 0, gross 0, refund > 0, net < 0).
+# The kernel posts no stock move for a line with qty <= 0, so the goods of the original sale stay out of stock: a refund
+# lowers net sales and margin, not stock. For a shop that puts returned goods back on the shelf this undervalues stock
+# until the kernel has a return document (draft contract 0021); the retail dashboard shows returned qty per day.
+# That is also what Moka does with base ingredients on a refund. Returning materials to stock needs the kernel.
 on_submit: [stock.post_moves]
 on_cancel: [stock.reverse_moves]
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, import: true, print: true}
-  - {role: outlet_staff, read: true, create: true, write: true, submit: true}
+  # Outlet staff keep the daily form only. A record from Moka, a POS file or Loyverse (negative refund lines allowed) is
+  # the importer's, head office: staff cannot type such a source to book a negative net (audit #7 S1, kept for file
+  # and loyverse when ritel_cabang added them).
+  - {role: outlet_staff, read: true, create: true, write: true, submit: true, if: source == 'form'}
+  - {role: outlet_staff, read: true}
 fields:
   - name: outlet
     type: link
@@ -25,6 +34,9 @@ fields:
     label: {id: Tanggal}
     required: true
     in_list: true
+  # Set by the import (moka, file, loyverse) or left at form. Not read_only: the kernel drops read_only input from imports
+  # too. The outlet_staff permission holds only while source == 'form', so only head office (who imports) can write a
+  # record from Moka, a POS file or Loyverse.
   - name: source
     type: select
     label: {id: Sumber}
@@ -34,9 +46,30 @@ fields:
     options:
       - {value: moka, label: {id: Moka}}
       - {value: form, label: {id: Formulir harian}}
+      - {value: file, label: {id: File POS}}
+      - {value: loyverse, label: {id: Loyverse}}
   - name: note
     type: data
     label: {id: Catatan}
+  # The Outlet column of the Moka file this record came from; must equal the chosen outlet's moka_name.
+  - name: moka_outlet
+    type: data
+    label: {id: Outlet di file Moka}
+    depends_on: source == 'moka'
+  # The Moka import key gained Time (two partial refunds of one item on one receipt). Keys stored before that never
+  # match the new key, so an overlapping export re-imports rows of a day already imported. key_version is 2 on every
+  # record the current import writes; flow moka_legacy_key_overlap marks a new record whose outlet and day already have
+  # a live Moka record without it, and rule legacy_key_reviewed holds its submit until head office has removed the
+  # repeated lines and ticks legacy_key_checked.
+  - {name: key_version, type: int, label: {id: Versi kunci impor}, hidden: true}
+  - name: legacy_key_overlap
+    type: check
+    label: {id: Tumpang tindih impor lama}
+    read_only: true
+    help: {id: 'Tanggal ini sudah punya penjualan Moka yang diimpor sebelum pembaruan; baris yang sama bisa masuk lagi'}
+  - name: legacy_key_checked
+    type: check
+    label: {id: Baris ganda sudah dihapus}
   - name: lines
     type: table
     of: outlet_sales_line
@@ -74,19 +107,52 @@ fields:
     label: {id: Margin}
     compute: net_total - cogs_total
     in_list: true
+  # Monthly tax recap (no file): a PKP shop's sales prices include PPN, so the PPN inside net sales is
+  # net x rate x dpp / (100 + rate x dpp) (Digunggung amounts). The 0,5% final PPh of PP 55/2022 depends on turnover
+  # (up to Rp 4,8 miliar a year), not on PKP status, so it is shown for every shop on turnover without PPN; a shop
+  # above the limit ignores it.
+  # The XML for Coretax needs a kernel export.
+  - name: ppn_in_sales
+    type: currency
+    label: {id: PPN dalam penjualan}
+    compute: "tax.pkp ? round(net_total * tax.ppn_rate * tax.dpp_num / (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num)) : 0"
+  - name: pph_final
+    type: currency
+    label: {id: 'PPh final 0,5%'}
+    compute: round((net_total - ppn_in_sales) * 5 / 1000)
 rules:
+  - name: moka_outlet_matches
+    on: save
+    check: "source != 'moka' || moka_outlet == outlet.moka_name"
+    message: {id: 'Kolom Outlet di file Moka beda dengan Nama outlet di Moka pada outlet ini. Ekspor per outlet, atau cek data outlet'}
+  # One sales source per outlet: a Moka outlet (moka_name set) imports Moka files only, any other outlet uses the
+  # daily form. Without it, a form and a Moka export for the same outlet and day both take stock out.
+  - name: form_only_for_non_moka_outlets
+    on: save
+    check: "source != 'form' || outlet.moka_name == ''"
+    message: {id: 'Outlet ini memakai Moka: penjualannya diimpor dari file Moka, bukan formulir harian'}
+  # An outlet without Moka has one sales_source (empty = form): a POS file or a Loyverse export is accepted only for
+  # the outlet that names it, and a form only for an outlet whose source is the form.
+  - name: source_matches_outlet
+    on: save
+    check: "source == 'moka' || (outlet.moka_name == '' && (outlet.sales_source == '' ? 'form' : outlet.sales_source) == source)"
+    message: {id: 'Sumber penjualan ini beda dengan Sumber penjualan di data outlet. Cek data outlet, atau pilih outlet yang benar'}
   - name: qty_not_negative
     on: save
-    check: "lines.map(l, l.qty < 0 ? 1 : 0).sum() == 0"
-    message: {id: Jumlah terjual tidak boleh negatif}
+    check: "lines.map(l, l.qty < 0 && (l.refund == 0 || (source != 'moka' && source != 'file' && source != 'loyverse')) ? 1 : 0).sum() == 0"
+    message: {id: Jumlah terjual hanya boleh negatif di baris retur dari file POS}
   - name: discount_within_gross
     on: save
     check: "lines.map(l, l.discount > l.gross ? 1 : 0).sum() == 0"
     message: {id: Diskon tidak boleh melebihi penjualan kotor}
   - name: net_not_negative
     on: save
-    check: "lines.map(l, l.net < 0 ? 1 : 0).sum() == 0"
-    message: {id: Penjualan bersih per baris tidak boleh negatif}
+    check: "lines.map(l, l.net < 0 && (l.refund == 0 || (source != 'moka' && source != 'file' && source != 'loyverse')) ? 1 : 0).sum() == 0"
+    message: {id: Penjualan bersih per baris hanya boleh negatif di baris retur dari file POS}
+  - name: legacy_key_reviewed
+    on: submit
+    check: "!legacy_key_overlap || legacy_key_checked"
+    message: {id: 'Tanggal ini sudah diimpor sebelum pembaruan: hapus baris yang terulang, lalu centang Baris ganda sudah dihapus'}
 views:
   list:
     columns: [name, outlet, date, source, status, net_total, cogs_total, margin]
@@ -97,7 +163,7 @@ views:
       - section: {id: Penjualan}
         columns:
           - [outlet, date, source]
-          - [note]
+          - [note, legacy_key_overlap, legacy_key_checked]
       - section: {id: Barang terjual}
         fields: [lines]
       - section: {id: Ringkasan}

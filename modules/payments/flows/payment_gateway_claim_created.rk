@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A payment with a gateway id is created: it claims the id in gateway_ref_claim (see that model). A claim whose
+# payment is gone (a deleted draft, or this payment's own draft name before submit renamed it) or cancelled is
+# taken over; otherwise a new claim is created, and the unique index refuses it when a live payment holds the id,
+# which refuses the whole save: a gateway callback delivered twice cannot pay an invoice twice.
+name: payment_gateway_claim_created
+label: {id: Klaim ID gateway saat pembayaran dibuat}
+on: payment.created
+if: event.gateway_ref != ''
+steps:
+  - {find: gateway_ref_claim, where: gateway_ref == event.gateway_ref, as: held}
+  - {find: payment, where: "held != null && name == held.payment && docstatus != 2", as: holder}
+  - if: held != null && holder == null
+    then:
+      - update: held
+        set: {payment: event.name}
+    else:
+      - create: gateway_ref_claim
+        set: {gateway_ref: event.gateway_ref, payment: event.name}
