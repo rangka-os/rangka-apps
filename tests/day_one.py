@@ -2409,14 +2409,24 @@ def scenario_project_margin(api):
     st, ret = fm.create("sales_invoice", {"customer": customer, "project": p, "kind": "retention", "retention_of": invn, "items": [{"item": ndt, "qty": 1, "rate": 0}]})
     eq("margin unchanged by anything not submitted", margin(), 35_000_000)
     st, resp = pa.call("PATCH", f"/api/v1/r/project_ledger/{Api.q(rows()[0]['name'])}", {"amount": 1})
-    check("people cannot edit a ledger row (no write)", st == 403, (st, resp))
-    # no row can be made up by hand, even by a role that holds create (flows run as that role)
-    for who, cl in (("project_admin", pa), ("finance_manager", fm), ("sales_manager", CTX.get("sm"))):
+    check("people cannot edit a ledger row (no write, append_only)", st in (403, 409), (st, resp))
+    # append_only (contract 0026, t_68bc8060): not even the owner edits, deletes or makes up a row; flows still post
+    row0 = rows()[0]["name"]
+    st, resp = api.call("PATCH", f"/api/v1/r/project_ledger/{Api.q(row0)}", {"amount": 1})
+    check("the owner cannot edit a ledger row -> 409 append_only", st == 409 and ((resp or {}).get("error") or {}).get("code") == "append_only", (st, resp))
+    st, resp = api.call("DELETE", f"/api/v1/r/project_ledger/{Api.q(row0)}")
+    check("the owner cannot delete a ledger row -> 409 append_only", st == 409 and ((resp or {}).get("error") or {}).get("code") == "append_only", (st, resp))
+    check("the row is still there after both", any(r["name"] == row0 for r in rows()), row0)
+    st, meta = api.call("GET", "/api/v1/meta")
+    can = (((meta or {}).get("models") or {}).get("project_ledger") or {}).get("can") or {}
+    eq("meta for the owner: project_ledger has no create, write, delete or import", [can.get(k) for k in ("create", "write", "delete", "import")], [False, False, False, False])
+    # no row can be made up by hand, even by a role that holds create (flows run as that role), nor by the owner
+    for who, cl in (("owner", api), ("project_admin", pa), ("finance_manager", fm), ("sales_manager", CTX.get("sm"))):
         st, resp = cl.create("project_ledger", {"project": p, "posting_date": "2026-11-20", "kind": "revenue", "source_model": "manual", "source_name": "manual", "amount": 100_000_000})
-        check(f"{who} cannot make up a revenue row -> 422", st == 422, (st, resp))
+        check(f"{who} cannot make up a revenue row -> 409 append_only", st == 409 and ((resp or {}).get("error") or {}).get("code") == "append_only", (st, resp))
     if invn:
         st, resp = fm.create("project_ledger", {"project": p, "posting_date": "2026-11-20", "kind": "revenue", "source_model": "sales_invoice", "source_name": invn, "sales_invoice": invn, "amount": 40_000_000})
-        check("a second copy of the invoice's own row -> 422 (entry_key unique)", st == 422, (st, resp))
+        check("a second copy of the invoice's own row -> 409", st == 409, (st, resp))
     # an expense cannot point at a vendor bill of no project (its cost would reach no ledger)
     st, nb = pm.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "NOPRJ-1", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 1_000_000}]})
     # an expense counts at its own full amount whatever its linked bill does (audit round 3): it may link a bill
@@ -2458,7 +2468,7 @@ def scenario_project_margin(api):
         post = [r for r in rows() if r["source_name"] == exn and r["entry"] == "post"]
         st, resp = pa.create("project_ledger", {"project": p, "posting_date": ex["expense_date"], "kind": "expense", "entry": "reverse", "source_model": "project_expense",
                                                 "source_name": exn, "project_expense": exn, "reverses": post[0]["name"] if post else "", "amount": 500_000})
-        check("a second reversal of the same row -> 422", st == 422, (st, resp))
+        check("a second reversal of the same row -> 409 append_only", st == 409, (st, resp))
     allr = rows()
     posts = {r["name"]: r for r in allr if r["entry"] == "post"}
     revs = [r for r in allr if r["entry"] == "reverse"]
@@ -2597,6 +2607,23 @@ def scenario_cost_visibility(api):
         eq(f"{who} reads only {want[0]} rows of the project ledger", sorted({r["kind"] for r in rows.get("data", [])}) if st == 200 else st, want)
     st, r = sm.call("GET", "/api/v1/r/project_ledger?limit=500&filter=" + urllib.parse.quote("kind == 'labor'"))
     check("sales_manager: a filter for labour rows finds nothing", st != 200 or not r.get("data"), (st, r))
+    # project costs (t_23057937): sales reads only the costs billed on to the client (they go on its invoice anyway),
+    # purchasing only those linking a vendor bill (its cancel guard looks for them); internal costs together with the
+    # revenue rows would show sales the margin
+    exp = {}
+    for desc, extra in (("Bensin internal", {}), ("Hotel ditagihkan", {"reimbursable": True, "receipt": "nota-hotel.pdf"})):
+        st, ex = pa.create("project_expense", dict({"project": p, "category": "travel", "description": desc, "amount": 700_000}, **extra))
+        exp[desc] = submit_doc(pa, "project_expense", ex["name"], f"project admin submits expense '{desc}'") if st == 201 else None
+    def expenses(cl, extra=""):
+        st, r = cl.call("GET", "/api/v1/r/project_expense?limit=500&filter=" + urllib.parse.quote(("project == '%s'" % p) + extra))
+        return sorted(x["description"] for x in r.get("data", [])) if st == 200 else st
+    eq("project_admin reads both expenses", expenses(pa), ["Bensin internal", "Hotel ditagihkan"])
+    eq("sales_manager reads only the expense billed on to the client", expenses(sm), ["Hotel ditagihkan"])
+    eq("sales_manager: a filter for the internal cost finds nothing", expenses(sm, " && description == 'Bensin internal'"), [])
+    eq("purchasing_manager reads no expense that links no vendor bill", expenses(pm), [])
+    if exp.get("Bensin internal"):
+        st, r = sm.call("GET", f"/api/v1/r/project_expense/{Api.q(exp['Bensin internal'])}")
+        check("sales_manager cannot open the internal expense -> 403/404", st in (403, 404), (st, r))
     req = urllib.request.Request(sm.base + "/api/v1/export/r/project_ledger", headers=sm.headers())
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
@@ -2626,7 +2653,7 @@ def scenario_cost_visibility(api):
     eq("its revenue rows: +5.000.000 and -5.000.000", sorted(rev), [-5_000_000, 5_000_000])
     prj = {"name": p}
     st, resp = sm.create("project_ledger", {"project": prj["name"], "posting_date": "2026-11-20", "kind": "labor", "source_model": "manual", "source_name": "manual", "amount": 1})
-    check("sales_manager cannot write a labour row -> 403/422", st in (403, 422), (st, resp))
+    check("sales_manager cannot write a labour row -> 403/409", st in (403, 409), (st, resp))
 
 
 def scenario_roles_jasa(api):
@@ -2817,6 +2844,7 @@ MATRIX = {
                        "sales_manager": {"read", "create"}, "purchasing_manager": {"read", "create"}},   # rows: revenue / vendor only
     "project_expense": {"project_admin": _ALL, "finance_manager": _ALL - {"delete"}, "sales_manager": _R, "purchasing_manager": _R},
     "project_guard": {"purchasing_manager": {"create"}, "finance_manager": {"create"}},
+    "credit_guard": {"finance_manager": {"create"}, "sales_manager": {"create"}, "project_admin": {"create"}, "head_office": {"create"}},   # never stored
     "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R, "field_sales": _RP},
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
                           "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
@@ -2854,8 +2882,14 @@ MATRIX = {
 _CHECKED = ("read", "create", "write", "delete", "submit", "cancel", "amend", "export", "import", "print")
 
 
+# append_only ledgers (contract 0026): /meta reports no create, write, delete or import for anyone; the create grant in
+# MATRIX is what the role's flows need to post rows.
+APPEND_ONLY = {"project_ledger", "stock_adjustment_value"}
+
+
 def granted(role, model):
-    return MATRIX.get(model, {}).get(role, set())
+    g = MATRIX.get(model, {}).get(role, set())
+    return g - {"create", "write", "delete", "import"} if model in APPEND_ONLY else g
 
 
 def setup_kopi_senja(api, k):
@@ -3551,7 +3585,12 @@ def scenario_dashboards_fnb(api):
     if st == 201:
         st2, resp = api.create("stock_adjustment_value", {"stock_adjustment": adj["name"], "entry": "post", "outlet": DAGO,
                                                           "posting_date": adj["adjustment_date"], "value": -1})
-        check("a second value row for the same adjustment cannot be made by hand -> 422", st2 == 422, (st2, resp))
+        check("a second value row for the same adjustment cannot be made by hand -> 409 append_only", st2 == 409 and ((resp or {}).get("error") or {}).get("code") == "append_only", (st2, resp))
+        vrow = (api.find("stock_adjustment_value", f"stock_adjustment == '{adj['name']}'") or [{}])[0].get("name", "x")
+        st2, resp = api.call("PATCH", f"/api/v1/r/stock_adjustment_value/{Api.q(vrow)}", {"value": -1})
+        check("the owner cannot edit a stock adjustment value row -> 409 append_only", st2 == 409, (st2, resp))
+        st2, resp = api.call("DELETE", f"/api/v1/r/stock_adjustment_value/{Api.q(vrow)}")
+        check("the owner cannot delete a stock adjustment value row -> 409 append_only", st2 == 409, (st2, resp))
     for days in (100, 20):
         d = (today - datetime.timedelta(days=days)).isoformat()
         st, old = api.create("stock_adjustment", {"outlet": DAGO, "reason": "damage", "adjustment_date": d, "items": [{"item": "BRG-0001", "qty": 1}]})
@@ -4092,6 +4131,43 @@ def scenario_credit_limit_warning(api):
     check("submit with force acknowledges the warning -> 200", st == 200, (st, resp))
     if st == 200:
         fm.verb("sales_invoice", resp.get("name", inv["name"]), "cancel")
+    # t_561e44ec: the warning is a rule, evaluated before any flow lock. Two invoices that each fit and together do
+    # not, submitted at the same moment without force: at most one goes through unwarned; the other is refused and
+    # shows the warning when submitted again.
+    import threading
+    st, fresh = fm.create("customer", {"customer_name": "Klien Balapan Kredit", "credit_limit": 100_000_000})
+    if not check("a customer with an unused 100.000.000 limit for the race", st == 201, (st, fresh)):
+        return
+    customer = fresh["name"]
+    for rnd in range(3):
+        c = api.get("customer", customer)
+        room = (c.get("credit_limit") or 0) - (c.get("outstanding") or 0)
+        drafts = []
+        for n in range(2):
+            st, d = fm.create("sales_invoice", {"customer": customer, "items": [{"item": ndt, "qty": 1, "rate": int(room * 0.6 / 1.11), "description": f"Uji balapan kredit {rnd}-{n}"}]})
+            drafts.append(d if st == 201 else {})
+        due = [d.get("amount_due") or 0 for d in drafts]
+        if not check(f"round {rnd}: each invoice fits the room, both together do not", all(0 < x <= room for x in due) and sum(due) > room, (room, due)):
+            return
+        out, bar = [None, None], threading.Barrier(2)
+        def go(i):
+            bar.wait()
+            out[i] = fm.verb("sales_invoice", drafts[i]["name"], "submit")
+        th = [threading.Thread(target=go, args=(i,)) for i in range(2)]
+        [t.start() for t in th]
+        [t.join() for t in th]
+        check(f"round {rnd}: never 500", all(st != 500 for st, _ in out), out)
+        eq(f"round {rnd}: at most one of the two goes through without the credit warning", sum(1 for st, _ in out if st == 200) <= 1, True)
+        live = [b.get("name") for st, b in out if st == 200]
+        for (st, b), d in zip(out, drafts):
+            if st == 422 and not b.get("needs_force"):
+                check(f"round {rnd}: the refused invoice says the credit limit was just used", any("batas kredit" in m.lower() for m in messages(b)), b)
+                st2, b2 = fm.verb("sales_invoice", d["name"], "submit")
+                check(f"round {rnd}: submitted again (the other still live) it shows the credit warning (needs_force)", st2 == 422 and b2.get("needs_force") is True, (st2, b2))
+                if st2 == 200:
+                    live.append(b2.get("name"))
+        for n in live:
+            fm.verb("sales_invoice", n, "cancel")
 
 
 def scenario_bank_account_delete(api):

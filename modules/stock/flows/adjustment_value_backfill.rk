@@ -5,8 +5,9 @@ label: {id: Lengkapi nilai penyesuaian stok lama}
 # a flow has no loop): every run gives up to five live (docstatus 1) adjustments without a post row the same row the
 # submit flow writes, the sum of their stock moves on the adjustment's date. A live adjustment has no reversal move
 # yet, so the sum is what it moved. One cancelled before this ran needs no row: it nets to zero in its period either
-# way. Safe to run again (it skips adjustments that have a row; entry_key is unique) and by anyone who may read the
-# adjustments, e.g. POST /api/v1/flows/adjustment_value_backfill/run; the schedule finishes the job on its own.
+# way. Safe to run again (it skips adjustments that have a row; entry_key is unique). Only the schedule runs it: the
+# model is append_only (contract 0026), so a run by hand (POST /api/v1/flows/adjustment_value_backfill/run) is refused
+# with 409 append_only, the owner's included.
 schedule: "*/5 * * * *"
 steps:
   - find_all: stock_adjustment_value

@@ -470,6 +470,86 @@ def scenario_grosir_return(api):
     check("a delivery note whose goods are invoiced cannot be cancelled -> 422", st == 422 and "ditagih" in str(resp), (st, resp))
 
 
+def _race(calls):
+    """Submit several drafts at the same moment (threads behind a barrier); returns [(status, body)] in call order."""
+    import threading
+    out, bar = [None] * len(calls), threading.Barrier(len(calls))
+    def go(i, cl, model, name):
+        bar.wait()
+        out[i] = cl.verb(model, name, "submit")
+    th = [threading.Thread(target=go, args=(i,) + c) for i, c in enumerate(calls)]
+    for t in th:
+        t.start()
+    for t in th:
+        t.join()
+    return out
+
+
+def scenario_grosir_credit_race(api):
+    """t_561e44ec (audit of contract 0025, N1): the credit approvals on customer_order and delivery_note are evaluated
+    before any flow lock, so two documents of one customer submitted at the same moment each saw the other's room. Each
+    fits under the limit on its own and both together do not: at most one may go through without an over_credit_limit
+    approval; the other is refused (and is held for approval when submitted again)."""
+    got = _need("asep", "sm", "fm", "hq")
+    if not got:
+        return
+    asep, sm, fm, hq = got
+    tier = api.get("customer", "CUST-0003")
+    def customer(label):
+        st, c = fm.create("customer", {"customer_name": label, "salesman": ASEP, "price_tier": tier.get("price_tier"), "credit_limit": 1_000_000_000})
+        check(f"customer {label} for the race", st == 201, (st, c))
+        return c.get("name")
+    def unapproved(model, results):
+        ok = [b.get("name") for st, b in results if st == 200]
+        return [n for n in ok if not any(a.get("policy") == "over_credit_limit" for a in approvals_of(api, model, n))]
+    # orders by the sales manager (staff orders keep customer.open_orders current)
+    for rnd in range(3):
+        c = customer(f"Toko Balapan Pesanan {rnd}")
+        drafts = []
+        for n in range(2):
+            st, so = sm.create("customer_order", order_body(c, [(MI, 10)], po_number=f"BALAP-{rnd}-{n}"))
+            drafts.append(so.get("name") if st == 201 else None)
+        if None in drafts:
+            fail("race: two order drafts", drafts)
+            return
+        each = api.get("customer_order", drafts[0])["estimated_total"]
+        fm.patch("customer", c, {"credit_limit": int(each * 1.5)})
+        res = _race([(sm, "customer_order", d) for d in drafts])
+        check(f"round {rnd}: two orders of 1x room each at once: never 500", all(st != 500 for st, _ in res), res)
+        eq(f"round {rnd}: at most one of the two orders goes through without a credit approval", len(unapproved("customer_order", res)) <= 1, True)
+        for (st, b), d in zip(res, drafts):
+            if st == 422:
+                check(f"round {rnd}: the refused order says the credit limit was just used", any("batas kredit" in m.lower() for m in messages(b)), b)
+                st2, b2 = sm.verb("customer_order", d, "submit")
+                pol = [a.get("policy") for a in approvals_of(api, "customer_order", (b2 or {}).get("name", d))]
+                check(f"round {rnd}: submitted again it goes through only with the over_credit_limit approval", st2 in (200, 202) and "over_credit_limit" in pol, (st2, b2, pol))
+    # deliveries at the door by head office (a salesman's orders are counted there)
+    for rnd in range(3):
+        c = customer(f"Toko Balapan Kirim {rnd}")
+        orders = []
+        for n in range(2):
+            st, so = asep.create("customer_order", order_body(c, [(TEH, 5)], po_number=f"KIRIM-{rnd}-{n}"))
+            st, so = asep.verb("customer_order", (so or {}).get("name", "x"), "submit")
+            orders.append(so.get("name") if st == 200 else None)
+        notes = []
+        for so in orders:
+            st, dn = hq.create("delivery_note", {"customer_order": so, "outlet": GUDANG, "items": [{"item": TEH, "qty": 5}]}) if so else (0, {})
+            notes.append(dn.get("name") if st == 201 else None)
+        if None in notes:
+            fail("race: two delivery drafts", (orders, notes))
+            return
+        each = api.get("delivery_note", notes[0])["delivery_total"]
+        fm.patch("customer", c, {"credit_limit": int(each * 1.5)})
+        res = _race([(hq, "delivery_note", d) for d in notes])
+        check(f"round {rnd}: two deliveries at once: never 500", all(st != 500 for st, _ in res), res)
+        eq(f"round {rnd}: at most one of the two deliveries goes through without a credit approval", len(unapproved("delivery_note", res)) <= 1, True)
+        for (st, b), d in zip(res, notes):
+            if st == 422:
+                check(f"round {rnd}: the refused delivery says the credit limit was just used", any("batas kredit" in m.lower() for m in messages(b)), b)
+                st2, b2 = hq.verb("delivery_note", d, "submit")
+                check(f"round {rnd}: submitted again the delivery is held for approval -> 202", st2 == 202, (st2, b2))
+
+
 SCENARIOS = [scenario_grosir_fixtures, scenario_grosir_tier_price, scenario_grosir_salesman_scope, scenario_grosir_credit_hold,
-             scenario_grosir_giro, scenario_grosir_ar_by_salesman, scenario_grosir_delivery, scenario_grosir_credit_at_delivery, scenario_grosir_return,
+             scenario_grosir_giro, scenario_grosir_ar_by_salesman, scenario_grosir_delivery, scenario_grosir_credit_at_delivery, scenario_grosir_credit_race, scenario_grosir_return,
              scenario_dashboards_grosir]

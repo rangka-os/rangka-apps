@@ -4,6 +4,10 @@ label: {id: Buku untung proyek, en: Project ledger}
 icon: chart
 naming: PL-{YYYY}-{######}
 title_field: project
+# append_only (contract 0026): rows are created only by the flows the kernel starts on the source document's events (and
+# the schedule); nobody, the owner included, creates, edits or deletes one through the API, an import or a flow run by
+# hand. A correction is the reversing row written when the source document is cancelled.
+append_only: true
 # One signed row per submitted document that changes a project's result: revenue + (invoice dpp, retention releases
 # excluded), costs - (timesheet cost, project expense not on a vendor bill, vendor bill dpp). Cancelling the document
 # writes the opposite row on the document's own date, so the sum per project (and per period) is its margin. Rows are

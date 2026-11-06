@@ -90,6 +90,14 @@ fields:
     label: {id: Perkiraan total (dengan PPN)}
     compute: "tax.pkp ? round(subtotal * (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num) / (100 * tax.dpp_den)) : subtotal"
     depends_on: app_installed('distribution')
+  # Whether approval over_credit_limit matched this submit (the same expression over the same customer row). The policy
+  # is evaluated before any flow lock (contract 0025 §5); flow credit_on_order_submitted reads the customer again under
+  # its lock and refuses an order that is over the limit only because another one went through at the same moment.
+  - name: credit_over_seen
+    type: check
+    label: {id: Lewat batas kredit saat diajukan}
+    hidden: true
+    compute: "app_installed('distribution') && customer.credit_limit > 0 && customer.outstanding + customer.open_orders + estimated_total > customer.credit_limit"
   - name: invoiced_amount
     type: currency
     label: {id: Sudah ditagih}
