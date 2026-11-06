@@ -26,9 +26,9 @@ menu:
   - group: {id: Stok}
     items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment, recipe]
   - group: {id: Pembelian}
-    items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment]
-  - group: {id: Data induk}
-    items: [outlet, item, uom, uom_conversion, vendor]
+    items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment, vendor]
+  - group: {id: Pengaturan}
+    items: [outlet, item, uom, uom_conversion]
 onboarding:
   - ask: {id: 'Berapa outlet kamu?'}
     sets: seed.outlets
