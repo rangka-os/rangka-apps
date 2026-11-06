@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A payment "Potong retur" is submitted: its amount is added to the return's credit (return_credit, made on the
+# first credit), and the submit is refused when the live credits would exceed the return's value, so one return
+# cannot reduce the receivables twice.
+name: return_credit_on_payment_submitted
+label: {id: Potong retur paling banyak nilai returnya}
+on: payment.submitted
+if: event.method == 'sales_return' && event.sales_return != ''
+steps:
+  - {find: sales_return, where: name == event.sales_return, as: ret}
+  - {find: return_credit, where: sales_return == event.sales_return, as: rc}
+  - create: return_credit
+    if: rc == null && ret != null
+    set: {sales_return: event.sales_return, return_total: ret.return_total, credited: event.amount}
+    as: made
+  - update: rc
+    if: rc != null
+    set: {credited: rc.credited + event.amount}
+  - if: "ret == null || (rc != null && rc.credited > ret.return_total) || (rc == null && event.amount > ret.return_total)"
+    create: delivery_guard
+    set: {reason: "'return_over_credited'", document: event.sales_return}

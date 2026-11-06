@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+# Delivery of customer orders and sales returns: the delivery note (surat jalan) takes stock out of a warehouse or a
+# canvas van, the sales return puts it back at the cost it left at (damaged goods into their own outlet). Both move
+# stock through the declarative stock block of contract 0021 (K-o), written under experimental: until a release has
+# it. order_fulfilment keeps per order what was ordered, delivered, returned and invoiced, because a submitted order
+# cannot be written (K-p, contract 0022, will move this into the kernel's conversions).
+name: delivery
+version: 1.0.0
+title: {id: Pengiriman dan retur, en: Delivery and returns}
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, outlets: ^1.0, stock: ^1.0, orders: ^1.0, invoicing: ^1.0, payments: ^1.0}
+hooks: [stock.reverse_moves]

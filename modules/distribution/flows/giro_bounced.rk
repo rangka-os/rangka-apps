@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The bank returned a giro: finance cancels its payment, the kernel opens the invoices again (payments.unallocate),
+# and this flow marks the register line bounced and puts the customer on credit hold until finance releases it.
+name: giro_bounced
+label: {id: Giro ditolak}
+on: payment.cancelled
+if: "event.direction == 'receive' && event.method == 'giro'"
+steps:
+  - {find: giro, where: payment == event.name, as: g}
+  - {find: customer, where: name == event.customer, as: cust}
+  - update: g
+    if: g != null && g.status != 'cleared'
+    set:
+      status: "'bounced'"
+      bounced_on: today()
+  - update: cust
+    if: g != null && g.status == 'bounced'
+    set:
+      credit_hold: "true"
+      credit_hold_reason: "'Giro ' + event.reference + ' ditolak ' + today()"

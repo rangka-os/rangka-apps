@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for a sub-distributor (grosir FMCG): one CV with a warehouse, a canvas van and a damaged-goods room, three
+# salesmen with their own customers and routes, prices per tier, credit holds, giro. Data: examples/fixtures/demo-grosir
+# (made by its generate.py; synthetic, column mapping not from a real distributor's files yet).
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: CV Contoh Niaga Distribusi}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: true}
+numbering:
+  delivery_note: {pattern: "SJ/{ORG}/{YY}{MM}/{####}", reset: monthly}
+orgs:
+  niaga_contoh:
+    name: CV Contoh Niaga Distribusi
+    code: CND
+    config:
+      org: {legal_name: CV Contoh Niaga Distribusi}
+      tax: {pkp: true}
+apps: [grosir_distribusi]
+plan: tumbuh
+sso: {domains: [contohniaga.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, sales_manager]}

@@ -12,6 +12,7 @@ permissions:
   - {role: head_office, read: true, create: true, write: true, print: true}
   - {role: outlet_staff, read: true}
   - {role: sales_rep, read: true}
+  - {role: field_sales, read: true}
 fields:
   - name: outlet_name
     type: data

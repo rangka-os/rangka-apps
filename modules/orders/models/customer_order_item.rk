@@ -20,6 +20,25 @@ fields:
     to: uom
     label: {id: Satuan}
     default: "item.sales_uom != '' ? item.sales_uom : item.stock_uom"
+  # Tier pricing (module distribution): price_tier is set from the order by the flow order_tier_pricing, which then
+  # sets rate to list_rate once per tier (tier_applied), so a price typed by hand afterwards stays.
+  - name: price_tier
+    type: data
+    label: {id: Tier harga}
+    default: "'retail'"
+    read_only: true
+    depends_on: app_installed('distribution')
+  - name: tier_applied
+    type: data
+    label: {id: Tier yang sudah dipakai}
+    default: "'retail'"
+    read_only: true
+    depends_on: app_installed('distribution')
+  - name: list_rate
+    type: currency
+    label: {id: Harga daftar}
+    compute: "price_tier == 'agent' && item.rate_agent > 0 ? item.rate_agent : (price_tier == 'wholesale' && item.rate_wholesale > 0 ? item.rate_wholesale : item.rate)"
+    depends_on: app_installed('distribution')
   - name: rate
     type: currency
     label: {id: Harga}

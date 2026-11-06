@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Keeps order_fulfilment current on delivery_note.submitted: one line per item of the order, summed over the event lines of that item.
+name: fulfilment_on_delivery_submitted
+label: {id: Perbarui pemenuhan pesanan}
+on: delivery_note.submitted
+if: "event.fulfilment != ''"
+steps:
+  - {find: order_fulfilment, where: name == event.fulfilment, as: f}
+  # a find returns the record without its table rows: an update that changes nothing returns it whole
+  - update: f
+    if: f != null
+    set: {customer: f.customer}
+  - update: f
+    if: f != null
+    set:
+      items: "f.items.map(b, {'name': b.name, 'item': b.item, 'ordered_qty': b.ordered_qty, 'rate': b.rate, 'delivered_qty': b.delivered_qty + event.items.map(l, l.item == b.item ? l.qty : 0).sum(), 'returned_qty': b.returned_qty, 'invoiced_qty': b.invoiced_qty})"
+  - {find_all: order_fulfilment, where: "f != null && customer == f.customer", as: all}
+  - {find: customer, where: "f != null && name == f.customer", as: cust}
+  - update: cust
+    if: cust != null
+    set: {uninvoiced_deliveries: "all.map(x, x.uninvoiced_value).sum()"}

@@ -11,6 +11,7 @@ permissions:
   - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: sales_rep, read: true}
+  - {role: field_sales, read: true, print: true}
   # project admins read invoices: the project flows that freeze contract terms read them as the project admin
   - {role: project_admin, read: true}
 fields:
@@ -36,6 +37,14 @@ fields:
     type: link
     to: customer_order
     label: {id: Pesanan pelanggan}
+  # The salesman whose customer this is (module distribution), for AR and collections per salesman.
+  - name: salesman
+    type: link
+    to: user
+    label: {id: Salesman}
+    default: "customer_order != '' && customer_order.salesman != '' ? customer_order.salesman : customer.salesman"
+    in_list: true
+    depends_on: app_installed('distribution')
   - name: project
     type: link
     to: project
@@ -209,6 +218,12 @@ fields:
   - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, compute: "pph23_applies && dpp != 0 ? round(dpp_fx * (pph23_dpp * 1.0 / dpp * pph23_rate / 100), 2) : 0"}
   - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - retention_amount_fx - pph23_amount_fx"}
 rules:
+  # A distributor bills what was delivered (module delivery): per item, no more than delivered, less returns and
+  # earlier invoices of the order (order_fulfilment). The flow invoice_qty_from_deliveries sets the draft that way.
+  - name: invoice_within_delivered
+    on: submit
+    check: "!app_installed('delivery') || customer_order == '' || customer_order.fulfilment == '' || items.map(l, items.map(x, x.item == l.item ? x.qty : 0).sum() <= customer_order.fulfilment.items.map(b, b.item == l.item ? b.delivered_qty - b.invoiced_qty : 0).sum() + 0.0005 ? 0 : 1).sum() == 0"
+    message: {id: Jumlah ditagih melebihi barang yang sudah dikirim dan belum ditagih}
   - name: qty_positive
     on: save
     check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
@@ -360,7 +375,7 @@ views:
     layout:
       - section: {id: Pelanggan}
         columns:
-          - [kind, customer, po_number, customer_order, project, billing_milestone]
+          - [kind, customer, po_number, customer_order, project, billing_milestone, salesman]
           - [posting_date, due_date, outlet, acceptance]
       - section: {id: Barang/jasa}
         fields: [items]

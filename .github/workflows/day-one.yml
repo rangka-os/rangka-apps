@@ -69,3 +69,6 @@ jobs:
       - name: day_one demo-ritel
         working-directory: rangka-apps
         run: python tests/day_one.py --site demo-ritel
+      - name: day_one demo-grosir
+        working-directory: rangka-apps
+        run: python tests/day_one.py --site demo-grosir

@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A customer payment by giro goes into the giro register when it is submitted (once per payment: an amended payment
+# is a new payment with its own line).
+name: giro_from_payment
+label: {id: Giro masuk ke register}
+on: payment.submitted
+if: "event.direction == 'receive' && event.method == 'giro'"
+steps:
+  - {find: giro, where: payment == event.name, as: known}
+  - create: giro
+    if: known == null
+    set:
+      giro_no: event.reference
+      bank: event.giro_bank
+      customer: event.customer
+      salesman: event.salesman
+      payment: event.name
+      received_on: event.payment_date
+      effective_date: event.giro_due_date
+      amount: event.amount
+      status: "'received'"

@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside a sales return's cancel: refused while live payments "Potong retur" credit it (return_credit), or the goods
+# would leave stock again while the credit stays.
+name: return_cancel_guard
+label: {id: Retur yang sudah dipotongkan tidak bisa dibatalkan}
+on: sales_return.cancelled
+steps:
+  - {find: return_credit, where: sales_return == event.name, as: rc}
+  - if: rc != null && rc.credited > 0
+    create: delivery_guard
+    set: {reason: "'return_credited'", document: event.name}

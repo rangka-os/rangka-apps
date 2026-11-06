@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A cancelled sales return (only possible while nothing is credited, see return_cancel_guard) has nothing left to
+# credit: its value goes to 0, so it leaves the list of returns not yet credited.
+name: return_credit_on_return_cancelled
+label: {id: Retur batal tidak perlu dipotongkan}
+on: sales_return.cancelled
+steps:
+  - {find: return_credit, where: sales_return == event.name, as: rc}
+  - update: rc
+    if: rc != null && rc.credited == 0
+    set: {return_total: 0}
