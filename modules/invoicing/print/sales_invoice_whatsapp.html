@@ -8,6 +8,12 @@
 {{- if and $p (eq (slice $p 0 1) "+") -}}{{- $p = slice $p 1 -}}{{- end -}}
 {{- if and $p (eq (slice $p 0 1) "0") -}}{{- $p = printf "62%s" (slice $p 1) -}}{{- end -}}
 {{- $bank := "" -}}{{- with .Letterhead.bank -}}{{- with index . 0 -}}{{- $bank = printf "%s %s a.n. %s" .bank .account .holder -}}{{- end -}}{{- end -}}
+{{- $ref := .Doc.name -}}{{- $qris := "" -}}{{- $howto := "" -}}
+{{- with .Related.cara_bayar -}}{{- with index . 0 -}}
+{{- $bank = printf "%s %s a.n. %s" .bank .account_no .holder -}}{{- $ref = .reference -}}
+{{- if .qris_nmid -}}{{- $qris = printf "\nAtau bayar lewat QRIS %s (NMID %s), isi nominal sesuai tagihan." .qris_merchant_name .qris_nmid -}}{{- end -}}
+{{- with .instructions -}}{{- $howto = printf "\n%s" . -}}{{- end -}}
+{{- end -}}{{- end -}}
 {{- $late := overdue .Doc.due_date -}}
 {{- $msg := "" -}}
 {{- $open := eq (printf "%v" .Doc.docstatus) "1" -}}
@@ -22,9 +28,9 @@
 {{- else if or (not .Doc.outstanding) (not $owed) -}}
 {{- $msg = printf "Halo %s, terima kasih. Pembayaran faktur %s sudah kami terima dan faktur ini sudah lunas.\n\n%s" $c.customer_name .Doc.name .Letterhead.legal_name -}}
 {{- else if gt $late 0 -}}
-{{- $msg = printf "Halo %s, kami mengingatkan faktur %s sebesar %s sudah lewat %d hari dari jatuh tempo (%s).\n\nPembayaran ke %s. Mohon tulis %s di berita transfer.\n\nAbaikan pesan ini kalau sudah membayar. Terima kasih.\n%s" $c.customer_name .Doc.name (rupiah .Doc.outstanding) $late (date .Doc.due_date) $bank .Doc.name .Letterhead.legal_name -}}
+{{- $msg = printf "Halo %s, kami mengingatkan faktur %s sebesar %s sudah lewat %d hari dari jatuh tempo (%s).\n\nPembayaran ke %s. Mohon tulis %s di berita transfer.%s%s\n\nAbaikan pesan ini kalau sudah membayar. Terima kasih.\n%s" $c.customer_name .Doc.name (rupiah .Doc.outstanding) $late (date .Doc.due_date) $bank $ref $qris $howto .Letterhead.legal_name -}}
 {{- else -}}
-{{- $msg = printf "Halo %s, berikut tagihan %s no. %s sebesar %s, jatuh tempo %s.\n\nPembayaran ke %s. Mohon tulis %s di berita transfer.\n\nTerima kasih." $c.customer_name .Letterhead.legal_name .Doc.name (rupiah .Doc.outstanding) (date .Doc.due_date) $bank .Doc.name -}}
+{{- $msg = printf "Halo %s, berikut tagihan %s no. %s sebesar %s, jatuh tempo %s.\n\nPembayaran ke %s. Mohon tulis %s di berita transfer.%s%s\n\nTerima kasih." $c.customer_name .Letterhead.legal_name .Doc.name (rupiah .Doc.outstanding) (date .Doc.due_date) $bank $ref $qris $howto -}}
 {{- end -}}
 <h1>Pesan tagihan WhatsApp</h1>
 <p>Untuk: <strong>{{$c.customer_name}}</strong>{{if $p}} · +{{$p}}{{else if $open}} · <em>nomor WhatsApp pelanggan belum diisi</em>{{end}}</p>

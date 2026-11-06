@@ -32,7 +32,7 @@ menu:
   - group: {id: Tenaga kerja}
     items: [worker]
   - group: {id: Keuangan}
-    items: [payment, bank_transaction, invoice_reminder, withholding, vendor_bill]
+    items: [payment, bank_transaction, invoice_reminder, withholding, vendor_bill, bank_account]
   - group: {id: Pembelian}
     items: [purchase_request, purchase_order]
   - group: {id: Data induk}

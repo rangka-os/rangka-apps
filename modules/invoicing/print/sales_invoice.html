@@ -9,6 +9,12 @@
 .totals td { padding: 3px 8px; }
 .totals tr.grand td { border-top: 2px solid #1c1917; font-weight: 700; }
 .note { margin-top: 14px; font-size: 0.9em; }
+.pay { margin-top: 16px; display: flex; gap: 20px; align-items: flex-start; border-top: 1px solid #d6d3d1; padding-top: 12px; break-inside: avoid; }
+.pay h2 { font-size: 1em; margin: 0 0 6px; }
+.pay .ref { font-family: ui-monospace, monospace; font-weight: 700; }
+.pay .qris { text-align: center; font-size: 0.85em; }
+.pay .qris img { width: 120px; height: 120px; object-fit: contain; display: block; margin: 0 auto 4px; }
+.pay .muted { color: #57534e; }
 {{end}}
 {{template "letterhead" .}}
 {{$fx := and .Doc.currency (ne .Doc.currency "IDR")}}
@@ -58,7 +64,24 @@
 <p class="note"><strong>Terbilang:</strong> {{terbilang .Doc.grand_total}}</p>
 {{if .Doc.notes}}<p class="note">{{.Doc.notes}}</p>{{end}}
 <p class="note">Bila pembayaran dipotong PPh Pasal 23, mohon kirimkan bukti potongnya kepada kami.</p>
+{{with .Related.cara_bayar}}{{with index . 0}}
+<section class="pay">
+  <div>
+    <h2>Cara bayar</h2>
+    <div>Transfer ke <strong>{{.bank}} {{.account_no}}</strong> a.n. {{.holder}}</div>
+    <div>Berita transfer: <span class="ref">{{.reference}}</span></div>
+    {{with .instructions}}<div class="muted">{{.}}</div>{{end}}
+  </div>
+  {{if .qris_payload}}<div class="qris">
+    <img src="{{qr .qris_payload}}" alt="QRIS">
+    <div>QRIS{{with .qris_merchant_name}} {{.}}{{end}}</div>
+    {{with .qris_nmid}}<div class="muted">NMID {{.}}</div>{{end}}
+    <div class="muted">Isi nominal {{rupiah $.Doc.outstanding}}</div>
+  </div>{{end}}
+</section>
+{{end}}{{else}}
 {{template "bank_accounts" .}}
 {{if .Letterhead.bank}}<p class="note">Mohon tulis nomor faktur <strong>{{.Doc.name}}</strong> di berita transfer supaya pembayaran langsung tercatat.</p>{{end}}
+{{end}}
 {{if taxrate .Doc .Tax}}<p class="note">Faktur pajak (e-Faktur) diterbitkan terpisah.</p>{{end}}
 {{template "signature" .}}
