@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: opening_balance
+label: {id: Saldo awal, en: Opening balance}
+icon: book
+is_submittable: true
+naming: SA-{YYYY}-{####}
+title_field: opening_date
+# The balance sheet the business starts from, entered once (or imported with opening_balance_sheet). Submitting posts
+# each amount to its account; the difference goes to Ekuitas saldo awal (3-1900), as does opening stock (import
+# opening_stock, a goods receipt from the vendor "Saldo awal"). Unpaid invoices and bills that will be paid in
+# Juragan are better entered as documents, so payments can settle them; the amounts here are what stays outside.
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true, import: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true, import: true}
+fields:
+  - {name: opening_date, type: date, label: {id: Tanggal saldo awal}, required: true, in_list: true}
+  - {name: cash, type: currency, label: {id: Kas}, default: '0'}
+  - {name: bank, type: currency, label: {id: Bank}, default: '0'}
+  - {name: receivable, type: currency, label: {id: Piutang usaha (di luar faktur)}, default: '0'}
+  - {name: fixed_assets, type: currency, label: {id: Aset tetap (harga beli)}, default: '0'}
+  - {name: accumulated_depreciation, type: currency, label: {id: Akumulasi penyusutan}, default: '0'}
+  - {name: payable, type: currency, label: {id: Utang usaha (di luar tagihan)}, default: '0'}
+  - {name: bank_loan, type: currency, label: {id: Utang bank}, default: '0'}
+  - {name: other_liabilities, type: currency, label: {id: Utang lain-lain}, default: '0'}
+  - {name: paid_in_capital, type: currency, label: {id: Modal disetor}, default: '0'}
+  - name: opening_equity
+    type: currency
+    label: {id: Ekuitas saldo awal (selisih)}
+    compute: cash + bank + receivable + fixed_assets - accumulated_depreciation - payable - bank_loan - other_liabilities - paid_in_capital
+    in_list: true
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: amounts_not_negative
+    on: save
+    check: cash >= 0 && bank >= 0 && receivable >= 0 && fixed_assets >= 0 && accumulated_depreciation >= 0 && payable >= 0 && bank_loan >= 0 && other_liabilities >= 0 && paid_in_capital >= 0
+    message: {id: Isi saldo sebagai angka positif; arah debit dan kredit diatur otomatis}
+  - name: depreciation_within_assets
+    on: save
+    check: accumulated_depreciation <= fixed_assets
+    message: {id: Akumulasi penyusutan tidak boleh melebihi harga beli aset tetap}
+views:
+  list:
+    columns: [name, opening_date, opening_equity, status]

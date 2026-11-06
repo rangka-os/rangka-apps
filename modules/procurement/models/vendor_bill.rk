@@ -102,6 +102,31 @@ fields:
     label: {id: Sisa tagihan}
     compute: amount_due - paid_amount
     in_list: true
+  # Accounting (module accounting): what the bill pays for. Goods received through a goods receipt (or consigned
+  # goods sold) clear "Utang belum ditagih"; a project's cost goes to Biaya proyek; anything else to the expense
+  # account chosen. The default follows the links on the bill.
+  - name: posting
+    type: select
+    label: {id: Dicatat sebagai}
+    default: "goods_receipt != '' || purchase_order != '' ? 'stock' : (project != '' ? 'project' : 'expense')"
+    depends_on: app_installed('accounting')
+    options:
+      - {value: stock, label: {id: Barang dagang atau bahan (sudah diterima)}}
+      - {value: project, label: {id: Biaya proyek}}
+      - {value: expense, label: {id: Beban operasional}}
+  - name: expense_account
+    type: select
+    label: {id: Akun beban}
+    default: "'61900'"
+    depends_on: app_installed('accounting') && posting == 'expense'
+    options:
+      - {value: '61100', label: {id: Beban gaji kantor}}
+      - {value: '61400', label: {id: Beban sewa}}
+      - {value: '61500', label: {id: 'Beban listrik, air, internet'}}
+      - {value: '61600', label: {id: Beban transport dan kirim}}
+      - {value: '61700', label: {id: Beban pemasaran}}
+      - {value: '61800', label: {id: Beban perlengkapan dan perawatan}}
+      - {value: '61900', label: {id: Beban operasional lain}}
   - name: notes
     type: text
     label: {id: Catatan}

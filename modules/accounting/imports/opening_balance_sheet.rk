@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# Neraca awal from a spreadsheet: one row per opening balance. Headers: Tanggal, Kas, Bank, Piutang, Aset tetap,
+# Akumulasi penyusutan, Utang usaha, Utang bank, Utang lain, Modal. The row arrives as a draft Saldo awal: check it,
+# then submit it to post. Opening stock has its own import (opening_stock).
+name: opening_balance_sheet
+label: {id: Neraca awal, en: Opening balance sheet}
+model: opening_balance
+source: csv
+header_row: 1
+key: [Tanggal]
+map:
+  opening_date: Tanggal
+  cash: Kas
+  bank: Bank
+  receivable: Piutang
+  fixed_assets: Aset tetap
+  accumulated_depreciation: Akumulasi penyusutan
+  payable: Utang usaha
+  bank_loan: Utang bank
+  other_liabilities: Utang lain
+  paid_in_capital: Modal

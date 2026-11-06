@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: financial_report_compute
+label: {id: Hitung laporan keuangan}
+# Sums gl_entry into the report when it is created. Lines carry +debit/-credit, so a credit balance (revenue,
+# liability, equity) is the negative of the sum. pl: the period, narrowed to the outlet or project when set (profit
+# and loss); all: the whole business up to period_to (balance sheet, cash).
+on: financial_report.created
+steps:
+  - find: financial_report
+    where: name == event.name
+    as: rep
+  - find_all: gl_entry
+    where: posting_date <= event.period_to
+    as: upto
+  - find_all: gl_entry
+    where: "posting_date >= event.period_from && posting_date <= event.period_to && (event.outlet == null || outlet == event.outlet) && (event.project == null || project == event.project)"
+    as: pl
+  - update: rep
+    set:
+      computed_at: now()
+      line_count: pl.size()
+      revenue: "0 - pl.map(r, r.account.startsWith('411') ? r.amount : 0).sum()"
+      sales_returns: "pl.map(r, r.account.startsWith('412') ? r.amount : 0).sum()"
+      other_income: "0 - pl.map(r, r.account.startsWith('49') ? r.amount : 0).sum()"
+      cogs: "pl.map(r, r.account.startsWith('511') ? r.amount : 0).sum()"
+      stock_loss: "pl.map(r, r.account.startsWith('512') ? r.amount : 0).sum()"
+      direct_labour: "pl.map(r, r.account.startsWith('513') ? r.amount : 0).sum()"
+      project_costs: "pl.map(r, r.account.startsWith('514') ? r.amount : 0).sum()"
+      operating_expenses: "pl.map(r, r.account.startsWith('61') ? r.amount : 0).sum()"
+      tax_expense: "pl.map(r, r.account.startsWith('69') ? r.amount : 0).sum()"
+      cash_and_bank: "upto.map(r, r.account.startsWith('111') || r.account.startsWith('112') ? r.amount : 0).sum()"
+      receivables: "upto.map(r, r.account.startsWith('113') ? r.amount : 0).sum()"
+      inventory: "upto.map(r, r.account.startsWith('114') ? r.amount : 0).sum()"
+      prepaid_taxes: "upto.map(r, r.account.startsWith('115') ? r.amount : 0).sum()"
+      fixed_assets_net: "upto.map(r, r.account.startsWith('12') ? r.amount : 0).sum()"
+      total_assets: "upto.map(r, r.account.startsWith('1') ? r.amount : 0).sum()"
+      trade_payables: "0 - upto.map(r, r.account.startsWith('211') ? r.amount : 0).sum()"
+      tax_payables: "0 - upto.map(r, r.account.startsWith('212') || r.account.startsWith('213') ? r.amount : 0).sum()"
+      other_liabilities: "0 - upto.map(r, r.account.startsWith('214') || r.account.startsWith('215') || r.account.startsWith('219') || r.account.startsWith('22') ? r.amount : 0).sum()"
+      total_liabilities: "0 - upto.map(r, r.account.startsWith('2') ? r.amount : 0).sum()"
+      capital: "0 - upto.map(r, r.account.startsWith('3') ? r.amount : 0).sum()"
+      retained_earnings: "0 - upto.map(r, r.posting_date < event.period_from && (r.account.startsWith('4') || r.account.startsWith('5') || r.account.startsWith('6')) ? r.amount : 0).sum()"
+      current_profit: "0 - upto.map(r, r.posting_date >= event.period_from && (r.account.startsWith('4') || r.account.startsWith('5') || r.account.startsWith('6')) ? r.amount : 0).sum()"
+      cash_opening: "upto.map(r, r.posting_date < event.period_from && (r.account.startsWith('111') || r.account.startsWith('112')) ? r.amount : 0).sum()"
+      cash_in: "upto.map(r, r.posting_date >= event.period_from && r.amount > 0 && (r.account.startsWith('111') || r.account.startsWith('112')) ? r.amount : 0).sum()"
+      cash_out: "0 - upto.map(r, r.posting_date >= event.period_from && r.amount < 0 && (r.account.startsWith('111') || r.account.startsWith('112')) ? r.amount : 0).sum()"

@@ -7,6 +7,7 @@ summary:
   id: Dari penawaran dan penugasan tenaga kerja sampai faktur, pembayaran dan piutang, untuk satu atau beberapa PT.
 rangka: '>=0.5'
 modules:
+  accounting: ^1.0
   contacts: ^1.0
   catalogue: ^1.0
   users: ^1.0
@@ -35,6 +36,8 @@ menu:
     items: [payment, bank_transaction, invoice_reminder, withholding, vendor_bill]
   - group: {id: Pembelian}
     items: [purchase_request, purchase_order]
+  - group: {id: Pembukuan}
+    items: [financial_report, gl_entry, opening_balance, period_close]
   - group: {id: Data induk}
     items: [customer, vendor, item, uom, price_list, tax_code, currency]
 # Answers set the first defaults of a new installation (PKP decides tax_rate, the business line the sample items and terms).

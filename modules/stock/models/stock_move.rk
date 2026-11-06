@@ -7,6 +7,8 @@ naming: SM-{YYYY}-{######}
 permissions:
   - {role: head_office, read: true, export: true}
   - {role: outlet_staff, read: true}
+  # the accounting flow of a sales return sums the moves it wrote, as the sales manager submitting it
+  - {role: sales_manager, read: true, if: "voucher_type in ['delivery_note', 'sales_return']"}
 fields:
   - {name: posting_date, type: date, label: {id: Tanggal}, read_only: true, in_list: true}
   - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, read_only: true, in_list: true}

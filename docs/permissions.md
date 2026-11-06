@@ -44,11 +44,15 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | purchase_order | | r p | all | | all | | |
 | vendor_bill | | r s p | all | | all | | |
 | goods_receipt | | | all | | all + i (`opening_stock` import) | r c w s | |
-| stock_move, stock_balance (written by hooks only) | | | | | r e | r | |
+| stock_move, stock_balance (written by hooks only; sales_manager reads the moves of delivery notes and sales returns, for the accounting flow of a return) | r (stock_move only) | | | | r e | r | |
 | stock_transfer | | | | | all | r | |
 | stock_transfer_receipt | | | | | all | r c w s x | |
 | stock_count, stock_adjustment | | | | | all | r c w s | |
 | stock_adjustment_value (rows written by flows only: every field read_only; old adjustments by flow `adjustment_value_backfill`) | | | | | r c e | r c | |
+| gl_entry (journal lines written by the accounting flows of whoever submits or cancels; append_only, so no one creates, edits or deletes one by hand; sales: invoice, payment, delivery and return lines; purchasing: bill and receipt lines; project admin: timesheet and project expense lines; outlet staff: outlet sales, takings, receipt and stock document lines) | r c | r c e | r c | r c | r c e | r c | |
+| period_close (Tutup buku; the posting flows read the lock as whoever submits) | r | all | r | r | all | r | |
+| opening_balance (Saldo awal) | | all + i | | | all + i | | |
+| financial_report (Laporan keuangan; numbers filled by flow) | | r c w d e p | | | r c w d e p | | |
 | recipe | | | | | r c w d e | r | |
 | outlet_sales | | | | | all + i | r c w s while `source == 'form'`, else r (records from Moka, a POS file or Loyverse are head office's imports) | |
 | outlet_takings | | | | | all + i | r c w s | |

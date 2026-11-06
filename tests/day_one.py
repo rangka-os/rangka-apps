@@ -2691,7 +2691,16 @@ MATRIX = {
     "goods_receipt": {"purchasing_manager": _ALL, "head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     "lead": _PIPE, "deal": _PIPE, "activity": _PIPE,
     "recipe": {"head_office": {"read", "create", "write", "delete", "export"}, "outlet_staff": _R},
-    "stock_move": {"head_office": {"read", "export"}, "outlet_staff": _R},
+    "stock_move": {"head_office": {"read", "export"}, "outlet_staff": _R, "sales_manager": _R},   # sales: delivery_note, sales_return moves only
+    # accounting: journal lines are append_only (contract 0026), so /meta reports no create for anyone; the posting flows
+    # of every submitting role still create them. Non-finance roles read only the lines of their own documents.
+    "gl_entry": {"finance_manager": {"read", "export"}, "head_office": {"read", "export"}, "sales_manager": _R,
+                 "purchasing_manager": _R, "project_admin": _R, "outlet_staff": _R},
+    "period_close": {"finance_manager": _ALL, "head_office": _ALL, "sales_manager": _R, "purchasing_manager": _R,
+                     "project_admin": _R, "outlet_staff": _R},
+    "opening_balance": {"finance_manager": _ALL | {"import"}, "head_office": _ALL | {"import"}},
+    "financial_report": {"finance_manager": {"read", "create", "write", "delete", "export", "print"},
+                         "head_office": {"read", "create", "write", "delete", "export", "print"}},
     "stock_balance": {"head_office": {"read", "export"}, "outlet_staff": _R},
     "stock_transfer": {"head_office": _ALL, "outlet_staff": _R},
     "stock_transfer_receipt": {"head_office": _ALL, "outlet_staff": _RCWS | {"cancel"}},
@@ -4759,8 +4768,10 @@ def setup_demo_fnb(api, k):
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import day_one_grosir  # noqa: E402
 import day_one_produksi  # noqa: E402
+import day_one_accounting  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
+day_one_accounting.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -4773,6 +4784,9 @@ SCENARIOS = {
     "demo-grosir": day_one_grosir.SCENARIOS + [scenario_payment_instruction, scenario_permissions, scenario_payment_methods],
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
 }
+# accounting last: it checks the books against every document the scenarios above submitted
+for _site in ("demo-jasa", "demo-fnb", "demo-ritel", "demo-grosir", "demo-produksi"):
+    SCENARIOS[_site].append(day_one_accounting.scenario_accounting)
 
 
 def main():
