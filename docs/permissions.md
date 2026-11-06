@@ -115,4 +115,4 @@ Sales and purchasing have no access.
 | payroll_run (not submittable: payslips link to it; `closed`, locks and totals written by flows; no delete) | | r c w e p | | r |
 | payslip | | all | | r c (draft from the recap's flow) |
 | payroll_close (Tutup periode gaji: freezes totals, margin row, client invoice) | | all | | r |
-| payroll_guard (never stored; a flow's refusal, also inside a recap cancel) | | c | | c |
+| payroll_guard (never stored; a flow's refusal, also inside a recap cancel and an invoice save) | c | c | | c |

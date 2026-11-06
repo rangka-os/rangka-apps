@@ -2857,7 +2857,7 @@ MATRIX = {
     "payroll_run": {"finance_manager": {"read", "create", "write", "export", "print"}, "project_admin": _R},   # no delete: slips point at it
     "payroll_close": {"finance_manager": _ALL, "project_admin": _R},
     "payslip": {"finance_manager": _ALL, "project_admin": {"read", "create"}},
-    "payroll_guard": {"finance_manager": {"create"}, "project_admin": {"create"}},   # never stored (a flow's refusal; recaps are cancelled by the project admin)
+    "payroll_guard": {"finance_manager": {"create"}, "project_admin": {"create"}, "sales_manager": {"create"}},   # never stored (a flow's refusal; recaps are cancelled by the project admin)
 }
 _CHECKED = ("read", "create", "write", "delete", "submit", "cancel", "amend", "export", "import", "print")
 

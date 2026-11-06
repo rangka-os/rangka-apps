@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payslip_order_guard_cancelled
+label: {id: Slip gaji dibatalkan urut bulan pajak}
+# A later month's slip of this worker and year is submitted: its year to date (and a December recomputation) counted
+# this one. Cancel the later slip first.
+on: payslip.cancelled
+steps:
+  - find: payslip
+    where: profile == event.profile && tax_year == event.tax_year && tax_month > event.tax_month && docstatus == 1
+    as: later
+  - if: later != null
+    create: payroll_guard
+    set:
+      reason: "'later_slip'"
+      document: later.name
