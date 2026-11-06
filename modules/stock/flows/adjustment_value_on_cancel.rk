@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: adjustment_value_on_cancel
+label: {id: Nilai penyesuaian stok dibatalkan}
+# Inside the adjustment's cancel: the opposite of its post row, on the adjustment's own date (not the cancel day), so
+# the period it belongs to nets to zero. An adjustment submitted before these rows existed has none and gets none.
+on: stock_adjustment.cancelled
+steps:
+  - find: stock_adjustment_value
+    where: stock_adjustment == event.name && entry == 'post'
+    as: post
+  - if: post != null
+    create: stock_adjustment_value
+    set:
+      stock_adjustment: event.name
+      entry: "'reverse'"
+      outlet: event.outlet
+      posting_date: event.adjustment_date
+      reason: event.reason
+      value: 0 - post.value

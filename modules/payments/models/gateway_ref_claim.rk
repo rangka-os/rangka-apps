@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Which live payment holds a payment gateway's transaction id (Xendit VA, QRIS, payment link). The kernel's
+# `unique` keeps a value on cancelled documents too, so payment.gateway_ref is not unique itself: a cancelled
+# payment must give its id back so that it can be amended or the callback recorded again. The unique index is here,
+# and the flows payment_gateway_claim* and payment_gateway_release keep it in step with the payments:
+#   created or submitted -> claim the id (refused when another live payment holds it; a deleted draft holds nothing)
+#   cancelled            -> release it (gateway_ref emptied, the old id kept in released_ref)
+# People only read it; the flows write it as the person who saves the payment.
+# A payment created inside another flow (a connector callback flow) does not run these flows, because the kernel does
+# not nest flows: such a flow creates the claim itself in the same run (rangka-connectors README, Xendit example).
+name: gateway_ref_claim
+label: {id: Klaim ID gateway, en: Gateway reference claim}
+icon: card
+naming: GWC-{YYYY}-{#####}
+title_field: gateway_ref
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, export: true}
+  - {role: sales_manager, read: true, create: true, write: true, export: true}
+  - {role: head_office, read: true, create: true, write: true}
+fields:
+  - name: gateway_ref
+    type: data
+    label: {id: ID transaksi gateway}
+    unique: true
+    read_only: true
+    in_list: true
+  # data, not link: a draft payment is renamed on submit and may be deleted, and a link to a missing record
+  # would make the claim unsavable.
+  - name: payment
+    type: data
+    label: {id: Pembayaran}
+    read_only: true
+    in_list: true
+  - name: released_ref
+    type: data
+    label: {id: ID yang dilepas}
+    help: {id: 'ID gateway dari pembayaran yang dibatalkan; boleh dipakai lagi.'}
+    read_only: true
+    in_list: true
+views:
+  list:
+    columns: [gateway_ref, payment, released_ref]

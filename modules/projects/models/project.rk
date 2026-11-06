@@ -53,7 +53,41 @@ fields:
   - name: notes
     type: text
     label: {id: Catatan}
+  # The engagement: how the client is billed and against which contract (SPK, agreement, PO). All optional, so a
+  # manpower project that only logs days keeps working as before.
+  - name: billing_model
+    type: select
+    label: {id: Model tagihan}
+    default: "'fixed'"
+    options:
+      - {value: fixed, label: {id: Harga borongan}}
+      - {value: milestone, label: {id: Termin}}
+      - {value: retainer, label: {id: Retainer bulanan}}
+      - {value: time_material, label: {id: Per jam atau hari}}
+  - name: contract_kind
+    type: select
+    label: {id: Jenis kontrak}
+    options:
+      - {value: spk, label: {id: SPK}}
+      - {value: agreement, label: {id: Surat perjanjian}}
+      - {value: po, label: {id: PO klien}}
+      - {value: receipt, label: {id: Kuitansi}}
+  - name: contract_no
+    type: data
+    label: {id: No. kontrak}
+    in_list: true
+  - name: contract_date
+    type: date
+    label: {id: Tanggal kontrak}
+  - name: contract_value
+    type: currency
+    label: {id: Nilai kontrak (DPP)}
+    default: '0'
 rules:
+  - name: contract_value_not_negative
+    on: save
+    check: contract_value >= 0
+    message: {id: Nilai kontrak tidak boleh negatif}
   - name: end_after_start
     on: save
     check: start_date == '' || end_date == '' || end_date >= start_date
@@ -77,5 +111,9 @@ views:
         columns:
           - [project_name, customer, customer_order, site]
           - [state, manager, start_date, end_date]
+      - section: {id: Kontrak}
+        columns:
+          - [billing_model, contract_kind, contract_no]
+          - [contract_date, contract_value]
       - section: {id: Catatan}
         fields: [notes]

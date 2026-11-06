@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One row per reminder sent for an invoice (WhatsApp from the owner's phone today; the WhatsApp connector later).
+# A submitted invoice is immutable, so "who was reminded when" lives here, not on sales_invoice.
+name: invoice_reminder
+label: {id: Pengingat tagihan, en: Invoice reminder}
+icon: bell
+naming: REM-{YYYY}-{#####}
+title_field: sales_invoice
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true}
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, export: true}
+  - {role: sales_rep, read: true, create: true}
+fields:
+  - name: sales_invoice
+    type: link
+    to: sales_invoice
+    label: {id: Faktur}
+    required: true
+    in_list: true
+    peek: [customer, due_date, outstanding]
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    default: sales_invoice.customer
+    in_list: true
+  - name: reminded_on
+    type: date
+    label: {id: Tanggal}
+    default: today()
+    required: true
+    in_list: true
+  - name: channel
+    type: select
+    label: {id: Lewat}
+    default: "'whatsapp'"
+    required: true
+    chip: true
+    in_list: true
+    options:
+      - {value: whatsapp, label: {id: WhatsApp}}
+      - {value: phone, label: {id: Telepon}}
+      - {value: email, label: {id: Email}}
+      - {value: visit, label: {id: Kunjungan}}
+  # Names match the WhatsApp Business templates of rangka-connectors (lowercase snake_case, as Meta requires).
+  - name: template
+    type: select
+    label: {id: Jenis pesan}
+    default: "sales_invoice.due_date < today() ? 'pengingat_jatuh_tempo' : 'tagihan_terbit'"
+    in_list: true
+    options:
+      - {value: tagihan_terbit, label: {id: Tagihan terbit}}
+      - {value: pengingat_jatuh_tempo, label: {id: Pengingat jatuh tempo}}
+      - {value: terima_kasih_lunas, label: {id: 'Terima kasih, sudah lunas'}}
+  - name: outstanding
+    type: currency
+    label: {id: Sisa tagihan saat itu}
+    default: sales_invoice.outstanding
+    read_only: true
+    in_list: true
+  - name: promised_date
+    type: date
+    label: {id: Janji bayar}
+  - name: note
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: invoice_submitted
+    on: save
+    check: sales_invoice.docstatus == 1
+    message: {id: Hanya faktur yang sudah diajukan yang bisa ditagih}
+views:
+  list:
+    columns: [name, sales_invoice, customer, reminded_on, channel, template, outstanding, promised_date]
+    sort: -reminded_on
+  form:
+    layout:
+      - section: {id: Pengingat}
+        columns:
+          - [sales_invoice, customer, outstanding]
+          - [reminded_on, channel, template, promised_date]
+      - section: {id: Catatan}
+        fields: [note]
