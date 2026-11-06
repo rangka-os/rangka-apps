@@ -27,7 +27,7 @@ Every module requires `users`, which holds all roles (`sales_manager`, `sales_re
 | `contacts` | none | `customer`, `vendor` (`pkp`), `contact_person` |
 | `catalogue` | contacts | `item`, `uom`, `uom_conversion`, `price_list` (+ `price_list_item`) |
 | `outlets` | none | `outlet` |
-| `invoicing` | contacts, catalogue (optional: outlets, tax_id, currency, orders, projects) | `sales_invoice` (+ `sales_invoice_item`): PPN from config, PPh 23, down payment, retention (no PPN again, bounded by the origin), header discount; print format; finance approval above Rp 100.000.000; foreign-currency `*_fx` totals; numbering series `invoice` |
+| `invoicing` | contacts, catalogue (optional: outlets, tax_id, currency, orders, projects) | `sales_invoice` (+ `sales_invoice_item`): PPN from config, PPh 23 on the lines not marked `pph23_exclude` (wages and reimbursed costs can stay out; a down payment's base is deducted), down payment, retention (no PPN again, bounded by the origin), header discount; print format; finance approval above Rp 100.000.000; foreign-currency `*_fx` totals; numbering series `invoice` |
 | `tax_id` | none | `tax_code` |
 | `currency` | none | `currency` (named by ISO code), `exchange_rate` |
 | `quotation` | contacts, catalogue (optional: tax_id, currency) | `quotation` (+ `quotation_item`): line discounts only (no header discount), revisions, outcome, manager approval, numbering series `quotation`, foreign-currency `*_fx` totals, print *Surat penawaran harga* |
