@@ -1,0 +1,126 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Where customers pay: the business's own bank account and its static QRIS (from the bank or QRIS provider; no
+# gateway). One active account per org is the default: invoices take their "cara bayar" from it when they are
+# submitted (payment_instruction keeps that copy, so changing the account later never changes an old invoice).
+# The QRIS text is optional (the text inside the QR, from scanning the sticker); when given it must be a static QRIS
+# (EMVCo frame and CRC, point of initiation 11, rupiah, no fixed amount), and NMID and merchant name are read from it.
+# The invoice print draws the QR from this text (a print page shows only data: images), so there is no image field:
+# a photo of the sticker, if wanted, goes in the record's attachments.
+name: bank_account
+label: {id: Rekening & QRIS, en: Bank account & QRIS}
+icon: bank
+naming: REK-{####}
+title_field: title
+permissions:
+  # Changing where customers pay is a money control: only finance (and the owner's head office) write it.
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true}
+  # whoever submits an invoice reads the default account: the flow payment_instruction_on_submit runs as them
+  - {role: sales_manager, read: true}
+  - {role: sales_rep, read: true}
+  - {role: field_sales, read: true}
+  - {role: project_admin, read: true}
+fields:
+  - name: bank
+    type: data
+    label: {id: Bank}
+    required: true
+    in_list: true
+  - name: account_no
+    type: data
+    label: {id: Nomor rekening}
+    help: {id: 'Angka saja, tanpa spasi, titik atau strip.'}
+    required: true
+    in_list: true
+  - name: holder
+    type: data
+    label: {id: Atas nama}
+    required: true
+    in_list: true
+  - name: title
+    type: data
+    label: {id: Rekening}
+    hidden: true
+    compute: "bank + ' ' + account_no + ' a.n. ' + holder"
+  - name: is_default
+    type: check
+    label: {id: Rekening utama di faktur}
+    default: 'false'
+    in_list: true
+  - name: active
+    type: check
+    label: {id: Aktif}
+    default: 'true'
+  # unique per org (the kernel's unique index is per org and skips ''): at most one active default account
+  - name: default_claim
+    type: data
+    label: {id: Rekening utama}
+    hidden: true
+    unique: true
+    compute: "is_default && active ? 'default' : ''"
+  - name: instructions
+    type: text
+    label: {id: Instruksi bayar}
+    help: {id: 'Satu dua kalimat untuk pelanggan, misalnya jam konfirmasi atau kirim bukti ke WhatsApp. Maksimal 280 huruf.'}
+  - name: qris_payload
+    type: text
+    label: {id: Isi QRIS (teks)}
+    help: {id: 'Opsional: teks hasil pindai QRIS statis, diawali 000201. Dicek formatnya; NMID dan nama merchant dibaca dari sini.'}
+  - name: qris_nmid
+    type: data
+    label: {id: NMID}
+    compute: "qris_payload == '' ? '' : qris_payload.emvcoTag('51').emvcoTag('02')"
+  - name: qris_merchant_name
+    type: data
+    label: {id: Nama merchant QRIS}
+    compute: "qris_payload == '' ? '' : qris_payload.emvcoTag('59')"
+rules:
+  - name: account_digits
+    on: save
+    check: "account_no.matches('^[0-9]{5,20}$')"
+    message: {id: 'Nomor rekening hanya angka (5 sampai 20 digit), tanpa spasi, titik atau strip'}
+  - name: holder_not_blank
+    on: save
+    check: "holder.trim() != '' && bank.trim() != ''"
+    message: {id: Isi nama bank dan nama pemilik rekening}
+  - name: default_is_active
+    on: save
+    check: "!is_default || active"
+    message: {id: Rekening utama harus aktif}
+  - name: instructions_short
+    on: save
+    check: "size(instructions) <= 280"
+    message: {id: 'Instruksi bayar maksimal 280 huruf'}
+  - name: qris_format
+    on: save
+    check: "qris_payload == '' || qris_payload.emvcoValid()"
+    message: {id: 'Isi QRIS tidak valid (format atau kode CRC salah). Pindai ulang stiker QRIS dan tempel teksnya tanpa spasi'}
+  - name: qris_static
+    on: save
+    check: "qris_payload == '' || qris_payload.emvcoTag('01') == '11'"
+    message: {id: 'Ini QRIS dinamis (sekali pakai). Faktur butuh QRIS statis dari stiker toko'}
+  - name: qris_rupiah
+    on: save
+    check: "qris_payload == '' || qris_payload.emvcoTag('53') == '360'"
+    message: {id: QRIS harus dalam rupiah}
+  - name: qris_no_fixed_amount
+    on: save
+    check: "qris_payload == '' || qris_payload.emvcoTag('54') == ''"
+    message: {id: 'QRIS ini memuat nominal tetap; pakai QRIS statis tanpa nominal supaya pelanggan mengisi jumlah tagihan'}
+  - name: qris_has_merchant
+    on: save
+    check: "qris_payload == '' || (qris_payload.emvcoTag('59') != '' && qris_payload.emvcoTag('51').emvcoTag('02') != '')"
+    message: {id: 'QRIS tanpa nama merchant atau NMID; pakai QRIS dari bank atau penyedia QRIS resmi'}
+views:
+  list:
+    columns: [name, bank, account_no, holder, is_default, active, qris_nmid]
+  form:
+    layout:
+      - section: {id: Rekening}
+        columns:
+          - [bank, account_no, holder]
+          - [is_default, active, instructions]
+      - section: {id: QRIS statis}
+        columns:
+          - [qris_payload]
+          - [qris_nmid, qris_merchant_name]
