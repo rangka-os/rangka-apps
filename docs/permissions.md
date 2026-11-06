@@ -34,7 +34,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | sales_invoice | all | all | | r | | | r |
 | withholding | r p | all | | | | | |
 | invoice_reminder | r c w d e | r c w d e | | | | | r c |
-| bank_account (rekening and static QRIS; only finance and head office change where customers pay; field_sales: r) | r | r c w d e | | r | r c w d e | | r |
+| bank_account (rekening and static QRIS; only finance and head office change where customers pay, only finance deletes; field_sales: r) | r | r c w d e | | r | r c w e | | r |
 | payment_instruction (copy made by `payment_instruction_on_submit` as the submitter; never written or deleted; not field_sales, whose row scope `salesman` it lacks) | r c e | r c e | | r | r | | r |
 | bank_transaction | r c w e i | r c w d e i | | | r c w e i | | |
 | payment | all | all | | | r c w s p if `direction == 'pay'` (vendor payments only) | | |
@@ -66,7 +66,7 @@ masters (`item`, `item_category`, `uom`, `outlet`, `user`: r).
 | customer | as above | as above | as above | r | r (credit fields are finance's) |
 | customer_order | all | r p | r p | | r c w s p (own customers; rule `customer_of_salesman`) |
 | sales_invoice, payment | all | all | as above | | r p |
-| bank_account | r | r c w d e | r c w d e | | r |
+| bank_account | r | r c w d e | r c w e | | r |
 | giro (lines made by the flow `giro_from_payment`; bounced only by cancelling the payment) | r c w e p | r c w e p | | | r |
 | delivery_note, sales_return | all | r p | all | | r p |
 | order_fulfilment (every field read_only; written by the delivery flows of whoever submits) | r c w e | r c w e | r c w e | | r c w |
