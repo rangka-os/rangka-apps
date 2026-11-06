@@ -1344,7 +1344,7 @@ def statement_csv(rows, seq=True):
     return ("\n".join(out) + "\n").encode()
 
 
-def qris_payload(name, nmid, city="BANDUNG", poi="11", amount=None):
+def qris_payload(name, nmid, city="BANDUNG", poi="11", amount=None, fee=""):
     """A synthetic QRIS (EMVCo merchant-presented) payload with a correct CRC-16/CCITT-FALSE: no real merchant."""
     def tlv(tag, value):
         return f"{tag}{len(value):02d}{value}"
@@ -1358,7 +1358,7 @@ def qris_payload(name, nmid, city="BANDUNG", poi="11", amount=None):
     p = (tlv("00", "01") + tlv("01", poi)
          + tlv("26", tlv("00", "ID.CO.QRIS.WWW") + tlv("01", "936000000000000001") + tlv("02", "000000000000001") + tlv("03", "UMI"))
          + tlv("51", tlv("00", "ID.CO.QRIS.WWW") + tlv("02", nmid) + tlv("03", "UMI"))
-         + tlv("52", "5812") + tlv("53", "360") + (tlv("54", amount) if amount else "") + tlv("58", "ID") + tlv("59", name) + tlv("60", city) + "6304")
+         + tlv("52", "5812") + tlv("53", "360") + (tlv("54", amount) if amount else "") + fee + tlv("58", "ID") + tlv("59", name) + tlv("60", city) + "6304")
     return p + crc(p)
 
 
@@ -1383,9 +1383,17 @@ def scenario_payment_instruction(api):
                          ("QRIS cut short", {"qris_payload": q1[:-1]}),
                          ("dynamic QRIS (one-off)", {"qris_payload": qris_payload("PT CONTOH TAGIH", "ID1020000000101", poi="12")}),
                          ("QRIS with a fixed amount", {"qris_payload": qris_payload("PT CONTOH TAGIH", "ID1020000000101", amount="50000")}),
-                         ("QRIS with a leading space", {"qris_payload": " " + q1})):
+                         ("QRIS with a leading space", {"qris_payload": " " + q1}),
+                         # a fixed or percentage fee on top of the bill: the customer pays more than the invoice
+                         ("QRIS with a fixed fee (55=02, 56)", {"qris_payload": qris_payload("PT CONTOH TAGIH", "ID1020000000101", fee="550202" + "56041000")}),
+                         ("QRIS with a percentage fee (55=03, 57)", {"qris_payload": qris_payload("PT CONTOH TAGIH", "ID1020000000101", fee="550203" + "57032.5")}),
+                         ("QRIS with a fee amount but no indicator (56)", {"qris_payload": qris_payload("PT CONTOH TAGIH", "ID1020000000101", fee="56041000")}),
+                         ("QRIS whose merchant name is blank", {"qris_payload": qris_payload("   ", "ID1020000000101")}),
+                         ("QRIS whose NMID is blank", {"qris_payload": qris_payload("PT CONTOH TAGIH", "  ")})):
         st, resp = api.create("bank_account", dict(good, **patch))
-        check(f"bank_account refuses {label}", st == 422, (st, resp))
+        check(f"bank_account refuses {label}", st == 422 and any(e.get("code") == "rule" for e in (resp or {}).get("errors", [])), (st, resp))
+        if st == 201:
+            api.call("DELETE", f"/api/v1/r/bank_account/{api.q(resp['name'])}")
     st, acct = api.create("bank_account", good)
     check("bank_account: valid rekening + static QRIS saved as the default", st == 201, (st, acct))
     if st != 201:
@@ -1507,6 +1515,23 @@ def scenario_payment_instruction(api):
     eq("dots instead of separators: suggested that invoice", (l6.get("status"), l6.get("suggested_invoice")), ("suggested", inv6))
     l7 = lines.get(rows[3][1], {})
     check("no number and three invoices of that amount: no suggestion", l7.get("status") == "unmatched" and not l7.get("suggested_invoice"), l7)
+
+    # the number decides only when the money fits it: a note whose number is a prefix of what the customer typed
+    # ("...0004 2" read as 00042) must not pull a line worth more than that invoice still owes
+    inv8 = submitted(5_000_001)
+    inv9 = submitted(5_000_002)
+    note8 = "BAYAR " + inv8 + " 2"            # compacts to <inv8 number>2: contains inv8's number
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-nominal.csv",
+                        statement_csv([("21/11/2026", note8, 5_000_002, 0, 70_000_000)]))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    l8 = (api.find("bank_transaction", "date == '2026-11-21' && amount == 5000002") or [{}])[0]
+    eq("a number in the note whose invoice owes less than the line: the invoice of that exact amount instead",
+       (l8.get("status"), l8.get("suggested_invoice")), ("suggested", inv9))
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-sebagian.csv",
+                        statement_csv([("22/11/2026", "CICIL " + inv8, 1_000_000, 0, 71_000_000)]))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    l9 = (api.find("bank_transaction", "date == '2026-11-22' && amount == 1000000") or [{}])[0]
+    eq("a part payment naming the invoice still suggests it", (l9.get("status"), l9.get("suggested_invoice")), ("suggested", inv8))
 
 
 def scenario_money_rail(api):
