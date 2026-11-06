@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Not paper: the reminder text plus a wa.me link that opens WhatsApp with the text filled in, so the owner sends it
+# from their own phone. Same wording as the WhatsApp Business templates in rangka-connectors.
+name: sales_invoice_whatsapp
+model: sales_invoice
+label: {id: Pesan tagihan WA, en: WhatsApp reminder}
+paper: A5
+template: sales_invoice_whatsapp.html
