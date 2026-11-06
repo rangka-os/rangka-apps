@@ -1,0 +1,114 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: project_expense
+label: {id: Biaya proyek, en: Project expense}
+icon: invoice
+is_submittable: true
+naming: EXP-{YYYY}-{#####}
+title_field: description
+# A cost spent on a project outside a vendor bill (travel, lodging, printing, a freelancer paid in cash), and whether
+# it is billed on to the client. A reimbursable cost needs its receipt. When the cost is also on a vendor bill, link
+# it: margin then counts the bill, not this record. On the invoice a re-billed cost is a line marked pph23_exclude
+# (Bukan dasar PPh 23), so PPh 23 is not withheld on it.
+permissions:
+  - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true}
+fields:
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+    required: true
+    in_list: true
+  - name: expense_date
+    type: date
+    label: {id: Tanggal}
+    required: true
+    default: today()
+    in_list: true
+  - name: category
+    type: select
+    label: {id: Jenis biaya}
+    default: "'other'"
+    in_list: true
+    options:
+      - {value: travel, label: {id: Perjalanan}}
+      - {value: lodging, label: {id: Penginapan}}
+      - {value: printing, label: {id: Cetak dan dokumen}}
+      - {value: subcontract, label: {id: Pihak ketiga}}
+      - {value: other, label: {id: Lainnya}}
+  - name: description
+    type: text
+    label: {id: Uraian}
+    required: true
+  - name: vendor
+    type: link
+    to: vendor
+    label: {id: Pemasok}
+  - name: vendor_bill
+    type: link
+    to: vendor_bill
+    label: {id: Tagihan pemasok}
+    help: {id: 'Isi kalau biaya ini juga tercatat di tagihan pemasok, supaya tidak terhitung dua kali'}
+  - name: amount
+    type: currency
+    label: {id: Biaya}
+    in_list: true
+  - name: reimbursable
+    type: check
+    label: {id: Ditagihkan ke klien}
+    default: 'false'
+  - name: markup_percent
+    type: percent
+    label: {id: Markup %}
+    default: '0'
+    depends_on: reimbursable
+  - name: rebill_amount
+    type: currency
+    label: {id: Ditagihkan}
+    compute: "reimbursable ? round(amount * (1 + markup_percent / 100)) : 0"
+    in_list: true
+  - name: receipt
+    type: attach
+    label: {id: 'Bukti (kuitansi, nota)'}
+  - name: rebill_invoice
+    type: link
+    to: sales_invoice
+    label: {id: Faktur penagihan}
+    depends_on: reimbursable
+rules:
+  - name: amount_positive
+    on: save
+    check: amount > 0
+    message: {id: Biaya harus lebih dari 0}
+  - name: markup_range
+    on: save
+    check: markup_percent >= 0 && markup_percent <= 100
+    message: {id: 'Markup harus 0 sampai 100%'}
+  - name: receipt_for_rebill
+    on: save
+    check: "!reimbursable || receipt != ''"
+    message: {id: Biaya yang ditagihkan ke klien wajib punya bukti}
+  - name: rebill_same_project
+    on: save
+    check: rebill_invoice == '' || rebill_invoice.project == project
+    message: {id: Faktur penagihan harus untuk proyek yang sama}
+  - name: bill_same_project
+    on: save
+    check: vendor_bill == '' || vendor_bill.project == project
+    message: {id: Tagihan pemasok harus untuk proyek yang sama (isi Proyek di tagihannya)}
+views:
+  list:
+    columns: [name, project, expense_date, category, amount, rebill_amount, status]
+    filters: [project, category, reimbursable]
+    sort: -expense_date
+  form:
+    layout:
+      - section: {id: Biaya}
+        columns:
+          - [project, expense_date, category, description]
+          - [amount, vendor, vendor_bill, receipt]
+      - section: {id: Tagih ke klien}
+        columns:
+          - [reimbursable, markup_percent]
+          - [rebill_amount, rebill_invoice]
