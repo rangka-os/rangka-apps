@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: milestone_lock_on_update
+label: {id: Termin siap atau tertagih terkunci}
+# Inside a person's edit of a milestone (flows' own updates do not start it): when the milestone is no longer planned
+# (ready or invoiced) and the edit changes its amount, basis, kind or period (which hold its retainer month), or project, the milestone is marked locked_edit and rule
+# edit_locked refuses the whole save. A billed milestone can thus never be shrunk or moved to make room in a schedule.
+on: billing_milestone.updated
+if: >-
+  (event.before.state != 'planned' && (event.amount != event.before.amount || event.basis != event.before.basis
+    || event.kind != event.before.kind || event.period_from != event.before.period_from || event.period_to != event.before.period_to))
+  || event.project != event.before.project
+steps:
+  - {find: billing_milestone, where: name == event.name, as: ms}
+  - update: ms
+    set:
+      locked_edit: 'true'

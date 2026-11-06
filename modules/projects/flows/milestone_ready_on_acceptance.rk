@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: milestone_ready_on_acceptance
+label: {id: Termin siap ditagih setelah berita acara}
+# Runs inside the acceptance report's submit, as the project admin submitting it. "Ready" comes only from a live
+# report:
+# - an amended report (amended_from set) never moves the schedule forward: it only takes over the milestone still
+#   linked to the report it amends (the cancel flow keeps that link). A second amendment of the same report finds
+#   nothing, because the first one took the link over.
+# - a new report makes the project's next planned acceptance milestone (lowest seq) ready, links it and notifies
+#   finance in-app. The invoice itself is made by finance (project admins may not invoice, docs/permissions.md).
+on: acceptance.submitted
+steps:
+  - if: event.amended_from != ''
+    find: billing_milestone
+    where: project == event.project && acceptance == event.amended_from
+    as: prev
+  - if: event.amended_from != '' && prev != null
+    update: prev
+    set:
+      acceptance: event.name
+      state: "prev.state == 'planned' ? 'ready' : prev.state"
+  - if: event.amended_from == ''
+    find_all: billing_milestone
+    where: project == event.project && trigger == 'acceptance' && state == 'planned'
+    sort: seq
+    limit: 1
+    as: next
+  - if: event.amended_from == '' && size(next) > 0
+    find: billing_milestone
+    where: name == next[0].name
+    as: ms
+  - if: event.amended_from == '' && size(next) > 0
+    update: ms
+    set:
+      state: "'ready'"
+      acceptance: event.name
+  - if: event.amended_from == '' && size(next) > 0
+    notify: finance_manager
+    channel: in_app
+    template: {id: 'Termin {ms.title} proyek {event.project} siap ditagih (Rp {ms.amount})'}

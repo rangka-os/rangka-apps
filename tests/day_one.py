@@ -1702,6 +1702,288 @@ def decide(cl, approval_id, verb="approve", reason=""):
     return cl.call("POST", f"/api/v1/approvals/{approval_id}/{verb}", {"reason": reason} if verb == "reject" else {})
 
 
+def scenario_billing_milestones(api):
+    """Tahap 2 J2: a consultancy's billing schedule. Milestones by percent of the contract, one by date and two after an
+    acceptance report; the report makes the next one ready; an invoice that bills it marks it invoiced; cancel reopens it."""
+    pa, fm = CTX.get("pa"), CTX.get("fm")
+    if pa is None or fm is None:
+        fail("billing milestones: members", CTX.get("login_error", "no project_admin or finance_manager"))
+        return
+    customer, ndt = "CUST-0001", services(api)[0]["name"]
+    st, prj = pa.create("project", {"project_name": "Pendampingan pajak tahunan", "customer": customer, "billing_model": "milestone",
+                                    "contract_kind": "spk", "contract_no": "SPK/007/XI/2026", "contract_value": 100_000_000})
+    if not check("project_admin creates a 100.000.000 milestone engagement", st == 201, (st, prj)):
+        return
+    p = prj["name"]
+    ms = {}
+    for seq, title, kind, pct, trig, due in ((1, "DP 30%", "down_payment", 30, "date", "2026-11-10"), (2, "Termin 2 setelah laporan", "milestone", 40, "acceptance", ""),
+                                             (3, "Pelunasan setelah BA akhir", "milestone", 30, "acceptance", "")):
+        body = {"project": p, "seq": seq, "title": title, "kind": kind, "basis": "percent", "percent": pct, "trigger": trig}
+        if due:
+            body["due_date"] = due
+        st, m = pa.create("billing_milestone", body)
+        check(f"milestone {seq} '{title}' created", st == 201, (st, m))
+        ms[seq] = m
+    eq("milestone amounts from the contract value: 30.000.000, 40.000.000, 30.000.000", [ms[i].get("amount") for i in (1, 2, 3)], [30_000_000, 40_000_000, 30_000_000])
+    eq("milestones start planned, customer from the project", [(ms[i].get("state"), ms[i].get("customer")) for i in (1, 2, 3)], [("planned", customer)] * 3)
+    st, resp = pa.create("billing_milestone", {"project": p, "title": "x", "basis": "percent", "percent": 120, "trigger": "acceptance"})
+    check("percent 120 -> 422 'Persen termin'", st == 422 and any("Persen termin" in m for m in messages(resp)), (st, resp))
+    st, resp = pa.create("billing_milestone", {"project": p, "title": "x", "basis": "amount", "amount_fixed": 1_000_000, "trigger": "date"})
+    check("a date milestone without due date -> 422", st == 422 and any("jatuh tempo" in m for m in messages(resp)), (st, resp))
+    st, resp = pa.call("PATCH", f"/api/v1/r/billing_milestone/{Api.q(ms[2]['name'])}", {"state": "invoiced"})
+    eq("state is read_only for people: a PATCH leaves it planned", api.get("billing_milestone", ms[2]["name"])["state"], "planned")
+
+    # the acceptance report makes the next acceptance milestone (lowest seq) ready
+    st, ba = pa.create("acceptance", {"project": p, "accepted_on": "2026-11-20", "accepted_by": "Bu Rina (klien)", "scope": "Laporan pendahuluan"})
+    ban = submit_doc(pa, "acceptance", ba["name"], "project_admin submits the acceptance report") if st == 201 else None
+    m2, m3 = api.get("billing_milestone", ms[2]["name"]), api.get("billing_milestone", ms[3]["name"])
+    eq("after the report: milestone 2 ready with the report, milestone 3 still planned", (m2["state"], m2["acceptance"], m3["state"]), ("ready", ban, "planned"))
+
+    # finance bills it: customer, project and report default from the milestone
+    body = {"billing_milestone": ms[2]["name"], "items": [{"item": ndt, "qty": 1, "rate": 40_000_000, "description": "Termin 2: laporan pendahuluan"}]}
+    st, inv = fm.create("sales_invoice", body)
+    if not check("finance creates the invoice from the milestone", st == 201, (st, inv)):
+        return
+    eq("invoice defaults from the milestone: customer, project, acceptance", (inv["customer"], inv["project"], inv["acceptance"]), (customer, p, ban))
+    invn = submit_doc(fm, "sales_invoice", inv["name"], "finance submits the milestone invoice", force=True)
+    m2 = api.get("billing_milestone", ms[2]["name"])
+    eq("submitted invoice marks milestone 2 invoiced and links it", (m2["state"], m2["sales_invoice"]), ("invoiced", invn))
+    st, resp = fm.create("sales_invoice", body)
+    check("a second invoice for the invoiced milestone -> 422 (one invoice per milestone)", st == 422 and any("sudah ditagih" in m or "Faktur untuk termin ini" in m for m in messages(resp)), (st, resp))
+    st, other = pa.create("project", {"project_name": "Proyek lain", "customer": customer})
+    st, resp = fm.create("sales_invoice", dict(body, billing_milestone=ms[3]["name"], project=other["name"]))
+    check("a milestone of another project -> 422 'Termin harus milik proyek yang sama'", st == 422 and any("proyek yang sama" in m for m in messages(resp)), (st, resp))
+    st, resp = fm.verb("sales_invoice", invn, "cancel")
+    check("finance cancels the milestone invoice", st == 200, (st, resp))
+    m2 = api.get("billing_milestone", ms[2]["name"])
+    eq("cancel reopens milestone 2: ready, no invoice", (m2["state"], m2["sales_invoice"]), ("ready", ""))
+    st, resp = fm.create("sales_invoice", dict(body, items=[{"item": ndt, "qty": 1, "rate": 45_000_000}]))
+    check("an invoice above the milestone (45.000.000 > 40.000.000) -> 422 'melebihi nilai termin'", st == 422 and any("melebihi nilai termin" in m for m in messages(resp)), (st, resp))
+    st, resp = fm.create("sales_invoice", dict(body, customer="CUST-0002"))
+    check("another customer than the milestone's -> 422", st == 422, (st, resp))
+    # the report is cancelled and amended: the amended report takes over milestone 2, milestone 3 stays planned
+    st, resp = pa.verb("acceptance", ban, "cancel")
+    check("project admin cancels the acceptance report", st == 200, (st, resp))
+    m2 = api.get("billing_milestone", ms[2]["name"])
+    eq("cancelled report gives milestone 2 back: planned (it keeps the cancelled report, for the amendment)", (m2["state"], m2["acceptance"]), ("planned", ban))
+    st, am = pa.verb("acceptance", ban, "amend")
+    amn = (am or {}).get("name") or ((am or {}).get("open") or {}).get("name")
+    if check("amend the report", st in (200, 201) and amn, (st, am)):
+        ban2 = submit_doc(pa, "acceptance", amn, "submit the amended report")
+        m2, m3 = api.get("billing_milestone", ms[2]["name"]), api.get("billing_milestone", ms[3]["name"])
+        eq("amended report: milestone 2 ready again with it, milestone 3 still planned", (m2["state"], m2["acceptance"], m3["state"]), ("ready", ban2, "planned"))
+        # the audit case: milestone 2 is invoiced, then its report is cancelled and amended -> milestone 3 must not move
+        st, am2 = fm.verb("sales_invoice", invn, "amend")
+        am2n = (am2 or {}).get("name") or ((am2 or {}).get("open") or {}).get("name")
+        st, resp = fm.create("sales_invoice", body)
+        check("billing milestone 2 again with a new invoice (not an amendment of the cancelled one) -> 422", st == 422, (st, resp))
+        inv2n = submit_doc(fm, "sales_invoice", am2n, "finance bills milestone 2 again by amending the cancelled invoice", force=True) if am2n else None
+        st, resp = pa.verb("acceptance", ban2, "cancel")
+        m2 = api.get("billing_milestone", ms[2]["name"])
+        eq("cancelling the report of an invoiced milestone keeps it invoiced", (m2["state"], m2["sales_invoice"]), ("invoiced", inv2n))
+        st, am = pa.verb("acceptance", ban2, "amend")
+        amn = (am or {}).get("name") or ((am or {}).get("open") or {}).get("name")
+        ban3 = submit_doc(pa, "acceptance", amn, "submit the second amendment") if amn else None
+        m2, m3 = api.get("billing_milestone", ms[2]["name"]), api.get("billing_milestone", ms[3]["name"])
+        eq("second amendment takes over invoiced milestone 2; milestone 3 stays planned", (m2["state"], m2["acceptance"], m3["state"]), ("invoiced", ban3, "planned"))
+
+    # the schedule never exceeds the contract: 30+40+30 = 100% is full, a 4th milestone or a lower contract is refused
+    st, resp = pa.create("billing_milestone", {"project": p, "seq": 4, "title": "Tambahan", "basis": "percent", "percent": 30, "trigger": "acceptance"})
+    check("a 4th milestone of 30% (130% of the contract) -> 422", st == 422, (st, resp))
+    st, resp = pa.create("billing_milestone", {"project": p, "seq": 5, "title": "Besar", "basis": "amount", "amount_fixed": 500_000_000, "trigger": "acceptance"})
+    check("a 500.000.000 milestone on a 100.000.000 contract -> 422", st == 422, (st, resp))
+    st, resp = pa.call("PATCH", f"/api/v1/r/project/{Api.q(p)}", {"contract_value": 50_000_000})
+    check("lowering the contract below its schedule (100.000.000) -> 422", st == 422, (st, resp))
+    st, resp = pa.call("DELETE", f"/api/v1/r/billing_milestone/{Api.q(ms[2]['name'])}")
+    check("a milestone cannot be deleted by project admin (403)", st == 403, (st, resp))
+
+    # two amendments of one cancelled report: only one takes over; the second moves nothing forward
+    st, ba7 = pa.create("acceptance", {"project": p, "accepted_on": "2026-11-25", "accepted_by": "Bu Rina (klien)", "scope": "Laporan akhir"})
+    ba7n = submit_doc(pa, "acceptance", ba7["name"], "a report for the final milestone") if st == 201 else None
+    m3 = api.get("billing_milestone", ms[3]["name"])
+    eq("the new report makes milestone 3 ready", (m3["state"], m3["acceptance"]), ("ready", ba7n))
+    pa.verb("acceptance", ba7n, "cancel")
+    amends = []
+    for _ in range(2):
+        st, am = pa.verb("acceptance", ba7n, "amend")
+        amends.append((am or {}).get("name") or ((am or {}).get("open") or {}).get("name"))
+    for n in amends:
+        if n:
+            pa.verb("acceptance", n, "submit")
+    m3 = api.get("billing_milestone", ms[3]["name"])
+    others = [m for m in api.find("billing_milestone", "project == '%s'" % p) if m["state"] == "ready" and m["name"] != ms[3]["name"]]
+    eq("two amendments: milestone 3 ready once, no other milestone moved", (m3["state"], [m["name"] for m in others if m["name"] != ms[2]["name"]]), ("ready", []))
+
+    # a cancelled report and a cancelled invoice: the milestone goes back to planned, not ready, and cannot be billed
+    st, inv3 = fm.create("sales_invoice", {"billing_milestone": ms[3]["name"], "items": [{"item": ndt, "qty": 1, "rate": 30_000_000}]})
+    inv3n = submit_doc(fm, "sales_invoice", inv3["name"], "finance bills milestone 3", force=True) if st == 201 else None
+    live = api.get("billing_milestone", ms[3]["name"])["acceptance"]
+    pa.verb("acceptance", live, "cancel")
+    if inv3n:
+        fm.verb("sales_invoice", inv3n, "cancel")
+    m3 = api.get("billing_milestone", ms[3]["name"])
+    eq("report and invoice cancelled: milestone 3 planned (its report is not live)", m3["state"], "planned")
+    st, resp = fm.create("sales_invoice", {"billing_milestone": ms[3]["name"], "items": [{"item": ndt, "qty": 1, "rate": 30_000_000}]})
+    check("billing an acceptance milestone that is not ready -> 422", st == 422 and any("siap ditagih" in m for m in messages(resp)), (st, resp))
+
+    # monthly retainers from a sheet (a retainer engagement of its own: 3 x 15.000.000)
+    st, rp = pa.create("project", {"project_name": "Retainer pajak bulanan", "customer": customer, "billing_model": "retainer", "contract_value": 45_000_000})
+    p = rp["name"]
+    sheet = ("Proyek,Urutan,Judul,Jenis,Nominal,Jatuh tempo,Periode dari,Periode sampai\n"
+             f"{p},11,Retainer November,retainer,15000000,30/11/2026,01/11/2026,30/11/2026\n"
+             f"{p},12,Retainer Desember,retainer,15000000,31/12/2026,01/12/2026,31/12/2026\n"
+             f"{p},13,Retainer Januari,retainer,15000000,31/01/2027,01/01/2027,31/01/2027\n").encode()
+    st, pv = pa.upload("/api/v1/imports/billing_milestone", {}, "retainer.csv", sheet)
+    if check("retainer sheet: preview 3 rows, no errors", st == 200 and pv.get("rows") == 3 and pv.get("errors") == [], (st, pv)):
+        st, c = pa.call("POST", f"/api/v1/imports/billing_milestone/{pv['id']}/commit")
+        check("retainer sheet committed: 3 milestones", st == 200 and len(c.get("records", [])) == 3, (st, c))
+        rs = api.find("billing_milestone", "project == '%s' && kind == 'retainer'" % p)
+        eq("retainers: 3 x 15.000.000, planned, due 30/11, 31/12, 31/01", sorted((r["due_date"], r["amount"], r["state"]) for r in rs),
+           [("2026-11-30", 15_000_000, "planned"), ("2026-12-31", 15_000_000, "planned"), ("2027-01-31", 15_000_000, "planned")])
+
+
+def scenario_milestone_money(api):
+    """Tahap 2 J2, audit round 3: whatever is done to the schedule, the invoices billed against a project's milestones never
+    exceed its contract, a milestone has one live invoice, and a milestone that is ready or billed cannot be changed."""
+    import threading
+    pa, fm = CTX.get("pa"), CTX.get("fm")
+    if pa is None or fm is None:
+        fail("milestone money: members", CTX.get("login_error", "members missing"))
+        return
+    customer, ndt = "CUST-0001", services(api)[0]["name"]
+    def project(label, cv=100_000_000, model="milestone"):
+        st, p = pa.create("project", {"project_name": label, "customer": customer, "billing_model": model, "contract_value": cv})
+        return p["name"]
+    def ms(p, seq, pct=None, amount=None, trig="acceptance", **kw):
+        b = dict({"project": p, "seq": seq, "title": f"T{seq}", "trigger": trig}, **kw)
+        b.update({"basis": "percent", "percent": pct} if pct is not None else {"basis": "amount", "amount_fixed": amount})
+        return pa.create("billing_milestone", b)
+    def ba(p):
+        st, b = pa.create("acceptance", {"project": p, "accepted_on": "2026-11-20", "accepted_by": "PIC", "scope": "x"})
+        return pa.verb("acceptance", b["name"], "submit")[1].get("name")
+    def invoice(m, amt):
+        st, inv = fm.create("sales_invoice", {"billing_milestone": m, "items": [{"item": ndt, "qty": 1, "rate": amt}]})
+        if st != 201:
+            return st
+        return fm.verb("sales_invoice", inv["name"], "submit", {"force": True})[0]
+    def billed(p):
+        return sum(i["dpp"] for i in api.find("sales_invoice", "project == '%s' && docstatus == 1" % p))
+    def bill_all(p):
+        for m in sorted(api.find("billing_milestone", "project == '%s' && state == 'ready'" % p), key=lambda m: m["seq"]):
+            invoice(m["name"], m["amount"])
+    # N1: raising the contract does not move the amounts of existing percent milestones (flows re-save them)
+    p = project("Uang N1")
+    m1 = ms(p, 1, 50)[1]; ms(p, 2, 50)
+    pa.call("PATCH", f"/api/v1/r/project/{Api.q(p)}", {"contract_value": 200_000_000})
+    ms(p, 3, 50)
+    for _ in range(3):
+        ba(p)
+    eq("N1: a 50% milestone made on a 100.000.000 contract stays 50.000.000 after the contract is raised and its report is in",
+       api.get("billing_milestone", m1["name"])["amount"], 50_000_000)
+    bill_all(p)
+    check("N1: billed on the project <= its contract", billed(p) <= api.get("project", p)["contract_value"], (billed(p), api.get("project", p)["contract_value"]))
+    # N1b: a percent milestone needs a contract value
+    p = project("Uang N1b", cv=0)
+    st, resp = ms(p, 1, 30)
+    check("N1b: a percent milestone on a project without contract value -> 422", st == 422, (st, resp))
+    # N2: a billed milestone cannot be shrunk to make room
+    p = project("Uang N2")
+    m1 = ms(p, 1, 40)[1]; ms(p, 2, 60); ba(p)
+    invoice(m1["name"], 40_000_000)
+    st, resp = pa.call("PATCH", f"/api/v1/r/billing_milestone/{Api.q(m1['name'])}", {"percent": 10})
+    check("N2: shrinking a billed milestone -> 422", st == 422, (st, resp))
+    ms(p, 3, 30); ba(p); ba(p); bill_all(p)
+    check("N2: billed on the project <= its contract", billed(p) <= 100_000_000, billed(p))
+    # N3: a billed milestone cannot be moved to another project
+    p = project("Uang N3"); pz = project("Uang N3 tujuan", cv=0)
+    m1 = ms(p, 1, 60)[1]; ms(p, 2, 40); ba(p)
+    invoice(m1["name"], 60_000_000)
+    st, resp = pa.call("PATCH", f"/api/v1/r/billing_milestone/{Api.q(m1['name'])}", {"project": pz})
+    check("N3: moving a billed milestone to another project -> 422", st == 422, (st, resp))
+    ms(p, 3, 60); ba(p); ba(p); bill_all(p)
+    check("N3: billed on the project <= its contract", billed(p) <= 100_000_000, billed(p))
+    # a ready milestone is locked too
+    p = project("Uang siap")
+    m1 = ms(p, 1, 50)[1]; ba(p)
+    st, resp = pa.call("PATCH", f"/api/v1/r/billing_milestone/{Api.q(m1['name'])}", {"percent": 80})
+    check("a ready milestone cannot be changed -> 422", st == 422, (st, resp))
+    # two invoices for one milestone made and submitted in parallel: exactly one goes through
+    out = []
+    def mk():
+        st, inv = fm.create("sales_invoice", {"billing_milestone": m1["name"], "items": [{"item": ndt, "qty": 1, "rate": 50_000_000}]})
+        out.append(fm.verb("sales_invoice", inv["name"], "submit", {"force": True})[0] if st == 201 else st)
+    th = [threading.Thread(target=mk) for _ in range(2)]
+    [t.start() for t in th]; [t.join() for t in th]
+    eq("two invoices for one milestone in parallel: one 200, one refused", sorted(x == 200 for x in out), [False, True])
+    check("one milestone, one live invoice: billed 50.000.000", billed(p) == 50_000_000, billed(p))
+    # commercial terms freeze once a project has a schedule or invoices (audit round 4)
+    p = project("Uang V2")
+    m1 = ms(p, 1, 60)[1]; ba(p); invoice(m1["name"], 60_000_000)
+    st, resp = pa.call("PATCH", f"/api/v1/r/project/{Api.q(p)}", {"contract_value": 0})
+    check("V2: a billed project's contract cannot go to 0 -> 422", st == 422, (st, resp))
+    st, resp = pa.call("PATCH", f"/api/v1/r/project/{Api.q(p)}", {"billing_model": "retainer"})
+    check("V2b: a billed project cannot switch to retainer -> 422", st == 422, (st, resp))
+    st, resp = pa.call("PATCH", f"/api/v1/r/project/{Api.q(p)}", {"contract_value": 200_000_000})
+    check("a billed project's contract cannot be raised either (frozen) -> 422", st == 422, (st, resp))
+    # every project invoice counts against the contract, with or without a milestone
+    p = project("Uang tanpa termin", cv=10_000_000)
+    st, i1 = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 8_000_000}]})
+    st1 = fm.verb("sales_invoice", i1["name"], "submit", {"force": True})[0] if st == 201 else st
+    st, i2 = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 5_000_000}]})
+    st2, r2 = fm.verb("sales_invoice", i2["name"], "submit", {"force": True}) if st == 201 else (st, i2)
+    check("project invoices without milestones: 8.000.000 submits, a further 5.000.000 on a 10.000.000 contract -> 422",
+          st1 == 200 and st2 == 422, (st1, st2, r2))
+    st, resp = fm.verb("sales_invoice", i1["name"] if st1 != 200 else api.find("sales_invoice", "project == '%s' && docstatus == 1" % p)[0]["name"], "cancel")
+    st2b = fm.verb("sales_invoice", i2["name"], "submit", {"force": True})[0]
+    check("after cancelling the 8.000.000 invoice, the 5.000.000 one fits", st == 200 and st2b == 200, (st, st2b))
+    # an amendment re-pointed at another milestone claims that milestone like any invoice
+    p = project("Uang amend")
+    ma = ms(p, 1, 50, trig="date", due_date="2026-11-01")[1]; mb = ms(p, 2, 50, trig="date", due_date="2026-11-02")[1]
+    st, ia = fm.create("sales_invoice", {"billing_milestone": ma["name"], "items": [{"item": ndt, "qty": 1, "rate": 50_000_000}]})
+    st, ib = fm.create("sales_invoice", {"billing_milestone": mb["name"], "items": [{"item": ndt, "qty": 1, "rate": 50_000_000}]})
+    ibn = fm.verb("sales_invoice", ib["name"], "submit", {"force": True})[1].get("name")
+    fm.verb("sales_invoice", ibn, "cancel")
+    st, am = fm.verb("sales_invoice", ibn, "amend")
+    amn = (am or {}).get("name") or ((am or {}).get("open") or {}).get("name")
+    st, resp = fm.call("PATCH", f"/api/v1/r/sales_invoice/{Api.q(amn)}", {"billing_milestone": ma["name"]}) if amn else (0, None)
+    check("an amendment re-pointed at a milestone that already has an invoice -> 422", st == 422, (st, resp))
+    # retainer: the contract value is the monthly fee; every month may bill it, no month more
+    p = project("Uang retainer", cv=15_000_000, model="retainer")
+    res = [ms(p, 10 + i, amount=15_000_000, trig="date", due_date=f"2026-1{i}-28", kind="retainer", period_from=f"2026-1{i}-01", period_to=f"2026-1{i}-28")[0] for i in (0, 1)]
+    st, resp = ms(p, 20, amount=20_000_000, trig="date", due_date="2027-01-28", kind="retainer", period_from="2027-01-01", period_to="2027-01-31")
+    check("retainer: months of 15.000.000 on a 15.000.000 monthly fee are accepted, a 20.000.000 month -> 422", res == [201, 201] and st == 422, (res, st, resp))
+    st, ri = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 10_000_000}]})
+    check("retainer: an invoice without a monthly milestone -> 422", st == 422 or fm.verb("sales_invoice", ri["name"], "submit", {"force": True})[0] == 422, (st, ri))
+    st, resp = ms(p, 30, amount=15_000_000, trig="date", due_date="2027-02-27", kind="retainer", period_from="2027-02-01", period_to="2027-02-28")
+    st2, resp2 = ms(p, 31, amount=15_000_000, trig="date", due_date="2027-02-28", kind="retainer", period_from="2027-02-01", period_to="2027-02-28")
+    check("retainer: one milestone per month (a second for February -> 422)", st == 201 and st2 == 422, (st, st2, resp2))
+    st, resp = ms(p, 32, amount=15_000_000, trig="date", due_date="2026-12-28", kind="retainer", period_from="2026-12-15", period_to="2027-01-14")
+    check("retainer: a month starts on the 1st (period_from 15 Dec -> 422)", st == 422, (st, resp))
+    # R1 (self-audit 6 Nov): a retainer project bills only through monthly milestones; other kinds have no month key
+    p = project("Uang R1", cv=15_000_000, model="retainer")
+    res = [ms(p, 1 + i, amount=15_000_000, trig="date", due_date="2026-11-30", kind=kd, **({"period_from": "2026-11-01", "period_to": "2026-11-30"} if kd == "time_material" else {}))[0]
+           for i, kd in enumerate(("milestone", "time_material", "down_payment"))]
+    check("R1: a milestone, time-material or DP milestone on a retainer project -> 422 each", res == [422, 422, 422], res)
+    eq("R1: nothing billed on the retainer project", billed(p), 0)
+    # R2/R3: a billed November retainer cannot be re-kinded or moved to free November, and November is billed once
+    nov = {"trig": "date", "due_date": "2026-11-30", "kind": "retainer", "period_from": "2026-11-01", "period_to": "2026-11-30"}
+    p = project("Uang R2", cv=15_000_000, model="retainer")
+    st, m = ms(p, 1, amount=15_000_000, **nov)
+    i1 = invoice(m["name"], 15_000_000) if st == 201 else st
+    rk = pa.call("PATCH", f"/api/v1/r/billing_milestone/{Api.q(m['name'])}", {"kind": "milestone"})[0] if st == 201 else st
+    mv = pa.call("PATCH", f"/api/v1/r/billing_milestone/{Api.q(m['name'])}", {"period_from": "2027-05-01", "period_to": "2027-05-31"})[0] if st == 201 else st
+    check("R2/R3: November billed, then re-kinding (-> 422) or moving its period (-> 422) the billed milestone is refused", (i1, rk, mv) == (200, 422, 422), (i1, rk, mv))
+    eq("R2/R3: the billed November milestone keeps its month", (api.get("billing_milestone", m["name"]) or {}).get("period_from") if st == 201 else st, "2026-11-01")
+    st2, _ = ms(p, 2, amount=15_000_000, **nov)
+    eq("R2/R3: retainer project billed 15.000.000 for November, a second November milestone -> 422", (billed(p), st2), (15_000_000, 422))
+    # a retention release belongs to the project of the invoice it releases
+    pr1 = project("Retensi asal", cv=0); pr2 = project("Retensi lain", cv=100_000_000)
+    st, src = fm.create("sales_invoice", {"customer": customer, "project": pr1, "retention_percent": 10, "items": [{"item": ndt, "qty": 1, "rate": 20_000_000}]})
+    srcn = fm.verb("sales_invoice", src["name"], "submit", {"force": True})[1].get("name") if st == 201 else None
+    st, resp = fm.create("sales_invoice", {"customer": customer, "project": pr2, "kind": "retention", "retention_of": srcn, "items": [{"item": ndt, "qty": 1, "rate": 2_000_000}]})
+    check("a retention release on another project than its invoice's -> 422", st == 422, (st, resp))
+
+
 def scenario_roles_jasa(api):
     sm, fm, pm, pa = (CTX.get(x) for x in ("sm", "fm", "pm", "pa"))
     if not all((sm, fm, pm, pa)):
@@ -1860,8 +2142,11 @@ MATRIX = {
     "user": {r: _R for r in _JASA + ("head_office", "outlet_staff", "sales_rep")},
     "quotation": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
     "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
-    **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("project", "assignment", "timesheet", "acceptance")},
-    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R},
+    **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("assignment", "timesheet", "acceptance")},
+    "project": {"project_admin": _ALL, "sales_manager": {"read", "write"}, "finance_manager": {"read", "write"}},   # write for the billing flows
+    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R},
+    "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
+                          "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
     "gateway_ref_claim": {"finance_manager": {"read", "create", "write", "export"}, "sales_manager": {"read", "create", "write", "export"},
                           "head_office": {"read", "create", "write"}},
@@ -2537,6 +2822,10 @@ def scenario_dashboards_jasa(api):
        sum(i["grand_total"] for i in api.find("sales_invoice", "docstatus == 1") if i["posting_date"] >= since))
     quotes = api.find("quotation", "docstatus == 1")
     eq("jasa_overview open_quotations", ws["open_quotations"]["value"], len([q for q in quotes if q["outcome"] == "open"]))
+    msl = api.list("billing_milestone", limit=500)
+    eq("jasa_overview ready_to_bill = sum of ready milestones", num(ws["ready_to_bill"]), sum(m["amount"] for m in msl if m["state"] == "ready"))
+    due = [m for m in msl if m["state"] == "ready" or (m["state"] == "planned" and m["trigger"] == "date" and m["due_date"] and m["due_date"] <= today.isoformat())]
+    eq("jasa_overview milestones_due lists ready and date-due milestones", ws["milestones_due"]["total"], len(due))
     eq("jasa_overview quotations_won (period)", ws["quotations_won"]["value"], len([q for q in quotes if q["outcome"] == "accepted" and q["quotation_date"] >= since]))
     eq("jasa_overview quotations_lost (period)", ws["quotations_lost"]["value"], len([q for q in quotes if q["outcome"] == "lost" and q["quotation_date"] >= since]))
     eq("jasa_overview active_projects", ws["active_projects"]["value"], len([p for p in api.list("project") if p["state"] in ("planned", "running")]))
@@ -2679,8 +2968,9 @@ def moves_of(api, voucher):
     return sorted(api.find("stock_move", f"voucher == '{voucher}'"), key=lambda m: m["name"])
 
 
-def submit_doc(api, model, name, label):
-    st, resp = api.verb(model, name, "submit")
+def submit_doc(api, model, name, label, force=False):
+    # force acknowledges warn rules (the customer's credit limit, filled by earlier scenarios)
+    st, resp = api.verb(model, name, "submit", {"force": True} if force else None)
     check(label, st == 200, (st, resp))
     return resp.get("name", name) if st == 200 else None
 
@@ -3859,7 +4149,7 @@ def setup_demo_fnb(api, k):
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
