@@ -6,43 +6,52 @@
 # POST /api/v1/flows/<name>/run with the callback as event (how day_one tests it). It is written against the xendit
 # connector's trigger, not a payment.* port, because ports are not in the kernel yet (contract 0002 §B, proposal
 # 0023); the three payment_from_xendit_* flows hold the same steps, one per trigger.
-# Guards: only a completed payment of a positive amount records money; a gateway id already held by a live payment
-# records nothing (a repeated callback), and the claim below is refused by its unique index for the second of two
-# racing callbacks; only a submitted invoice is paid (a cancelled one, or an unknown number, records nothing and tells
-# the owner, since the money did arrive at Xendit); the allocation never exceeds what the invoice still owes after
-# open drafts, and the rest stays unallocated on the payment.
+# Guards: a callback without gateway_ref, external_id, paid or paid_amount is skipped; only a completed payment of a
+# positive amount records money. The gateway id is claimed BEFORE the payment is made: a new claim is an insert into
+# gateway_ref_claim's unique index, so of two callbacks racing in parallel the second waits for the first and is
+# refused (its whole run rolls back, nothing recorded); a later repeat finds the live payment or its claim and records
+# nothing. A claim left by a deleted draft is taken over (a cancelled payment already released its id). Only a
+# submitted invoice is paid (a cancelled one, or an unknown number, records nothing and tells the owner, since the
+# money did arrive at Xendit); the allocation never exceeds what the invoice still owes after open drafts, the rest
+# stays unallocated. A method outside payment's options is recorded as 'other'.
 name: payment_from_xendit_va
 label: {id: Virtual account Xendit dibayar jadi pembayaran}
 on: xendit.va_paid
-if: event.paid && event.paid_amount > 0
+if: >-
+  'gateway_ref' in event && 'external_id' in event && 'paid' in event && 'paid_amount' in event &&
+  event.gateway_ref != '' && event.paid == true && event.paid_amount > 0
 idempotency: event.gateway_ref
 steps:
   - {find: payment, where: "gateway_ref == event.gateway_ref && docstatus != 2", as: done}
   - {find: sales_invoice, where: "name == event.external_id && docstatus == 1", as: inv}
   - {find_all: payment, where: "docstatus == 0 && reference == event.external_id", as: drafts}
+  - {find: gateway_ref_claim, where: gateway_ref == event.gateway_ref, as: held}
+  # the payment the claim names, if it is still alive (a deleted draft is gone; a renamed draft is re-pointed on submit)
+  - {find: payment, where: "held != null && name == held.payment && docstatus != 2", as: holder}
+  - create: gateway_ref_claim
+    if: done == null && inv != null && held == null
+    set: {gateway_ref: event.gateway_ref, payment: "''"}
+    as: claim
   - create: payment
-    if: done == null && inv != null
+    if: done == null && inv != null && (held == null || holder == null)
     set:
       direction: "'receive'"
       customer: inv.customer
       payment_date: today()
       amount: event.paid_amount
-      method: event.method
+      method: "'method' in event && event.method in ['va', 'qris', 'ewallet', 'transfer'] ? event.method : 'other'"
       gateway: "'xendit'"
       gateway_ref: event.gateway_ref
       reference: inv.name
       notes: "'Dari Xendit ' + event.gateway_ref"
       allocations: "min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum()) > 0 ? [{'sales_invoice': inv.name, 'amount': min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum())}] : []"
     as: pay
-  # a payment made inside a flow does not run the claim flows (the kernel does not nest flows): claim the id here, as
-  # payment_gateway_claim_created does (a claim left by a deleted or cancelled payment is taken over)
-  - {find: gateway_ref_claim, where: gateway_ref == event.gateway_ref, as: held}
-  - update: held
-    if: done == null && inv != null && held != null
-    set: {payment: pay.name}
-  - create: gateway_ref_claim
+  - update: claim
     if: done == null && inv != null && held == null
-    set: {gateway_ref: event.gateway_ref, payment: pay.name}
+    set: {payment: pay.name}
+  - update: held
+    if: done == null && inv != null && held != null && holder == null
+    set: {payment: pay.name}
   - notify: owner
     if: done == null && inv == null
     channel: email

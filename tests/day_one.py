@@ -1413,6 +1413,30 @@ def scenario_xendit_callbacks(api):
     check("paid callback for an unknown invoice number: no payment, the owner is notified",
           not payments_of("va-0008") and any("INV-TIDAK-ADA" in n.get("text", "") for n in out.get("notifications", [])), out)
 
+    # malformed callbacks: no gateway id is skipped (not a 500); a method outside payment's options is recorded as other
+    st, out = callback("va", external_id=inv2, paid_amount=10_000, paid=True, method="va")
+    check("a callback without gateway_ref: skipped, no error", st == 200 and out.get("skipped") is True, (st, out))
+    inv4 = submitted(275_000)
+    st, out = callback("invoice", gateway_ref="inv-0009", external_id=inv4, paid_amount=275_000, paid=True, method="CREDIT_CARD")
+    p9 = payments_of("inv-0009")
+    check("a method outside the options is recorded as 'other', the money is not lost", st == 200 and len(p9) == 1 and p9[0]["method"] == "other", (st, out, p9))
+
+    # the same callback six times in parallel: one payment, the other runs are refused by the claim's unique index
+    import threading
+    inv5 = submitted(640_000)
+    results = []
+    def fire():
+        results.append(callback("qr", gateway_ref="qr-race-0010", external_id=inv5, paid_amount=640_000, paid=True, method="qris")[0])
+    threads = [threading.Thread(target=fire) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    eq("six parallel callbacks with one gateway id: exactly one payment", len(payments_of("qr-race-0010")), 1)
+    check("six parallel callbacks: one run succeeded, the others were refused or found it", results.count(200) >= 1, results)
+    eq("six parallel callbacks: one claim, naming that payment",
+       [c["payment"] for c in api.find("gateway_ref_claim", "gateway_ref == 'qr-race-0010'")], [p["name"] for p in payments_of("qr-race-0010")])
+
     # a cancelled payment gives its gateway id back: the callback can be recorded again
     st, resp = api.verb("payment", pay_name, "cancel")
     check("cancel the Xendit payment", st == 200, (st, resp))
