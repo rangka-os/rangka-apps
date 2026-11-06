@@ -28,6 +28,14 @@ fields:
     label: {id: Aktif}
     default: 'true'
     in_list: true
+  # One active recipe per product: the kernel explodes a sale through the last-modified active recipe without a word,
+  # and a rule cannot read other records. The unique index skips empty text, so inactive recipes are free.
+  - name: active_product
+    type: data
+    label: {id: Resep aktif untuk produk ini}
+    hidden: true
+    unique: true
+    compute: "active ? product : ''"
   - name: lines
     type: table
     of: recipe_line
