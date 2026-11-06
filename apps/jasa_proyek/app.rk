@@ -44,7 +44,7 @@ onboarding:
     options: ['true', 'false']
     sets: tax.pkp
   - ask: {id: 'Apa bidang usaha kamu?'}
-    options: [manpower, inspeksi, rental, training]
+    options: [manpower, inspeksi, rental, training, konsultan]
     sets: settings.business_line
   - ask: {id: 'Berapa PT yang kamu kelola?'}
     sets: seed.orgs

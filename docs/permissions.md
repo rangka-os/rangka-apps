@@ -35,14 +35,21 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | stock_transfer | | | | | all | r | |
 | stock_transfer_receipt | | | | | all | r c w s x | |
 | stock_count, stock_adjustment | | | | | all | r c w s | |
+| stock_adjustment_value (rows written by flows only: every field read_only; old adjustments by flow `adjustment_value_backfill`) | | | | | r c e | r c | |
 | recipe | | | | | r c w d e | r | |
-| outlet_sales | | | | | all + i | r c w s | |
+| outlet_sales | | | | | all + i | r c w s while `source != 'moka'`, else r | |
 | lead, deal, activity | all | r | r | r | r | r | r c w on own records (`owner == user.name`) |
 
 Approvals (contract 0007) decide on top of this: `quotation` submit → `sales_manager`; `sales_invoice` above
-Rp 100.000.000 → `finance_manager`; `purchase_order` above Rp 5.000.000 → `purchasing_manager` or `head_office`.
+Rp 100.000.000 → `finance_manager`; `purchase_order` approval is a site's choice (`custom/purchase_order.rk`): demo-jasa asks `finance_manager` above
+Rp 5.000.000 (not a role that raises POs, so the maker never approves), demo-fnb asks `purchasing_manager` (in practice the
+owner) above Rp 5.000.000, and also holds a vendor bill above that amount unless it sits on an approved, live PO of at
+least its value (a draft, held or cancelled PO counts as none), and an outgoing payment above that amount
+(a PO, bill or payment in another currency than IDR always waits, whatever kurs the maker typed, and a bill does so
+even on an approved PO)
+(`custom/vendor_bill.rk`, `custom/payment.rk`), so the PO approval cannot be skipped by billing or paying directly.
 An approver who submits self-approves, so a quotation by a `project_admin` and a big invoice by a `sales_manager` are held;
-`po_approval` never holds with this matrix (only its approvers may submit purchase orders).
+both hold: a PO is never approved by its maker.
 
 Actions (`make_order`, `make_invoice`, `receive`, `make_po`, `new_revision`, `mark_outcome`) need `write` on their
 model; `new_revision` also needs `cancel` (the hook cancels the quotation), so a `project_admin` cannot revise.
