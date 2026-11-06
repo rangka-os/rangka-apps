@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Day-one integration test against a live kernel (Python stdlib only).
 
-    python3 tests/day_one.py [--site kopi-senja|demo-jasa|demo-fnb|demo-ritel] [--strict] [--keep]
+    python3 tests/day_one.py [--site kopi-senja|demo-jasa|demo-fnb|demo-ritel|demo-grosir] [--strict] [--keep]
+    DAY_ONE_PORT=9201 python3 tests/day_one.py --site demo-grosir --keep     # a demo on a fixed port
 
 Starts a throwaway Postgres (rangka-os/kernel/scripts/pgtemp.sh), runs `rangka migrate`, `seed` and
 `serve --dev-open` on a free port, waits for /api/v1/system/status, runs the scenarios of the site, and stops everything.
@@ -16,6 +17,7 @@ import json
 import os
 import secrets
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -90,6 +92,7 @@ SITE_ORGS = {
     "demo-jasa": [("pt_contoh_inspeksi", "demo-jasa"), ("cv_contoh_pelatihan", "demo-jasa-pelatihan")],
     "demo-fnb": [("tahu_contoh", "demo-fnb")],
     "demo-ritel": [("toko_contoh", "demo-ritel")],
+    "demo-grosir": [("niaga_contoh", "demo-grosir")],
 }
 
 
@@ -105,7 +108,7 @@ class Kernel:
         self.proc = None
         self.log = open(os.path.join(state_dir, "serve.log"), "w+")
         self.logpath = self.log.name
-        self.port = free_port()
+        self.port = int(os.environ.get("DAY_ONE_PORT") or 0) or free_port()   # a fixed port for a --keep demo
         self.base = f"http://127.0.0.1:{self.port}"
         self.db = None
         self.owner_email = "owner@contoh.test"      # the seeded owner of every org; a throwaway account of a throwaway database
@@ -132,7 +135,9 @@ class Kernel:
 
     def serve(self):
         first = self.orgs[0][0]
-        self.proc = subprocess.Popen([self.binary, "serve"] + self.args() + (["--org", first] if first else []) + ["--dev-open", "--addr", f"127.0.0.1:{self.port}"],
+        web = os.path.join(self.os_dir, "web")    # the app's screens, for a --keep demo in a browser
+        self.proc = subprocess.Popen([self.binary, "serve"] + self.args() + (["--org", first] if first else []) + (["--web", web] if os.path.isdir(web) else [])
+                                     + ["--dev-open", "--addr", f"127.0.0.1:{self.port}"],
                                      stdout=self.log, stderr=subprocess.STDOUT)
         for _ in range(100):
             if self.proc.poll() is not None:
@@ -2302,20 +2307,32 @@ _PIPE = dict({r: _R for r in ("finance_manager", "purchasing_manager", "project_
              sales_manager=_ALL, sales_rep={"read", "create", "write"})          # sales_rep: own records (if: owner == user.name)
 _STOCK_DOC = {"head_office": _ALL, "outlet_staff": _RCWS}
 MATRIX = {
-    **{m: _MASTER for m in ("vendor", "uom", "uom_conversion", "price_list", "tax_code", "currency", "exchange_rate", "worker")},
-    "customer": dict(_MASTER, sales_rep={"read", "create", "write"}),     # crm.convert_lead makes customers for sales reps
-    "item": dict(_MASTER, sales_rep=_R, head_office=_RCWP | {"import"}), "outlet": dict(_MASTER, sales_rep=_R),
-    "item_category": dict(_MASTER, sales_rep=_R, head_office=_RCWP | {"delete"}),
-    "user": {r: _R for r in _JASA + ("head_office", "outlet_staff", "sales_rep")},
+    **{m: _MASTER for m in ("vendor", "uom_conversion", "price_list", "tax_code", "currency", "exchange_rate", "worker")},
+    "uom": dict(_MASTER, field_sales=_R),
+    # field_sales (distribution): a salesman reads his own customers (role scope salesman) and cannot change their credit
+    "customer": dict(_MASTER, sales_rep={"read", "create", "write"}, field_sales=_R),     # crm.convert_lead makes customers for sales reps
+    "item": dict(_MASTER, sales_rep=_R, field_sales=_R, head_office=_RCWP | {"import"}), "outlet": dict(_MASTER, sales_rep=_R, field_sales=_R),
+    "item_category": dict(_MASTER, sales_rep=_R, field_sales=_R, head_office=_RCWP | {"delete"}),
+    "user": {r: _R for r in _JASA + ("head_office", "outlet_staff", "sales_rep", "field_sales")},
     "quotation": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
-    "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
+    "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP, "head_office": _RP,
+                       "field_sales": {"read", "create", "write", "submit", "print"}},
+    # delivery (grosir): warehouse and sales manager deliver and take returns; order_fulfilment is written by the flows
+    # of whoever submits (all its fields are read_only), so those roles may create and write it
+    **{m: {"head_office": _ALL, "sales_manager": _ALL, "finance_manager": _RP, "field_sales": _RP} for m in ("delivery_note", "sales_return")},
+    "return_credit": {"finance_manager": {"read", "create", "write", "export"}, "sales_manager": {"read", "create", "write", "export"}, "head_office": {"read", "create", "write"}},
+    "delivery_guard": {"head_office": {"create"}, "sales_manager": {"create"}, "finance_manager": {"create"}},   # never stored (a flow's refusal)
+    "order_fulfilment": {"sales_manager": {"read", "create", "write", "export"}, "finance_manager": {"read", "create", "write", "export"},
+                         "head_office": {"read", "create", "write", "export"}, "field_sales": {"read", "create", "write"}},
+    "giro": {"finance_manager": {"read", "create", "write", "export", "print"}, "sales_manager": {"read", "create", "write", "export", "print"},
+             "field_sales": _R},
     **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("assignment", "timesheet", "acceptance")},
     "project": {"project_admin": _ALL, "sales_manager": {"read", "write"}, "finance_manager": {"read", "write"}},   # write for the billing flows
     "project_ledger": {"project_admin": {"read", "create", "export"}, "finance_manager": {"read", "create", "export"},
                        "sales_manager": {"read", "create", "export"}, "purchasing_manager": {"read", "create"}},
     "project_expense": {"project_admin": _ALL, "finance_manager": _ALL - {"delete"}, "sales_manager": _R, "purchasing_manager": _R},
     "project_guard": {"purchasing_manager": {"create"}, "finance_manager": {"create"}},
-    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R},
+    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R, "field_sales": _RP},
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
                           "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
@@ -2327,7 +2344,8 @@ MATRIX = {
                                "head_office": {"read", "create", "write"}},
     "bank_transaction": {"finance_manager": {"read", "create", "write", "delete", "export", "import"}, "sales_manager": {"read", "create", "write", "export", "import"},
                          "head_office": {"read", "create", "write", "export", "import"}},
-    "payment": {"finance_manager": _ALL, "sales_manager": _ALL, "head_office": {"read", "create", "write", "submit", "print"}},   # head_office: if direction == 'pay'
+    "payment": {"finance_manager": _ALL, "sales_manager": _ALL, "head_office": {"read", "create", "write", "submit", "print"},
+                "field_sales": _RP},   # head_office: if direction == 'pay'
     "purchase_request": {"purchasing_manager": _ALL, "project_admin": _RCWS, "head_office": _ALL, "outlet_staff": _RCWS},
     "purchase_order": {"purchasing_manager": _ALL, "finance_manager": _RP, "head_office": _ALL},
     "vendor_bill": {"purchasing_manager": _ALL, "finance_manager": {"read", "submit", "print"}, "head_office": _ALL},
@@ -2372,20 +2390,21 @@ SITE_MEMBERS = {
     "demo-jasa": [("sm", "sales_manager"), ("fm", "finance_manager"), ("pm", "purchasing_manager"), ("pa", "project_admin")],
     "demo-fnb": [("hq", "head_office"), ("staff_dago", "outlet_staff")],
     "demo-ritel": [("hq", "head_office"), ("staff_cly", "outlet_staff")],
+    "demo-grosir": [("sm", "sales_manager"), ("fm", "finance_manager"), ("hq", "head_office"), ("asep", "field_sales")],
 }
 
 
 def money_bodies(api, site):
     """A valid create body per money model of the site (fixture names), for the allowed/forbidden create calls."""
     item = {"demo-fnb": "BRG-0001", "demo-jasa": "BRG-0001"}.get(site) or api.list("item")[0]["name"]
-    customer = "CUST-0001" if site == "demo-jasa" else (api.list("customer") or [{"name": ""}])[0]["name"]
+    customer = "CUST-0001" if site in ("demo-jasa", "demo-grosir") else (api.list("customer") or [{"name": ""}])[0]["name"]
     vendor = "VND-0002" if site != "kopi-senja" else ""
     outlet = {"outlet": DAGO} if site in ("demo-fnb", "demo-ritel") else {}
     b = {
         "quotation": {"customer": customer, "subject": "Uji izin", "items": [{"item": item, "qty": 1, "rate": 1_000_000}]},
         "customer_order": {"customer": customer, "po_number": "PO-IZIN", "po_date": "2026-11-03", "items": [{"item": item, "qty": 1, "rate": 1_000_000}]},
         "sales_invoice": invoice_body(customer, item),
-        "payment": ({"direction": "pay", "vendor": vendor, "amount": 1_000} if site in ("demo-fnb", "demo-ritel") else {"direction": "receive", "customer": customer, "amount": 1_000}),
+        "payment": ({"direction": "pay", "vendor": vendor, "amount": 1_000} if site in ("demo-fnb", "demo-ritel", "demo-grosir") else {"direction": "receive", "customer": customer, "amount": 1_000}),
         "purchase_request": dict({"needed_by": "2026-11-30", "items": [{"item": item, "qty": 1, "est_rate": 1_000}]}, **outlet),
         "purchase_order": dict({"vendor": vendor, "items": [{"item": item, "qty": 1, "rate": 1_000}]}, **outlet),
         "vendor_bill": {"vendor": vendor, "bill_no": "IZIN-1", "bill_date": "2026-11-03", "items": [{"item": item, "qty": 1, "rate": 1_000}]},
@@ -4330,6 +4349,11 @@ def setup_demo_fnb(api, k):
         CTX[key] = cl
 
 
+# Scenarios of the newer sites live in their own files (tests/day_one_<app>.py) and take this file's helpers.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import day_one_grosir  # noqa: E402
+day_one_grosir.bind(sys.modules[__name__])
+
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
@@ -4338,12 +4362,13 @@ SCENARIOS = {
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
                    scenario_permissions],
+    "demo-grosir": day_one_grosir.SCENARIOS + [scenario_permissions],
 }
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--site", default="kopi-senja", choices=["kopi-senja", "demo-jasa", "demo-fnb", "demo-ritel"])
+    ap.add_argument("--site", default="kopi-senja", choices=sorted(SITE_ORGS))
     ap.add_argument("--strict", action="store_true", help="exit 1 on gaps too")
     ap.add_argument("--keep", action="store_true", help="after the scenarios, keep the server and its data running for a demo (Ctrl-C stops it)")
     ap.add_argument("--only", default="", help="run only the scenarios whose function name contains this text (debugging)")
@@ -4353,6 +4378,7 @@ def main():
     state = tempfile.mkdtemp(prefix="day-one-")
     k = Kernel(a.site, state)
     atexit.register(k.stop)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))   # a stopped --keep demo still removes its database (atexit)
     k.start()
     api = Api(k.base)
     CTX["kernel"] = k
@@ -4364,6 +4390,8 @@ def main():
         setup_kopi_senja(api, k)
     if a.site == "demo-ritel":
         setup_demo_ritel(api, k)
+    if a.site == "demo-grosir":
+        day_one_grosir.setup_demo_grosir(api, k)
     for sc in SCENARIOS[a.site]:
         if a.only and a.only not in sc.__name__:
             continue

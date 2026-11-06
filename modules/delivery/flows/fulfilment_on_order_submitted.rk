@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The order is final when submitted: its lines (quantities and prices after tier pricing) become what was ordered,
+# and the link follows the order's submitted name (the draft was DRAFT-xxxx).
+name: fulfilment_on_order_submitted
+label: {id: Pesanan diajukan jadi dasar pemenuhan}
+on: customer_order.submitted
+if: event.fulfilment != ''
+steps:
+  - {find: order_fulfilment, where: name == event.fulfilment, as: f}
+  - update: f
+    if: f != null
+    set:
+      customer_order: event.name
+      customer: event.customer
+      salesman: event.salesman
+      items: "event.items.map(i, {'item': i.item, 'ordered_qty': i.qty, 'rate': i.rate, 'delivered_qty': 0, 'returned_qty': 0, 'invoiced_qty': 0})"

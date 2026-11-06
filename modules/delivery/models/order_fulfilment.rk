@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# What happened to one customer order, per item: ordered, delivered (delivery notes), returned (sales returns) and
+# invoiced (invoices from the order). Made when the order is created and kept by the delivery flows; every field is
+# read_only, so no person can change it (the flows write as the person who submitted the document). The delivery note,
+# the sales return and the invoice check their quantities against it.
+name: order_fulfilment
+label: {id: Pemenuhan pesanan, en: Order fulfilment}
+icon: stock
+naming: FUL-{YYYY}-{#####}
+title_field: customer_order
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, export: true}
+  - {role: finance_manager, read: true, create: true, write: true, export: true}
+  - {role: head_office, read: true, create: true, write: true, export: true}
+  - {role: field_sales, read: true, create: true, write: true}
+fields:
+  - {name: customer_order, type: link, to: customer_order, label: {id: Pesanan}, read_only: true, in_list: true}
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, read_only: true, in_list: true}
+  - {name: salesman, type: link, to: user, label: {id: Salesman}, read_only: true, in_list: true}
+  - {name: items, type: table, of: order_fulfilment_item, label: {id: Barang}, read_only: true}
+  # delivered and not yet invoiced, at the order price with PPN: the customer's exposure the credit check at delivery adds
+  - {name: uninvoiced_value, type: currency, label: {id: Terkirim belum ditagih (dengan PPN)}, compute: "tax.pkp ? round(items.map(b, round((b.delivered_qty - b.invoiced_qty) * b.rate)).sum() * (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num) / (100 * tax.dpp_den)) : items.map(b, round((b.delivered_qty - b.invoiced_qty) * b.rate)).sum()", in_list: true}
+  - {name: open_qty, type: float, label: {id: Sisa belum dikirim}, compute: "items.map(i, i.ordered_qty - i.delivered_qty).sum()", in_list: true}
+views:
+  list:
+    columns: [name, customer_order, customer, salesman, open_qty]
+    sort: -name

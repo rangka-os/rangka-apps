@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside a delivery note's cancel: refused while a live sales return comes from it (its stock would be counted back
+# twice), or while the order would have invoiced more than it delivered (an invoice billing goods never sent).
+name: delivery_cancel_guard
+label: {id: Surat jalan yang sudah diretur atau ditagih tidak bisa dibatalkan}
+on: delivery_note.cancelled
+steps:
+  - {find: sales_return, where: delivery_note == event.name && docstatus == 1, as: ret}
+  - {find: order_fulfilment, where: name == event.fulfilment, as: f}
+  - update: f
+    if: f != null
+    set: {customer: f.customer}
+  - if: ret != null
+    create: delivery_guard
+    set: {reason: "'note_returned'", document: ret.name}
+  - if: "ret == null && f != null && f.items.map(b, b.delivered_qty - event.items.map(l, l.item == b.item ? l.qty : 0).sum() + 0.0005 < b.invoiced_qty ? 1 : 0).sum() > 0"
+    create: delivery_guard
+    set: {reason: "'note_invoiced'", document: event.name}

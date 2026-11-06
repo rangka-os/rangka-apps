@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Never stored: a flow that must refuse the document it runs in (a cancel or a submit) creates one of these with a
+# reason, and the matching rule fails with that reason's message, which rolls the whole verb back (the flow runs
+# inside it), like project_guard. Create is granted to the roles whose verbs run such a flow.
+name: delivery_guard
+label: {id: Penjaga pengiriman, en: Delivery guard}
+icon: check
+naming: DGR-{######}
+title_field: reason
+permissions:
+  - {role: head_office, create: true}
+  - {role: sales_manager, create: true}
+  - {role: finance_manager, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: order_delivered, label: {id: Pesanan sudah dikirim}}
+      - {value: note_returned, label: {id: Surat jalan sudah diretur}}
+      - {value: note_invoiced, label: {id: Surat jalan sudah ditagih}}
+      - {value: return_credited, label: {id: Retur sudah dipotongkan}}
+      - {value: return_over_credited, label: {id: Retur dipotongkan melebihi nilainya}}
+  - name: document
+    type: data
+    label: {id: Dokumen}
+rules:
+  - name: order_delivered
+    on: save
+    check: reason != 'order_delivered'
+    message: {id: 'Pesanan ini sudah dikirim dengan surat jalan yang masih aktif; batalkan surat jalannya dulu'}
+  - name: note_returned
+    on: save
+    check: reason != 'note_returned'
+    message: {id: 'Surat jalan ini punya retur yang masih aktif; batalkan returnya dulu'}
+  - name: note_invoiced
+    on: save
+    check: reason != 'note_invoiced'
+    message: {id: 'Barang surat jalan ini sudah ditagih; batalkan fakturnya dulu supaya tidak menagih barang yang tidak dikirim'}
+  - name: return_credited
+    on: save
+    check: reason != 'return_credited'
+    message: {id: 'Retur ini sudah dipotongkan ke piutang; batalkan pembayaran potong returnya dulu'}
+  - name: return_over_credited
+    on: save
+    check: reason != 'return_over_credited'
+    message: {id: 'Retur ini sudah dipotongkan; total potongan melebihi nilai retur'}

@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+# Letterhead of the fictional CV Contoh Niaga Distribusi (invoices, delivery notes, purchase orders).
+legal_name: CV Contoh Niaga Distribusi
+tagline: Distributor kebutuhan toko dan warung
+address: |
+  Jl. Contoh Industri No. 8
+  Bandung 40552
+phone: '+62 22 000 0005'
+email: halo@contohniaga.test
+website: contohniaga.test
+bank:
+  - {bank: Bank Contoh, account: '555 000 0005', holder: CV Contoh Niaga Distribusi, branch: Bandung}
+signatory: {name: Rudi Contoh, title: Manajer Penjualan}
+footer: {id: Barang yang sudah diterima dalam keadaan baik tidak dapat dikembalikan kecuali rusak atau kedaluwarsa}

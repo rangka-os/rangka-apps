@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A payment "Potong retur" is cancelled: its amount comes off the return's credit.
+name: return_credit_on_payment_cancelled
+label: {id: Potong retur dibatalkan}
+on: payment.cancelled
+if: event.method == 'sales_return' && event.sales_return != ''
+steps:
+  - {find: return_credit, where: sales_return == event.sales_return, as: rc}
+  - update: rc
+    if: rc != null
+    set: {credited: rc.credited - event.amount}

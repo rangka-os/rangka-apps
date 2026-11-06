@@ -39,6 +39,8 @@ fields:
       - {value: waste, label: {id: Terbuang}}
       - {value: adjustment, label: {id: Penyesuaian}}
       - {value: reversal, label: {id: Pembatalan}}
+      - {value: delivery, label: {id: Pengiriman (surat jalan)}}
+      - {value: return_in, label: {id: Retur penjualan masuk}}
 views:
   list:
     columns: [name, posting_date, outlet, item, qty, value, balance_qty, negative, voucher_type, voucher, reason]

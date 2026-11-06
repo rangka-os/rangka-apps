@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A submitted sales return opens its credit at 0, so finance sees the returns not yet credited (dashboard grosir_ar).
+name: return_credit_on_return_submitted
+label: {id: Retur menunggu potong piutang}
+on: sales_return.submitted
+steps:
+  - {find: return_credit, where: sales_return == event.name, as: rc}
+  - create: return_credit
+    if: rc == null
+    set: {sales_return: event.name, return_total: event.return_total, credited: 0}

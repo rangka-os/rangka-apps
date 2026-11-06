@@ -12,6 +12,8 @@ permissions:
   - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   # head office records vendor payments only
   - {role: head_office, read: true, create: true, write: true, submit: true, print: true, if: direction == 'pay'}
+  # a salesman reads the payments of his own customers (role scope salesman)
+  - {role: field_sales, read: true, print: true}
 fields:
   - name: direction
     type: select
@@ -48,6 +50,7 @@ fields:
       - {value: transfer, label: {id: Transfer}}
       - {value: cash, label: {id: Tunai}}
       - {value: giro, label: {id: Giro}}
+      - {value: sales_return, label: {id: Potong retur}}
       - {value: qris, label: {id: QRIS}}
       - {value: va, label: {id: Virtual account}}
       - {value: ewallet, label: {id: E-wallet}}
@@ -55,6 +58,28 @@ fields:
   - name: reference
     type: data
     label: {id: No. bukti/transfer}
+  # A giro (bilyet giro) is a payment when received; module distribution keeps it in the giro register until it clears,
+  # and cancelling the payment when the bank returns it opens the invoices again.
+  - name: giro_bank
+    type: data
+    label: {id: Bank penerbit giro}
+    depends_on: "app_installed('distribution') && method == 'giro'"
+  - name: giro_due_date
+    type: date
+    label: {id: Tanggal efektif giro}
+    depends_on: "app_installed('distribution') && method == 'giro'"
+  # A sales return (module delivery) credited to the customer's invoice: no money moves, the invoice is reduced.
+  - name: sales_return
+    type: link
+    to: sales_return
+    label: {id: Retur penjualan}
+    depends_on: "app_installed('delivery') && method == 'sales_return'"
+  - name: salesman
+    type: link
+    to: user
+    label: {id: Salesman}
+    default: customer.salesman
+    depends_on: "app_installed('distribution') && direction == 'receive'"
   # Payments that arrive through a payment gateway (Xendit VA, QRIS, payment link) carry the gateway's id, so a
   # callback delivered twice finds the payment it already made instead of paying the invoice again. One live
   # payment per id is kept by gateway_ref_claim, not by `unique` here: the kernel's unique index also holds the id
@@ -105,6 +130,14 @@ fields:
   - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency
   - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah uang (valas)}, default: '0'}
 rules:
+  - name: giro_has_number_and_date
+    on: save
+    check: "!app_installed('distribution') || method != 'giro' || direction != 'receive' || (reference != '' && giro_bank != '' && giro_due_date != '')"
+    message: {id: 'Giro wajib diisi nomor giro (No. bukti), bank penerbit dan tanggal efektif'}
+  - name: return_credit_matches
+    on: save
+    check: "method != 'sales_return' || (app_installed('delivery') && direction == 'receive' && sales_return != '' && sales_return.docstatus == 1 && sales_return.customer == customer && amount <= sales_return.return_total)"
+    message: {id: 'Potong retur: pilih retur yang sudah diajukan dari pelanggan yang sama, nilainya paling banyak nilai retur'}
   - name: gateway_has_ref
     on: save
     check: gateway == '' || gateway_ref != ''
@@ -166,7 +199,7 @@ views:
       - section: {id: Pembayaran}
         columns:
           - [direction, customer, vendor, payment_date]
-          - [method, reference, amount, gateway, gateway_ref, bank_transaction]
+          - [method, reference, giro_bank, giro_due_date, sales_return, amount, gateway, gateway_ref, bank_transaction, salesman]
       - section: {id: Alokasi}
         fields: [allocations]
       - section: {id: Ringkasan}

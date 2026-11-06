@@ -1,0 +1,87 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Retur jual: goods a customer sends back from a delivery note. Good goods go back into the warehouse and damaged ones
+# into the damaged-goods outlet, both at the cost they left at (cost source: the delivery note's stock moves, contract
+# 0021). The value at the order price (with PPN) is credited to the customer by a payment of method "Potong retur"
+# allocated to its invoice. No more than was delivered and not yet returned can come back (order_fulfilment).
+name: sales_return
+label: {id: Retur penjualan, en: Sales return}
+icon: stock
+is_submittable: true
+naming: RJ-{YYYY}-{#####}
+title_field: customer
+on_submit: [stock.post_moves]
+on_cancel: [stock.reverse_moves]
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true, print: true}
+  - {role: field_sales, read: true, print: true}
+fields:
+  - {name: delivery_note, type: link, to: delivery_note, label: {id: Surat jalan}, required: true, in_list: true, peek: [customer, delivery_date]}
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, default: delivery_note.customer, read_only: true, in_list: true}
+  - {name: salesman, type: link, to: user, label: {id: Salesman}, default: delivery_note.salesman, read_only: true, in_list: true}
+  - {name: customer_order, type: link, to: customer_order, label: {id: Pesanan}, default: delivery_note.customer_order, read_only: true}
+  - {name: fulfilment, type: link, to: order_fulfilment, label: {id: Pemenuhan pesanan}, default: delivery_note.fulfilment, read_only: true}
+  - {name: return_date, type: date, label: {id: Tanggal retur}, default: today(), required: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Masuk ke (barang baik)}, default: delivery_note.outlet, required: true}
+  - {name: damaged_outlet, type: link, to: outlet, label: {id: Masuk ke (barang rusak)}}
+  - {name: reason, type: select, label: {id: Alasan}, default: "'damaged'", options: [{value: damaged, label: {id: Rusak}}, {value: expired, label: {id: Kedaluwarsa}}, {value: wrong_item, label: {id: Salah kirim}}, {value: unsold, label: {id: Tidak laku}}]}
+  - {name: items, type: table, of: sales_return_item, label: {id: Barang}, min_rows: 1}
+  - name: return_value
+    type: currency
+    label: {id: Nilai retur (sebelum PPN)}
+    compute: "items.map(l, round(l.qty * fulfilment.items.map(b, b.item == l.item ? b.rate : 0).sum())).sum()"
+    in_list: true
+  - {name: tax_rate, type: float, label: {id: PPN (%)}, default: 'tax.pkp ? tax.ppn_rate : 0', read_only: true}
+  - {name: dpp_num, type: int, label: {id: DPP pembilang}, default: tax.dpp_num, read_only: true}
+  - {name: dpp_den, type: int, label: {id: DPP penyebut}, default: tax.dpp_den, read_only: true}
+  - {name: return_total, type: currency, label: {id: Nilai retur (dengan PPN)}, compute: "return_value + round(return_value * dpp_num / dpp_den * tax_rate / 100)", in_list: true}
+  - {name: notes, type: text, label: {id: Catatan}}
+stock:
+  date: return_date
+  moves:
+    - {lines: items, in: outlet, if: "line.condition == 'good'", reason: return_in, cost: {source: delivery_note}}
+    - {lines: items, in: damaged_outlet, if: "line.condition == 'damaged'", reason: return_in, cost: {source: delivery_note}}
+rules:
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: note_submitted
+    on: save
+    check: delivery_note.docstatus == 1 && fulfilment != '' && fulfilment == delivery_note.fulfilment && customer == delivery_note.customer
+    message: {id: 'Retur hanya dari surat jalan yang sudah diajukan; kalau surat jalannya diganti, buat retur baru'}
+  - name: items_on_note
+    on: save
+    check: "items.map(l, delivery_note.items.map(d, d.item == l.item ? 1 : 0).sum() > 0 ? 0 : 1).sum() == 0"
+    message: {id: Ada barang yang tidak ada di surat jalan}
+  - name: within_delivered
+    on: save
+    check: "items.map(l, items.map(x, x.item == l.item ? x.qty : 0).sum() <= fulfilment.items.map(b, b.item == l.item ? b.delivered_qty - b.returned_qty : 0).sum() + 0.0005 ? 0 : 1).sum() == 0"
+    message: {id: Jumlah retur melebihi barang yang dikirim dan belum diretur}
+  - name: within_note
+    on: save
+    check: "items.map(l, items.map(x, x.item == l.item ? x.qty : 0).sum() <= delivery_note.items.map(d, d.item == l.item ? d.qty : 0).sum() + 0.0005 ? 0 : 1).sum() == 0"
+    message: {id: Jumlah retur melebihi yang dikirim dengan surat jalan ini}
+  - name: damaged_needs_outlet
+    on: save
+    check: "damaged_outlet != '' || items.map(l, l.condition == 'damaged' ? 1 : 0).sum() == 0"
+    message: {id: Pilih outlet untuk barang rusak}
+views:
+  list:
+    columns: [name, return_date, customer, salesman, delivery_note, return_total, status]
+    sort: -return_date
+  form:
+    layout:
+      - section: {id: Retur}
+        columns:
+          - [delivery_note, customer, salesman, return_date]
+          - [outlet, damaged_outlet, reason]
+      - section: {id: Barang}
+        fields: [items]
+      - section: {id: Nilai}
+        columns:
+          - [return_value, tax_rate]
+          - [return_total]
+      - section: {id: Catatan}
+        fields: [notes]

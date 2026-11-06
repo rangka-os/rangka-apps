@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every new draft order gets its own fulfilment record, linked from the order while it is a draft. An amended copy
+# (whose read_only link is emptied by amend) or an order from before the module gets one on its next save
+# (fulfilment_on_order_updated); the order cannot be submitted without one (rule has_fulfilment).
+name: fulfilment_on_order_created
+label: {id: Buat pemenuhan pesanan}
+on: customer_order.created
+steps:
+  - {find: customer_order, where: name == event.name, as: so}
+  - create: order_fulfilment
+    set:
+      customer_order: event.name
+      customer: event.customer
+      salesman: event.salesman
+      items: "event.items.map(i, {'item': i.item, 'ordered_qty': i.qty, 'rate': i.rate, 'delivered_qty': 0, 'returned_qty': 0, 'invoiced_qty': 0})"
+    as: f
+  - update: so
+    set: {fulfilment: f.name}

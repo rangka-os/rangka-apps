@@ -6,7 +6,8 @@ and may do everything. A model without `permissions:` would be open to every mem
 
 All roles live in the `users` module, which every module requires, so a permission never names a role the site lacks.
 An app lists the roles it uses in `roles:` (`crm`: sales_rep, sales_manager; `jasa_proyek`: sales_manager,
-finance_manager, purchasing_manager, project_admin; `fnb_cabang` and `ritel_cabang`: head_office, outlet_staff).
+finance_manager, purchasing_manager, project_admin; `fnb_cabang` and `ritel_cabang`: head_office, outlet_staff;
+`grosir_distribusi`: sales_manager, finance_manager, head_office, field_sales).
 
 Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e export, p print, i import.
 **all** = r c w d s x a e p (no import unless written). `outlet_staff` has a row scope
@@ -48,6 +49,26 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | outlet_takings | | | | | all + i | r c w s | |
 | consignment_settlement | | | | | all except d (a deleted cancelled settlement would free its month) | | |
 | lead, deal, activity | all | r | r | r | r | r | r c w on own records (`owner == user.name`) |
+
+### Distributor (grosir_distribusi)
+
+`field_sales` (Salesman) has a row scope `salesman` from `[user.name]` (its own user record): it sees only the customers,
+orders, invoices, payments, giro and delivery notes whose `salesman` is itself. On models without that field it reads
+masters (`item`, `item_category`, `uom`, `outlet`, `user`: r).
+
+| Model | sales_manager | finance_manager | head_office | outlet_staff | field_sales |
+| --- | --- | --- | --- | --- | --- |
+| customer | as above | as above | as above | r | r (credit fields are finance's) |
+| customer_order | all | r p | r p | | r c w s p (own customers; rule `customer_of_salesman`) |
+| sales_invoice, payment | all | all | as above | | r p |
+| giro (lines made by the flow `giro_from_payment`; bounced only by cancelling the payment) | r c w e p | r c w e p | | | r |
+| delivery_note, sales_return | all | r p | all | | r p |
+| order_fulfilment (every field read_only; written by the delivery flows of whoever submits) | r c w e | r c w e | r c w e | | r c w |
+| return_credit (credited value of a sales return; opened by the return's flow, written by the payment flows) | r c w e | r c w e | r c w | | |
+| delivery_guard (never stored; a flow's refusal of a cancel or submit) | c | c | c | | |
+
+`customer_order` approvals (module distribution): `credit_hold`, `overdue` and `over_credit_limit` → `sales_manager`
+or `finance_manager`; a salesman never releases his own held order.
 
 Approvals (contract 0007) decide on top of this: `quotation` submit → `sales_manager`; `sales_invoice` above
 Rp 100.000.000 → `finance_manager`; `purchase_order` approval is a site's choice (`custom/purchase_order.rk`): demo-jasa asks `finance_manager` above

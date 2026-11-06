@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Made when a sales return is submitted (credited 0, flow return_credit_on_return_submitted). How much of one sales
+# return is credited to the customer's invoices by live payments "Potong retur". Kept by the
+# flows return_credit_on_payment_* (as finance, who submits those payments); every field is read_only. The flows
+# refuse a credit beyond the return's value, and return_cancel_guard refuses to cancel a credited return. A
+# separate record because a submitted return cannot be written, and the warehouse that cancels returns cannot read
+# customer payments.
+name: return_credit
+label: {id: Potongan retur, en: Return credit}
+icon: card
+naming: RCR-{YYYY}-{#####}
+title_field: sales_return
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, export: true}
+  - {role: sales_manager, read: true, create: true, write: true, export: true}
+  - {role: head_office, read: true, create: true, write: true}
+fields:
+  - {name: sales_return, type: data, label: {id: Retur penjualan}, unique: true, read_only: true, in_list: true}
+  - {name: return_total, type: currency, label: {id: Nilai retur}, read_only: true, in_list: true}
+  - {name: credited, type: currency, label: {id: Sudah dipotongkan}, read_only: true, in_list: true}
+views:
+  list:
+    columns: [name, sales_return, return_total, credited]

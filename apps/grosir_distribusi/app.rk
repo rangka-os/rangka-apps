@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+# Back office of a sub-distributor (grosir FMCG): salesmen take orders for their own customers at the customer's price
+# tier, an order is held for the sales manager when the customer is on hold, overdue or over its limit, the warehouse
+# delivers with a delivery note (stock out), invoices go out with PPN, giro is followed to the bank, a bounced giro
+# opens the invoices again, and AR is read per salesman.
+name: grosir_distribusi
+version: 1.0.0
+title: {id: Grosir dan distribusi, en: Wholesale distribution}
+label: {id: Rangka Grosir Distribusi, en: Rangka Wholesale Distribution}
+summary:
+  id: Pesanan salesman dengan harga per tier, tahan kredit otomatis, surat jalan, retur, giro dan piutang per salesman.
+rangka: '>=0.5'
+modules:
+  contacts: ^1.0
+  catalogue: ^1.0
+  outlets: ^1.0
+  users: ^1.0
+  stock: ^1.0
+  orders: ^1.0
+  invoicing: ^1.0
+  payments: ^1.0
+  procurement: ^1.0
+  distribution: ^1.0
+  delivery: ^1.0
+dashboards: [grosir_overview, grosir_ar]
+roles: [sales_manager, finance_manager, head_office, field_sales]
+home: {dashboard: grosir_overview}
+# recipe is installed with stock but has no menu entry: a distributor sells goods as they are.
+menu:
+  - group: {id: Penjualan}
+    items: [customer_order, sales_invoice, payment, giro]
+  - group: {id: Pengiriman}
+    items: [delivery_note, sales_return, order_fulfilment, return_credit]
+  - group: {id: Gudang}
+    items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
+  - group: {id: Pembelian}
+    items: [purchase_order, goods_receipt, vendor_bill]
+  - group: {id: Data induk}
+    items: [customer, item, item_category, price_list, outlet, uom, vendor, user]
+onboarding:
+  - ask: {id: 'Berapa salesman yang mengambil pesanan?'}
+    sets: seed.salesmen
+  - ask: {id: 'Apakah usaha kamu PKP (memungut PPN)?'}
+    options: ['true', 'false']
+    sets: tax.pkp
+  - ask: {id: 'Apakah ada mobil kanvas (jual langsung dari mobil)?'}
+    options: ['true', 'false']
+    sets: seed.canvas_van
