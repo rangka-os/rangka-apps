@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+# Letterhead of the fictional CV Contoh Pangan Beku (purchase orders, work orders).
+legal_name: CV Contoh Pangan Beku
+tagline: Makanan beku rumahan
+address: |
+  Jl. Contoh Industri Kecil No. 3
+  Cimahi 40533
+phone: '+62 22 000 0006'
+email: halo@contohpangan.test
+website: contohpangan.test
+bank:
+  - {bank: Bank Contoh, account: '666 000 0006', holder: CV Contoh Pangan Beku, branch: Cimahi}
+signatory: {name: Sari Contoh, title: Pemilik}
+footer: {id: Simpan beku pada suhu -18 derajat Celsius}

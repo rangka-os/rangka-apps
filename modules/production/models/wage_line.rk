@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: wage_line
+is_child: true
+fields:
+  - {name: worker, type: link, to: worker, label: {id: Pekerja}, read_only: true}
+  - {name: stage, type: link, to: production_stage, label: {id: Tahap}, read_only: true}
+  - {name: qty, type: float, label: {id: Qty}, read_only: true}
+  - {name: rate, type: currency, label: {id: Tarif}, read_only: true}
+  - {name: amount, type: currency, label: {id: Upah}, read_only: true}
+  - {name: work_date, type: date, label: {id: Tanggal kerja}, read_only: true}
+  - {name: cancelled, type: check, label: {id: Batal}, read_only: true}

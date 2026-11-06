@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+# Back office of a small factory (frozen food, bakery, konveksi): multi-level recipes with a standard cost, work
+# orders (SPK), batch results with production code and expiry, actual cost per batch (materials, piece-rate wages,
+# overhead), weekly piece-rate wages per worker, material purchasing and stock of materials and finished goods.
+name: produksi_pabrik
+version: 1.0.0
+title: {id: Produksi pabrik kecil, en: Small-factory production}
+label: {id: Rangka Produksi Pabrik, en: Rangka Factory Production}
+summary:
+  id: Resep bertingkat, SPK, hasil per batch dengan kedaluwarsa, HPP aktual dan upah borongan.
+rangka: '>=0.5'
+modules:
+  contacts: ^1.0
+  catalogue: ^1.0
+  outlets: ^1.0
+  users: ^1.0
+  stock: ^1.0
+  workforce: ^1.0
+  production: ^1.0
+  procurement: ^1.0
+  payments: ^1.0
+  invoicing: ^1.0
+dashboards: [produksi_overview, produksi_upah]
+roles: [head_office, outlet_staff]
+home: {dashboard: produksi_overview}
+# invoicing is only here because payments requires it; selling (orders, delivery notes) comes with grosir_distribusi.
+menu:
+  - group: {id: Produksi}
+    items: [work_order, production_batch, wage_sheet]
+  - group: {id: Resep dan tarif}
+    items: [bom, production_stage, worker]
+  - group: {id: Stok}
+    items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
+  - group: {id: Pembelian}
+    items: [purchase_order, goods_receipt, vendor_bill, payment]
+  - group: {id: Data induk}
+    items: [item, item_category, outlet, uom, vendor]
+onboarding:
+  - ask: {id: 'Apa produk utama yang kamu buat?'}
+    sets: seed.products
+  - ask: {id: 'Apakah pekerja produksi dibayar borongan (per hasil)?'}
+    options: ['true', 'false']
+    sets: seed.piece_rate
+  - ask: {id: 'Apakah usaha kamu PKP (memungut PPN)?'}
+    options: ['true', 'false']
+    sets: tax.pkp

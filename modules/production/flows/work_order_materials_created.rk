@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Fills the SPK's material need from its BOM, scaled to the planned qty, whenever the qty or the BOM differs from
+# the ones it was filled for; lines edited by hand stay until then. A find returns a record without its table rows,
+# so the BOM is read back through an update that changes nothing (head office may write BOMs).
+name: work_order_materials_created
+label: {id: Kebutuhan bahan SPK dari resep}
+on: work_order.created
+if: "event.docstatus == 0 && event.bom != '' && event.qty > 0 && (event.materials_qty != event.qty || event.materials_bom != event.bom) && !('outlet_staff' in user.roles)"
+steps:
+  - {find: bom, where: name == event.bom, as: b}
+  - {find: work_order, where: name == event.name, as: wo}
+  - update: b
+    if: b != null
+    set: {bom_name: b.bom_name}
+  - update: wo
+    if: b != null && b.output_qty > 0
+    set:
+      materials: "b.lines.map(l, {'item': l.item, 'qty': round(l.qty * event.qty / b.output_qty * 1000) / 1000, 'uom': l.uom})"
+      materials_qty: event.qty
+      materials_bom: event.bom

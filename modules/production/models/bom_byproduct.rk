@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: bom_byproduct
+is_child: true
+fields:
+  - {name: item, type: link, to: item, label: {id: Produk sampingan}, required: true}
+  - {name: qty, type: float, label: {id: Qty per batch}, default: '1'}
+  - {name: cost_share, type: float, label: {id: Porsi biaya bahan (%)}, default: '0'}

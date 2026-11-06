@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A production stage paid by the piece (borongan): giling, cetak, kemas. The rate is per unit of work; a stage per
+# product when products pay differently ("Cetak dimsum", "Cetak nugget").
+name: production_stage
+label: {id: Tahap borongan, en: Piece-rate stage}
+icon: stock
+naming: TAHAP-{###}
+title_field: stage_name
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - {name: stage_name, type: data, label: {id: Tahap}, required: true, in_list: true}
+  - {name: unit, type: data, label: {id: Satuan kerja}, default: "'pak'", in_list: true}
+  - {name: rate, type: currency, label: {id: Tarif per satuan}, required: true, in_list: true}
+  - {name: active, type: check, label: {id: Aktif}, default: 'true'}
+views:
+  list:
+    columns: [name, stage_name, unit, rate, active]

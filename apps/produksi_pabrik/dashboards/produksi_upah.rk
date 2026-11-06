@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: produksi_upah
+label: {id: Upah borongan, en: Piece-rate wages}
+default_period: 7
+cache: 5m
+# Weekly recap for paying the piece-rate workers (period 7 days); PPh 21 is not computed here yet.
+widgets:
+  - name: wages_total
+    type: number
+    label: {id: Total upah borongan}
+    model: wage_line
+    aggregate: sum
+    field: amount
+    filter: "!cancelled"
+    period: work_date
+    compact: true
+    span: 4
+  - name: wages_by_worker
+    type: chart
+    chart: bar
+    label: {id: Upah per pekerja}
+    model: wage_line
+    group_by: worker
+    aggregate: sum
+    field: amount
+    filter: "!cancelled"
+    period: work_date
+    span: 8
+  - name: qty_by_stage
+    type: chart
+    chart: bar
+    label: {id: Qty per tahap}
+    model: wage_line
+    group_by: stage
+    aggregate: sum
+    field: qty
+    filter: "!cancelled"
+    period: work_date
+    span: 12

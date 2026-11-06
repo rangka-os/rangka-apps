@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Bill of materials (resep produksi) for output_qty of a product. A line may be a semi-finished item that has its own
+# BOM (item.default_bom): its unit cost is that BOM's unit_cost, so the cost rolls up any number of levels
+# (multi-level). Each level is made with its own work order. By-products take a share of the material cost.
+name: bom
+label: {id: Resep produksi (BOM), en: Bill of materials}
+icon: stock
+naming: BOM-{####}
+title_field: bom_name
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true, print: true}
+  - {role: outlet_staff, read: true, print: true}
+fields:
+  - {name: bom_name, type: data, label: {id: Nama resep}, required: true, in_list: true}
+  - {name: item, type: link, to: item, label: {id: Produk}, required: true, in_list: true}
+  - {name: output_qty, type: float, label: {id: Hasil standar per batch}, default: '1', required: true, in_list: true}
+  - {name: uom, type: link, to: uom, label: {id: Satuan hasil}, default: item.stock_uom}
+  - {name: yield_percent, type: float, label: {id: Rendemen standar (%)}, default: '100', help: {id: Hasil baik dibanding bahan yang masuk}}
+  - {name: active, type: check, label: {id: Aktif}, default: 'true', in_list: true}
+  - {name: lines, type: table, of: bom_line, label: {id: Bahan}, min_rows: 1}
+  - {name: byproducts, type: table, of: bom_byproduct, label: {id: Produk sampingan}}
+  - {name: labour_per_unit, type: currency, label: {id: Upah borongan per satuan}, help: {id: Jumlah tarif semua tahap per satuan hasil}}
+  - {name: overhead_per_unit, type: currency, label: {id: Overhead per satuan}, help: {id: 'Tarif sederhana: listrik, gas, sewa dibagi hasil sebulan'}}
+  - {name: material_cost, type: currency, label: {id: Biaya bahan per batch}, compute: "lines.map(l, l.cost).sum()"}
+  - {name: byproduct_share, type: float, label: {id: Porsi produk sampingan (%)}, compute: "byproducts.map(b, b.cost_share).sum()"}
+  - name: unit_cost
+    type: currency
+    label: {id: HPP standar per satuan}
+    compute: "output_qty > 0 ? round(material_cost * (100 - byproduct_share) / 100 / output_qty) + labour_per_unit + overhead_per_unit : 0"
+    in_list: true
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: output_positive
+    on: save
+    check: output_qty > 0
+    message: {id: Hasil standar harus lebih dari 0}
+  - name: not_itself
+    on: save
+    check: "lines.map(l, l.item == item ? 1 : 0).sum() == 0"
+    message: {id: Produk tidak boleh menjadi bahannya sendiri}
+  - name: share_below_100
+    on: save
+    check: byproduct_share < 100
+    message: {id: Porsi produk sampingan harus di bawah 100%}
+  - name: qty_positive
+    on: save
+    check: "lines.map(l, l.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah bahan harus lebih dari 0}
+views:
+  list:
+    columns: [name, bom_name, item, output_qty, unit_cost, active]
+  form:
+    layout:
+      - section: {id: Resep}
+        columns:
+          - [bom_name, item, active]
+          - [output_qty, uom, yield_percent]
+      - section: {id: Bahan}
+        fields: [lines]
+      - section: {id: Produk sampingan}
+        fields: [byproducts]
+      - section: {id: Biaya standar}
+        columns:
+          - [material_cost, labour_per_unit, overhead_per_unit]
+          - [byproduct_share, unit_cost]
+      - section: {id: Catatan}
+        fields: [notes]
