@@ -1,7 +1,8 @@
-Date,Time,Outlet,Receipt Number,Category,Item,Variant,Modifiers,SKU,Quantity,Gross Sales,Discounts,Refunds,Net Sales,Tax,Gratuity,Sales Type,Payment Method,Collected By,Served By
-02/11/2026,08:14,Outlet Dago,DGO-0001,Tahu,Tahu goreng original,Porsi,,TH-ORI,2,30000,0,0,30000,0,0,Dine In,Cash,Kasir 1,Kasir 1
-02/11/2026,08:14,Outlet Dago,DGO-0001,Tahu,Tahu goreng pedas,Porsi,,TH-PDS,1,18000,0,0,18000,0,0,Dine In,Cash,Kasir 1,Kasir 1
-02/11/2026,09:02,Outlet Dago,DGO-0002,Tahu,Tahu isi sayur,Porsi,,TH-ISI,3,60000,6000,0,54000,0,0,Take Away,QRIS,Kasir 1,Kasir 1
-02/11/2026,09:40,Outlet Dago,DGO-0003,Tahu,Tahu goreng pedas,Porsi,Extra pedas,TH-PDS,2,36000,0,0,36000,0,0,Take Away,GoPay,Kasir 2,Kasir 2
-02/11/2026,11:25,Outlet Dago,DGO-0004,Tahu,Tahu goreng original,Porsi,,TH-ORI,1,15000,0,15000,0,0,0,Dine In,Cash,Kasir 1,Kasir 1
-02/11/2026,12:10,Outlet Dago,DGO-0005,Tahu,Tahu bawa pulang (kotak),Porsi,,TH-BWP,4,100000,10000,0,90000,0,0,GoFood,GoFood,Kasir 2,Kasir 2
+Outlet,Receipt Number,Date,Time,Category,Brand,Items,Variant,SKU,Quantity,Modifier Applied,Discount Applied,Gross Sales,Discounts,Refunds,Net Sales,Gratuity,Tax,Sales Type,Collected By,Served By,Customer,Payment Method,Event Type,Reason of Refund
+Tahu Contoh - Dago,DGO-0001,02-11-2026,08:14:00,Tahu,Unbranded,Tahu goreng original,Porsi,TH-ORI,2,,,30000.0,0.0,0.0,30000.0,0.0,0.0,Dine In,Kasir 1,Kasir 1,,Cash,Payment,
+Tahu Contoh - Dago,DGO-0001,02-11-2026,08:14:00,Tahu,Unbranded,Tahu goreng pedas,Porsi,TH-PDS,1,,,18000.0,0.0,0.0,18000.0,0.0,0.0,Dine In,Kasir 1,Kasir 1,,Cash,Payment,
+Tahu Contoh - Dago,DGO-0002,02-11-2026,09:02:00,Tahu,Unbranded,Tahu isi sayur,Porsi,TH-ISI,3,,,60000.0,6000.0,0.0,54000.0,0.0,0.0,Take Away,Kasir 1,Kasir 1,,QRIS,Payment,
+Tahu Contoh - Dago,DGO-0003,02-11-2026,09:40:00,Tahu,Unbranded,Tahu goreng pedas,Porsi,TH-PDS,2,Extra pedas,,36000.0,0.0,0.0,36000.0,0.0,0.0,Take Away,Kasir 2,Kasir 2,,GoPay,Payment,
+Tahu Contoh - Dago,DGO-0004,02-11-2026,11:25:00,Tahu,Unbranded,Tahu goreng original,Porsi,TH-ORI,1,,,15000.0,0.0,0.0,15000.0,0.0,0.0,Dine In,Kasir 1,Kasir 1,,Cash,Payment,
+Tahu Contoh - Dago,DGO-0004,02-11-2026,11:40:12,Tahu,Unbranded,Full Refund for: DGO-0004 - Tahu goreng original,Porsi,TH-ORI,-1,,,0.0,0.0,15000.0,-15000.0,0.0,0.0,Dine In,Kasir 1,Kasir 1,,Cash,Refund,Cancelled Order
+Tahu Contoh - Dago,DGO-0005,02-11-2026,12:10:00,Tahu,Unbranded,Tahu bawa pulang (kotak),Porsi,TH-BWP,4,,,100000.0,10000.0,0.0,90000.0,0.0,0.0,GoFood,Kasir 2,Kasir 2,,GoFood,Payment,

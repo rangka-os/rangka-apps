@@ -15,7 +15,14 @@ def before(api):
     st, q = api.create("project", {"project_name": "Lama borongan", "customer": "CUST-0001", "contract_value": 100_000_000})
     st, qi = api.create("sales_invoice", {"customer": "CUST-0001", "project": q["name"], "items": [{"item": ndt, "qty": 1, "rate": 100_000_000}]})
     api.verb("sales_invoice", qi["name"], "submit", {"force": True})
-    return {"p": p, "ms": ms, "inv": r.get("name", i["name"]), "ndt": ndt, "q": q["name"]}
+    # a retainer project with November billed before the upgrade (no month key then), and a milestone of another kind
+    st, rp = api.create("project", {"project_name": "Lama retainer", "customer": "CUST-0001", "billing_model": "retainer", "contract_value": 15_000_000})
+    nov = {"project": rp["name"], "kind": "retainer", "basis": "amount", "amount_fixed": 15_000_000, "trigger": "date", "due_date": "2026-11-30", "period_from": "2026-11-01", "period_to": "2026-11-30"}
+    st, rm = api.create("billing_milestone", dict(nov, seq=1, title="Nov"))
+    st, ri = api.create("sales_invoice", {"billing_milestone": rm["name"], "items": [{"item": ndt, "qty": 1, "rate": 15_000_000}]})
+    api.verb("sales_invoice", ri["name"], "submit", {"force": True})
+    st, om = api.create("billing_milestone", dict(nov, seq=2, title="Lain", kind="milestone"))
+    return {"p": p, "ms": ms, "inv": r.get("name", i["name"]), "ndt": ndt, "q": q["name"], "rp": rp["name"], "nov": nov, "om": om.get("name", "") if st == 201 else ""}
 
 
 def after(api, s, d1):
@@ -37,3 +44,18 @@ def after(api, s, d1):
     d1.check("an invoice from before the upgrade can be cancelled", st == 200, (st, r))
     st, r = api.verb("sales_invoice", s["inv"], "amend")
     d1.check("and amended", st in (200, 201), (st, r))
+    # R2 legacy: November billed before the upgrade is not billed again through a second November milestone
+    st, m = api.create("billing_milestone", dict(s["nov"], seq=3, title="Nov lagi"))
+    st2, r2 = (None, None)
+    if st == 201:
+        st, i = api.create("sales_invoice", {"billing_milestone": m["name"], "items": [{"item": s["ndt"], "qty": 1, "rate": 15_000_000}]})
+        st2, r2 = api.verb("sales_invoice", i["name"], "submit", {"force": True}) if st == 201 else (st, i)
+    d1.check("R2 legacy: November billed before the upgrade, a second November milestone (422) or its invoice (422) is refused",
+             st == 422 or st2 == 422, (st, st2, r2))
+    billed = sum(i["dpp"] for i in api.find("sales_invoice", "project == '%s' && docstatus == 1" % s["rp"]))
+    d1.eq("R2 legacy: retainer project billed 15.000.000 for November", billed, 15_000_000)
+    # R1 legacy: a non-retainer milestone made on a retainer project before the upgrade cannot be invoiced
+    if s["om"]:
+        st, i = api.create("sales_invoice", {"billing_milestone": s["om"], "items": [{"item": s["ndt"], "qty": 1, "rate": 15_000_000}]})
+        st2 = api.verb("sales_invoice", i["name"], "submit", {"force": True})[0] if st == 201 else st
+        d1.check("R1 legacy: invoicing an old non-retainer milestone of a retainer project -> 422", st2 == 422, (st, st2))

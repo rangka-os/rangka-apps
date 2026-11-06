@@ -1,0 +1,123 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: ritel_overview
+label: {id: Ringkasan toko, en: Shop overview}
+default_period: 30
+cache: 5m
+# The owner's weekly questions: how much did we sell, what did we make, where is stock wrong, who is short on
+# takings. Sales count once submitted (docstatus 1); drafts from an import are not sales yet.
+widgets:
+  - name: net_today
+    type: number
+    label: {id: Penjualan bersih hari ini}
+    model: outlet_sales
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1 && date == today()
+    compact: true
+    span: 3
+  - name: net_period
+    type: number
+    label: {id: Penjualan bersih}
+    description: {id: Pada periode yang dipilih}
+    model: outlet_sales
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    compact: true
+    span: 3
+  - name: margin_period
+    type: number
+    label: {id: Laba kotor}
+    description: {id: Penjualan bersih dikurangi harga pokok barang terjual}
+    model: outlet_sales
+    aggregate: sum
+    field: margin
+    filter: docstatus == 1
+    period: date
+    compact: true
+    span: 3
+  - name: takings_short
+    type: number
+    label: {id: Setoran kurang}
+    description: {id: Jumlah selisih setoran yang minus}
+    model: outlet_takings
+    aggregate: sum
+    field: difference_total
+    filter: docstatus == 1 && short == true
+    period: date
+    compact: true
+    good_when: up
+    span: 3
+  - name: net_by_outlet
+    type: chart
+    chart: bar
+    label: {id: Penjualan bersih per cabang}
+    model: outlet_sales
+    group_by: outlet
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    sort: -value
+    span: 6
+  - name: margin_by_outlet
+    type: chart
+    chart: bar
+    label: {id: Laba kotor per cabang}
+    model: outlet_sales
+    group_by: outlet
+    aggregate: sum
+    field: margin
+    filter: docstatus == 1
+    period: date
+    sort: -value
+    span: 6
+  - name: net_by_day
+    type: chart
+    chart: line
+    label: {id: Penjualan bersih per hari}
+    model: outlet_sales
+    group_by: date
+    grain: day
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    span: 6
+  # Returned goods are not put back in stock yet (kernel): the returned value per day tells the owner how much
+  # stock to correct at the next count.
+  - name: refund_by_day
+    type: chart
+    chart: bar
+    label: {id: Retur per hari}
+    description: {id: 'Barang retur belum kembali ke stok otomatis, koreksi saat opname'}
+    model: outlet_sales
+    group_by: date
+    grain: day
+    aggregate: sum
+    field: refund_total
+    filter: docstatus == 1 && refund_total > 0
+    period: date
+    span: 6
+  - name: takings_short_list
+    type: list
+    label: {id: Setoran kurang}
+    description: {id: 'Hari dan cabang dengan setoran di bawah laporan kasir'}
+    model: outlet_takings
+    filter: docstatus == 1 && short == true
+    period: date
+    sort: difference_total
+    limit: 10
+    columns: [date, outlet, expected_total, received_total, difference_total]
+    span: 6
+  - name: negative_stock
+    type: list
+    label: {id: Stok minus}
+    description: {id: 'Saldo di bawah nol: penjualan tercatat sebelum barang diterima, atau stok belum dihitung'}
+    model: stock_balance
+    filter: negative == true
+    sort: qty
+    limit: 10
+    columns: [outlet, item, qty, value]
+    span: 6
