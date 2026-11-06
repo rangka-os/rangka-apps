@@ -4,6 +4,66 @@ label: {id: Ringkasan jasa proyek, en: Project services overview}
 default_period: 30
 cache: 5m
 widgets:
+  # Money first (P7, owner on a phone): receivables, overdue, ready to bill and billed, then what is overdue by name.
+  # List columns lead with who and how much, so the first two fit a 375px screen without scrolling sideways.
+  - name: outstanding_ar
+    type: number
+    label: {id: Piutang berjalan}
+    description: {id: Sisa tagihan semua faktur yang belum lunas}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0
+    good_when: down
+    compact: true
+    span: 3
+  - name: overdue_count
+    type: number
+    label: {id: Faktur lewat jatuh tempo}
+    model: sales_invoice
+    filter: docstatus == 1 && outstanding > 0 && due_date < today()
+    good_when: down
+    span: 3
+  # Billing schedule (billing_milestone): what can be billed now, and what is due by date.
+  - name: ready_to_bill
+    type: number
+    label: {id: Siap ditagih}
+    description: {id: 'Termin yang berita acaranya sudah ada, belum ada fakturnya'}
+    model: billing_milestone
+    aggregate: sum
+    field: amount
+    filter: state == 'ready'
+    compact: true
+    span: 3
+  - name: invoices_issued
+    type: number
+    label: {id: Faktur terbit}
+    description: {id: 'Total faktur yang sudah diajukan pada periode ini'}
+    model: sales_invoice
+    aggregate: sum
+    field: grand_total
+    filter: docstatus == 1
+    period: posting_date
+    compact: true
+    span: 3
+  - name: overdue_invoices
+    type: list
+    label: {id: Faktur lewat jatuh tempo}
+    model: sales_invoice
+    filter: docstatus == 1 && outstanding > 0 && due_date < today()
+    sort: due_date
+    limit: 10
+    columns: [customer, outstanding, due_date, name, amount_due]
+    span: 12
+  - name: milestones_due
+    type: list
+    label: {id: Termin jatuh tempo}
+    model: billing_milestone
+    filter: state == 'ready' || (state == 'planned' && trigger == 'date' && due_date <= today())
+    sort: due_date
+    limit: 10
+    columns: [project, amount, due_date, title, state]
+    span: 12
   - name: open_quotations
     type: number
     label: {id: Penawaran terbuka}
@@ -24,35 +84,6 @@ widgets:
     model: quotation
     filter: docstatus == 1 && outcome == 'lost'
     period: quotation_date
-    good_when: down
-    span: 3
-  - name: invoices_issued
-    type: number
-    label: {id: Faktur terbit}
-    description: {id: 'Total faktur yang sudah diajukan pada periode ini'}
-    model: sales_invoice
-    aggregate: sum
-    field: grand_total
-    filter: docstatus == 1
-    period: posting_date
-    compact: true
-    span: 3
-  - name: outstanding_ar
-    type: number
-    label: {id: Piutang berjalan}
-    description: {id: Sisa tagihan semua faktur yang belum lunas}
-    model: sales_invoice
-    aggregate: sum
-    field: outstanding
-    filter: docstatus == 1 && outstanding > 0
-    good_when: down
-    compact: true
-    span: 3
-  - name: overdue_count
-    type: number
-    label: {id: Faktur lewat jatuh tempo}
-    model: sales_invoice
-    filter: docstatus == 1 && outstanding > 0 && due_date < today()
     good_when: down
     span: 3
   - name: active_projects
@@ -91,15 +122,6 @@ widgets:
     filter: docstatus == 1
     period: posting_date
     span: 8
-  - name: overdue_invoices
-    type: list
-    label: {id: Faktur lewat jatuh tempo}
-    model: sales_invoice
-    filter: docstatus == 1 && outstanding > 0 && due_date < today()
-    sort: due_date
-    limit: 10
-    columns: [name, customer, due_date, amount_due, outstanding]
-    span: 12
   - name: running_projects
     type: list
     label: {id: Proyek aktif}
@@ -123,23 +145,3 @@ widgets:
     limit: 10
     columns: [name, worker_name, role_title, day_rate]
     span: 5
-  # Billing schedule (billing_milestone): what can be billed now, and what is due by date.
-  - name: ready_to_bill
-    type: number
-    label: {id: Siap ditagih}
-    description: {id: 'Termin yang berita acaranya sudah ada, belum ada fakturnya'}
-    model: billing_milestone
-    aggregate: sum
-    field: amount
-    filter: state == 'ready'
-    compact: true
-    span: 3
-  - name: milestones_due
-    type: list
-    label: {id: Termin jatuh tempo}
-    model: billing_milestone
-    filter: state == 'ready' || (state == 'planned' && trigger == 'date' && due_date <= today())
-    sort: due_date
-    limit: 10
-    columns: [project, title, amount, due_date, state]
-    span: 12
