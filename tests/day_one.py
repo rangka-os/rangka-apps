@@ -1305,15 +1305,21 @@ def scenario_procurement(api):
 
 # ---------- scenario: the money rail (Tahap 1): remind, get paid by transfer or gateway, match the bank statement
 
-def statement_csv(rows):
-    """A bank_statement_csv file: rows of (date dd/mm/yyyy, note, credit, debit, balance)."""
-    out = ["Rekening,Tanggal,Keterangan,Masuk,Keluar,Saldo"]
+def statement_csv(rows, seq=True):
+    """A bank_statement_csv file: rows of (date dd/mm/yyyy, note, credit, debit, balance). Urutan is the number of
+    the line within its day, as the owner copies the bank's export (seq=False leaves the column out)."""
+    out = ["Rekening,Tanggal,Urutan,Keterangan,Masuk,Keluar,Saldo" if seq else "Rekening,Tanggal,Keterangan,Masuk,Keluar,Saldo"]
+    per_day = {}
     for d, note, cr, db, bal in rows:
-        out.append(f'1110000001,{d},"{note}",{cr},{db},{bal}')
+        per_day[d] = per_day.get(d, 0) + 1
+        out.append(f'1110000001,{d},{per_day[d]},"{note}",{cr},{db},{bal}' if seq else f'1110000001,{d},"{note}",{cr},{db},{bal}')
     return ("\n".join(out) + "\n").encode()
 
 
 def scenario_money_rail(api):
+    if not installed(api, "bank_transaction"):
+        fail("money rail", "bank_statement module not installed on this site")
+        return
     item = services(api)[0]["name"]
     st, cust = api.create("customer", {"customer_name": "PT Contoh Lunas", "phone": "081200001111"})
     check("money rail: create customer with a WhatsApp number", st == 201, cust)
@@ -1406,9 +1412,6 @@ def scenario_money_rail(api):
     check("WhatsApp print of a draft invoice: no bill, no wa.me link",
           st == 200 and "wa.me" not in page and "650.000" not in page and "belum diajukan" in page, (st, page[:800]))
 
-    if not installed(api, "bank_transaction"):
-        return
-
     # 3. mutasi: import the statement
     rows = [("06/11/2026", f"TRSF E-BANKING CR {inv_a} PT CONTOH LUNAS", 2_750_000, 0, 12_750_000),
             ("06/11/2026", "TRSF E-BANKING CR PT CONTOH LUNAS", 1_234_000, 0, 13_984_000),
@@ -1441,12 +1444,34 @@ def scenario_money_rail(api):
     check("line whose amount fits two invoices: no suggestion", ld["status"] == "unmatched" and not ld["suggested_invoice"], ld)
     eq("money out: no suggestion", lf["status"], "unmatched")
 
+    # two equal transfers on one day, statement without Saldo: Urutan keeps them apart, so neither is lost
+    same = ("06/12/2026", "TRSF CR SAMA", 500_000, 0, "")
+    st, pv4 = api.upload("/api/v1/imports/bank_statement_csv", {}, "pagi.csv", statement_csv([same]))
+    st, c4 = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv4['id']}/commit")
+    check("morning export without Saldo: 1 line", st == 200 and len(c4.get("records", [])) == 1, (st, c4))
+    st, pv5 = api.upload("/api/v1/imports/bank_statement_csv", {}, "sore.csv", statement_csv([same, same]))
+    check("evening export with a second equal transfer: no error", st == 200 and pv5["errors"] == [], (st, pv5))
+    st, c5 = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv5['id']}/commit")
+    check("evening export adds the second equal transfer", st == 200 and len(c5.get("records", [])) == 1, (st, c5))
+    eq("both equal transfers are kept", len(api.find("bank_transaction", "description == 'TRSF CR SAMA'")), 2)
+    # a part of a day pasted and numbered from 1 again, with Saldo: no equal transfer is dropped
+    q = ("06/12/2026", "QRIS CR SAMA", 50_000, 0)
+    st, pv7 = api.upload("/api/v1/imports/bank_statement_csv", {}, "qris-pagi.csv", statement_csv([q + (1_050_000,), q + (1_100_000,)]))
+    api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv7['id']}/commit")
+    st, pv8 = api.upload("/api/v1/imports/bank_statement_csv", {}, "qris-siang.csv", statement_csv([q + (1_100_000,), q + (1_150_000,), q + (1_200_000,)]))
+    st, c8 = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv8['id']}/commit")
+    check("partial paste renumbered from 1, Saldo filled: the two new equal transfers are added, none dropped",
+          len(api.find("bank_transaction", "description == 'QRIS CR SAMA'")) >= 4, (st, c8))
+    st, pv6 = api.upload("/api/v1/imports/bank_statement_csv", {}, "tanpa-urutan.csv", statement_csv([("07/12/2026", "TRSF CR LAIN", 1_000, 0, "")], seq=False))
+    check("a statement without the Urutan column is refused, not deduplicated silently",
+          st == 200 and any(e.get("column") == "Urutan" for e in pv6.get("errors", [])), (st, pv6))
+
     # 4. cocok -> pembayaran -> lunas
     st, resp = api.patch("bank_transaction", la["name"], {"status": "confirmed"})
     check("confirm the suggested line", st == 200, (st, resp))
     la = api.get("bank_transaction", la["name"])
-    check("confirming drafts a payment linked to the line", bool(la.get("payment")), la)
-    p = api.get("payment", la["payment"])
+    check("confirming drafts a payment linked to the line (not yet the matched payment)", bool(la.get("draft_payment")) and not la.get("payment"), la)
+    p = api.get("payment", la["draft_payment"])
     check("drafted payment: customer, amount, reference = line, one allocation to the invoice",
           p["docstatus"] == 0 and p["customer"] == customer and p["amount"] == 2_750_000 and p["reference"] == la["name"]
           and [(r["sales_invoice"], r["amount"]) for r in p["allocations"]] == [(inv_a, 2_750_000)], p)
@@ -1457,6 +1482,20 @@ def scenario_money_rail(api):
     check("invoice A lunas: outstanding 0, status paid", inv["outstanding"] == 0 and inv["status"] == "paid", inv)
     la = api.get("bank_transaction", la["name"])
     check("line matched to the submitted payment", la["status"] == "matched" and la["payment"] == pname, la)
+    st, resp = api.patch("bank_transaction", la["name"], {"status": "unmatched"})
+    check("a matched line cannot be set back by hand", st == 422, (st, resp))
+
+    # another payment that only names the line in its reference does not take the line over
+    st, other = api.create("payment", {"direction": "receive", "customer": customer, "amount": 100_000, "reference": la["name"],
+                                       "allocations": [{"sales_invoice": inv_d, "amount": 100_000}]})
+    st, resp = api.verb("payment", other.get("name", ""), "submit")
+    check("other payment with reference = the line submitted", st == 200, (st, resp))
+    other_name = resp.get("name", "")
+    la = api.get("bank_transaction", la["name"])
+    check("the line stays matched to its own payment", la["status"] == "matched" and la["payment"] == pname, la)
+    st, resp = api.verb("payment", other_name, "cancel")
+    la = api.get("bank_transaction", la["name"])
+    check("cancelling the other payment leaves the line matched", st == 200 and la["status"] == "matched" and la["payment"] == pname, (st, la))
     st, page, _ = api.print_html("sales_invoice", inv_a, "sales_invoice_whatsapp")
     check("WhatsApp print of a paid invoice thanks the customer", st == 200 and "sudah lunas" in page, page[:400])
 
@@ -1464,7 +1503,22 @@ def scenario_money_rail(api):
     st, resp = api.patch("bank_transaction", ld["name"], {"status": "confirmed"})
     check("confirm without an invoice -> 422", st == 422, (st, resp))
     st, resp = api.patch("bank_transaction", ld["name"], {"suggested_invoice": inv_e, "status": "confirmed"})
-    check("owner picks invoice E and confirms", st == 200 and bool(api.get("bank_transaction", ld["name"]).get("payment")), (st, resp))
+    ld = api.get("bank_transaction", ld["name"])
+    check("owner picks invoice E and confirms", st == 200 and bool(ld.get("draft_payment")), (st, ld))
+    st, resp = api.patch("bank_transaction", ld["name"], {"status": "matched"})
+    check("a line cannot be set to Cocok by hand while its payment is a draft", st == 422, (st, resp))
+    # the drafted payment is deleted: the line is not stuck, confirming again drafts a new one
+    st, resp = api.call("DELETE", f"/api/v1/r/payment/{api.q(ld['draft_payment'])}")
+    check("delete the drafted payment", st in (200, 204), (st, resp))
+    st, resp = api.patch("bank_transaction", ld["name"], {"status": "suggested"})
+    ld2 = api.get("bank_transaction", ld["name"])
+    check("after the draft is deleted the line can go back", st == 200 and ld2["status"] == "suggested", (st, ld2))
+    st, resp = api.patch("bank_transaction", ld["name"], {"status": "confirmed"})
+    ld2 = api.get("bank_transaction", ld["name"])
+    check("confirming again drafts a new payment", st == 200 and ld2.get("draft_payment") not in ("", None, ld["draft_payment"]), (st, ld2))
+    st, resp = api.verb("payment", ld2.get("draft_payment", ""), "submit")
+    ld2 = api.get("bank_transaction", ld["name"])
+    check("submitting it matches the line", st == 200 and ld2["status"] == "matched" and ld2["payment"] == resp.get("name"), (st, ld2))
     st, resp = api.patch("bank_transaction", lf["name"], {"suggested_invoice": inv_d, "status": "confirmed"})
     check("money out cannot be confirmed against a sales invoice", st == 422, (st, resp))
 
@@ -1474,7 +1528,156 @@ def scenario_money_rail(api):
     la = api.get("bank_transaction", la["name"])
     check("line A back to unmatched, payment cleared", la["status"] == "unmatched" and not la.get("payment"), la)
     eq("invoice A owed again", api.get("sales_invoice", inv_a)["outstanding"], 2_750_000)
+    # the cancelled payment is amended and submitted: the line follows it (amended_from), so it is not confirmed again
+    st, am = api.verb("payment", pname, "amend")
+    st, resp = api.verb("payment", am.get("name", ""), "submit")
+    la = api.get("bank_transaction", la["name"])
+    check("the amended payment of line A matches line A again", st == 200 and la["status"] == "matched" and la["payment"] == resp.get("name"), (st, la))
+    eq("invoice A paid once", api.get("sales_invoice", inv_a)["outstanding"], 0)
 
+    # going back and forth never leaves a second draft: one line, one payment
+    inv_o, inv_o2 = submitted_invoice(1_000_001), submitted_invoice(1_000_002)
+    st, lo = api.create("bank_transaction", {"account": "1110000001", "date": "2026-11-08", "seq": 1, "description": "TRSF CR BOLAK BALIK", "credit": 400_000})
+    check("statement line for the back-and-forth case", st == 201, (st, lo))
+    api.patch("bank_transaction", lo["name"], {"suggested_invoice": inv_o, "status": "confirmed"})
+    d1 = api.get("bank_transaction", lo["name"]).get("draft_payment")
+    api.patch("bank_transaction", lo["name"], {"status": "suggested"})
+    api.patch("bank_transaction", lo["name"], {"suggested_invoice": inv_o2, "status": "confirmed"})
+    lo = api.get("bank_transaction", lo["name"])
+    drafts = api.find("payment", f"reference == '{lo['name']}' && docstatus == 0")
+    check("confirm, back, confirm again with another invoice: the same single draft", bool(d1) and lo["draft_payment"] == d1 and len(drafts) == 1, (d1, lo, drafts))
+    p1 = api.get("payment", d1)
+    check("the draft follows the invoice chosen last", [r["sales_invoice"] for r in p1.get("allocations", [])] == [inv_o2], p1)
+    api.patch("bank_transaction", lo["name"], {"status": "ignored"})
+    st, resp = api.verb("payment", d1, "submit")
+    lo = api.get("bank_transaction", lo["name"])
+    check("its draft submitted while the line is set aside still matches the line (no second payment possible)",
+          st == 200 and lo["status"] == "matched" and lo["payment"] == resp.get("name"), (st, lo))
+    eq("invoices: the first untouched, the last paid 400.000", (api.get("sales_invoice", inv_o)["outstanding"], api.get("sales_invoice", inv_o2)["outstanding"]), (1_000_001, 600_002))
+
+    # The invariant, whatever the path: one statement line, at most one live payment (bank_transaction_claim).
+    def one_live(label, line_name, invoices, amount):
+        live = api.find("payment", f"bank_transaction == '{line_name}' && docstatus == 1")
+        paid = sum(base - api.get("sales_invoice", i)["outstanding"] for i, base in invoices)
+        ln = api.get("bank_transaction", line_name)
+        check(f"{label}: one live payment for the line, the transfer paid once, the line matched to it",
+              len(live) == 1 and paid == amount and ln["status"] == "matched" and ln["payment"] == live[0]["name"], (live, paid, ln))
+
+    def new_line(desc, seq, amount=300_000):
+        st, ln = api.create("bank_transaction", {"account": "1110000001", "date": "2026-11-09", "seq": seq, "description": desc, "credit": amount})
+        return ln["name"]
+
+    def confirm(line_name, invoice):
+        api.patch("bank_transaction", line_name, {"suggested_invoice": invoice, "status": "confirmed"})
+        return api.get("bank_transaction", line_name)["draft_payment"]
+
+    def submit(name):
+        st, r = api.verb("payment", name, "submit")
+        return st, (r.get("name", "") if isinstance(r, dict) else "")
+
+    # N1: paid to A, cancelled, confirmed to B, the cancelled payment amended; both submitted: the second is refused
+    ia, ib = submitted_invoice(1_000_003), submitted_invoice(1_000_004)
+    ln = new_line("TRSF CR N1", 1)
+    st, p0 = submit(confirm(ln, ia))
+    st, resp = api.verb("payment", p0, "cancel")
+    check("N1: cancel the payment of the line", st == 200 and api.get("bank_transaction", ln)["status"] == "unmatched", (st, resp))
+    d2 = confirm(ln, ib)
+    st, am = api.verb("payment", p0, "amend")
+    check("N1: the amend keeps the line", am.get("bank_transaction") == ln, am)
+    st1, _ = submit(am.get("name", ""))
+    st2, _ = submit(d2)
+    check("N1: of the amend and the new draft, one submits and the other is refused (422)", sorted((st1, st2)) == [200, 422], (st1, st2))
+    one_live("N1", ln, [(ia, 1_000_003), (ib, 1_000_004)], 300_000)
+
+    # H2 / H3: a chain (paid, cancelled, confirmed again, paid, cancelled), then both cancelled payments amended,
+    # or one amended and the line confirmed again
+    for label, amend_both in (("H2", True), ("H3", False)):
+        ia, ib = submitted_invoice(1_000_010 + amend_both), submitted_invoice(1_000_020 + amend_both)
+        ln = new_line(f"TRSF CR {label}", 2 + amend_both)
+        st, p0 = submit(confirm(ln, ia))
+        api.verb("payment", p0, "cancel")
+        st, p2 = submit(confirm(ln, ib))
+        api.verb("payment", p2, "cancel")
+        st, a0 = api.verb("payment", p0, "amend")
+        st1, _ = submit(a0.get("name", ""))
+        if amend_both:
+            st, a2 = api.verb("payment", p2, "amend")
+            st2, _ = submit(a2.get("name", ""))
+        else:   # the line is matched by the amend already: confirming it again is refused at the line
+            st2, _ = api.patch("bank_transaction", ln, {"suggested_invoice": ib, "status": "confirmed"})
+            if st2 == 200:
+                st2, _ = submit(api.get("bank_transaction", ln)["draft_payment"])
+        check(f"{label}: the first submit goes through, the second is refused", (st1, st2) == (200, 422), (st1, st2))
+        one_live(label, ln, [(ia, 1_000_010 + amend_both), (ib, 1_000_020 + amend_both)], 300_000)
+
+    # r4: paid to A, cancelled, confirmed to B (draft D2), the cancelled payment amended, confirmed to C
+    ia, ib, ic = submitted_invoice(1_000_031), submitted_invoice(1_000_032), submitted_invoice(1_000_033)
+    ln = new_line("TRSF CR R4", 4)
+    st, p0 = submit(confirm(ln, ia))
+    api.verb("payment", p0, "cancel")
+    d2 = confirm(ln, ib)
+    st, am = api.verb("payment", p0, "amend")
+    dc = confirm(ln, ic)
+    sts = [submit(n)[0] for n in {d2, am.get("name", ""), dc}]
+    check("r4: of all drafts of the line exactly one submits", sts.count(200) == 1 and all(x in (200, 409, 422) for x in sts), sts)
+    one_live("r4", ln, [(ia, 1_000_031), (ib, 1_000_032), (ic, 1_000_033)], 300_000)
+
+    # two drafts of one line submitted at the same time: the unique claim lets exactly one through
+    import threading
+    ia, ib = submitted_invoice(1_000_041), submitted_invoice(1_000_042)
+    ln = new_line("TRSF CR SERENTAK", 5)
+    drafts = []
+    for inv_ in (ia, ib):
+        st, dp = api.create("payment", {"direction": "receive", "customer": customer, "amount": 300_000, "reference": ln, "bank_transaction": ln,
+                                        "allocations": [{"sales_invoice": inv_, "amount": 300_000}]})
+        drafts.append(dp.get("name", ""))
+    api.patch("bank_transaction", ln, {"suggested_invoice": ia, "status": "confirmed"})   # reuses one of them
+    results = []
+    threads = [threading.Thread(target=lambda n=n: results.append(submit(n)[0])) for n in drafts]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    check("concurrent submits of two drafts of one line: one 200, one refused", sorted(results)[0] == 200 and sorted(results)[1] in (409, 422, 500) and len(results) == 2, results)
+    check("concurrent submits: never 500", 500 not in results, results)
+    one_live("concurrent", ln, [(ia, 1_000_041), (ib, 1_000_042)], 300_000)
+
+    # a payment that names a matched line is refused, so the line cannot be taken over through bank_transaction either
+    st, intr = api.create("payment", {"direction": "receive", "customer": customer, "amount": 1_000, "bank_transaction": ln,
+                                      "allocations": [{"sales_invoice": inv_d, "amount": 1_000}]})
+    st, resp = api.verb("payment", intr.get("name", ""), "submit")
+    check("a second payment naming a matched line is refused (422)", st == 422, (st, resp))
+
+    # only the line's own draft (or the amend of its payment) may claim it, and the link cannot be edited
+    ia = submitted_invoice(1_000_051)
+    ln = new_line("TRSF CR A1", 6, 400_000)
+    st, fp = api.create("payment", {"direction": "receive", "customer": customer, "amount": 1, "bank_transaction": ln,
+                                    "allocations": [{"sales_invoice": ia, "amount": 1}]})
+    st, resp = api.verb("payment", fp.get("name", ""), "submit")
+    check("A1: a payment that is not the line's draft cannot claim the line", st == 422 and api.get("bank_transaction", ln)["status"] != "matched", (st, resp))
+    d1 = confirm(ln, ia)
+    st, resp = api.patch("payment", d1, {"bank_transaction": ""})
+    check("A2: the line of a draft from the statement cannot be cleared", st == 422, (st, resp))
+    ln2 = new_line("TRSF CR A3", 7, 250_000)
+    st, resp = api.patch("payment", d1, {"bank_transaction": ln2})
+    check("A3: nor moved to another line", st == 422, (st, resp))
+    st, resp = api.patch("payment", d1, {"amount": 1, "allocations": [{"sales_invoice": ia, "amount": 1}]})
+    st, resp = api.verb("payment", d1, "submit")
+    check("N4: the line's draft with an amount other than the transfer is refused", st == 422, (st, resp))
+    st, resp = api.patch("payment", d1, {"amount": 400_000, "allocations": [{"sales_invoice": ia, "amount": 400_000}]})
+    st, resp = api.verb("payment", d1, "submit")
+    check("A2/A3/N4: the untouched draft submits and matches", st == 200 and api.get("bank_transaction", ln)["status"] == "matched", (st, resp))
+    vend = api.list("vendor")
+    st, pp = api.create("payment", {"direction": "pay", "vendor": vend[0]["name"], "amount": 10, "bank_transaction": ln2})
+    st, resp = api.verb("payment", pp.get("name", ""), "submit")
+    claims = api.find("bank_transaction_claim", f"bank_transaction == '{ln2}'")
+    check("A4: a vendor payment never claims a statement line", not claims, (st, resp, claims))
+    ib = submitted_invoice(1_000_052)
+    st, resp = api.patch("bank_transaction", ln2, {"suggested_invoice": ib, "status": "confirmed"})
+    st, resp = api.verb("payment", api.get("bank_transaction", ln2)["draft_payment"], "submit")
+    check("A4: nor keeps the line from being confirmed and paid", st == 200 and api.get("bank_transaction", ln2)["status"] == "matched", (st, resp))
+    st, resp = CTX["fm"].call("DELETE", f"/api/v1/r/bank_transaction/{api.q(ln)}") if CTX.get("fm") else (403, None)
+    check("S9: a matched statement line cannot be deleted", st in (403, 409, 422) and api.get("bank_transaction", ln) is not None, (st, resp))
 
 def setup_demo_jasa(api, k):
     """One member per jasa role in PT Contoh Inspeksi (rangka user add), signed in: the owner self-approves, so only these can show a held approval."""
@@ -1662,6 +1865,10 @@ MATRIX = {
                           "head_office": {"read", "create", "write"}},
     "invoice_reminder": {"finance_manager": {"read", "create", "write", "delete", "export"}, "sales_manager": {"read", "create", "write", "delete", "export"},
                          "sales_rep": {"read", "create"}},
+    "bank_transaction_claim": {"finance_manager": {"read", "create", "write", "export"}, "sales_manager": {"read", "create", "write", "export"},
+                               "head_office": {"read", "create", "write"}},
+    "bank_transaction": {"finance_manager": {"read", "create", "write", "delete", "export", "import"}, "sales_manager": {"read", "create", "write", "export", "import"},
+                         "head_office": {"read", "create", "write", "export", "import"}},
     "payment": {"finance_manager": _ALL, "sales_manager": _ALL, "head_office": {"read", "create", "write", "submit", "print"}},   # head_office: if direction == 'pay'
     "purchase_request": {"purchasing_manager": _ALL, "project_admin": _RCWS, "head_office": _ALL, "outlet_staff": _RCWS},
     "purchase_order": {"purchasing_manager": _ALL, "finance_manager": _RP, "head_office": _ALL},

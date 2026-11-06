@@ -67,6 +67,12 @@ fields:
   - name: gateway_ref
     type: data
     label: {id: ID transaksi gateway}
+  # The bank statement line this payment pays (bank_statement module). Not read_only, so amend keeps it; one live
+  # payment per line is enforced by bank_transaction_claim when the module is installed.
+  - name: bank_transaction
+    type: data
+    label: {id: Mutasi bank}
+    depends_on: direction == 'receive'
   - name: amount
     type: currency
     label: {id: Jumlah uang}
@@ -160,7 +166,7 @@ views:
       - section: {id: Pembayaran}
         columns:
           - [direction, customer, vendor, payment_date]
-          - [method, reference, amount, gateway, gateway_ref]
+          - [method, reference, amount, gateway, gateway_ref, bank_transaction]
       - section: {id: Alokasi}
         fields: [allocations]
       - section: {id: Ringkasan}
