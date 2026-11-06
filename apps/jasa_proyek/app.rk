@@ -19,19 +19,20 @@ modules:
   workforce: ^1.0
   projects: ^1.0
   payments: ^1.0
+  bank_statement: ^1.0
   procurement: ^1.0
-dashboards: [jasa_overview, ar_aging]
+dashboards: [jasa_overview, ar_aging, project_margin]
 roles: [sales_manager, finance_manager, purchasing_manager, project_admin]
 home: {dashboard: jasa_overview}
 menu:
   - group: {id: Penjualan}
     items: [quotation, customer_order, sales_invoice]
   - group: {id: Proyek}
-    items: [project, assignment, timesheet, acceptance]
+    items: [project, billing_milestone, assignment, timesheet, project_expense, acceptance, project_ledger]
   - group: {id: Tenaga kerja}
     items: [worker]
   - group: {id: Keuangan}
-    items: [payment, withholding, vendor_bill]
+    items: [payment, bank_transaction, invoice_reminder, withholding, vendor_bill]
   - group: {id: Pembelian}
     items: [purchase_request, purchase_order]
   - group: {id: Data induk}
@@ -43,7 +44,7 @@ onboarding:
     options: ['true', 'false']
     sets: tax.pkp
   - ask: {id: 'Apa bidang usaha kamu?'}
-    options: [manpower, inspeksi, rental, training]
+    options: [manpower, inspeksi, rental, training, konsultan]
     sets: settings.business_line
   - ask: {id: 'Berapa PT yang kamu kelola?'}
     sets: seed.orgs

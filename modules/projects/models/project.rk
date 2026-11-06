@@ -6,8 +6,10 @@ naming: PRJ-{YYYY}-{####}
 title_field: project_name
 permissions:
   - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
-  - {role: sales_manager, read: true}
-  - {role: finance_manager, read: true}
+  # Finance and sales write projects only so the invoice flows (which run as them) can keep billed_amount; the terms
+  # they could edit freeze once the project has a schedule or invoices (project_terms_lock).
+  - {role: sales_manager, read: true, write: true}
+  - {role: finance_manager, read: true, write: true}
 fields:
   - name: project_name
     type: data
@@ -53,7 +55,75 @@ fields:
   - name: notes
     type: text
     label: {id: Catatan}
+  # The engagement: how the client is billed and against which contract (SPK, agreement, PO). All optional, so a
+  # manpower project that only logs days keeps working as before.
+  - name: billing_model
+    type: select
+    label: {id: Model tagihan}
+    default: "'fixed'"
+    options:
+      - {value: fixed, label: {id: Harga borongan}}
+      - {value: milestone, label: {id: Termin}}
+      - {value: retainer, label: {id: Retainer bulanan}}
+      - {value: time_material, label: {id: Per jam atau hari}}
+  - name: contract_kind
+    type: select
+    label: {id: Jenis kontrak}
+    options:
+      - {value: spk, label: {id: SPK}}
+      - {value: agreement, label: {id: Surat perjanjian}}
+      - {value: po, label: {id: PO klien}}
+      - {value: receipt, label: {id: Kuitansi}}
+  - name: contract_no
+    type: data
+    label: {id: No. kontrak}
+    in_list: true
+  - name: contract_date
+    type: date
+    label: {id: Tanggal kontrak}
+  - name: contract_value
+    type: currency
+    label: {id: Nilai kontrak (DPP)}
+    default: '0'
+  # The sum of this project's billing milestones, kept by flows when a milestone is created or its amount changes
+  # (milestones cannot be deleted by people, so the sum never misses one). Rule schedule_within_contract keeps it at or
+  # under the contract value, which refuses a milestone that would overfill the schedule and a contract lowered below it.
+  # A retainer's contract value is the monthly fee: each month is checked against it instead (billing_milestone).
+  - name: scheduled_amount
+    type: currency
+    label: {id: Nilai termin terjadwal}
+    read_only: true
+    default: '0'
+  # The DPP of this project's live invoices (retention releases excluded), recomputed from the invoices by flows at each
+  # invoice's submit and cancel; rule billing_within_contract refuses the submit that would take it above the contract.
+  - name: billed_amount
+    type: currency
+    label: {id: Nilai tertagih}
+    read_only: true
+    default: '0'
+  # Set only by flow project_terms_lock, inside an edit that changes frozen commercial terms; rule terms_locked refuses it.
+  - name: locked_terms
+    type: check
+    label: {id: Syarat komersial terkunci}
+    hidden: true
+    default: 'false'
 rules:
+  - name: terms_locked
+    on: save
+    check: "!locked_terms"
+    message: {id: 'Nilai kontrak dan model tagihan terkunci: proyek sudah punya termin atau faktur'}
+  - name: billing_within_contract
+    on: save
+    check: billing_model == 'retainer' || contract_value == 0 || billed_amount <= contract_value
+    message: {id: Tagihan proyek melebihi nilai kontrak}
+  - name: schedule_within_contract
+    on: save
+    check: billing_model == 'retainer' || contract_value == 0 || scheduled_amount <= contract_value
+    message: {id: Jumlah termin melebihi nilai kontrak}
+  - name: contract_value_not_negative
+    on: save
+    check: contract_value >= 0
+    message: {id: Nilai kontrak tidak boleh negatif}
   - name: end_after_start
     on: save
     check: start_date == '' || end_date == '' || end_date >= start_date
@@ -77,5 +147,9 @@ views:
         columns:
           - [project_name, customer, customer_order, site]
           - [state, manager, start_date, end_date]
+      - section: {id: Kontrak}
+        columns:
+          - [billing_model, contract_kind, contract_no]
+          - [contract_date, contract_value]
       - section: {id: Catatan}
         fields: [notes]

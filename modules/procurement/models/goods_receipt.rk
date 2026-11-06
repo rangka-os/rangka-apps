@@ -10,7 +10,7 @@ on_submit: [stock.post_moves]
 on_cancel: [stock.reverse_moves]
 permissions:
   - {role: purchasing_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
-  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, import: true, print: true}
   - {role: outlet_staff, read: true, create: true, write: true, submit: true}
 fields:
   - name: purchase_order

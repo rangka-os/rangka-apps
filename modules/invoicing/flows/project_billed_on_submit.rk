@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: project_billed_on_submit
+label: {id: Tagihan proyek dihitung ulang}
+# Inside the invoice's submit. billed_amount is recomputed from the project's submitted invoices (retention releases excluded), so invoices
+# from before billed_amount existed count too; the project's rule billing_within_contract then refuses the save that
+# would bill the project above its contract.
+on: sales_invoice.submitted
+if: event.project != ''
+steps:
+  - find_all: sales_invoice
+    where: project == event.project && docstatus == 1 && kind != 'retention'
+    as: invs
+  - {find: project, where: name == event.project, as: prj}
+  - update: prj
+    set:
+      billed_amount: "size(invs) == 0 ? 0 : invs.map(i, i.dpp).sum()"

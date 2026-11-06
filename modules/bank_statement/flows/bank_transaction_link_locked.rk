@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# payment.bank_transaction is set when the payment is made (the line's draft, or by hand) and never changed after:
+# clearing it would let the draft be submitted without claiming the line, moving it would let it claim another line.
+# A change is refused by creating an invalid claim, whose rule rolls the whole save back.
+name: bank_transaction_link_locked
+label: {id: Mutasi bank di pembayaran tidak bisa diubah}
+on: payment.updated
+if: event.before != null && event.before.bank_transaction != event.bank_transaction
+steps:
+  - create: bank_transaction_claim
+    set: {bank_transaction: "''", payment: event.name, valid: 'false'}

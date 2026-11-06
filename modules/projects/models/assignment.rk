@@ -41,6 +41,22 @@ fields:
     label: {id: Tarif per hari}
     default: worker.day_rate
     in_list: true
+  # Billed per day (manpower, the default) or per hour (consultants); the rates default from the worker.
+  - name: rate_basis
+    type: select
+    label: {id: Satuan tarif}
+    default: "'day'"
+    options:
+      - {value: day, label: {id: Per hari}}
+      - {value: hour, label: {id: Per jam}}
+  - name: hour_rate
+    type: currency
+    label: {id: Tarif per jam}
+    default: worker.hour_rate
+  - name: cost_rate
+    type: currency
+    label: {id: Biaya per satuan}
+    default: "rate_basis == 'hour' ? worker.cost_hour_rate : worker.cost_day_rate"
   - name: notes
     type: text
     label: {id: Catatan}
@@ -58,6 +74,10 @@ views:
       - section: {id: Penugasan}
         columns:
           - [project, worker, site]
-          - [start_date, end_date, day_rate]
+          - [start_date, end_date]
+      - section: {id: Tarif}
+        columns:
+          - [rate_basis, day_rate, hour_rate]
+          - [cost_rate]
       - section: {id: Catatan}
         fields: [notes]

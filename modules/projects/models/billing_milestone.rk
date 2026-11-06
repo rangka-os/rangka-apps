@@ -1,0 +1,217 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: billing_milestone
+label: {id: Termin tagihan, en: Billing milestone}
+icon: invoice
+naming: TRM-{YYYY}-{#####}
+title_field: title
+# The billing schedule of a project: down payment, milestones (by date or after an acceptance report), monthly
+# retainers, time-and-material periods, retention. state is written by flows only: planned -> ready when the project's
+# acceptance report is submitted (trigger acceptance), -> invoiced when an invoice linked to it is submitted, back to
+# ready when that invoice is cancelled. A date-triggered milestone stays planned and shows as due from its due_date.
+permissions:
+  # No delete: there is no delete event for flows, so project.scheduled_amount would keep a deleted milestone; and an
+  # invoiced milestone must keep its invoice link. Create and import are the project admin's (the schedule flows update
+  # the project, which only project admins may write); finance writes the state through the invoice flows.
+  - {role: project_admin, read: true, create: true, write: true, export: true, import: true}
+  - {role: finance_manager, read: true, write: true, export: true}
+  - {role: sales_manager, read: true, write: true}
+fields:
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+    required: true
+    in_list: true
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    default: project.customer
+    read_only: true
+    in_list: true
+  - name: seq
+    type: int
+    label: {id: Urutan}
+    default: '1'
+  - name: title
+    type: data
+    label: {id: Judul}
+    required: true
+    in_list: true
+  - name: kind
+    type: select
+    label: {id: Jenis}
+    default: "'milestone'"
+    options:
+      - {value: down_payment, label: {id: Uang muka (DP)}}
+      - {value: milestone, label: {id: Termin}}
+      - {value: retainer, label: {id: Retainer}}
+      - {value: time_material, label: {id: Jam atau hari kerja}}
+      - {value: retention, label: {id: Pelepasan retensi}}
+  - name: basis
+    type: select
+    label: {id: Dasar nilai}
+    default: "'amount'"
+    options:
+      - {value: percent, label: {id: Persen nilai kontrak}}
+      - {value: amount, label: {id: Nominal}}
+  - name: percent
+    type: percent
+    label: {id: Persen}
+    default: '0'
+    depends_on: basis == 'percent'
+  - name: amount_fixed
+    type: currency
+    label: {id: Nominal}
+    default: '0'
+    depends_on: basis == 'amount'
+  # The contract value when the milestone was made: a percent milestone is a share of it, so its amount does not move
+  # when the contract changes later or when a flow saves the milestone again (the schedule flows only see edits).
+  - name: contract_snapshot
+    type: currency
+    label: {id: Nilai kontrak saat termin dibuat}
+    read_only: true
+    default: project.contract_value
+  - name: amount
+    type: currency
+    label: {id: Nilai termin (DPP)}
+    # contract_snapshot is empty on milestones made before it existed: those use the project's contract (frozen once billed).
+    compute: "basis == 'percent' ? round((contract_snapshot > 0 ? contract_snapshot : project.contract_value) * percent / 100) : amount_fixed"
+    in_list: true
+  - name: trigger
+    type: select
+    label: {id: Ditagih saat}
+    default: "'date'"
+    options:
+      - {value: date, label: {id: Tanggal}}
+      - {value: acceptance, label: {id: Setelah berita acara}}
+  - name: due_date
+    type: date
+    label: {id: Jatuh tempo tagih}
+    in_list: true
+  - name: period_from
+    type: date
+    label: {id: Periode dari}
+    depends_on: kind == 'retainer' || kind == 'time_material'
+  - name: period_to
+    type: date
+    label: {id: Periode sampai}
+    depends_on: kind == 'retainer' || kind == 'time_material'
+  # One retainer milestone per project and month: period_from is the 1st of the month and this key is unique.
+  - name: retainer_key
+    type: data
+    label: {id: Bulan retainer}
+    hidden: true
+    unique: true
+    compute: "kind == 'retainer' ? project + ':' + period_from : ''"
+  - name: state
+    type: select
+    label: {id: Status}
+    default: "'planned'"
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: planned, label: {id: Direncanakan}}
+      - {value: ready, label: {id: Siap ditagih}}
+      - {value: invoiced, label: {id: Sudah ditagih}}
+  - name: acceptance
+    type: link
+    to: acceptance
+    label: {id: Berita acara}
+    read_only: true
+  - name: sales_invoice
+    type: link
+    to: sales_invoice
+    label: {id: Faktur}
+    read_only: true
+    in_list: true
+  # Set only by flow milestone_lock_on_update, inside an edit that changes the amount or the project of a milestone
+  # that is no longer planned; rule edit_locked then refuses that edit.
+  # The last cancelled invoice of this milestone (set by milestone_reopened): part of the invoices' milestone_claim, so
+  # a new invoice after a cancel claims a key the cancelled one does not hold.
+  - name: bill_token
+    type: data
+    label: {id: Faktur batal terakhir}
+    read_only: true
+  # Set by milestone_invoiced when the invoice's DPP is above the milestone's amount (an edit that raced the submit);
+  # rule not_over_billed then refuses the submit.
+  - name: over_billed
+    type: check
+    label: {id: Tertagih melebihi termin}
+    hidden: true
+    default: 'false'
+  # Set by milestone_invoiced when another milestone of the same project and month is already invoiced (it reads the
+  # milestones' state, so a month billed before retainer_key existed counts too); rule month_not_billed refuses the submit.
+  - name: month_billed
+    type: check
+    label: {id: Bulan ini sudah ditagih}
+    hidden: true
+    default: 'false'
+  - name: locked_edit
+    type: check
+    label: {id: Perubahan terkunci}
+    hidden: true
+    default: 'false'
+rules:
+  - name: not_over_billed
+    on: save
+    check: "!over_billed"
+    message: {id: DPP faktur melebihi nilai termin}
+  - name: edit_locked
+    on: save
+    check: "!locked_edit"
+    message: {id: 'Termin siap ditagih atau sudah ditagih: nilai, proyek, jenis, dan periodenya tidak bisa diubah'}
+  - name: month_not_billed
+    on: save
+    check: "!month_billed"
+    message: {id: Bulan retainer ini sudah ditagih di termin lain}
+  # A retainer project bills each month once through its retainer milestones (retainer_key, month_not_billed); a milestone
+  # of another kind would bill the month again, so it is refused there.
+  - name: retainer_project_monthly
+    on: save
+    check: project.billing_model != 'retainer' || kind == 'retainer'
+    message: {id: 'Proyek retainer hanya memakai termin jenis Retainer (satu per bulan)'}
+  - name: percent_needs_contract
+    on: save
+    check: basis != 'percent' || contract_snapshot > 0 || project.contract_value > 0
+    message: {id: Termin persen butuh nilai kontrak di proyek}
+  - name: retainer_month
+    on: save
+    check: kind != 'retainer' || (period_from != '' && period_from.endsWith('-01'))
+    message: {id: 'Termin retainer satu per bulan: Periode dari harus tanggal 1'}
+  - name: retainer_month_within_fee
+    on: save
+    check: project.billing_model != 'retainer' || project.contract_value == 0 || amount <= project.contract_value
+    message: {id: Termin retainer tidak boleh melebihi fee bulanan (nilai kontrak)}
+  - name: percent_range
+    on: save
+    check: basis != 'percent' || (percent > 0 && percent <= 100)
+    message: {id: Persen termin harus di atas 0 dan paling besar 100}
+  - name: amount_positive
+    on: save
+    check: basis != 'amount' || amount_fixed > 0
+    message: {id: Nominal termin harus lebih dari 0}
+  - name: due_date_for_date_trigger
+    on: save
+    check: trigger != 'date' || due_date != ''
+    message: {id: Termin berdasarkan tanggal wajib punya jatuh tempo tagih}
+  - name: period_order
+    on: save
+    check: period_from == '' || period_to == '' || period_to >= period_from
+    message: {id: Periode sampai tidak boleh sebelum periode dari}
+views:
+  list:
+    columns: [name, project, customer, seq, title, kind, amount, due_date, state, sales_invoice]
+    filters: [project, state, kind]
+    sort: due_date
+  form:
+    layout:
+      - section: {id: Termin}
+        columns:
+          - [project, customer, seq, title, kind]
+          - [basis, percent, amount_fixed, amount]
+      - section: {id: Kapan ditagih}
+        columns:
+          - [trigger, due_date, period_from, period_to]
+          - [state, acceptance, sales_invoice]

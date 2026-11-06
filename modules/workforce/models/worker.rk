@@ -32,6 +32,24 @@ fields:
     type: currency
     label: {id: Tarif per hari}
     in_list: true
+  # Selling rate per hour, and what an hour or a day of this person costs the firm (pay divided by working days or
+  # hours, entered by the owner): project margin reads the cost, the invoice reads the selling rate.
+  - name: hour_rate
+    type: currency
+    label: {id: Tarif per jam}
+    default: '0'
+  # Pay per person: hidden in forms and lists for roles that do not need it (hidden_for is not enforced by the kernel
+  # yet; the REST API still returns it to anyone who may read worker).
+  - name: cost_day_rate
+    type: currency
+    label: {id: Biaya per hari}
+    default: '0'
+    hidden_for: [sales_manager, purchasing_manager, head_office, outlet_staff, sales_rep]
+  - name: cost_hour_rate
+    type: currency
+    label: {id: Biaya per jam}
+    default: '0'
+    hidden_for: [sales_manager, purchasing_manager, head_office, outlet_staff, sales_rep]
   - name: active
     type: check
     label: {id: Aktif}
@@ -48,6 +66,9 @@ views:
       - section: {id: Identitas}
         columns:
           - [worker_name, employee_no, role_title]
-          - [phone, day_rate, active]
+          - [phone, day_rate, hour_rate, active]
+      - section: {id: Biaya internal}
+        columns:
+          - [cost_day_rate, cost_hour_rate]
       - section: {id: Sertifikasi}
         fields: [certifications]

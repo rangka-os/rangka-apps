@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: project_terms_lock
+label: {id: Syarat komersial proyek terkunci}
+# Inside a person's edit of a project that changes its contract value or billing model: refused (locked_terms + rule
+# terms_locked) once the project has a submitted invoice or any billing milestone, read from the documents themselves
+# so data from before this flow existed is covered too. Contract 0 stays "no limit" for projects billed without a
+# contract value, but cannot be reached after the fact.
+on: project.updated
+if: event.contract_value != event.before.contract_value || event.billing_model != event.before.billing_model
+steps:
+  - find_all: sales_invoice
+    where: project == event.name && docstatus == 1
+    limit: 1
+    as: invs
+  - find_all: billing_milestone
+    where: project == event.name
+    limit: 1
+    as: ms
+  - if: size(invs) > 0 || size(ms) > 0
+    find: project
+    where: name == event.name
+    as: prj
+  - if: size(invs) > 0 || size(ms) > 0
+    update: prj
+    set:
+      locked_terms: 'true'

@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: vendor_bill_cancel_guard
+label: {id: Tagihan dipakai biaya proyek tidak bisa dibatalkan}
+# Inside a vendor bill's cancel: when a live project expense links this bill, the cancel is refused (project_guard),
+# so the bill cannot be amended with the project and counted again next to the expense.
+on: vendor_bill.cancelled
+steps:
+  - find: project_expense
+    where: vendor_bill == event.name && docstatus == 1
+    as: ex
+  - if: ex != null
+    create: project_guard
+    set:
+      reason: "'bill_has_expense'"
+      document: ex.name

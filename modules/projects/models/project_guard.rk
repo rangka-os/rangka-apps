@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: project_guard
+label: {id: Penjaga proyek, en: Project guard}
+icon: check
+naming: GRD-{######}
+title_field: reason
+# Never stored: a flow that must refuse the document it runs in creates one of these with a reason, and the matching
+# rule fails with that reason's message, which rolls the whole save back (the flow runs inside it). Create is granted
+# to the roles whose actions run such a flow.
+permissions:
+  - {role: purchasing_manager, create: true}
+  - {role: finance_manager, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: bill_has_expense, label: {id: Tagihan dipakai biaya proyek}}
+  - name: document
+    type: data
+    label: {id: Dokumen}
+rules:
+  - name: bill_has_expense
+    on: save
+    check: reason != 'bill_has_expense'
+    message: {id: 'Tagihan ini dipakai biaya proyek yang masih aktif; batalkan biaya proyek itu dulu'}

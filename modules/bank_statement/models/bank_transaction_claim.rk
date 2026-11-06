@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# The invariant of the money rail: one statement line is paid by at most one live (submitted) payment. A payment
+# names its line in payment.bank_transaction (set when the line is confirmed; amend copies it). When such a payment
+# is submitted, flow bank_transaction_claim creates the claim for the line in the same transaction, and the unique
+# index on bank_transaction refuses the submit (422) when another live payment holds the line, whatever path made the
+# payment (a new draft, an amend, an old draft left behind, two submits at once). Cancelling the payment releases the
+# claim (bank_transaction emptied, the name kept in released_line). Only flows write it.
+# A claim is also only valid for the line's own payment: the draft the line made (line.draft_payment) or the amend of
+# a payment of that line, for the line's amount. The flows set `valid` and the rule refuses the save otherwise; the
+# same rule refuses a change of payment.bank_transaction (flow bank_transaction_link_locked).
+name: bank_transaction_claim
+label: {id: Klaim mutasi bank, en: Bank transaction claim}
+icon: bank
+naming: MTC-{YYYY}-{#####}
+title_field: bank_transaction
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, export: true}
+  - {role: sales_manager, read: true, create: true, write: true, export: true}
+  - {role: head_office, read: true, create: true, write: true}
+fields:
+  - name: bank_transaction
+    type: data
+    label: {id: Mutasi bank yang sudah dibayar}
+    unique: true
+    read_only: true
+    in_list: true
+  - name: payment
+    type: data
+    label: {id: Pembayaran}
+    read_only: true
+    in_list: true
+  - name: released_line
+    type: data
+    label: {id: Mutasi yang dilepas}
+    read_only: true
+    in_list: true
+  - name: valid
+    type: check
+    label: {id: Sah}
+    default: 'true'
+    read_only: true
+rules:
+  - name: own_payment_only
+    on: save
+    check: valid
+    message: {id: 'Mutasi bank hanya bisa dibayar oleh draf dari mutasi itu (atau amend-nya) sebesar nilai mutasi, dan tidak bisa diubah'}
+views:
+  list:
+    columns: [bank_transaction, payment, released_line]
