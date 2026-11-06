@@ -1,0 +1,94 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: adjustment_value_backfill
+label: {id: Lengkapi nilai penyesuaian stok lama}
+# Backfill for adjustments submitted before stock_adjustment_value existed (the kernel has no migrate hook for .rk, and
+# a flow has no loop): every run gives up to five live (docstatus 1) adjustments without a post row the same row the
+# submit flow writes, the sum of their stock moves on the adjustment's date. A live adjustment has no reversal move
+# yet, so the sum is what it moved. One cancelled before this ran needs no row: it nets to zero in its period either
+# way. Safe to run again (it skips adjustments that have a row; entry_key is unique) and by anyone who may read the
+# adjustments, e.g. POST /api/v1/flows/adjustment_value_backfill/run; the schedule finishes the job on its own.
+schedule: "*/5 * * * *"
+steps:
+  - find_all: stock_adjustment_value
+    where: entry == 'post'
+    as: done
+  - find: stock_adjustment
+    where: "docstatus == 1 && !(name in done.map(d, d.stock_adjustment))"
+    as: a1
+  - find_all: stock_move
+    if: a1 != null
+    where: voucher_type == 'stock_adjustment' && voucher == a1.name
+    as: m1
+  - create: stock_adjustment_value
+    if: a1 != null
+    set:
+      stock_adjustment: a1.name
+      entry: "'post'"
+      outlet: a1.outlet
+      posting_date: a1.adjustment_date
+      reason: a1.reason
+      value: m1.map(m, m.value).sum()
+  - find: stock_adjustment
+    where: "docstatus == 1 && !(name in done.map(d, d.stock_adjustment)) && a1 != null && name != a1.name"
+    as: a2
+  - find_all: stock_move
+    if: a2 != null
+    where: voucher_type == 'stock_adjustment' && voucher == a2.name
+    as: m2
+  - create: stock_adjustment_value
+    if: a2 != null
+    set:
+      stock_adjustment: a2.name
+      entry: "'post'"
+      outlet: a2.outlet
+      posting_date: a2.adjustment_date
+      reason: a2.reason
+      value: m2.map(m, m.value).sum()
+  - find: stock_adjustment
+    where: "docstatus == 1 && !(name in done.map(d, d.stock_adjustment)) && a2 != null && name != a2.name && name != a1.name"
+    as: a3
+  - find_all: stock_move
+    if: a3 != null
+    where: voucher_type == 'stock_adjustment' && voucher == a3.name
+    as: m3
+  - create: stock_adjustment_value
+    if: a3 != null
+    set:
+      stock_adjustment: a3.name
+      entry: "'post'"
+      outlet: a3.outlet
+      posting_date: a3.adjustment_date
+      reason: a3.reason
+      value: m3.map(m, m.value).sum()
+  - find: stock_adjustment
+    where: "docstatus == 1 && !(name in done.map(d, d.stock_adjustment)) && a3 != null && name != a3.name && name != a1.name && name != a2.name"
+    as: a4
+  - find_all: stock_move
+    if: a4 != null
+    where: voucher_type == 'stock_adjustment' && voucher == a4.name
+    as: m4
+  - create: stock_adjustment_value
+    if: a4 != null
+    set:
+      stock_adjustment: a4.name
+      entry: "'post'"
+      outlet: a4.outlet
+      posting_date: a4.adjustment_date
+      reason: a4.reason
+      value: m4.map(m, m.value).sum()
+  - find: stock_adjustment
+    where: "docstatus == 1 && !(name in done.map(d, d.stock_adjustment)) && a4 != null && name != a4.name && name != a1.name && name != a2.name && name != a3.name"
+    as: a5
+  - find_all: stock_move
+    if: a5 != null
+    where: voucher_type == 'stock_adjustment' && voucher == a5.name
+    as: m5
+  - create: stock_adjustment_value
+    if: a5 != null
+    set:
+      stock_adjustment: a5.name
+      entry: "'post'"
+      outlet: a5.outlet
+      posting_date: a5.adjustment_date
+      reason: a5.reason
+      value: m5.map(m, m.value).sum()

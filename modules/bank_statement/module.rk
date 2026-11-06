@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+# Bank statement lines (mutasi rekening) imported from the bank's export, matched to sales invoices and turned into
+# payments. A payment stays the only thing that settles an invoice: a statement line never pays one by itself.
+name: bank_statement
+version: 1.0.0
+title: {id: Mutasi bank, en: Bank statement}
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, invoicing: ^1.0, payments: ^1.0}

@@ -2,14 +2,22 @@
 name: milestone_invoiced
 label: {id: Termin ditandai sudah ditagih}
 # Runs inside the invoice's submit, as the person submitting it: the milestone the invoice bills becomes invoiced and
-# points at the invoice, so the schedule shows what is billed and milestone_not_invoiced refuses a second invoice.
+# points at the invoice, so the schedule shows what is billed and milestone_not_invoiced refuses a second invoice. A
+# retainer month already invoiced on another milestone of the project (also one from before retainer_key) sets
+# month_billed, and rule month_not_billed refuses the submit.
 on: sales_invoice.submitted
 if: event.billing_milestone != ''
 steps:
   - {find: billing_milestone, where: name == event.billing_milestone, as: ms}
+  - if: ms != null && ms.kind == 'retainer'
+    find_all: billing_milestone
+    where: project == ms.project && kind == 'retainer' && period_from == ms.period_from && state == 'invoiced' && name != ms.name
+    limit: 1
+    as: same_month
   - if: ms != null
     update: ms
     set:
       state: "'invoiced'"
       sales_invoice: event.name
       over_billed: ms.amount < event.dpp
+      month_billed: ms.kind == 'retainer' && size(same_month) > 0

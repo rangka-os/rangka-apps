@@ -141,6 +141,13 @@ fields:
     label: {id: Tertagih melebihi termin}
     hidden: true
     default: 'false'
+  # Set by milestone_invoiced when another milestone of the same project and month is already invoiced (it reads the
+  # milestones' state, so a month billed before retainer_key existed counts too); rule month_not_billed refuses the submit.
+  - name: month_billed
+    type: check
+    label: {id: Bulan ini sudah ditagih}
+    hidden: true
+    default: 'false'
   - name: locked_edit
     type: check
     label: {id: Perubahan terkunci}
@@ -154,7 +161,17 @@ rules:
   - name: edit_locked
     on: save
     check: "!locked_edit"
-    message: {id: Termin yang sudah siap ditagih atau ditagih tidak bisa diubah nilai atau proyeknya}
+    message: {id: 'Termin siap ditagih atau sudah ditagih: nilai, proyek, jenis, dan periodenya tidak bisa diubah'}
+  - name: month_not_billed
+    on: save
+    check: "!month_billed"
+    message: {id: Bulan retainer ini sudah ditagih di termin lain}
+  # A retainer project bills each month once through its retainer milestones (retainer_key, month_not_billed); a milestone
+  # of another kind would bill the month again, so it is refused there.
+  - name: retainer_project_monthly
+    on: save
+    check: project.billing_model != 'retainer' || kind == 'retainer'
+    message: {id: 'Proyek retainer hanya memakai termin jenis Retainer (satu per bulan)'}
   - name: percent_needs_contract
     on: save
     check: basis != 'percent' || contract_snapshot > 0 || project.contract_value > 0

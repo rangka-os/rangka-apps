@@ -128,12 +128,9 @@ actions:
     primary: true
     hook: procurement.receive
     if: docstatus == 1 && received_pct < 100
-approvals:
-  - name: po_approval
-    on: submit
-    when: "grand_total > 5000000"
-    approvers: [purchasing_manager, head_office]
-    label: {id: Persetujuan pembelian, en: Purchasing approval}
+# No approval policy here: the threshold and the approver are the owner's choice per business, so a site adds them in
+# custom/purchase_order.rk (contract 0007 §1). A policy in the module would be a floor no site could raise or drop.
+# See examples/sites/demo-fnb and demo-jasa.
 views:
   list:
     columns: [name, vendor, outlet, order_date, status, grand_total, received_pct]
