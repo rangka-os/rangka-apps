@@ -102,3 +102,17 @@ needs a different matrix changes these files.
 `tests/day_one.py` holds the same table as `MATRIX` and checks, for each member of each site, that `/api/v1/meta`
 reports exactly these grants on every model, and that each money model answers one allowed and one forbidden call per
 role (2xx / 403 `permission_denied`).
+
+### Payroll (module payroll, in jasa_proyek)
+
+Pay and tax data belong to finance. The project admin reads them, and creates draft payslips, because the payslip of an
+attendance recap is made inside the recap's submit as that person; only finance submits a payslip or closes a run.
+Sales and purchasing have no access.
+
+| Model | sales_manager | finance_manager | purchasing_manager | project_admin |
+| --- | --- | --- | --- | --- |
+| payroll_profile (NIK, PTKP, BPJS, pay basis) | | r c w e p i | | r |
+| payroll_run (not submittable: payslips link to it; `closed` and totals written by flows) | | r c w d e p | | r |
+| payslip | | all | | r c (draft from the recap's flow) |
+| payroll_close (Tutup periode gaji: freezes totals, margin row, client invoice) | | all | | r |
+| payroll_guard (never stored; a flow's refusal) | | c | | |

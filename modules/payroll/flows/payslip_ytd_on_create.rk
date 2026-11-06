@@ -2,12 +2,12 @@
 name: payslip_ytd_on_create
 label: {id: Slip gaji membaca penghasilan sebelumnya tahun ini}
 # Year to date for the December (last) recomputation: the sums of this worker's submitted slips of the same tax year in
-# earlier tax months whose run was submitted (a cancelled run's slips do not count). Filled on every new slip, so a
+# earlier tax months whose run is closed (an open or reopened run's slips do not count). Filled on every new slip, so a
 # slip made by hand gets them too.
 on: payslip.created
 steps:
   - find_all: payslip
-    where: worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && payroll_run.docstatus == 1
+    where: worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && payroll_run.closed
     as: prev
   - find: payslip
     where: name == event.name

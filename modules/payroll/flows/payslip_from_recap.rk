@@ -2,7 +2,7 @@
 name: payslip_from_recap
 label: {id: Slip gaji dari rekap absensi}
 # A submitted monthly attendance recap (timesheet with period_to) of a worker who has an active payroll profile becomes
-# a draft payslip of the draft payroll run of that project whose period holds the recap's start. No run open, or no
+# a draft payslip of the open payroll run of that project whose period holds the recap's start. No run open, or no
 # profile: nothing happens (the recap still books its labour cost on the project). Runs as the person submitting the
 # recap (project admin), who may create but not submit a slip. A second recap of the same worker in the same run is
 # refused by the slip's key, which rolls the recap's submit back: one recap per worker per period.
@@ -14,7 +14,7 @@ steps:
     as: prof
   - if: prof != null
     find: payroll_run
-    where: project == event.project && docstatus == 0 && period_from <= event.work_date && period_to >= event.work_date
+    where: project == event.project && !closed && period_from <= event.work_date && period_to >= event.work_date
     as: run
   - if: prof != null && run != null
     create: payslip

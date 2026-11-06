@@ -2,16 +2,17 @@
 name: payroll_run
 label: {id: Periode gaji, en: Payroll run}
 icon: calendar
-is_submittable: true
 naming: PAY-{YYYY}-{####}
 title_field: project
 # One client contract (project) for one cut-off period. Create it before the attendance recaps are submitted: each
 # submitted recap of a worker with a payroll profile becomes a draft payslip of this run (flow payslip_from_recap).
-# The totals are kept by the flows of payslip submit and cancel; submitting the run books the extra employer cost on
-# the project margin and makes the client invoice as a draft (payroll_run_on_submit). The rates and wage caps are fields
-# because they change (JP cap every March, UMK every January, JKK per site risk).
+# The totals are kept by the flows of payslip submit and cancel. The run is not itself submitted: slips link to it, and
+# a submit would rename a DRAFT- record without its links following. It is closed by submitting a payroll_close
+# (Tutup periode gaji), which freezes the totals, books the extra employer cost on the project margin and makes the
+# client invoice; `closed` is set and cleared by that document's flows. The rates and wage caps are fields because they
+# change (JP cap every March, UMK every January, JKK per site risk).
 permissions:
-  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true, print: true}
   - {role: project_admin, read: true}
 fields:
   - name: project
@@ -114,6 +115,7 @@ fields:
     type: check
     label: {id: Klien memotong PPh 23}
     default: 'true'
+  - {name: closed, type: check, label: {id: Sudah ditutup}, default: 'false', read_only: true, in_list: true}
   # Totals of the submitted payslips (flows payroll_totals_on_payslip_*). Not typed by anyone.
   - {name: headcount, type: int, label: {id: Jumlah pekerja}, default: '0', read_only: true, in_list: true}
   - {name: total_cash_gross, type: currency, label: {id: 'Gaji, tunjangan, lembur, THR'}, default: '0', read_only: true}
@@ -147,27 +149,15 @@ rules:
     on: save
     check: umk > 0 && jkk_rate >= 0.24 && jkk_rate <= 1.74 && jp_wage_cap > 0 && kes_wage_cap > 0 && (workdays_per_week == 5 || workdays_per_week == 6) && fee_percent >= 0 && fee_per_worker >= 0
     message: {id: 'Isi UMK; JKK 0,24 sampai 1,74 persen; batas upah lebih dari 0; hari kerja 5 atau 6; fee tidak negatif'}
-  - name: has_payslips
-    on: submit
-    check: headcount > 0
-    message: {id: 'Belum ada slip gaji yang diajukan di periode ini'}
-  - name: billing_items
-    on: submit
-    check: "billing_mode == 'none' || (fee_item != '' && (billing_mode == 'fee_only' || (wage_item != '' && bpjs_item != '')))"
-    message: {id: 'Pilih barang/jasa untuk baris gaji, BPJS dan fee di faktur klien'}
-  - name: project_has_customer
-    on: submit
-    check: billing_mode == 'none' || customer == project.customer
-    message: {id: 'Klien periode gaji harus sama dengan klien proyek'}
 views:
   list:
-    columns: [name, project, period_from, period_to, headcount, total_net_pay, status]
+    columns: [name, project, period_from, period_to, headcount, total_net_pay, closed]
     sort: -period_from
   form:
     layout:
       - section: {id: Periode}
         columns:
-          - [project, customer, period_from, period_to]
+          - [project, customer, period_from, period_to, closed]
           - [tax_year, tax_month, pay_date]
       - section: {id: Tarif dan batas}
         columns:

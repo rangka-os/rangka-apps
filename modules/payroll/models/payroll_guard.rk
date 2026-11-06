@@ -14,16 +14,16 @@ fields:
     label: {id: Alasan}
     required: true
     options:
-      - {value: run_submitted, label: {id: Periode gaji sudah diajukan}}
+      - {value: run_closed, label: {id: Periode gaji sudah ditutup}}
       - {value: invoice_submitted, label: {id: Faktur klien sudah diajukan}}
   - name: document
     type: data
     label: {id: Dokumen}
 rules:
-  - name: run_submitted
+  - name: run_closed
     on: save
-    check: reason != 'run_submitted'
-    message: {id: 'Periode gaji slip ini sudah diajukan; batalkan periode gajinya dulu'}
+    check: reason != 'run_closed'
+    message: {id: 'Periode gaji slip ini sudah ditutup; batalkan dokumen tutup periodenya dulu'}
   - name: invoice_submitted
     on: save
     check: reason != 'invoice_submitted'

@@ -68,6 +68,15 @@ def new_run(fm, project, **over):
     return run if st == 201 else None
 
 
+def close_run(fm, run_name):
+    """Tutup periode gaji: a payroll_close of the run, submitted. Returns (status, response, close name)."""
+    st, c = fm.create("payroll_close", {"payroll_run": run_name})
+    if st != 201:
+        return st, c, ""
+    st, resp = fm.verb("payroll_close", c["name"], "submit")
+    return st, resp, ((resp or {}).get("record", resp) or {}).get("name", c["name"]) if st == 200 else c["name"]
+
+
 def scenario_payroll_month(api):
     """Twenty workers, one month: recap import -> 20 draft slips -> edits -> submit -> run totals, BPJS and PPh 21 deposits,
     extra employer cost on the project margin, and the client invoice wages + BPJS + 10% fee with PPN and PPh 23."""
@@ -139,9 +148,10 @@ def scenario_payroll_month(api):
     eq("deposits of the month: BPJS Ketenagakerjaan, BPJS Kesehatan, PPh 21", (run.get("deposit_bpjs_tk"), run.get("deposit_bpjs_kes"), run.get("total_pph21")),
        (tot["bpjs_tk"], tot["bpjs_kes"], tot["pph21"]))
     print(f"payroll: gaji {tot['cash_gross']:,} bersih {tot['net_pay']:,} PPh21 {tot['pph21']:,} BPJS TK {tot['bpjs_tk']:,} Kes {tot['bpjs_kes']:,} biaya {tot['employer_cost']:,}")
-    st, resp = fm.verb("payroll_run", R, "submit")
-    if not check("finance submits the payroll run", st == 200, (st, resp)):
+    st, resp, C = close_run(fm, R)
+    if not check("finance closes the payroll run (Tutup periode gaji submitted)", st == 200, (st, resp)):
         return
+    check("the run is closed and the close froze its totals", fm.get("payroll_run", R).get("closed") is True and fm.get("payroll_close", C).get("total_pph21") == tot["pph21"], fm.get("payroll_close", C))
     inv = fm.find("sales_invoice", f"project == '{p}'")
     if not check("the run made one draft client invoice", len(inv) == 1 and inv[0]["docstatus"] == 0, inv):
         return
@@ -152,7 +162,7 @@ def scenario_payroll_month(api):
        [(g.WAGES, tot["cash_gross"], True), (g.BPJS, tot["employer_bpjs"], False), (g.FEE, want_inv["fee"], False)])
     st, resp = fm.verb("sales_invoice", i["name"], "submit")
     check("finance submits the client invoice", st == 200, (st, resp))
-    i = fm.get("sales_invoice", i["name"])
+    i = (resp or {}).get("record", resp) if st == 200 else i
     eq("invoice: subtotal, PPN 11/12 x 12% on the whole invoice, PPh 23 2% on BPJS + fee, net due",
        (i.get("dpp"), i.get("ppn"), i.get("pph23_dpp"), i.get("pph23_amount"), i.get("amount_due")),
        (want_inv["subtotal"], want_inv["ppn"], want_inv["pph23_base"], want_inv["pph23"], want_inv["amount_due"]))
@@ -163,12 +173,12 @@ def scenario_payroll_month(api):
     eq("one payroll ledger row with the cost the recaps did not book", [x["amount"] for x in rows if x["kind"] == "payroll"],
        [-(tot["employer_cost"] - sum(s["timesheet_cost"] for s in by_no.values()))])
     st, resp = fm.verb("payslip", s15["name"], "cancel")
-    check("a slip of a submitted run cannot be cancelled", st >= 400, (st, resp))
-    st, resp = fm.verb("payroll_run", R, "cancel")
-    check("the run cannot be cancelled while its client invoice is submitted", st >= 400, (st, resp))
+    check("a slip of a closed run cannot be cancelled", st >= 400, (st, resp))
+    st, resp = fm.verb("payroll_close", C, "cancel")
+    check("the close cannot be cancelled while its client invoice is submitted", st >= 400, (st, resp))
     st, resp = fm.verb("sales_invoice", i["name"], "cancel")
-    st2, resp2 = fm.verb("payroll_run", R, "cancel")
-    check("after the invoice is cancelled the run cancels too", st == 200 and st2 == 200, (st, resp, st2, resp2))
+    st2, resp2 = fm.verb("payroll_close", C, "cancel")
+    check("after the invoice is cancelled the close cancels too and the run is open again", st == 200 and st2 == 200 and fm.get("payroll_run", R).get("closed") is False, (st, resp, st2, resp2))
     rows = fm.find("project_ledger", f"project == '{p}' && kind == 'payroll'")
     eq("the payroll row is reversed on the run's date", sorted(x["amount"] for x in rows), sorted([-(tot["employer_cost"] - sum(s["timesheet_cost"] for s in by_no.values())), tot["employer_cost"] - sum(s["timesheet_cost"] for s in by_no.values())]))
 
@@ -183,15 +193,15 @@ def scenario_payroll_rules(api):
     run = new_run(fm, p, period_from="2026-10-21", period_to="2026-11-20", tax_month=11, wage_item="", bpjs_item="", fee_item="")
     if run is None:
         return
-    st, resp = fm.verb("payroll_run", run["name"], "submit")
-    check("an empty run cannot be submitted", st == 422 and "slip" in str(resp).lower(), (st, resp))
+    st, resp, _ = close_run(fm, run["name"])
+    check("an empty run cannot be closed", st == 422 and "slip" in str(resp).lower(), (st, resp))
     st, s1 = fm.create("payslip", {"payroll_run": run["name"], "profile": "PGJ-0018"})
     check("finance makes a slip by hand for a monthly supervisor", st == 201 and s1.get("base_pay") == 7_500_000, (st, s1))
     st, s2 = fm.create("payslip", {"payroll_run": run["name"], "profile": "PGJ-0018"})
     check("a second slip for the same worker in the run is refused", st >= 400, (st, s2))
     st, resp = fm.verb("payslip", s1.get("name", "x"), "submit")
     check("the hand-made slip submits", st == 200, (st, resp))
-    st, resp = fm.verb("payroll_run", run["name"], "submit")
+    st, resp, _ = close_run(fm, run["name"])
     check("a run billing wages + fee needs its three invoice items", st == 422, (st, resp))
     st, resp = fm.patch("payroll_run", run["name"], {"jkk_rate": 2.5})
     check("JKK above 1,74% is refused", st == 422, (st, resp))
@@ -213,12 +223,12 @@ def scenario_payroll_fee_only(api):
         if check(f"slip {prof}", st == 201, (st, s)):
             names.append(s["name"])
     submit_all(fm, "payslip", names, "fee-only slips")
-    st, resp = fm.verb("payroll_run", run["name"], "submit")
-    if not check("fee-only run submits", st == 200, (st, resp)):
+    st, resp, C = close_run(fm, run["name"])
+    if not check("fee-only run closes", st == 200, (st, resp)):
         return
     inv = [x for x in fm.find("sales_invoice", f"project == '{p}' && docstatus == 0")]
     inv = [fm.get("sales_invoice", x["name"]) for x in inv]
-    inv = [x for x in inv if run["name"] in (x.get("notes") or "")]
+    inv = [x for x in inv if f"({C})" in (x.get("notes") or "")]
     want = oracle.invoice([{"cash_gross": 0, "employer_bpjs": 0}] * 2, {"billing_mode": "fee_only", "fee_mode": "flat", "fee_per_worker": 150_000})
     check("fee only: one line of 2 x 150.000, PPN on it, PPh 23 on all of it",
           len(inv) == 1 and [(x["item"], x["rate"]) for x in inv[0]["items"]] == [("BRG-0003", 300_000)]
@@ -266,9 +276,9 @@ def scenario_payroll_december(api):
         elif s.get("pph21") != want["pph21"]:
             bad.append((m, "pph21", s.get("pph21"), want["pph21"]))
         ytd = {"gross": ytd["gross"] + want["gross_taxable"], "pph21": ytd["pph21"] + want["pph21"], "pension": ytd["pension"] + want["pension"], "months": ytd["months"] + 1}
-        st, resp = fm.verb("payroll_run", run["name"], "submit")
+        st, resp, _ = close_run(fm, run["name"])
         if st != 200:
-            bad.append((m, "run submit", st, resp))
+            bad.append((m, "run close", st, resp))
             break
     check("twelve months: year to date read from the earlier slips, TER January to November", not bad, bad[:3])
     eq("December withholds the year's Pasal 17 tax (5% of PKP 55.208.000 = 2.760.400) minus January to November (1.947.120)",

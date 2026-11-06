@@ -6,7 +6,7 @@ is_submittable: true
 naming: SLIP-{YYYY}-{#####}
 title_field: worker
 # One worker in one payroll run. Made as a draft from the worker's submitted attendance recap (flow payslip_from_recap)
-# or by hand for a monthly worker; submitted by finance while the run is a draft. Every amount is computed here from the
+# or by hand for a monthly worker; submitted by finance while the run is open. Every amount is computed here from the
 # inputs, the profile and the run, with the rules of docs/payroll.md (PP 58/2023 + PMK 168/2023 for PPh 21, PP 44/2015,
 # 45/2015, 46/2015 and Perpres 82/2018 for BPJS, PP 35/2021 for overtime). The year-to-date fields are filled by
 # payslip_ytd_on_create from this worker's earlier submitted slips of the tax year; the December (or last) slip
@@ -219,8 +219,8 @@ fields:
 rules:
   - name: run_open
     on: submit
-    check: payroll_run.docstatus == 0
-    message: {id: 'Periode gaji sudah diajukan atau dibatalkan; slip baru masuk periode yang masih draf'}
+    check: "!payroll_run.closed"
+    message: {id: 'Periode gaji sudah ditutup; slip baru masuk periode yang masih terbuka'}
   - name: inputs_not_negative
     on: save
     check: >-

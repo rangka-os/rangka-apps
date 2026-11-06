@@ -1,13 +1,20 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
-name: payroll_run_on_submit
-label: {id: 'Periode gaji diajukan, biaya ke untung proyek dan faktur klien'}
+name: payroll_close_on_submit
+label: {id: 'Tutup periode gaji, biaya ke untung proyek dan faktur klien'}
+# 0. The run is closed: no slip can be submitted into it or cancelled out of it.
 # 1. The project ledger gets the employer cost the recaps did not book (allowances, THR, employer BPJS), so the margin
 #    is revenue minus the full cost of the workers.
 # 2. The client invoice is made as a draft (a flow cannot submit): wages on their own line, outside the PPh 23 base
 #    (PMK 141/2015), the employer BPJS and the fee inside it; PPN comes from the invoice on the whole amount
-#    (docs/payroll.md). Fee only: one fee line. The notes carry the run's number, which payroll_run_on_cancel looks for.
-on: payroll_run.submitted
+#    (docs/payroll.md). Fee only: one fee line. The notes carry this document's number, which payroll_close_on_cancel
+#    looks for.
+on: payroll_close.submitted
 steps:
+  - find: payroll_run
+    where: name == event.payroll_run
+    as: run
+  - update: run
+    set: {closed: 'true'}
   - if: event.extra_cost != 0
     create: project_ledger
     set:
@@ -17,7 +24,7 @@ steps:
       kind: "'payroll'"
       source_model: event.model
       source_name: event.name
-      payroll_run: event.name
+      payroll_close: event.name
       amount: "0 - event.extra_cost"
   - if: event.billing_mode == 'wages_plus_fee'
     create: sales_invoice

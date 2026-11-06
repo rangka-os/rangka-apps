@@ -2,11 +2,11 @@
 name: payroll_totals_on_payslip_cancel
 label: {id: Total periode gaji dihitung ulang}
 # The run's totals are the sums of its submitted slips, recomputed inside every slip submit and cancel while the run is
-# a draft (a slip cannot be submitted into a submitted run, rule run_open, nor cancelled out of it, payslip_cancel_guard).
+# open (a slip cannot be submitted into a closed run, rule run_open, nor cancelled out of it, payslip_cancel_guard).
 on: payslip.cancelled
 steps:
   - find: payroll_run
-    where: name == event.payroll_run && docstatus == 0
+    where: name == event.payroll_run && !closed
     as: run
   - if: run != null
     find_all: payslip

@@ -2854,7 +2854,8 @@ MATRIX = {
     # payroll (manpower): pay and tax data are finance's; the project admin reads them because the payslip of a recap is
     # made inside the recap's submit, as that person (create, no submit)
     "payroll_profile": {"finance_manager": {"read", "create", "write", "export", "import", "print"}, "project_admin": _R},
-    "payroll_run": {"finance_manager": _ALL, "project_admin": _R},
+    "payroll_run": {"finance_manager": {"read", "create", "write", "delete", "export", "print"}, "project_admin": _R},
+    "payroll_close": {"finance_manager": _ALL, "project_admin": _R},
     "payslip": {"finance_manager": _ALL, "project_admin": {"read", "create"}},
     "payroll_guard": {"finance_manager": {"create"}},   # never stored (a flow's refusal)
 }
