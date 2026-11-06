@@ -22,6 +22,7 @@ NEW_ROOT = os.path.dirname(HERE)
 def load(path, name):
     spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod  # day_one binds its sibling modules through sys.modules
     spec.loader.exec_module(mod)
     return mod
 

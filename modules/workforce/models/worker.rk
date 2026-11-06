@@ -28,9 +28,10 @@ fields:
   - name: phone
     type: phone
     label: {id: Nomor WhatsApp}
+  # Selling rate per day: what the client pays for a day of this person (the invoice side).
   - name: day_rate
     type: currency
-    label: {id: Tarif per hari}
+    label: {id: Tarif jual per hari}
     in_list: true
   # Selling rate per hour, and what an hour or a day of this person costs the firm (pay divided by working days or
   # hours, entered by the owner): project margin reads the cost, the invoice reads the selling rate.
@@ -40,14 +41,27 @@ fields:
     default: '0'
   # Pay per person: hidden in forms and lists for roles that do not need it (hidden_for is not enforced by the kernel
   # yet; the REST API still returns it to anyone who may read worker).
+  # Pay per day (upah harian). 0 means not entered yet: timesheets of this person are then flagged cost_missing and
+  # the project margin dashboard counts them, so a margin without labour cost is never read as complete.
   - name: cost_day_rate
     type: currency
-    label: {id: Biaya per hari}
+    label: {id: Upah per hari}
     default: '0'
     hidden_for: [sales_manager, purchasing_manager, head_office, outlet_staff, sales_rep]
   - name: cost_hour_rate
     type: currency
-    label: {id: Biaya per jam}
+    label: {id: Upah per jam}
+    default: '0'
+    hidden_for: [sales_manager, purchasing_manager, head_office, outlet_staff, sales_rep]
+  # Overtime per hour: what the client pays (overtime_rate) and what the firm pays (overtime_cost_rate). Enter the
+  # rates already weighted the way the firm counts overtime (PP 35/2021 multipliers vary per hour of the day).
+  - name: overtime_rate
+    type: currency
+    label: {id: Tarif jual lembur per jam}
+    default: '0'
+  - name: overtime_cost_rate
+    type: currency
+    label: {id: Upah lembur per jam}
     default: '0'
     hidden_for: [sales_manager, purchasing_manager, head_office, outlet_staff, sales_rep]
   - name: active
@@ -58,6 +72,12 @@ fields:
     type: table
     of: certification
     label: {id: Sertifikasi}
+rules:
+  # A negative pay would raise the project margin instead of lowering it (audit 6 Nov).
+  - name: rates_not_negative
+    on: save
+    check: day_rate >= 0 && hour_rate >= 0 && cost_day_rate >= 0 && cost_hour_rate >= 0 && overtime_rate >= 0 && overtime_cost_rate >= 0
+    message: {id: 'Tarif dan upah tidak boleh negatif'}
 views:
   list:
     columns: [name, worker_name, role_title, day_rate, active]
@@ -66,9 +86,9 @@ views:
       - section: {id: Identitas}
         columns:
           - [worker_name, employee_no, role_title]
-          - [phone, day_rate, hour_rate, active]
-      - section: {id: Biaya internal}
+          - [phone, day_rate, hour_rate, overtime_rate, active]
+      - section: {id: Upah (biaya internal)}
         columns:
-          - [cost_day_rate, cost_hour_rate]
+          - [cost_day_rate, cost_hour_rate, overtime_cost_rate]
       - section: {id: Sertifikasi}
         fields: [certifications]

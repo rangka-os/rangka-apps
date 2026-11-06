@@ -23,7 +23,8 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | user | r | r | r | r | r | r | r |
 | quotation, customer_order | all | r p | | r c w s (submit held by `manager_approval`) | | | |
 | project (finance and sales write only for the invoice flows that keep `billed_amount`; contract terms freeze once billed) | r w | r w | | all | | | |
-| assignment, timesheet, acceptance | r | r | | all | | | |
+| assignment, acceptance | r | r | | all | | | |
+| timesheet | r | r | | all + i (`attendance_recap` import) | | | |
 | billing_milestone (state written by flows; no delete; finance and sales write only through the invoice flows, an amount edit by them is refused) | r w | r w e | | r c w e i | | | |
 | project_expense | r | all but d | r | all | | | |
 | project_guard (never stored; a flow's refusal) | | c | c | | | | |

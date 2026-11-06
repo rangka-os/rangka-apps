@@ -57,10 +57,23 @@ fields:
     type: currency
     label: {id: Biaya per satuan}
     default: "rate_basis == 'hour' ? worker.cost_hour_rate : worker.cost_day_rate"
+  # Overtime per hour on this project, from the worker unless the client agreed another rate.
+  - name: overtime_rate
+    type: currency
+    label: {id: Tarif jual lembur per jam}
+    default: worker.overtime_rate
+  - name: overtime_cost_rate
+    type: currency
+    label: {id: Upah lembur per jam}
+    default: worker.overtime_cost_rate
   - name: notes
     type: text
     label: {id: Catatan}
 rules:
+  - name: rates_not_negative
+    on: save
+    check: day_rate >= 0 && hour_rate >= 0 && cost_rate >= 0 && overtime_rate >= 0 && overtime_cost_rate >= 0
+    message: {id: 'Tarif dan upah tidak boleh negatif'}
   - name: end_after_start
     on: save
     check: end_date >= start_date
@@ -77,7 +90,7 @@ views:
           - [start_date, end_date]
       - section: {id: Tarif}
         columns:
-          - [rate_basis, day_rate, hour_rate]
-          - [cost_rate]
+          - [rate_basis, day_rate, hour_rate, overtime_rate]
+          - [cost_rate, overtime_cost_rate]
       - section: {id: Catatan}
         fields: [notes]
