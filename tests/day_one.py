@@ -1437,6 +1437,26 @@ def scenario_xendit_callbacks(api):
     eq("six parallel callbacks: one claim, naming that payment",
        [c["payment"] for c in api.find("gateway_ref_claim", "gateway_ref == 'qr-race-0010'")], [p["name"] for p in payments_of("qr-race-0010")])
 
+    # a draft deleted by finance leaves its claim behind: the callback again, six times in parallel, still gives one
+    # payment (the old claim is released and a new one inserted, so the unique index refuses the racing runs)
+    inv6 = submitted(330_000)
+    callback("va", gateway_ref="va-del-0011", external_id=inv6, paid_amount=330_000, paid=True, method="va")
+    first = payments_of("va-del-0011")
+    st, resp = api.call("DELETE", f"/api/v1/r/payment/{api.q(first[0]['name'])}") if first else (0, None)
+    check("finance deletes the drafted Xendit payment", st in (200, 204), (st, resp))
+    results = []
+    def fire_again():
+        results.append(callback("va", gateway_ref="va-del-0011", external_id=inv6, paid_amount=330_000, paid=True, method="va")[0])
+    threads = [threading.Thread(target=fire_again) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    eq("after a deleted draft, six parallel callbacks: exactly one new payment", len(payments_of("va-del-0011")), 1)
+    eq("after a deleted draft: one live claim naming the new payment, the old one released",
+       ([c["payment"] for c in api.find("gateway_ref_claim", "gateway_ref == 'va-del-0011'")], len(api.find("gateway_ref_claim", "released_ref == 'va-del-0011'"))),
+       ([p["name"] for p in payments_of("va-del-0011")], 1))
+
     # a cancelled payment gives its gateway id back: the callback can be recorded again
     st, resp = api.verb("payment", pay_name, "cancel")
     check("cancel the Xendit payment", st == 200, (st, resp))

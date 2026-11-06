@@ -10,7 +10,8 @@
 # positive amount records money. The gateway id is claimed BEFORE the payment is made: a new claim is an insert into
 # gateway_ref_claim's unique index, so of two callbacks racing in parallel the second waits for the first and is
 # refused (its whole run rolls back, nothing recorded); a later repeat finds the live payment or its claim and records
-# nothing. A claim left by a deleted draft is taken over (a cancelled payment already released its id). Only a
+# nothing. A claim left by a deleted draft is released first (gateway_ref emptied, as payment_gateway_release does)
+# and a new claim inserted, so racing repeats after a delete are refused the same way. Only a
 # submitted invoice is paid (a cancelled one, or an unknown number, records nothing and tells the owner, since the
 # money did arrive at Xendit); the allocation never exceeds what the invoice still owes after open drafts, the rest
 # stays unallocated. A method outside payment's options is recorded as 'other'.
@@ -28,8 +29,11 @@ steps:
   - {find: gateway_ref_claim, where: gateway_ref == event.gateway_ref, as: held}
   # the payment the claim names, if it is still alive (a deleted draft is gone; a renamed draft is re-pointed on submit)
   - {find: payment, where: "held != null && name == held.payment && docstatus != 2", as: holder}
+  - update: held
+    if: done == null && inv != null && held != null && holder == null
+    set: {gateway_ref: "''", released_ref: event.gateway_ref}
   - create: gateway_ref_claim
-    if: done == null && inv != null && held == null
+    if: done == null && inv != null && (held == null || holder == null)
     set: {gateway_ref: event.gateway_ref, payment: "''"}
     as: claim
   - create: payment
@@ -47,10 +51,7 @@ steps:
       allocations: "min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum()) > 0 ? [{'sales_invoice': inv.name, 'amount': min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum())}] : []"
     as: pay
   - update: claim
-    if: done == null && inv != null && held == null
-    set: {payment: pay.name}
-  - update: held
-    if: done == null && inv != null && held != null && holder == null
+    if: done == null && inv != null && (held == null || holder == null)
     set: {payment: pay.name}
   - notify: owner
     if: done == null && inv == null
