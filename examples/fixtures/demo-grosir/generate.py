@@ -124,7 +124,8 @@ def to_rk(data):
         if isinstance(v, int):
             return str(v)
         s = str(v)
-        if s.startswith("+") or ":" in s or s in ("yes", "no", "on", "off"):
+        # flow mappings: a comma (1,5 liter) or bracket would split or end the value
+        if s.startswith("+") or ":" in s or any(c in s for c in ",[]{}#'\"") or s in ("yes", "no", "on", "off"):
             return "'" + s.replace("'", "''") + "'"
         return s
     lines = ["# Synthetic demo data for CV Contoh Niaga Distribusi, a fictional FMCG sub-distributor. No real people,",
