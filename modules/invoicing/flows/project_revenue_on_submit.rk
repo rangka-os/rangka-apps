@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: project_revenue_on_submit
+label: {id: Pendapatan proyek dari faktur}
+# Project ledger row (projects): the sum of a project's rows is its margin.
+on: sales_invoice.submitted
+if: event.project != '' && event.kind != 'retention'
+steps:
+  - create: project_ledger
+    set:
+      project: event.project
+      posting_date: event.posting_date
+      entry: "'post'"
+      kind: "'revenue'"
+      source_model: event.model
+      source_name: event.name
+      sales_invoice: event.name
+      amount: "event.dpp"
