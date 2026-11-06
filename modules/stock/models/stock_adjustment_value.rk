@@ -4,6 +4,10 @@ label: {id: Nilai penyesuaian stok, en: Stock adjustment value}
 icon: stock
 naming: SAV-{YYYY}-{######}
 title_field: stock_adjustment
+# append_only (contract 0026): rows are created only by the flows the kernel starts on the source document's events (and
+# the schedule); nobody, the owner included, creates, edits or deletes one through the API, an import or a flow run by
+# hand. A correction is the reversing row written when the source document is cancelled.
+append_only: true
 # The value a stock adjustment moved, on the adjustment's own date: a post row when it is submitted (the sum of its
 # stock moves), a reverse row with the opposite value when it is cancelled. The kernel dates a reversal move on the
 # cancel day, so a sum over moves leaves a cancelled adjustment in another period; these rows net in the period of
