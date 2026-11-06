@@ -258,6 +258,10 @@ rules:
     on: save
     check: project == '' || project.billing_model != 'retainer' || billing_milestone != '' || kind == 'retention'
     message: {id: 'Faktur proyek retainer dibuat dari termin bulanannya (satu termin, satu faktur per bulan)'}
+  - name: retainer_invoice_monthly
+    on: save
+    check: project == '' || project.billing_model != 'retainer' || billing_milestone == '' || billing_milestone.kind == 'retainer'
+    message: {id: 'Faktur proyek retainer hanya dari termin jenis Retainer (satu per bulan)'}
   - name: retention_same_project
     on: save
     check: retention_of == '' || retention_of.project == project

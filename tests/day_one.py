@@ -1368,7 +1368,7 @@ def scenario_billing_milestones(api):
     if not check("finance creates the invoice from the milestone", st == 201, (st, inv)):
         return
     eq("invoice defaults from the milestone: customer, project, acceptance", (inv["customer"], inv["project"], inv["acceptance"]), (customer, p, ban))
-    invn = submit_doc(fm, "sales_invoice", inv["name"], "finance submits the milestone invoice")
+    invn = submit_doc(fm, "sales_invoice", inv["name"], "finance submits the milestone invoice", force=True)
     m2 = api.get("billing_milestone", ms[2]["name"])
     eq("submitted invoice marks milestone 2 invoiced and links it", (m2["state"], m2["sales_invoice"]), ("invoiced", invn))
     st, resp = fm.create("sales_invoice", body)
@@ -1400,7 +1400,7 @@ def scenario_billing_milestones(api):
         am2n = (am2 or {}).get("name") or ((am2 or {}).get("open") or {}).get("name")
         st, resp = fm.create("sales_invoice", body)
         check("billing milestone 2 again with a new invoice (not an amendment of the cancelled one) -> 422", st == 422, (st, resp))
-        inv2n = submit_doc(fm, "sales_invoice", am2n, "finance bills milestone 2 again by amending the cancelled invoice") if am2n else None
+        inv2n = submit_doc(fm, "sales_invoice", am2n, "finance bills milestone 2 again by amending the cancelled invoice", force=True) if am2n else None
         st, resp = pa.verb("acceptance", ban2, "cancel")
         m2 = api.get("billing_milestone", ms[2]["name"])
         eq("cancelling the report of an invoiced milestone keeps it invoiced", (m2["state"], m2["sales_invoice"]), ("invoiced", inv2n))
@@ -1439,7 +1439,7 @@ def scenario_billing_milestones(api):
 
     # a cancelled report and a cancelled invoice: the milestone goes back to planned, not ready, and cannot be billed
     st, inv3 = fm.create("sales_invoice", {"billing_milestone": ms[3]["name"], "items": [{"item": ndt, "qty": 1, "rate": 30_000_000}]})
-    inv3n = submit_doc(fm, "sales_invoice", inv3["name"], "finance bills milestone 3") if st == 201 else None
+    inv3n = submit_doc(fm, "sales_invoice", inv3["name"], "finance bills milestone 3", force=True) if st == 201 else None
     live = api.get("billing_milestone", ms[3]["name"])["acceptance"]
     pa.verb("acceptance", live, "cancel")
     if inv3n:
@@ -1582,6 +1582,23 @@ def scenario_milestone_money(api):
     check("retainer: one milestone per month (a second for February -> 422)", st == 201 and st2 == 422, (st, st2, resp2))
     st, resp = ms(p, 32, amount=15_000_000, trig="date", due_date="2026-12-28", kind="retainer", period_from="2026-12-15", period_to="2027-01-14")
     check("retainer: a month starts on the 1st (period_from 15 Dec -> 422)", st == 422, (st, resp))
+    # R1 (self-audit 6 Nov): a retainer project bills only through monthly milestones; other kinds have no month key
+    p = project("Uang R1", cv=15_000_000, model="retainer")
+    res = [ms(p, 1 + i, amount=15_000_000, trig="date", due_date="2026-11-30", kind=kd, **({"period_from": "2026-11-01", "period_to": "2026-11-30"} if kd == "time_material" else {}))[0]
+           for i, kd in enumerate(("milestone", "time_material", "down_payment"))]
+    check("R1: a milestone, time-material or DP milestone on a retainer project -> 422 each", res == [422, 422, 422], res)
+    eq("R1: nothing billed on the retainer project", billed(p), 0)
+    # R2/R3: a billed November retainer cannot be re-kinded or moved to free November, and November is billed once
+    nov = {"trig": "date", "due_date": "2026-11-30", "kind": "retainer", "period_from": "2026-11-01", "period_to": "2026-11-30"}
+    p = project("Uang R2", cv=15_000_000, model="retainer")
+    st, m = ms(p, 1, amount=15_000_000, **nov)
+    i1 = invoice(m["name"], 15_000_000) if st == 201 else st
+    rk = pa.call("PATCH", f"/api/v1/r/billing_milestone/{Api.q(m['name'])}", {"kind": "milestone"})[0] if st == 201 else st
+    mv = pa.call("PATCH", f"/api/v1/r/billing_milestone/{Api.q(m['name'])}", {"period_from": "2027-05-01", "period_to": "2027-05-31"})[0] if st == 201 else st
+    check("R2/R3: November billed, then re-kinding (-> 422) or moving its period (-> 422) the billed milestone is refused", (i1, rk, mv) == (200, 422, 422), (i1, rk, mv))
+    eq("R2/R3: the billed November milestone keeps its month", (api.get("billing_milestone", m["name"]) or {}).get("period_from") if st == 201 else st, "2026-11-01")
+    st2, _ = ms(p, 2, amount=15_000_000, **nov)
+    eq("R2/R3: retainer project billed 15.000.000 for November, a second November milestone -> 422", (billed(p), st2), (15_000_000, 422))
     # a retention release belongs to the project of the invoice it releases
     pr1 = project("Retensi asal", cv=0); pr2 = project("Retensi lain", cv=100_000_000)
     st, src = fm.create("sales_invoice", {"customer": customer, "project": pr1, "retention_percent": 10, "items": [{"item": ndt, "qty": 1, "rate": 20_000_000}]})
@@ -2550,8 +2567,9 @@ def moves_of(api, voucher):
     return sorted(api.find("stock_move", f"voucher == '{voucher}'"), key=lambda m: m["name"])
 
 
-def submit_doc(api, model, name, label):
-    st, resp = api.verb(model, name, "submit")
+def submit_doc(api, model, name, label, force=False):
+    # force acknowledges warn rules (the customer's credit limit, filled by earlier scenarios)
+    st, resp = api.verb(model, name, "submit", {"force": True} if force else None)
     check(label, st == 200, (st, resp))
     return resp.get("name", name) if st == 200 else None
 
