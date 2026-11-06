@@ -1344,7 +1344,130 @@ def statement_csv(rows, seq=True):
     return ("\n".join(out) + "\n").encode()
 
 
-def qris_payload(name, nmid, city="BANDUNG", poi="11", amount=None):
+def scenario_xendit_callbacks(api):
+    """Rel uang U13/U17 (ready, not active): synthetic Xendit callbacks, as the xendit connector's triggers emit them,
+    run through payment_from_xendit_* with POST /flows/<name>/run (the kernel has no connector runtime yet). A paid
+    callback drafts one payment for the invoice; repeats, non-payments, cancelled or unknown invoices record nothing."""
+    if not installed(api, "gateway_ref_claim"):
+        fail("xendit callbacks", "payments module not installed on this site")
+        return
+    customer = api.list("customer")[0]["name"]
+    item = (services(api) or api.list("item"))[0]["name"]
+
+    def submitted(rate):
+        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0))
+        st, resp = api.verb("sales_invoice", inv.get("name", ""), "submit", {"force": True})
+        check(f"xendit: submit invoice {rate}", st == 200, (st, resp))
+        return resp.get("name", inv.get("name")) if isinstance(resp, dict) else inv.get("name")
+
+    def callback(flow, **event):
+        st, out = api.call("POST", f"/api/v1/flows/payment_from_xendit_{flow}/run", {"event": event})
+        return st, out or {}
+
+    def payments_of(ref):
+        return api.find("payment", f"gateway_ref == '{ref}' && docstatus != 2")
+
+    inv = submitted(1_250_000)
+    st, out = callback("va", gateway_ref="va-pay-0001", external_id=inv, paid_amount=1_250_000, paid=True, method="va",
+                       paid_at="2026-11-06T10:00:00Z", bank_code="BCA", account_number="1234567890")
+    pays = payments_of("va-pay-0001")
+    check("VA paid: one draft payment for the invoice, gateway xendit, the whole amount allocated", st == 200 and len(pays) == 1
+          and pays[0]["docstatus"] == 0 and pays[0]["gateway"] == "xendit" and pays[0]["method"] == "va" and pays[0]["reference"] == inv, (st, out, pays))
+    if not pays:
+        return
+    pay = api.get("payment", pays[0]["name"])
+    eq("VA paid: allocation to the invoice", [(a["sales_invoice"], a["amount"]) for a in pay.get("allocations", [])], [(inv, 1_250_000)])
+    check("VA paid: the gateway id is claimed", len(api.find("gateway_ref_claim", "gateway_ref == 'va-pay-0001'")) == 1, "")
+    st, out = callback("va", gateway_ref="va-pay-0001", external_id=inv, paid_amount=1_250_000, paid=True, method="va")
+    eq("the same VA callback again: no second payment", len(payments_of("va-pay-0001")), 1)
+    st, resp = api.verb("payment", pay["name"], "submit")
+    check("finance submits the drafted payment", st == 200, (st, resp))
+    pay_name = resp.get("name", pay["name"]) if isinstance(resp, dict) else pay["name"]   # the draft is renamed on submit
+    eq("the invoice is settled", api.get("sales_invoice", inv)["outstanding"], 0)
+    st, out = callback("va", gateway_ref="va-pay-0001", external_id=inv, paid_amount=1_250_000, paid=True, method="va")
+    eq("the callback after submit: still one payment", len(payments_of("va-pay-0001")), 1)
+
+    # non-payments: a failed QR, an expired link, a zero amount
+    inv2 = submitted(800_000)
+    st, out = callback("qr", gateway_ref="qr-0002", external_id=inv2, paid_amount=800_000, paid=False, method="qris", status="FAILED")
+    check("QR callback that did not succeed: skipped, no payment", out.get("skipped") is True and not payments_of("qr-0002"), out)
+    st, out = callback("invoice", gateway_ref="inv-0003", external_id=inv2, paid_amount=0, paid=False, method="other", status="EXPIRED")
+    check("expired payment link: skipped, no payment", out.get("skipped") is True and not payments_of("inv-0003"), out)
+    st, out = callback("qr", gateway_ref="qr-0004", external_id=inv2, paid_amount=0, paid=True, method="qris")
+    check("a paid callback of 0: skipped", out.get("skipped") is True and not payments_of("qr-0004"), out)
+
+    # overpaid and split: the allocation never exceeds what is still open after earlier drafts
+    st, out = callback("qr", gateway_ref="qr-0005", external_id=inv2, paid_amount=500_000, paid=True, method="qris")
+    st, out = callback("invoice", gateway_ref="inv-0006", external_id=inv2, paid_amount=500_000, paid=True, method="ewallet")
+    a5 = api.get("payment", (payments_of("qr-0005") or [{"name": ""}])[0]["name"])
+    a6 = api.get("payment", (payments_of("inv-0006") or [{"name": ""}])[0]["name"])
+    eq("two link/QR payments on one invoice: 500.000 then the 300.000 still open", (a5.get("allocated_total"), a6.get("allocated_total"), a6.get("unallocated")), (500_000, 300_000, 200_000))
+
+    # a cancelled invoice and an unknown number: nothing recorded, the owner is told
+    inv3 = submitted(450_000)
+    api.verb("sales_invoice", inv3, "cancel")
+    st, out = callback("va", gateway_ref="va-0007", external_id=inv3, paid_amount=450_000, paid=True, method="va")
+    check("paid callback for a cancelled invoice: no payment, the owner is notified",
+          not payments_of("va-0007") and any("va-0007" in n.get("text", "") for n in out.get("notifications", [])), out)
+    st, out = callback("va", gateway_ref="va-0008", external_id="INV-TIDAK-ADA", paid_amount=99_000, paid=True, method="va")
+    check("paid callback for an unknown invoice number: no payment, the owner is notified",
+          not payments_of("va-0008") and any("INV-TIDAK-ADA" in n.get("text", "") for n in out.get("notifications", [])), out)
+
+    # malformed callbacks: no gateway id is skipped (not a 500); a method outside payment's options is recorded as other
+    st, out = callback("va", external_id=inv2, paid_amount=10_000, paid=True, method="va")
+    check("a callback without gateway_ref: skipped, no error", st == 200 and out.get("skipped") is True, (st, out))
+    inv4 = submitted(275_000)
+    st, out = callback("invoice", gateway_ref="inv-0009", external_id=inv4, paid_amount=275_000, paid=True, method="CREDIT_CARD")
+    p9 = payments_of("inv-0009")
+    check("a method outside the options is recorded as 'other', the money is not lost", st == 200 and len(p9) == 1 and p9[0]["method"] == "other", (st, out, p9))
+
+    # the same callback six times in parallel: one payment, the other runs are refused by the claim's unique index
+    import threading
+    inv5 = submitted(640_000)
+    results = []
+    def fire():
+        results.append(callback("qr", gateway_ref="qr-race-0010", external_id=inv5, paid_amount=640_000, paid=True, method="qris")[0])
+    threads = [threading.Thread(target=fire) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    eq("six parallel callbacks with one gateway id: exactly one payment", len(payments_of("qr-race-0010")), 1)
+    check("six parallel callbacks: one run succeeded, the others were refused or found it", results.count(200) >= 1, results)
+    eq("six parallel callbacks: one claim, naming that payment",
+       [c["payment"] for c in api.find("gateway_ref_claim", "gateway_ref == 'qr-race-0010'")], [p["name"] for p in payments_of("qr-race-0010")])
+
+    # a draft deleted by finance leaves its claim behind: the callback again, six times in parallel, still gives one
+    # payment (the old claim is released and a new one inserted, so the unique index refuses the racing runs)
+    inv6 = submitted(330_000)
+    callback("va", gateway_ref="va-del-0011", external_id=inv6, paid_amount=330_000, paid=True, method="va")
+    first = payments_of("va-del-0011")
+    st, resp = api.call("DELETE", f"/api/v1/r/payment/{api.q(first[0]['name'])}") if first else (0, None)
+    check("finance deletes the drafted Xendit payment", st in (200, 204), (st, resp))
+    results = []
+    def fire_again():
+        results.append(callback("va", gateway_ref="va-del-0011", external_id=inv6, paid_amount=330_000, paid=True, method="va")[0])
+    threads = [threading.Thread(target=fire_again) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    eq("after a deleted draft, six parallel callbacks: exactly one new payment", len(payments_of("va-del-0011")), 1)
+    eq("after a deleted draft: one live claim naming the new payment, the old one released",
+       ([c["payment"] for c in api.find("gateway_ref_claim", "gateway_ref == 'va-del-0011'")], len(api.find("gateway_ref_claim", "released_ref == 'va-del-0011'"))),
+       ([p["name"] for p in payments_of("va-del-0011")], 1))
+
+    # a cancelled payment gives its gateway id back: the callback can be recorded again
+    st, resp = api.verb("payment", pay_name, "cancel")
+    check("cancel the Xendit payment", st == 200, (st, resp))
+    st, out = callback("va", gateway_ref="va-pay-0001", external_id=inv, paid_amount=1_250_000, paid=True, method="va")
+    again = payments_of("va-pay-0001")
+    check("after the cancel the same callback drafts a new payment and takes over the claim",
+          len(again) == 1 and again[0]["name"] != pay_name
+          and api.find("gateway_ref_claim", "gateway_ref == 'va-pay-0001'")[0]["payment"] == again[0]["name"], (again, out))
+
+
+def qris_payload(name, nmid, city="BANDUNG", poi="11", amount=None, fee=""):
     """A synthetic QRIS (EMVCo merchant-presented) payload with a correct CRC-16/CCITT-FALSE: no real merchant."""
     def tlv(tag, value):
         return f"{tag}{len(value):02d}{value}"
@@ -1358,7 +1481,7 @@ def qris_payload(name, nmid, city="BANDUNG", poi="11", amount=None):
     p = (tlv("00", "01") + tlv("01", poi)
          + tlv("26", tlv("00", "ID.CO.QRIS.WWW") + tlv("01", "936000000000000001") + tlv("02", "000000000000001") + tlv("03", "UMI"))
          + tlv("51", tlv("00", "ID.CO.QRIS.WWW") + tlv("02", nmid) + tlv("03", "UMI"))
-         + tlv("52", "5812") + tlv("53", "360") + (tlv("54", amount) if amount else "") + tlv("58", "ID") + tlv("59", name) + tlv("60", city) + "6304")
+         + tlv("52", "5812") + tlv("53", "360") + (tlv("54", amount) if amount else "") + fee + tlv("58", "ID") + tlv("59", name) + tlv("60", city) + "6304")
     return p + crc(p)
 
 
@@ -1383,9 +1506,17 @@ def scenario_payment_instruction(api):
                          ("QRIS cut short", {"qris_payload": q1[:-1]}),
                          ("dynamic QRIS (one-off)", {"qris_payload": qris_payload("PT CONTOH TAGIH", "ID1020000000101", poi="12")}),
                          ("QRIS with a fixed amount", {"qris_payload": qris_payload("PT CONTOH TAGIH", "ID1020000000101", amount="50000")}),
-                         ("QRIS with a leading space", {"qris_payload": " " + q1})):
+                         ("QRIS with a leading space", {"qris_payload": " " + q1}),
+                         # a fixed or percentage fee on top of the bill: the customer pays more than the invoice
+                         ("QRIS with a fixed fee (55=02, 56)", {"qris_payload": qris_payload("PT CONTOH TAGIH", "ID1020000000101", fee="550202" + "56041000")}),
+                         ("QRIS with a percentage fee (55=03, 57)", {"qris_payload": qris_payload("PT CONTOH TAGIH", "ID1020000000101", fee="550203" + "57032.5")}),
+                         ("QRIS with a fee amount but no indicator (56)", {"qris_payload": qris_payload("PT CONTOH TAGIH", "ID1020000000101", fee="56041000")}),
+                         ("QRIS whose merchant name is blank", {"qris_payload": qris_payload("   ", "ID1020000000101")}),
+                         ("QRIS whose NMID is blank", {"qris_payload": qris_payload("PT CONTOH TAGIH", "  ")})):
         st, resp = api.create("bank_account", dict(good, **patch))
-        check(f"bank_account refuses {label}", st == 422, (st, resp))
+        check(f"bank_account refuses {label}", st == 422 and any(e.get("code") == "rule" for e in (resp or {}).get("errors", [])), (st, resp))
+        if st == 201:
+            api.call("DELETE", f"/api/v1/r/bank_account/{api.q(resp['name'])}")
     st, acct = api.create("bank_account", good)
     check("bank_account: valid rekening + static QRIS saved as the default", st == 201, (st, acct))
     if st != 201:
@@ -1507,6 +1638,23 @@ def scenario_payment_instruction(api):
     eq("dots instead of separators: suggested that invoice", (l6.get("status"), l6.get("suggested_invoice")), ("suggested", inv6))
     l7 = lines.get(rows[3][1], {})
     check("no number and three invoices of that amount: no suggestion", l7.get("status") == "unmatched" and not l7.get("suggested_invoice"), l7)
+
+    # the number decides only when the money fits it: a note whose number is a prefix of what the customer typed
+    # ("...0004 2" read as 00042) must not pull a line worth more than that invoice still owes
+    inv8 = submitted(5_000_001)
+    inv9 = submitted(5_000_002)
+    note8 = "BAYAR " + inv8 + " 2"            # compacts to <inv8 number>2: contains inv8's number
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-nominal.csv",
+                        statement_csv([("21/11/2026", note8, 5_000_002, 0, 70_000_000)]))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    l8 = (api.find("bank_transaction", "date == '2026-11-21' && amount == 5000002") or [{}])[0]
+    eq("a number in the note whose invoice owes less than the line: the invoice of that exact amount instead",
+       (l8.get("status"), l8.get("suggested_invoice")), ("suggested", inv9))
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-sebagian.csv",
+                        statement_csv([("22/11/2026", "CICIL " + inv8, 1_000_000, 0, 71_000_000)]))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    l9 = (api.find("bank_transaction", "date == '2026-11-22' && amount == 1000000") or [{}])[0]
+    eq("a part payment naming the invoice still suggests it", (l9.get("status"), l9.get("suggested_invoice")), ("suggested", inv8))
 
 
 def scenario_money_rail(api):
@@ -2458,7 +2606,9 @@ def scenario_cost_visibility(api):
     eq("sales_manager cannot export the project ledger", est, 403)
     st, d = sm.call("GET", "/api/v1/dashboards/project_margin")
     shown = sorted(w["name"] for w in d.get("widgets", []) if not w.get("hidden")) if st == 200 else st
-    eq("project_margin for sales_manager: only the contract backlog shows (no margin made of revenue rows, no pay)", shown, ["backlog_total"])
+    # roles: [finance_manager, project_admin]: a kernel that enforces dashboard roles (contract 0027, alpha.9) answers
+    # 403; an older kernel opens it and the widget `if:` leaves only the contract backlog
+    check("project_margin for sales_manager: closed (403) or only the contract backlog shows (no margin made of revenue rows, no pay)", shown in (403, ["backlog_total"]), shown)
     fmd = dashboard(fm, "project_margin", 365)
     check("project_margin for finance: margin widgets show", not fmd.get("margin_total", {}).get("hidden") and "margin_total" in fmd, list(fmd))
     st, d = sm.call("GET", "/api/v1/dashboards/jasa_overview")
@@ -2671,7 +2821,7 @@ MATRIX = {
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
                           "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
-    "bank_account": {"finance_manager": {"read", "create", "write", "delete", "export"}, "head_office": {"read", "create", "write", "delete", "export"},
+    "bank_account": {"finance_manager": {"read", "create", "write", "delete", "export"}, "head_office": {"read", "create", "write", "export"},
                      "sales_manager": _R, "sales_rep": _R, "field_sales": _R, "project_admin": _R},
     "payment_instruction": {"finance_manager": {"read", "create", "export"}, "sales_manager": {"read", "create", "export"},
                             "head_office": _R, "sales_rep": _R, "project_admin": _R},
@@ -3944,6 +4094,23 @@ def scenario_credit_limit_warning(api):
         fm.verb("sales_invoice", resp.get("name", inv["name"]), "cancel")
 
 
+def scenario_bank_account_delete(api):
+    """Card t_5b705279 (audit fnb bank owner N1): head office keeps writing Rekening & QRIS, but deleting the default
+    account would leave the next invoices without "cara bayar" unseen by the owner, so only finance and the owner delete."""
+    hq = CTX.get("hq")
+    if hq is None:
+        fail("bank_account delete: head office member", CTX.get("login_error", "no head office member"))
+        return
+    st, acct = hq.create("bank_account", {"bank": "BCA", "account_no": "5550000005", "holder": "Tahu Contoh", "is_default": True})
+    if not check("head office creates the default bank account", st == 201, (st, acct)):
+        return
+    st, resp = hq.call("DELETE", f"/api/v1/r/bank_account/{Api.q(acct['name'])}")
+    check("head office deleting the bank account -> 403", st == 403, (st, resp))
+    check("the account is still there", api.call("GET", f"/api/v1/r/bank_account/{Api.q(acct['name'])}")[0] == 200)
+    st, resp = api.call("DELETE", f"/api/v1/r/bank_account/{Api.q(acct['name'])}")
+    check("the owner deletes it", st in (200, 204), (st, resp))
+
+
 def scenario_po_approval_fnb(api):
     """demo-fnb's custom/purchase_order.rk: a head office PO above Rp 5.000.000 waits for the owner (contract 0007 §1)."""
     hq = CTX.get("hq")
@@ -4709,6 +4876,27 @@ def scenario_ritel_access(api):
         check("outlet staff submitting a source file draft -> 403", denied(st, resp), (st, resp))
         if api.get("outlet_sales", imported["name"]).get("date") == "2026-11-05":
             api.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(imported['name'])}")
+    # Audit L2/L3 follow-up (card t_66667236): the form -> moka probe of fnb (Cimahi) for ritel's own POS sources. A
+    # third outlet on the daily form and its staff member: their form record must not become source file or loyverse
+    # (only the outlet_staff grant `if: source == 'form'`, read after the PATCH, stops it).
+    st, form_outlet = api.create("outlet", {"outlet_name": "Cinunuk (uji formulir)", "code": "CNK", "sales_source": "form"})
+    k = CTX.get("kernel")
+    if check("a daily-form outlet for the probe", st == 201, (st, form_outlet)) and k:
+        pw = secrets.token_urlsafe(18)
+        code, out = k.user_add("rina.cinunuk@tokocontoh.test", "outlet_staff", CTX["org"], "Rina Contoh", outlets=form_outlet["name"], password=pw)
+        cnk = Api.login(k.base, "rina.cinunuk@tokocontoh.test", pw) if code == 0 else None
+        if check("Cinunuk staff signed in", cnk is not None, out):
+            st, own = cnk.create("outlet_sales", {"outlet": form_outlet["name"], "date": "2026-11-06", "lines": [{"item": "BRG-0001", "qty": 1}]})
+            if check("Cinunuk staff creates a daily form record (201, source form)", st == 201 and own.get("source") == "form", (st, own)):
+                net = own.get("net_total")
+                for src in ("file", "loyverse"):
+                    st, resp = cnk.patch("outlet_sales", own["name"], {"source": src, "lines": [{"item": "BRG-0001", "qty": -5, "gross": 0, "refund": 900_000}]})
+                    check(f"Cinunuk staff turning the form record into source {src} with a refund -> 403", denied(st, resp), (st, resp))
+                    st, resp = cnk.patch("outlet_sales", own["name"], {"source": src})
+                    check(f"Cinunuk staff changing only source to {src} -> 403", denied(st, resp), (st, resp))
+                kept = api.get("outlet_sales", own["name"])
+                eq("the form record keeps source form and its net", (kept["source"], kept["net_total"]), ("form", net))
+                api.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(own['name'])}")
 
 
 def setup_demo_ritel(api, k):
@@ -4765,8 +4953,8 @@ day_one_produksi.bind(sys.modules[__name__])
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction],
-    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction, scenario_xendit_callbacks],
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods, scenario_bank_account_delete],
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
                    scenario_permissions, scenario_payment_methods],
