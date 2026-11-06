@@ -4,8 +4,8 @@ name: project_margin
 label: {id: Untung per proyek, en: Project margin}
 default_period: 365
 # Margin is cost: owner, finance and the project admin only. Sales and purchasing read only their own rows of the
-# ledger, so a sum would show them revenue as "untung"; `roles` is not enforced by the kernel yet, so every widget on
-# the ledger, timesheets or workers also carries the same `if` (they are hidden for other roles).
+# ledger, so a sum would show them revenue as "untung". The kernel enforces `roles` from alpha.9 (contract 0027); every
+# widget on the ledger, timesheets or workers also keeps the same `if` for older kernels.
 roles: [finance_manager, project_admin]
 cache: 5m
 widgets:
