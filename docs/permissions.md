@@ -112,7 +112,7 @@ Sales and purchasing have no access.
 | Model | sales_manager | finance_manager | purchasing_manager | project_admin |
 | --- | --- | --- | --- | --- |
 | payroll_profile (NIK, PTKP, BPJS, pay basis) | | r c w e p i | | r |
-| payroll_run (not submittable: payslips link to it; `closed` and totals written by flows) | | r c w d e p | | r |
+| payroll_run (not submittable: payslips link to it; `closed`, locks and totals written by flows; no delete) | | r c w e p | | r |
 | payslip | | all | | r c (draft from the recap's flow) |
 | payroll_close (Tutup periode gaji: freezes totals, margin row, client invoice) | | all | | r |
-| payroll_guard (never stored; a flow's refusal) | | c | | |
+| payroll_guard (never stored; a flow's refusal, also inside a recap cancel) | | c | | c |

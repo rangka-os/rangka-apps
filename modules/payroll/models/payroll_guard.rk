@@ -8,6 +8,8 @@ title_field: reason
 # the rule of its reason fails with that message, which rolls the whole action back.
 permissions:
   - {role: finance_manager, create: true}
+  # The recap guard runs inside a timesheet cancel, which the project admin does.
+  - {role: project_admin, create: true}
 fields:
   - name: reason
     type: select
@@ -16,6 +18,9 @@ fields:
     options:
       - {value: run_closed, label: {id: Periode gaji sudah ditutup}}
       - {value: invoice_submitted, label: {id: Faktur klien sudah diajukan}}
+      - {value: ytd_stale, label: {id: Penghasilan sebelumnya berubah}}
+      - {value: recap_has_slip, label: {id: Rekap dipakai slip gaji}}
+      - {value: second_slip, label: {id: Slip kedua di bulan pajak yang sama}}
   - name: document
     type: data
     label: {id: Dokumen}
@@ -28,3 +33,15 @@ rules:
     on: save
     check: reason != 'invoice_submitted'
     message: {id: 'Faktur klien periode gaji ini sudah diajukan; batalkan fakturnya dulu'}
+  - name: ytd_stale
+    on: save
+    check: reason != 'ytd_stale'
+    message: {id: 'Penghasilan bulan sebelumnya berubah sejak slip ini dibuat; hapus draf slip ini lalu buat lagi'}
+  - name: recap_has_slip
+    on: save
+    check: reason != 'recap_has_slip'
+    message: {id: 'Rekap absensi ini dipakai slip gaji yang sudah diajukan; batalkan slip gajinya dulu (selama periode gajinya belum ditutup)'}
+  - name: second_slip
+    on: save
+    check: reason != 'second_slip'
+    message: {id: 'Pekerja ini sudah punya slip gaji di bulan pajak ini (satu slip per pekerja per bulan pajak)'}

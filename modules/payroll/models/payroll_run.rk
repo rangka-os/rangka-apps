@@ -12,7 +12,8 @@ title_field: project
 # client invoice; `closed` is set and cleared by that document's flows. The rates and wage caps are fields because they
 # change (JP cap every March, UMK every January, JKK per site risk).
 permissions:
-  - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true, print: true}
+  # No delete: slips, the close and the margin row point at the run.
+  - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
   - {role: project_admin, read: true}
 fields:
   - name: project
@@ -116,6 +117,18 @@ fields:
     label: {id: Klien memotong PPh 23}
     default: 'true'
   - {name: closed, type: check, label: {id: Sudah ditutup}, default: 'false', read_only: true, in_list: true}
+  # Locks (written by the flows): once a slip is submitted the run's rates, period, tax month and project are those of
+  # the slips (lock_slip, the first submitted slip, stores copies); once closed, everything the close froze must stay
+  # (closed_by). Cleared when the last slip is cancelled or the close is cancelled.
+  - {name: lock_slip, type: link, to: payslip, label: {id: Slip pengunci}, hidden: true, read_only: true}
+  - {name: closed_by, type: link, to: payroll_close, label: {id: Ditutup oleh}, read_only: true}
+  # One run per project and start of period.
+  - name: run_key
+    type: data
+    label: {id: Kunci periode}
+    hidden: true
+    unique: true
+    compute: "project + ':' + period_from"
   # Totals of the submitted payslips (flows payroll_totals_on_payslip_*). Not typed by anyone.
   - {name: headcount, type: int, label: {id: Jumlah pekerja}, default: '0', read_only: true, in_list: true}
   - {name: total_cash_gross, type: currency, label: {id: 'Gaji, tunjangan, lembur, THR'}, default: '0', read_only: true}
@@ -125,6 +138,7 @@ fields:
   - {name: total_net_pay, type: currency, label: {id: Gaji bersih ditransfer}, default: '0', read_only: true, in_list: true}
   - {name: total_employer_cost, type: currency, label: {id: Biaya perusahaan}, default: '0', read_only: true}
   - {name: total_timesheet_cost, type: currency, label: {id: Biaya sudah dari absensi}, default: '0', read_only: true}
+  - {name: total_other_deduction, type: currency, label: {id: Potongan lain (kasbon)}, default: '0', read_only: true}
   - {name: deposit_bpjs_tk, type: currency, label: {id: Setoran BPJS Ketenagakerjaan}, default: '0', read_only: true}
   - {name: deposit_bpjs_kes, type: currency, label: {id: Setoran BPJS Kesehatan}, default: '0', read_only: true}
   - name: fee_amount
@@ -149,6 +163,22 @@ rules:
     on: save
     check: umk > 0 && jkk_rate >= 0.24 && jkk_rate <= 1.74 && jp_wage_cap > 0 && kes_wage_cap > 0 && (workdays_per_week == 5 || workdays_per_week == 6) && fee_percent >= 0 && fee_per_worker >= 0
     message: {id: 'Isi UMK; JKK 0,24 sampai 1,74 persen; batas upah lebih dari 0; hari kerja 5 atau 6; fee tidak negatif'}
+  - name: locked_by_slips
+    on: save
+    check: >-
+      lock_slip == '' || (lock_slip.project == project && lock_slip.tax_year == tax_year && lock_slip.tax_month == tax_month
+        && lock_slip.run_umk == umk && lock_slip.run_jkk_rate == jkk_rate && lock_slip.run_jp_cap == jp_wage_cap
+        && lock_slip.run_kes_cap == kes_wage_cap && lock_slip.run_workdays == workdays_per_week
+        && lock_slip.run_period_from == period_from && lock_slip.run_period_to == period_to)
+    message: {id: 'Periode sudah punya slip diajukan: proyek, periode, bulan pajak, UMK dan tarif terkunci'}
+  - name: locked_by_close
+    on: save
+    check: >-
+      !closed || (closed_by != '' && closed_by.billing_mode == billing_mode && closed_by.fee_amount == fee_amount
+        && closed_by.wage_item == wage_item && closed_by.bpjs_item == bpjs_item && closed_by.fee_item == fee_item
+        && closed_by.invoice_date == invoice_date && closed_by.pph23_applies == pph23_applies && closed_by.headcount == headcount
+        && closed_by.total_employer_cost == total_employer_cost)
+    message: {id: 'Periode gaji sudah ditutup: batalkan dokumen tutup periodenya dulu untuk mengubahnya'}
 views:
   list:
     columns: [name, project, period_from, period_to, headcount, total_net_pay, closed]
@@ -169,5 +199,5 @@ views:
           - [wage_item, bpjs_item, fee_item, invoice_date]
       - section: {id: Ringkasan}
         columns:
-          - [headcount, total_cash_gross, total_employer_bpjs, total_employee_bpjs, total_pph21, total_net_pay]
+          - [headcount, total_cash_gross, total_employer_bpjs, total_employee_bpjs, total_pph21, total_other_deduction, total_net_pay]
           - [total_employer_cost, total_timesheet_cost, extra_cost, deposit_bpjs_tk, deposit_bpjs_kes, fee_amount]

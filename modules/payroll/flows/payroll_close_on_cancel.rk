@@ -32,4 +32,4 @@ steps:
     where: name == event.payroll_run
     as: run
   - update: run
-    set: {closed: 'false'}
+    set: {closed: 'false', closed_by: "''"}

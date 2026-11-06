@@ -27,6 +27,13 @@ fields:
     to: payroll_profile
     label: {id: Data gaji pekerja}
     required: true
+  - {name: run_umk, type: currency, label: {id: UMK periode}, hidden: true, compute: payroll_run.umk}
+  - {name: run_jkk_rate, type: percent, label: {id: Tarif JKK periode}, hidden: true, compute: payroll_run.jkk_rate}
+  - {name: run_jp_cap, type: currency, label: {id: Batas JP periode}, hidden: true, compute: payroll_run.jp_wage_cap}
+  - {name: run_kes_cap, type: currency, label: {id: Batas Kesehatan periode}, hidden: true, compute: payroll_run.kes_wage_cap}
+  - {name: run_workdays, type: int, label: {id: Hari kerja per minggu periode}, hidden: true, compute: payroll_run.workdays_per_week}
+  - {name: run_period_from, type: date, label: {id: Periode dari}, hidden: true, compute: payroll_run.period_from}
+  - {name: run_period_to, type: date, label: {id: Periode sampai}, hidden: true, compute: payroll_run.period_to}
   - name: worker
     type: link
     to: worker
@@ -42,13 +49,6 @@ fields:
     type: link
     to: timesheet
     label: {id: Rekap absensi}
-  # One slip per worker per run.
-  - name: slip_key
-    type: data
-    label: {id: Kunci slip}
-    hidden: true
-    unique: true
-    compute: "payroll_run + ':' + profile"
   - {name: tax_year, type: int, label: {id: Tahun pajak}, default: payroll_run.tax_year}
   - {name: tax_month, type: int, label: {id: Bulan pajak}, default: payroll_run.tax_month}
   # December, or the month the worker leaves: PPh 21 is recomputed for the year (Pasal 17).
@@ -78,18 +78,30 @@ fields:
   - {name: thr_tenure_months, type: float, label: {id: Masa kerja untuk THR (bulan)}, default: '0'}
   - {name: other_income, type: currency, label: {id: Insentif lain}, default: '0'}
   - {name: other_deduction, type: currency, label: {id: Potongan lain (kasbon)}, default: '0'}
-  - {name: ptkp_status, type: data, label: {id: Status PTKP}, default: profile.ptkp_status}
+  - name: ptkp_status
+    type: select
+    label: {id: Status PTKP}
+    default: profile.ptkp_status
+    options:
+      - {value: tk0, label: {id: TK/0}}
+      - {value: tk1, label: {id: TK/1}}
+      - {value: tk2, label: {id: TK/2}}
+      - {value: tk3, label: {id: TK/3}}
+      - {value: k0, label: {id: K/0}}
+      - {value: k1, label: {id: K/1}}
+      - {value: k2, label: {id: K/2}}
+      - {value: k3, label: {id: K/3}}
   - {name: has_tax_id, type: check, label: {id: Punya NIK/NPWP valid}, default: profile.has_tax_id}
   - {name: bpjs_tk, type: check, label: {id: BPJS Ketenagakerjaan}, default: profile.bpjs_tk}
   - {name: bpjs_jp, type: check, label: {id: Jaminan Pensiun}, default: profile.bpjs_jp}
   - {name: bpjs_kes, type: check, label: {id: BPJS Kesehatan}, default: profile.bpjs_kes}
   # The recap's own labour cost, already on the project ledger (project_labor_on_submit): the run books only the rest.
-  - {name: timesheet_cost, type: currency, label: {id: Biaya sudah dibukukan absensi}, default: '0'}
+  - {name: timesheet_cost, type: currency, label: {id: Biaya sudah dibukukan absensi}, compute: "timesheet != '' ? timesheet.cost_amount : 0"}
   # Year to date (earlier submitted slips of this worker and tax year), filled by payslip_ytd_on_create.
-  - {name: ytd_gross, type: currency, label: {id: Bruto sebelumnya tahun ini}, default: '0'}
-  - {name: ytd_pph21, type: currency, label: {id: PPh 21 sebelumnya tahun ini}, default: '0'}
-  - {name: ytd_pension, type: currency, label: {id: JHT + JP pekerja sebelumnya}, default: '0'}
-  - {name: ytd_months, type: int, label: {id: Bulan sebelumnya tahun ini}, default: '0'}
+  - {name: ytd_gross, type: currency, label: {id: Bruto sebelumnya tahun ini}, default: '0', read_only: true}
+  - {name: ytd_pph21, type: currency, label: {id: PPh 21 sebelumnya tahun ini}, default: '0', read_only: true}
+  - {name: ytd_pension, type: currency, label: {id: JHT + JP pekerja sebelumnya}, default: '0', read_only: true}
+  - {name: ytd_months, type: int, label: {id: Bulan sebelumnya tahun ini}, default: '0', read_only: true}
   # Pay.
   - name: base_pay
     type: currency

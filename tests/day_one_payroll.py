@@ -152,6 +152,16 @@ def scenario_payroll_month(api):
     if not check("finance closes the payroll run (Tutup periode gaji submitted)", st == 200, (st, resp)):
         return
     check("the run is closed and the close froze its totals", fm.get("payroll_run", R).get("closed") is True and fm.get("payroll_close", C).get("total_pph21") == tot["pph21"], fm.get("payroll_close", C))
+    st, resp = fm.patch("payroll_run", R, {"umk": 1})
+    check("a closed run cannot be changed (UMK)", st == 422, (st, resp))
+    ts1 = (by_no.get("MP-003") or {}).get("timesheet", "")
+    st, resp = pa.verb("timesheet", ts1 or "x", "cancel")
+    check("a recap used by a submitted slip cannot be cancelled", bool(ts1) and st >= 400 and "slip" in str(resp).lower(), (ts1, st, resp))
+    cl = fm.get("payroll_close", C)
+    eq("the close balances for the journal: employer cost = net pay + PPh 21 + all BPJS + other deductions",
+       cl.get("total_employer_cost"), cl.get("total_net_pay") + cl.get("total_pph21") + cl.get("total_employer_bpjs") + cl.get("total_employee_bpjs") + cl.get("total_other_deduction"))
+    eq("the close carries the recap cost and the other deductions (MP-001 kasbon 300.000)", (cl.get("total_timesheet_cost"), cl.get("total_other_deduction")),
+       (sum(s["timesheet_cost"] for s in by_no.values()), 300_000))
     inv = fm.find("sales_invoice", f"project == '{p}'")
     if not check("the run made one draft client invoice", len(inv) == 1 and inv[0]["docstatus"] == 0, inv):
         return
@@ -185,9 +195,9 @@ def scenario_payroll_month(api):
 
 def scenario_payroll_rules(api):
     """Refusals: a second slip for a worker in a run, a slip into a submitted run, an empty run, a run without items."""
-    fm = CTX.get("fm")
+    fm, pa = CTX.get("fm"), CTX.get("pa")
     p = CTX.get("payroll_project")
-    if not (fm and p):
+    if not (fm and p and pa):
         fail("payroll rules: setup", "no project")
         return
     run = new_run(fm, p, period_from="2026-10-21", period_to="2026-11-20", tax_month=11, wage_item="", bpjs_item="", fee_item="")
@@ -203,6 +213,24 @@ def scenario_payroll_rules(api):
     check("the hand-made slip submits", st == 200, (st, resp))
     st, resp, _ = close_run(fm, run["name"])
     check("a run billing wages + fee needs its three invoice items", st == 422, (st, resp))
+    st, resp = fm.patch("payroll_run", run["name"], {"jkk_rate": 1.27})
+    check("a run with a submitted slip keeps its rates (JKK change refused)", st == 422, (st, resp))
+    st, resp = fm.call("DELETE", f"/api/v1/r/payroll_run/{run['name']}")
+    check("a payroll run cannot be deleted", st == 403, (st, resp))
+    st, dup = fm.create("payroll_run", dict(gen().RUN, project=p, period_from="2026-10-21", period_to="2026-11-20", tax_month=11))
+    check("a second run for the same project and period is refused", st >= 400, (st, dup))
+    st, other = pa.create("project", {"project_name": "Kontrak lain", "customer": gen().CLIENT, "state": "running", "billing_model": "time_material"})
+    run2 = new_run(fm, other["name"], period_from="2026-10-21", period_to="2026-11-20", tax_month=11)
+    st, s3 = fm.create("payslip", {"payroll_run": (run2 or {}).get("name", ""), "profile": "PGJ-0018"})
+    check("one live slip per worker per tax month, also on another contract (TER is on the month's whole gross)", st >= 400, (st, s3))
+    sub1 = fm.find("payslip", f"payroll_run == '{run['name']}' && docstatus == 1")
+    st, resp = fm.verb("payslip", sub1[0]["name"] if sub1 else "x", "cancel")
+    st2, s4 = fm.create("payslip", {"payroll_run": run["name"], "profile": "PGJ-0018"})
+    check("a cancelled slip gives the month back: a new slip for the worker is accepted", st == 200 and st2 == 201, (st, resp, st2, s4))
+    st, resp = fm.patch("payslip", s4.get("name", "x"), {"ptkp_status": "K/3"})
+    check("a PTKP status outside the list is refused on the slip", st == 422, (st, resp))
+    st, resp = fm.patch("payslip", s4.get("name", "x"), {"timesheet_cost": 0, "timesheet": ""})
+    check("the recap's cost on a slip is computed, not typed", st in (200, 422) and fm.get("payslip", s4.get("name", "x")).get("timesheet_cost") == 0, (st, resp))
     st, resp = fm.patch("payroll_run", run["name"], {"jkk_rate": 2.5})
     check("JKK above 1,74% is refused", st == 422, (st, resp))
 
@@ -233,6 +261,19 @@ def scenario_payroll_fee_only(api):
     check("fee only: one line of 2 x 150.000, PPN on it, PPh 23 on all of it",
           len(inv) == 1 and [(x["item"], x["rate"]) for x in inv[0]["items"]] == [("BRG-0003", 300_000)]
           and (inv[0].get("ppn"), inv[0].get("pph23_amount")) == (want["ppn"], want["pph23"]), inv)
+    # Reopen (the invoice is still a draft), switch the fee to 5% of the employer cost, close again: the same draft
+    # invoice is refreshed, no second one.
+    st, resp = fm.verb("payroll_close", C, "cancel")
+    check("a close whose invoice is still a draft can be cancelled (run open again)", st == 200 and fm.get("payroll_run", run["name"]).get("closed") is False, (st, resp))
+    st, resp = fm.patch("payroll_run", run["name"], {"fee_mode": "percent", "fee_percent": 5})
+    st, resp, C2 = close_run(fm, run["name"])
+    check("the run closes again", st == 200, (st, resp))
+    drafts = [fm.get("sales_invoice", x["name"]) for x in fm.find("sales_invoice", f"project == '{p}' && docstatus == 0")]
+    drafts = [x for x in drafts if f"[{run['name']}]" in (x.get("notes") or "")]
+    cost = fm.get("payroll_run", run["name"]).get("total_employer_cost")
+    eq("fee only: the hand-made slips have no recap cost, so no margin row (wages are the client's)", fm.get("payroll_close", C2).get("extra_cost"), 0)
+    check("closing again refreshes the run's one draft invoice: fee only at 5% of the employer cost",
+          len(drafts) == 1 and f"({C2})" in drafts[0].get("notes", "") and [(x["item"], x["rate"]) for x in drafts[0]["items"]] == [("BRG-0003", oracle.rnd(oracle.Decimal(cost) * 5 / 100))], drafts)
 
 
 def scenario_payroll_december(api):
@@ -286,4 +327,48 @@ def scenario_payroll_december(api):
     print(f"december: year gross {ytd['gross']:,} pph21 year {ytd['pph21']:,}")
 
 
-SCENARIOS = [scenario_payroll_month, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december]
+def scenario_payroll_refund_and_stale(api):
+    """A worker who joined in October (no annualisation): October and November withhold TER, December's year tax is 0
+    (PKP under PTKP), so December pays back what was withheld. A December slip saved before November was closed is
+    refused at submit until it is saved again (year to date refreshed)."""
+    fm, pa = CTX.get("fm"), CTX.get("pa")
+    if not (fm and pa):
+        fail("payroll refund: members", "missing")
+        return
+    g = gen()
+    st, w = fm.create("worker", {"worker_name": "Zaki Contoh", "employee_no": "MP-902", "cost_day_rate": 400_000, "active": True})
+    st2, prof = fm.create("payroll_profile", {"worker": (w or {}).get("name", ""), "ptkp_status": "k1", "pay_basis": "monthly", "monthly_salary": 9_000_000,
+                                              "fixed_allowance": 1_000_000, "nik": "9999000000009902"})
+    st3, prj = pa.create("project", {"project_name": "Alih daya admin kantor", "customer": g.CLIENT, "state": "running", "billing_model": "time_material"})
+    if not check("worker joining in October, own contract", st == 201 and st2 == 201 and st3 == 201, (st, st2, st3)):
+        return
+    p, ytd = prj["name"], {"gross": 0, "pph21": 0, "pension": 0, "months": 0}
+    base = {"pay_basis": "monthly", "monthly_salary": 9_000_000, "fixed_allowance": 1_000_000, "ptkp": "k1", "days": 22}
+    runs = {}
+    for m, (f, t) in ((10, ("2026-09-21", "2026-10-20")), (11, ("2026-10-21", "2026-11-20")), (12, ("2026-11-21", "2026-12-20"))):
+        st, runs[m] = fm.create("payroll_run", dict(g.RUN, project=p, period_from=f, period_to=t, tax_month=m, billing_mode="none"))
+    slips = {}
+    for m in (10, 11):
+        st, sl = fm.create("payslip", {"payroll_run": runs[m]["name"], "profile": prof["name"], "days": 22})
+        st, resp = fm.verb("payslip", sl["name"], "submit")
+        slips[m] = resp.get("record", resp) if st == 200 else {}
+        ytd = {k: ytd[k] + v for k, v in zip(("gross", "pph21", "pension", "months"), (slips[m].get("gross_taxable", 0), slips[m].get("pph21", 0), slips[m].get("jht_employee", 0) + slips[m].get("jp_employee", 0), 1))}
+        if m == 10:
+            close_run(fm, runs[m]["name"])
+    st, dec = fm.create("payslip", {"payroll_run": runs[12]["name"], "profile": prof["name"], "days": 22})
+    eq("a December slip saved while November is open reads only October", (dec.get("ytd_months"), dec.get("ytd_pph21")), (1, slips[10].get("pph21")))
+    close_run(fm, runs[11]["name"])
+    st, resp = fm.verb("payslip", dec["name"], "submit")
+    check("after November is closed the stale December slip is refused at submit", st >= 400 and "buat lagi" in str(resp).lower(), (st, resp))
+    st, resp = fm.call("DELETE", f"/api/v1/r/payslip/{dec['name']}")
+    st2, d = fm.create("payslip", {"payroll_run": runs[12]["name"], "profile": prof["name"], "days": 22})
+    check("finance deletes the stale draft and makes it again", st in (200, 204) and st2 == 201, (st, resp, st2, d))
+    eq("saving it again reads October and November", (d.get("ytd_months"), d.get("ytd_gross"), d.get("ytd_pph21")), (2, ytd["gross"], ytd["pph21"]))
+    st, resp = fm.verb("payslip", d.get("name", "x"), "submit")
+    d = resp.get("record", resp) if st == 200 else d
+    want = oracle.slip(dict(base, last_month=True), oracle_run(runs[12]), ytd)
+    compare_slip("December of a worker who joined in October (refund)", d, want)
+    check("December pays back the TER withheld in October and November (PKP under PTKP)", want["pph21"] == -ytd["pph21"] and d.get("pph21") == -ytd["pph21"] and ytd["pph21"] > 0, (d.get("pph21"), ytd))
+
+
+SCENARIOS = [scenario_payroll_month, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale]

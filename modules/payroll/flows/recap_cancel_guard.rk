@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: recap_cancel_guard
+label: {id: Rekap absensi yang dipakai slip gaji tidak bisa dibatalkan}
+# The slip took its days and the recap's labour cost (timesheet_cost, which the run leaves off the margin row): a
+# cancelled recap would take that cost off the project while the pay stays. Cancel the slip first.
+on: timesheet.cancelled
+steps:
+  - find: payslip
+    where: timesheet == event.name && docstatus == 1
+    as: slip
+  - if: slip != null
+    create: payroll_guard
+    set:
+      reason: "'recap_has_slip'"
+      document: slip.name

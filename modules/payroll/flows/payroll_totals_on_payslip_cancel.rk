@@ -16,6 +16,7 @@ steps:
     update: run
     set:
       headcount: "size(slips)"
+      lock_slip: "size(slips) > 0 ? slips[0].name : ''"
       total_cash_gross: "slips.map(s, s.cash_gross).sum()"
       total_employer_bpjs: "slips.map(s, s.employer_bpjs).sum()"
       total_employee_bpjs: "slips.map(s, s.employee_bpjs).sum()"
@@ -23,5 +24,6 @@ steps:
       total_net_pay: "slips.map(s, s.net_pay).sum()"
       total_employer_cost: "slips.map(s, s.employer_cost).sum()"
       total_timesheet_cost: "slips.map(s, s.timesheet_cost).sum()"
+      total_other_deduction: "slips.map(s, s.other_deduction).sum()"
       deposit_bpjs_tk: "slips.map(s, s.deposit_bpjs_tk).sum()"
       deposit_bpjs_kes: "slips.map(s, s.deposit_bpjs_kes).sum()"

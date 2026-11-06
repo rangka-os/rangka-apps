@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payslip_month_guard_submitted
+label: {id: Satu slip gaji per pekerja per bulan pajak}
+# TER is a rate on the month's whole gross: two slips of one worker in one tax month (two runs, two contracts) would
+# each take the lower rate. A second live (not cancelled) slip is refused when it is made and when it is submitted; a
+# cancelled slip gives the month back.
+on: payslip.submitted
+steps:
+  - find: payslip
+    where: profile == event.profile && tax_year == event.tax_year && tax_month == event.tax_month && docstatus != 2 && name != event.name
+    as: other
+  - if: other != null
+    create: payroll_guard
+    set:
+      reason: "'second_slip'"
+      document: other.name

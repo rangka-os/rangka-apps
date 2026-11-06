@@ -36,10 +36,17 @@ fields:
   - {name: total_pph21, type: currency, label: {id: Setoran PPh 21}, compute: payroll_run.total_pph21}
   - {name: total_net_pay, type: currency, label: {id: Gaji bersih ditransfer}, compute: payroll_run.total_net_pay, in_list: true}
   - {name: total_employer_cost, type: currency, label: {id: Biaya perusahaan}, compute: payroll_run.total_employer_cost}
+  - {name: total_timesheet_cost, type: currency, label: {id: Biaya sudah dari absensi}, compute: payroll_run.total_timesheet_cost}
+  - {name: total_other_deduction, type: currency, label: {id: Potongan lain (kasbon)}, compute: payroll_run.total_other_deduction}
   - {name: deposit_bpjs_tk, type: currency, label: {id: Setoran BPJS Ketenagakerjaan}, compute: payroll_run.deposit_bpjs_tk}
   - {name: deposit_bpjs_kes, type: currency, label: {id: Setoran BPJS Kesehatan}, compute: payroll_run.deposit_bpjs_kes}
   - {name: fee_amount, type: currency, label: {id: Management fee}, compute: payroll_run.fee_amount}
-  - {name: extra_cost, type: currency, label: {id: Biaya tambahan ke untung proyek}, compute: payroll_run.extra_cost}
+  # Margin: wages + fee billed, the employer cost the recaps did not book. Fee only: the client funds the wages outside
+  # the invoice, so the wages are not the firm's cost: the row takes the recaps' labour cost back off the project.
+  - name: extra_cost
+    type: currency
+    label: {id: Biaya tambahan ke untung proyek}
+    compute: "billing_mode == 'fee_only' ? 0 - total_timesheet_cost : payroll_run.extra_cost"
 rules:
   - name: run_open
     on: submit
@@ -69,5 +76,5 @@ views:
           - [period_from, period_to, billing_mode]
       - section: {id: Setoran dan biaya}
         columns:
-          - [headcount, total_cash_gross, total_employee_bpjs, total_net_pay, total_pph21]
-          - [total_employer_bpjs, deposit_bpjs_tk, deposit_bpjs_kes, total_employer_cost, extra_cost, fee_amount]
+          - [headcount, total_cash_gross, total_employee_bpjs, total_other_deduction, total_net_pay, total_pph21]
+          - [total_employer_bpjs, deposit_bpjs_tk, deposit_bpjs_kes, total_employer_cost, total_timesheet_cost, extra_cost, fee_amount]

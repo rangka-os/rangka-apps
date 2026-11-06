@@ -31,7 +31,19 @@ of the client contract and the client invoice. Installed with `jasa_proyek`; dem
   whole invoice (the invoice has no per-line PPN; fee-only PPN under PMK 83/2012 is a follow-up). Fee: percent of
   the employer cost or flat per worker; or fee only.
 
+## Guards (audit 7 Nov)
+- One live slip per worker per tax month (flows `payslip_month_guard_*`); a cancelled slip gives the month back.
+- A slip whose year to date no longer matches the closed months is refused at submit (`payslip_ytd_guard`): delete the
+  draft and make it again (a flow writing a record inside that record's own update would drop the edit being saved).
+- A recap used by a submitted slip cannot be cancelled (`recap_cancel_guard`); `timesheet_cost` is computed from it.
+- A run with submitted slips keeps its project, period, tax month and rates (`locked_by_slips`, copies on the first
+  slip); a closed run keeps what its close froze (`locked_by_close`); runs are never deleted; one run per project and
+  start of period.
+- Fee only: the margin row takes the recaps' labour cost back off the project (the client funds the wages).
+
 ## Limits
+- The client invoice is found by the close's number in its notes (an invoice cannot link a module it does not know);
+  editing that text breaks the cancel guard. Accepted for now: the same finance role can cancel both.
 - A flow cannot loop or submit: one slip per recap, slips submitted one by one, the invoice is a draft.
 - Submittable records are renamed from DRAFT- at submit without their links following, so the run (linked by slips)
   is not submittable and is closed by its own document.
