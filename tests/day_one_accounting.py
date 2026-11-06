@@ -199,7 +199,8 @@ def scenario_accounting(api):
     for f in ("revenue", "sales_returns", "net_revenue", "cogs", "stock_loss", "direct_labour", "project_costs",
               "operating_expenses", "tax_expense", "net_profit"):
         eq(f"accounting: {f} {d0[:7]} = manual calculation from the documents", rep.get(f), exp[f])
-    check(f"accounting: the month has revenue ({rep.get('net_revenue')})", (rep.get("net_revenue") or 0) > 0, rep.get("net_revenue"))
+    # a factory site sells through another app (grosir): its month can have no revenue, but it always has journal lines
+    check(f"accounting: the report counts the month's journal lines ({rep.get('line_count')})", (rep.get("line_count") or 0) > 0, rep.get("line_count"))
     eq("accounting: balance sheet balances (aset = liabilitas + ekuitas)", (rep.get("balanced"), rep.get("difference")), (True, 0))
     bal = expected_balances(api, d1)
     for f in ("inventory", "receivables", "trade_payables"):
