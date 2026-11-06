@@ -1,0 +1,124 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One line of the bank statement. Money in is positive, money out negative. Status:
+#   unmatched -> suggested (flow bank_transaction_suggest found exactly one invoice) -> confirmed (the owner agrees,
+#   flow bank_transaction_confirm drafts the payment into draft_payment) -> matched (that very draft is submitted;
+#   flow bank_transaction_matched sets payment). ignored = not a sale.
+# payment is only ever a submitted payment and only flows write it, so "Cocok" cannot be set by hand. The payment
+# names the line in payment.bank_transaction, and bank_transaction_claim allows one live payment per line, whatever
+# path made it. draft_payment points at the line's open draft, which confirming again reuses; a deleted draft is
+# drafted again by saving the line as "Dikonfirmasi". Cancelling the payment sends the line back to unmatched.
+name: bank_transaction
+label: {id: Mutasi bank, en: Bank transaction}
+icon: bank
+naming: MUT-{YYYY}-{#####}
+title_field: description
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, export: true, import: true}
+  # a line that is paid (payment set) is never deleted: its payment and claim would point at nothing
+  - {role: finance_manager, delete: true, if: payment == ''}
+  - {role: sales_manager, read: true, create: true, write: true, export: true, import: true}
+  - {role: head_office, read: true, create: true, write: true, export: true, import: true}
+fields:
+  - name: account
+    type: data
+    label: {id: Rekening}
+    in_list: true
+  - name: date
+    type: date
+    label: {id: Tanggal}
+    required: true
+    in_list: true
+  - name: seq
+    type: int
+    label: {id: Urutan}
+    help: {id: 'Nomor baris transaksi di hari itu sesuai mutasi bank (1, 2, 3, ...). Membedakan dua transfer yang sama di hari yang sama.'}
+    required: true
+  - name: description
+    type: data
+    label: {id: Keterangan}
+    required: true
+    in_list: true
+  - name: credit
+    type: currency
+    label: {id: Masuk}
+    default: '0'
+  - name: debit
+    type: currency
+    label: {id: Keluar}
+    default: '0'
+  - name: amount
+    type: currency
+    label: {id: Jumlah}
+    compute: credit - debit
+    in_list: true
+  - name: balance
+    type: currency
+    label: {id: Saldo}
+    help: {id: 'Salin dari mutasi bank kalau ada. Kalau kosong, Urutan harus nomor baris di seluruh hari itu, bukan nomor di potongan yang ditempel.'}
+  - name: status
+    type: select
+    label: {id: Status cocok}
+    default: "'unmatched'"
+    required: true
+    chip: true
+    in_list: true
+    in_filter: true
+    options:
+      - {value: unmatched, label: {id: Belum cocok}}
+      - {value: suggested, label: {id: Ada usulan}}
+      - {value: confirmed, label: {id: Dikonfirmasi}}
+      - {value: matched, label: {id: Cocok, en: Matched}}
+      - {value: ignored, label: {id: Abaikan}}
+  - name: suggested_invoice
+    type: link
+    to: sales_invoice
+    label: {id: Faktur}
+    help: {id: 'Diisi otomatis kalau tepat satu faktur cocok; boleh diganti sebelum konfirmasi.'}
+    peek: [customer, outstanding, due_date]
+    in_list: true
+  # data, not link: the draft may be deleted (and is renamed on submit); a link to a missing record would make the
+  # line unsavable.
+  - name: draft_payment
+    type: data
+    label: {id: Draf pembayaran}
+    read_only: true
+  - name: payment
+    type: link
+    to: payment
+    label: {id: Pembayaran}
+    read_only: true
+rules:
+  - name: one_side_only
+    on: save
+    check: credit >= 0 && debit >= 0 && (credit == 0 || debit == 0)
+    message: {id: 'Isi Masuk atau Keluar saja, tidak boleh negatif'}
+  - name: confirm_needs_invoice
+    on: save
+    check: status != 'confirmed' || suggested_invoice != ''
+    message: {id: Pilih faktur sebelum konfirmasi}
+  - name: confirm_only_money_in
+    on: save
+    check: status != 'confirmed' || amount > 0
+    message: {id: Hanya uang masuk yang bisa dicocokkan ke faktur penjualan}
+  - name: matched_needs_payment
+    on: save
+    check: (status == 'matched') == (payment != '')
+    message: {id: Status Cocok diisi otomatis saat pembayarannya diajukan dan hanya lepas saat pembayaran itu dibatalkan}
+  - name: seq_positive
+    on: save
+    check: seq > 0
+    message: {id: Urutan mulai dari 1}
+views:
+  list:
+    columns: [date, description, amount, status, suggested_invoice, payment]
+    sort: -date
+  form:
+    layout:
+      - section: {id: Mutasi}
+        columns:
+          - [date, seq, account, description]
+          - [credit, debit, amount, balance]
+      - section: {id: Pencocokan}
+        columns:
+          - [status, suggested_invoice]
+          - [draft_payment, payment]
