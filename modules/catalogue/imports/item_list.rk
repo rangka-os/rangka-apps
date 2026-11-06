@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# The opening item list of a new installation: one row per item, the same file for F&B materials and products and for
+# services. SKU is required (it is the duplicate key and what the sales imports match on). Jenis is read without regard
+# to case (Bahan baku, Produk jadi, Jasa; anything else is Barang). Units are matched by name (Kg, Liter, Pcs,
+# Orang-hari...), so the units must exist first. Imports only create: a SKU already imported is skipped, prices are
+# changed on the item itself.
+name: item_list
+label: {id: Daftar barang & harga, en: Item list}
+model: item
+source: csv
+header_row: 1
+key: [SKU]
+map:
+  item_name: Nama barang
+  sku: SKU
+  kind: "=row['Jenis'].lowerAscii().trim() == 'bahan baku' ? 'material' : row['Jenis'].lowerAscii().trim() == 'produk jadi' ? 'product' : row['Jenis'].lowerAscii().trim() == 'jasa' ? 'service' : 'good'"
+  stock_uom: {value: Satuan, match: uom_name}
+  sales_uom: {value: Satuan, match: uom_name}
+  rate: Harga jual
+  standard_cost: Harga pokok

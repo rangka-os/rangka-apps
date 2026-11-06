@@ -36,7 +36,7 @@ fields:
       - {value: transfer_out, label: {id: Transfer keluar}}
       - {value: sale, label: {id: Penjualan}}
       - {value: count, label: {id: Opname}}
-      - {value: waste, label: {id: Barang rusak}}
+      - {value: waste, label: {id: Terbuang}}
       - {value: adjustment, label: {id: Penyesuaian}}
       - {value: reversal, label: {id: Pembatalan}}
 views:

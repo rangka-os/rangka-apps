@@ -817,6 +817,12 @@ def scenario_projects(api):
         return
     eq("project state defaults to planned", p["state"], "planned")
     eq("project number PRJ-<year>-nnnn", p["name"].startswith("PRJ-"), True)
+    eq("project billing_model defaults to fixed, contract_value 0", (p["billing_model"], p["contract_value"]), ("fixed", 0))
+    st, eng = api.create("project", {"project_name": "Pendampingan pajak 2026", "customer": customer, "billing_model": "milestone",
+                                     "contract_kind": "spk", "contract_no": "SPK/001/XI/2026", "contract_date": "2026-11-02", "contract_value": 100_000_000})
+    check("create an engagement: milestone billing, SPK, contract 100.000.000", st == 201 and eng["contract_value"] == 100_000_000 and eng["billing_model"] == "milestone", (st, eng))
+    st, resp = api.create("project", {"project_name": "x", "customer": customer, "contract_value": -1})
+    check("negative contract value -> 422 'Nilai kontrak tidak boleh negatif'", st == 422 and any("Nilai kontrak" in m for m in messages(resp)), (st, resp))
 
     st, a = api.create("assignment", {"project": p["name"], "worker": worker, "start_date": "2026-11-10", "end_date": "2026-11-20"})
     check("create assignment", st == 201, a)
@@ -992,7 +998,7 @@ def scenario_payments(api):
                                         "payment": p2["name"] if isinstance(p2, dict) and p2.get("name") else ""})
     check("create withholding for the invoice", st == 201, bp)
     if st == 201:
-        eq("withholding dpp defaults to invoice dpp", bp["dpp"], 10_000_000)
+        eq("withholding dpp defaults to the invoice's PPh 23 base (= dpp when every line is ticked)", bp["dpp"], 10_000_000)
         eq("withholding amount = round(dpp x 2 / 100) = 200.000", bp["amount"], 200_000)
         st, resp = api.verb("withholding", bp["name"], "submit")
         check("submit withholding", st == 200 and str(resp.get("name", "")).startswith("BP-"), resp)
@@ -1146,8 +1152,8 @@ def scenario_procurement(api):
     check("submit big purchase order", st in (200, 202), (st, resp))
     bign = resp.get("name", big["name"]) if st == 200 else big["name"]
     reqs = [a for a in approvals_of(api, "purchase_order", bign) if a.get("policy") == "po_approval"]
-    check("po_approval: a PO above 5.000.000 asks purchasing_manager or head_office at submit (request recorded)",
-          len(reqs) == 1 and reqs[0].get("approvers") == ["purchasing_manager", "head_office"] and reqs[0].get("state") in ("approved", "pending"), reqs)
+    check("po_approval: a PO above 5.000.000 asks finance_manager at submit (request recorded)",
+          len(reqs) == 1 and reqs[0].get("approvers") == ["finance_manager"] and reqs[0].get("state") in ("approved", "pending"), reqs)
     check("po_approval: the PO under the limit made no request", not approvals_of(api, "purchase_order", pon), approvals_of(api, "purchase_order", pon))
 
     # foreign-currency PO: the IDR header comes from the converted subtotal
@@ -1298,6 +1304,382 @@ def scenario_procurement(api):
 
 # ---------- scenarios: roles and approvals on demo-jasa (non-owner members, contract 0007)
 
+# ---------- scenario: the money rail (Tahap 1): remind, get paid by transfer or gateway, match the bank statement
+
+def statement_csv(rows, seq=True):
+    """A bank_statement_csv file: rows of (date dd/mm/yyyy, note, credit, debit, balance). Urutan is the number of
+    the line within its day, as the owner copies the bank's export (seq=False leaves the column out)."""
+    out = ["Rekening,Tanggal,Urutan,Keterangan,Masuk,Keluar,Saldo" if seq else "Rekening,Tanggal,Keterangan,Masuk,Keluar,Saldo"]
+    per_day = {}
+    for d, note, cr, db, bal in rows:
+        per_day[d] = per_day.get(d, 0) + 1
+        out.append(f'1110000001,{d},{per_day[d]},"{note}",{cr},{db},{bal}' if seq else f'1110000001,{d},"{note}",{cr},{db},{bal}')
+    return ("\n".join(out) + "\n").encode()
+
+
+def scenario_money_rail(api):
+    if not installed(api, "bank_transaction"):
+        fail("money rail", "bank_statement module not installed on this site")
+        return
+    item = services(api)[0]["name"]
+    st, cust = api.create("customer", {"customer_name": "PT Contoh Lunas", "phone": "081200001111"})
+    check("money rail: create customer with a WhatsApp number", st == 201, cust)
+    customer = cust["name"]
+
+    def submitted_invoice(rate, **extra):
+        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0, **extra))
+        check(f"money rail: create invoice {rate}", st == 201, inv)
+        st, resp = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        check(f"money rail: submit invoice {rate}", st == 200, resp)
+        return resp.get("name", inv["name"])
+
+    past = "2026-01-05"
+    inv_a = submitted_invoice(2_750_000, posting_date="2026-01-01", due_date=past)   # paid by transfer, number in the note
+    inv_b = submitted_invoice(1_234_000)                                               # paid by transfer, amount only
+    inv_c = submitted_invoice(990_000)                                                 # paid through the gateway
+    inv_d = submitted_invoice(500_000)
+    inv_e = submitted_invoice(500_000)                                                 # same amount as inv_d: no suggestion
+
+    # 1. tagih: the WhatsApp reminder print and the reminder log
+    st, page, _ = api.print_html("sales_invoice", inv_a, "sales_invoice_whatsapp")
+    check("WhatsApp print: wa.me link to 62812..., text filled in", st == 200 and "https://wa.me/6281200001111?text=" in page and "Halo%20PT%20Contoh%20Lunas" in page, (st, page[:400]))
+    check("WhatsApp print of an overdue invoice says how late and asks for the number in the note",
+          "lewat" in page and "hari dari jatuh tempo" in page and "berita transfer" in page, page[:600])
+    st, rem = api.create("invoice_reminder", {"sales_invoice": inv_a})
+    check("invoice_reminder: customer, overdue template and outstanding default from the invoice",
+          st == 201 and rem["customer"] == customer and rem["template"] == "pengingat_jatuh_tempo" and rem["outstanding"] == 2_750_000, (st, rem))
+    st, draft = api.create("sales_invoice", invoice_body(customer, item, rate=1000))
+    st, resp = api.create("invoice_reminder", {"sales_invoice": draft["name"]})
+    check("invoice_reminder refuses a draft invoice", st == 422, (st, resp))
+    st, run = api.call("POST", "/api/v1/flows/invoice_due_digest/run", {})
+    texts = [n.get("text", "") for n in (run or {}).get("notifications", [])]
+    check("invoice_due_digest lists the overdue invoice to the owner", st == 200 and any("faktur jatuh tempo" in t for t in texts), (st, run))
+
+    # 2. bayar lewat gateway (a Xendit callback turned into a payment): gateway_ref is unique
+    body = {"direction": "receive", "customer": customer, "amount": 990_000, "method": "va", "gateway": "xendit",
+            "gateway_ref": "va-paid-test-0001", "reference": inv_c, "allocations": [{"sales_invoice": inv_c, "amount": 990_000}]}
+    st, gp = api.create("payment", body)
+    check("gateway payment created with gateway_ref", st == 201, (st, gp))
+    st, resp = api.verb("payment", gp["name"], "submit")
+    check("gateway payment submitted", st == 200, (st, resp))
+    gp_name = resp.get("name", gp["name"])
+    eq("gateway payment settles its invoice (outstanding 0)", api.get("sales_invoice", inv_c)["outstanding"], 0)
+    st, resp = api.create("payment", body)
+    check("the same callback again (same gateway_ref) is refused", st in (409, 422), (st, resp))
+    st, resp = api.create("payment", dict(body, gateway_ref="", amount=1))
+    check("a gateway payment without gateway_ref is refused", st == 422, (st, resp))
+
+    # a gateway payment allocated to the wrong invoice is cancelled and amended under the same gateway id
+    st, resp = api.verb("payment", gp_name, "cancel")
+    check("cancel the gateway payment", st == 200, (st, resp))
+    eq("cancelled gateway payment reopens its invoice", api.get("sales_invoice", inv_c)["outstanding"], 990_000)
+    st, am = api.verb("payment", gp_name, "amend")
+    check("amend a cancelled gateway payment: a draft with the same gateway_ref (no 500)",
+          st in (200, 201) and am.get("gateway_ref") == body["gateway_ref"], (st, am))
+    st, resp = api.verb("payment", am.get("name", ""), "submit")
+    check("the amended gateway payment submits", st == 200, (st, resp))
+    am_name = resp.get("name", "") if isinstance(resp, dict) else ""
+    eq("amended gateway payment settles the invoice again", api.get("sales_invoice", inv_c)["outstanding"], 0)
+    st, resp = api.create("payment", body)
+    check("after the amend the same callback is still refused", st in (409, 422), (st, resp))
+    # cancel again, then the callback is recorded afresh as a new payment (no amend)
+    st, resp = api.verb("payment", am_name, "cancel")
+    check("cancel the amended gateway payment", st == 200, (st, resp))
+    st, again = api.create("payment", body)
+    check("a cancelled gateway id can be recorded again as a new payment", st == 201, (st, again))
+    st, resp = api.verb("payment", again.get("name", ""), "submit")
+    check("the re-recorded gateway payment submits", st == 200, (st, resp))
+    eq("re-recorded gateway payment settles the invoice", api.get("sales_invoice", inv_c)["outstanding"], 0)
+    # a draft with a gateway id that is deleted does not keep the id
+    body2 = dict(body, gateway_ref="va-draft-deleted-0002", allocations=[])
+    st, d = api.create("payment", body2)
+    check("draft gateway payment created", st == 201, (st, d))
+    st, resp = api.call("DELETE", f"/api/v1/r/payment/{api.q(d.get('name', ''))}")
+    check("draft gateway payment deleted", st in (200, 204), (st, resp))
+    st, d2 = api.create("payment", body2)
+    check("the gateway id of a deleted draft can be used again", st == 201, (st, d2))
+    st, resp = api.create("payment", body2)
+    check("but not twice", st in (409, 422), (st, resp))
+
+    # the WhatsApp print never bills an invoice that is not open
+    inv_x = submitted_invoice(700_000, posting_date="2026-01-01", due_date=past)
+    st, resp = api.verb("sales_invoice", inv_x, "cancel")
+    check("cancel an overdue invoice", st == 200, (st, resp))
+    st, page, _ = api.print_html("sales_invoice", inv_x, "sales_invoice_whatsapp")
+    check("WhatsApp print of a cancelled invoice: no reminder, no amount, no wa.me link",
+          st == 200 and "wa.me" not in page and "mengingatkan" not in page and "700.000" not in page and "dibatalkan" in page, (st, page[:800]))
+    st, dr = api.create("sales_invoice", invoice_body(customer, item, rate=650_000))
+    st, page, _ = api.print_html("sales_invoice", dr["name"], "sales_invoice_whatsapp")
+    check("WhatsApp print of a draft invoice: no bill, no wa.me link",
+          st == 200 and "wa.me" not in page and "650.000" not in page and "belum diajukan" in page, (st, page[:800]))
+
+    # 3. mutasi: import the statement
+    rows = [("06/11/2026", f"TRSF E-BANKING CR {inv_a} PT CONTOH LUNAS", 2_750_000, 0, 12_750_000),
+            ("06/11/2026", "TRSF E-BANKING CR PT CONTOH LUNAS", 1_234_000, 0, 13_984_000),
+            ("06/11/2026", "TRSF E-BANKING CR PT CONTOH", 500_000, 0, 14_484_000),
+            ("06/11/2026", "BIAYA ADM", 0, 15_000, 14_469_000)]
+    csv = statement_csv(rows)
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi.csv", csv)
+    check("statement preview: 4 rows, no errors", st == 200 and pv["rows"] == 4 and pv["errors"] == [], (st, pv))
+    if st != 200:
+        return
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit")
+    check("statement commit creates 4 lines", st == 200 and len(c.get("records", [])) == 4, (st, c))
+    st, pv2 = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi.csv", csv)
+    check("the same statement again: duplicate", st == 200 and pv2["duplicate"] is True, (st, pv2))
+    more = statement_csv(rows + [("07/11/2026", "SETORAN TUNAI", 100_000, 0, 14_569_000)])
+    st, pv3 = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-2.csv", more)
+    st, c3 = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv3['id']}/commit")
+    check("an overlapping statement adds only the new line", st == 200 and len(c3.get("records", [])) == 1, (st, c3))
+    lines = {l["description"]: l for l in api.find("bank_transaction", "date >= '2026-11-06'")}
+    eq("5 statement lines", len(lines), 5)
+    la = lines[rows[0][1]]
+    lb = lines[rows[1][1]]
+    ld = lines[rows[2][1]]
+    lf = lines["BIAYA ADM"]
+    eq("money out is negative", lf["amount"], -15_000)
+    check("line with the invoice number in the note: suggested that invoice",
+          la["status"] == "suggested" and la["suggested_invoice"] == inv_a, la)
+    check("line with a unique amount: suggested the invoice of that amount",
+          lb["status"] == "suggested" and lb["suggested_invoice"] == inv_b, lb)
+    check("line whose amount fits two invoices: no suggestion", ld["status"] == "unmatched" and not ld["suggested_invoice"], ld)
+    eq("money out: no suggestion", lf["status"], "unmatched")
+
+    # two equal transfers on one day, statement without Saldo: Urutan keeps them apart, so neither is lost
+    same = ("06/12/2026", "TRSF CR SAMA", 500_000, 0, "")
+    st, pv4 = api.upload("/api/v1/imports/bank_statement_csv", {}, "pagi.csv", statement_csv([same]))
+    st, c4 = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv4['id']}/commit")
+    check("morning export without Saldo: 1 line", st == 200 and len(c4.get("records", [])) == 1, (st, c4))
+    st, pv5 = api.upload("/api/v1/imports/bank_statement_csv", {}, "sore.csv", statement_csv([same, same]))
+    check("evening export with a second equal transfer: no error", st == 200 and pv5["errors"] == [], (st, pv5))
+    st, c5 = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv5['id']}/commit")
+    check("evening export adds the second equal transfer", st == 200 and len(c5.get("records", [])) == 1, (st, c5))
+    eq("both equal transfers are kept", len(api.find("bank_transaction", "description == 'TRSF CR SAMA'")), 2)
+    # a part of a day pasted and numbered from 1 again, with Saldo: no equal transfer is dropped
+    q = ("06/12/2026", "QRIS CR SAMA", 50_000, 0)
+    st, pv7 = api.upload("/api/v1/imports/bank_statement_csv", {}, "qris-pagi.csv", statement_csv([q + (1_050_000,), q + (1_100_000,)]))
+    api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv7['id']}/commit")
+    st, pv8 = api.upload("/api/v1/imports/bank_statement_csv", {}, "qris-siang.csv", statement_csv([q + (1_100_000,), q + (1_150_000,), q + (1_200_000,)]))
+    st, c8 = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv8['id']}/commit")
+    check("partial paste renumbered from 1, Saldo filled: the two new equal transfers are added, none dropped",
+          len(api.find("bank_transaction", "description == 'QRIS CR SAMA'")) >= 4, (st, c8))
+    st, pv6 = api.upload("/api/v1/imports/bank_statement_csv", {}, "tanpa-urutan.csv", statement_csv([("07/12/2026", "TRSF CR LAIN", 1_000, 0, "")], seq=False))
+    check("a statement without the Urutan column is refused, not deduplicated silently",
+          st == 200 and any(e.get("column") == "Urutan" for e in pv6.get("errors", [])), (st, pv6))
+
+    # 4. cocok -> pembayaran -> lunas
+    st, resp = api.patch("bank_transaction", la["name"], {"status": "confirmed"})
+    check("confirm the suggested line", st == 200, (st, resp))
+    la = api.get("bank_transaction", la["name"])
+    check("confirming drafts a payment linked to the line (not yet the matched payment)", bool(la.get("draft_payment")) and not la.get("payment"), la)
+    p = api.get("payment", la["draft_payment"])
+    check("drafted payment: customer, amount, reference = line, one allocation to the invoice",
+          p["docstatus"] == 0 and p["customer"] == customer and p["amount"] == 2_750_000 and p["reference"] == la["name"]
+          and [(r["sales_invoice"], r["amount"]) for r in p["allocations"]] == [(inv_a, 2_750_000)], p)
+    st, resp = api.verb("payment", p["name"], "submit")
+    check("submit the drafted payment", st == 200, (st, resp))
+    pname = resp.get("name", p["name"])
+    inv = api.get("sales_invoice", inv_a)
+    check("invoice A lunas: outstanding 0, status paid", inv["outstanding"] == 0 and inv["status"] == "paid", inv)
+    la = api.get("bank_transaction", la["name"])
+    check("line matched to the submitted payment", la["status"] == "matched" and la["payment"] == pname, la)
+    st, resp = api.patch("bank_transaction", la["name"], {"status": "unmatched"})
+    check("a matched line cannot be set back by hand", st == 422, (st, resp))
+
+    # another payment that only names the line in its reference does not take the line over
+    st, other = api.create("payment", {"direction": "receive", "customer": customer, "amount": 100_000, "reference": la["name"],
+                                       "allocations": [{"sales_invoice": inv_d, "amount": 100_000}]})
+    st, resp = api.verb("payment", other.get("name", ""), "submit")
+    check("other payment with reference = the line submitted", st == 200, (st, resp))
+    other_name = resp.get("name", "")
+    la = api.get("bank_transaction", la["name"])
+    check("the line stays matched to its own payment", la["status"] == "matched" and la["payment"] == pname, la)
+    st, resp = api.verb("payment", other_name, "cancel")
+    la = api.get("bank_transaction", la["name"])
+    check("cancelling the other payment leaves the line matched", st == 200 and la["status"] == "matched" and la["payment"] == pname, (st, la))
+    st, page, _ = api.print_html("sales_invoice", inv_a, "sales_invoice_whatsapp")
+    check("WhatsApp print of a paid invoice thanks the customer", st == 200 and "sudah lunas" in page, page[:400])
+
+    # the owner picks the invoice for the ambiguous line
+    st, resp = api.patch("bank_transaction", ld["name"], {"status": "confirmed"})
+    check("confirm without an invoice -> 422", st == 422, (st, resp))
+    st, resp = api.patch("bank_transaction", ld["name"], {"suggested_invoice": inv_e, "status": "confirmed"})
+    ld = api.get("bank_transaction", ld["name"])
+    check("owner picks invoice E and confirms", st == 200 and bool(ld.get("draft_payment")), (st, ld))
+    st, resp = api.patch("bank_transaction", ld["name"], {"status": "matched"})
+    check("a line cannot be set to Cocok by hand while its payment is a draft", st == 422, (st, resp))
+    # the drafted payment is deleted: the line is not stuck, confirming again drafts a new one
+    st, resp = api.call("DELETE", f"/api/v1/r/payment/{api.q(ld['draft_payment'])}")
+    check("delete the drafted payment", st in (200, 204), (st, resp))
+    st, resp = api.patch("bank_transaction", ld["name"], {"status": "suggested"})
+    ld2 = api.get("bank_transaction", ld["name"])
+    check("after the draft is deleted the line can go back", st == 200 and ld2["status"] == "suggested", (st, ld2))
+    st, resp = api.patch("bank_transaction", ld["name"], {"status": "confirmed"})
+    ld2 = api.get("bank_transaction", ld["name"])
+    check("confirming again drafts a new payment", st == 200 and ld2.get("draft_payment") not in ("", None, ld["draft_payment"]), (st, ld2))
+    st, resp = api.verb("payment", ld2.get("draft_payment", ""), "submit")
+    ld2 = api.get("bank_transaction", ld["name"])
+    check("submitting it matches the line", st == 200 and ld2["status"] == "matched" and ld2["payment"] == resp.get("name"), (st, ld2))
+    st, resp = api.patch("bank_transaction", lf["name"], {"suggested_invoice": inv_d, "status": "confirmed"})
+    check("money out cannot be confirmed against a sales invoice", st == 422, (st, resp))
+
+    # cancel the payment: the line goes back to unmatched, the invoice is owed again
+    st, resp = api.verb("payment", pname, "cancel")
+    check("cancel the payment of line A", st == 200, (st, resp))
+    la = api.get("bank_transaction", la["name"])
+    check("line A back to unmatched, payment cleared", la["status"] == "unmatched" and not la.get("payment"), la)
+    eq("invoice A owed again", api.get("sales_invoice", inv_a)["outstanding"], 2_750_000)
+    # the cancelled payment is amended and submitted: the line follows it (amended_from), so it is not confirmed again
+    st, am = api.verb("payment", pname, "amend")
+    st, resp = api.verb("payment", am.get("name", ""), "submit")
+    la = api.get("bank_transaction", la["name"])
+    check("the amended payment of line A matches line A again", st == 200 and la["status"] == "matched" and la["payment"] == resp.get("name"), (st, la))
+    eq("invoice A paid once", api.get("sales_invoice", inv_a)["outstanding"], 0)
+
+    # going back and forth never leaves a second draft: one line, one payment
+    inv_o, inv_o2 = submitted_invoice(1_000_001), submitted_invoice(1_000_002)
+    st, lo = api.create("bank_transaction", {"account": "1110000001", "date": "2026-11-08", "seq": 1, "description": "TRSF CR BOLAK BALIK", "credit": 400_000})
+    check("statement line for the back-and-forth case", st == 201, (st, lo))
+    api.patch("bank_transaction", lo["name"], {"suggested_invoice": inv_o, "status": "confirmed"})
+    d1 = api.get("bank_transaction", lo["name"]).get("draft_payment")
+    api.patch("bank_transaction", lo["name"], {"status": "suggested"})
+    api.patch("bank_transaction", lo["name"], {"suggested_invoice": inv_o2, "status": "confirmed"})
+    lo = api.get("bank_transaction", lo["name"])
+    drafts = api.find("payment", f"reference == '{lo['name']}' && docstatus == 0")
+    check("confirm, back, confirm again with another invoice: the same single draft", bool(d1) and lo["draft_payment"] == d1 and len(drafts) == 1, (d1, lo, drafts))
+    p1 = api.get("payment", d1)
+    check("the draft follows the invoice chosen last", [r["sales_invoice"] for r in p1.get("allocations", [])] == [inv_o2], p1)
+    api.patch("bank_transaction", lo["name"], {"status": "ignored"})
+    st, resp = api.verb("payment", d1, "submit")
+    lo = api.get("bank_transaction", lo["name"])
+    check("its draft submitted while the line is set aside still matches the line (no second payment possible)",
+          st == 200 and lo["status"] == "matched" and lo["payment"] == resp.get("name"), (st, lo))
+    eq("invoices: the first untouched, the last paid 400.000", (api.get("sales_invoice", inv_o)["outstanding"], api.get("sales_invoice", inv_o2)["outstanding"]), (1_000_001, 600_002))
+
+    # The invariant, whatever the path: one statement line, at most one live payment (bank_transaction_claim).
+    def one_live(label, line_name, invoices, amount):
+        live = api.find("payment", f"bank_transaction == '{line_name}' && docstatus == 1")
+        paid = sum(base - api.get("sales_invoice", i)["outstanding"] for i, base in invoices)
+        ln = api.get("bank_transaction", line_name)
+        check(f"{label}: one live payment for the line, the transfer paid once, the line matched to it",
+              len(live) == 1 and paid == amount and ln["status"] == "matched" and ln["payment"] == live[0]["name"], (live, paid, ln))
+
+    def new_line(desc, seq, amount=300_000):
+        st, ln = api.create("bank_transaction", {"account": "1110000001", "date": "2026-11-09", "seq": seq, "description": desc, "credit": amount})
+        return ln["name"]
+
+    def confirm(line_name, invoice):
+        api.patch("bank_transaction", line_name, {"suggested_invoice": invoice, "status": "confirmed"})
+        return api.get("bank_transaction", line_name)["draft_payment"]
+
+    def submit(name):
+        st, r = api.verb("payment", name, "submit")
+        return st, (r.get("name", "") if isinstance(r, dict) else "")
+
+    # N1: paid to A, cancelled, confirmed to B, the cancelled payment amended; both submitted: the second is refused
+    ia, ib = submitted_invoice(1_000_003), submitted_invoice(1_000_004)
+    ln = new_line("TRSF CR N1", 1)
+    st, p0 = submit(confirm(ln, ia))
+    st, resp = api.verb("payment", p0, "cancel")
+    check("N1: cancel the payment of the line", st == 200 and api.get("bank_transaction", ln)["status"] == "unmatched", (st, resp))
+    d2 = confirm(ln, ib)
+    st, am = api.verb("payment", p0, "amend")
+    check("N1: the amend keeps the line", am.get("bank_transaction") == ln, am)
+    st1, _ = submit(am.get("name", ""))
+    st2, _ = submit(d2)
+    check("N1: of the amend and the new draft, one submits and the other is refused (422)", sorted((st1, st2)) == [200, 422], (st1, st2))
+    one_live("N1", ln, [(ia, 1_000_003), (ib, 1_000_004)], 300_000)
+
+    # H2 / H3: a chain (paid, cancelled, confirmed again, paid, cancelled), then both cancelled payments amended,
+    # or one amended and the line confirmed again
+    for label, amend_both in (("H2", True), ("H3", False)):
+        ia, ib = submitted_invoice(1_000_010 + amend_both), submitted_invoice(1_000_020 + amend_both)
+        ln = new_line(f"TRSF CR {label}", 2 + amend_both)
+        st, p0 = submit(confirm(ln, ia))
+        api.verb("payment", p0, "cancel")
+        st, p2 = submit(confirm(ln, ib))
+        api.verb("payment", p2, "cancel")
+        st, a0 = api.verb("payment", p0, "amend")
+        st1, _ = submit(a0.get("name", ""))
+        if amend_both:
+            st, a2 = api.verb("payment", p2, "amend")
+            st2, _ = submit(a2.get("name", ""))
+        else:   # the line is matched by the amend already: confirming it again is refused at the line
+            st2, _ = api.patch("bank_transaction", ln, {"suggested_invoice": ib, "status": "confirmed"})
+            if st2 == 200:
+                st2, _ = submit(api.get("bank_transaction", ln)["draft_payment"])
+        check(f"{label}: the first submit goes through, the second is refused", (st1, st2) == (200, 422), (st1, st2))
+        one_live(label, ln, [(ia, 1_000_010 + amend_both), (ib, 1_000_020 + amend_both)], 300_000)
+
+    # r4: paid to A, cancelled, confirmed to B (draft D2), the cancelled payment amended, confirmed to C
+    ia, ib, ic = submitted_invoice(1_000_031), submitted_invoice(1_000_032), submitted_invoice(1_000_033)
+    ln = new_line("TRSF CR R4", 4)
+    st, p0 = submit(confirm(ln, ia))
+    api.verb("payment", p0, "cancel")
+    d2 = confirm(ln, ib)
+    st, am = api.verb("payment", p0, "amend")
+    dc = confirm(ln, ic)
+    sts = [submit(n)[0] for n in {d2, am.get("name", ""), dc}]
+    check("r4: of all drafts of the line exactly one submits", sts.count(200) == 1 and all(x in (200, 409, 422) for x in sts), sts)
+    one_live("r4", ln, [(ia, 1_000_031), (ib, 1_000_032), (ic, 1_000_033)], 300_000)
+
+    # two drafts of one line submitted at the same time: the unique claim lets exactly one through
+    import threading
+    ia, ib = submitted_invoice(1_000_041), submitted_invoice(1_000_042)
+    ln = new_line("TRSF CR SERENTAK", 5)
+    drafts = []
+    for inv_ in (ia, ib):
+        st, dp = api.create("payment", {"direction": "receive", "customer": customer, "amount": 300_000, "reference": ln, "bank_transaction": ln,
+                                        "allocations": [{"sales_invoice": inv_, "amount": 300_000}]})
+        drafts.append(dp.get("name", ""))
+    api.patch("bank_transaction", ln, {"suggested_invoice": ia, "status": "confirmed"})   # reuses one of them
+    results = []
+    threads = [threading.Thread(target=lambda n=n: results.append(submit(n)[0])) for n in drafts]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    check("concurrent submits of two drafts of one line: one 200, one refused", sorted(results)[0] == 200 and sorted(results)[1] in (409, 422, 500) and len(results) == 2, results)
+    check("concurrent submits: never 500", 500 not in results, results)
+    one_live("concurrent", ln, [(ia, 1_000_041), (ib, 1_000_042)], 300_000)
+
+    # a payment that names a matched line is refused, so the line cannot be taken over through bank_transaction either
+    st, intr = api.create("payment", {"direction": "receive", "customer": customer, "amount": 1_000, "bank_transaction": ln,
+                                      "allocations": [{"sales_invoice": inv_d, "amount": 1_000}]})
+    st, resp = api.verb("payment", intr.get("name", ""), "submit")
+    check("a second payment naming a matched line is refused (422)", st == 422, (st, resp))
+
+    # only the line's own draft (or the amend of its payment) may claim it, and the link cannot be edited
+    ia = submitted_invoice(1_000_051)
+    ln = new_line("TRSF CR A1", 6, 400_000)
+    st, fp = api.create("payment", {"direction": "receive", "customer": customer, "amount": 1, "bank_transaction": ln,
+                                    "allocations": [{"sales_invoice": ia, "amount": 1}]})
+    st, resp = api.verb("payment", fp.get("name", ""), "submit")
+    check("A1: a payment that is not the line's draft cannot claim the line", st == 422 and api.get("bank_transaction", ln)["status"] != "matched", (st, resp))
+    d1 = confirm(ln, ia)
+    st, resp = api.patch("payment", d1, {"bank_transaction": ""})
+    check("A2: the line of a draft from the statement cannot be cleared", st == 422, (st, resp))
+    ln2 = new_line("TRSF CR A3", 7, 250_000)
+    st, resp = api.patch("payment", d1, {"bank_transaction": ln2})
+    check("A3: nor moved to another line", st == 422, (st, resp))
+    st, resp = api.patch("payment", d1, {"amount": 1, "allocations": [{"sales_invoice": ia, "amount": 1}]})
+    st, resp = api.verb("payment", d1, "submit")
+    check("N4: the line's draft with an amount other than the transfer is refused", st == 422, (st, resp))
+    st, resp = api.patch("payment", d1, {"amount": 400_000, "allocations": [{"sales_invoice": ia, "amount": 400_000}]})
+    st, resp = api.verb("payment", d1, "submit")
+    check("A2/A3/N4: the untouched draft submits and matches", st == 200 and api.get("bank_transaction", ln)["status"] == "matched", (st, resp))
+    vend = api.list("vendor")
+    st, pp = api.create("payment", {"direction": "pay", "vendor": vend[0]["name"], "amount": 10, "bank_transaction": ln2})
+    st, resp = api.verb("payment", pp.get("name", ""), "submit")
+    claims = api.find("bank_transaction_claim", f"bank_transaction == '{ln2}'")
+    check("A4: a vendor payment never claims a statement line", not claims, (st, resp, claims))
+    ib = submitted_invoice(1_000_052)
+    st, resp = api.patch("bank_transaction", ln2, {"suggested_invoice": ib, "status": "confirmed"})
+    st, resp = api.verb("payment", api.get("bank_transaction", ln2)["draft_payment"], "submit")
+    check("A4: nor keeps the line from being confirmed and paid", st == 200 and api.get("bank_transaction", ln2)["status"] == "matched", (st, resp))
+    st, resp = CTX["fm"].call("DELETE", f"/api/v1/r/bank_transaction/{api.q(ln)}") if CTX.get("fm") else (403, None)
+    check("S9: a matched statement line cannot be deleted", st in (403, 409, 422) and api.get("bank_transaction", ln) is not None, (st, resp))
+
 def setup_demo_jasa(api, k):
     """One member per jasa role in PT Contoh Inspeksi (rangka user add), signed in: the owner self-approves, so only these can show a held approval."""
     CTX.update(kernel=k, org=k.orgs[0][0])
@@ -1424,8 +1806,8 @@ def scenario_roles_jasa(api):
             st, resp = pa.verb("timesheet", t["name"], "submit")
             check("project_admin submits the timesheet", st == 200, (st, resp))
 
-    # purchasing_manager: PO rights are purchasing_manager and head_office only, and both approve po_approval, so a PO above
-    # 5.000.000 is self-approved (request recorded); under the limit no request is made
+    # purchasing_manager raises POs; a PO above 5.000.000 waits for finance_manager (demo-jasa custom/purchase_order.rk), so
+    # the maker never approves; under the limit no request is made
     st, resp = pa.create("purchase_order", {"vendor": "VND-0002", "order_date": "2026-11-03", "items": [{"item": "BRG-0004", "qty": 1, "rate": 85_000}]})
     check("project_admin may not create a purchase order -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
     def po(qty):
@@ -1435,10 +1817,18 @@ def scenario_roles_jasa(api):
     big_po, total = po(100)
     eq("the big PO is 8.500.000 (above 5.000.000)", total, 8_500_000)
     st, resp = pm.verb("purchase_order", big_po, "submit")
-    done = resp.get("name", big_po) if st == 200 else big_po
-    reqs = [a for a in approvals_of(api, "purchase_order", done) if a.get("policy") == "po_approval"]
-    check("purchasing_manager submits a big PO: self-approved, numbered PO/CIN/..., po_approval recorded approved",
-          st == 200 and done.startswith("PO/CIN/") and len(reqs) == 1 and reqs[0]["state"] == "approved", (st, resp, reqs))
+    check("purchasing_manager submits a big PO: held, 202, po_approval pending for finance_manager",
+          st == 202 and resp["approval"]["state"] == "pending" and resp["approval"]["approvers"] == ["finance_manager"], (st, resp))
+    if st == 202:
+        st2, r2 = decide(pm, resp["approval"]["id"])
+        check("the maker (purchasing_manager) cannot approve its PO -> 403", st2 == 403, (st2, r2))
+        st2, r2 = decide(fm, resp["approval"]["id"])
+        check("finance_manager approves: the PO is submitted and numbered PO/CIN/...", st2 == 200 and r2.get("record", {}).get("name", "").startswith("PO/CIN/"), (st2, r2))
+    st, fxpo = pm.create("purchase_order", {"vendor": "VND-0002", "currency": "USD", "exchange_rate": 1.01,
+                                            "items": [{"item": "BRG-0004", "qty": 1, "rate": 0, "rate_fx": 100_000}]})
+    if check("purchasing_manager drafts a USD 100.000 PO at kurs 1,01", st == 201, (st, fxpo)):
+        st, resp = pm.verb("purchase_order", fxpo["name"], "submit")
+        check("a USD PO waits for finance_manager whatever its rupiah value (202)", st == 202 and resp["approval"]["approvers"] == ["finance_manager"], (st, resp))
     small_po, total = po(10)
     st, resp = pm.verb("purchase_order", small_po, "submit")
     check("PO under the limit (850.000) is submitted without an approval request", st == 200 and not approvals_of(api, "purchase_order", resp.get("name", small_po)), (st, resp))
@@ -1473,6 +1863,14 @@ MATRIX = {
     **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("project", "assignment", "timesheet", "acceptance")},
     "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
+    "gateway_ref_claim": {"finance_manager": {"read", "create", "write", "export"}, "sales_manager": {"read", "create", "write", "export"},
+                          "head_office": {"read", "create", "write"}},
+    "invoice_reminder": {"finance_manager": {"read", "create", "write", "delete", "export"}, "sales_manager": {"read", "create", "write", "delete", "export"},
+                         "sales_rep": {"read", "create"}},
+    "bank_transaction_claim": {"finance_manager": {"read", "create", "write", "export"}, "sales_manager": {"read", "create", "write", "export"},
+                               "head_office": {"read", "create", "write"}},
+    "bank_transaction": {"finance_manager": {"read", "create", "write", "delete", "export", "import"}, "sales_manager": {"read", "create", "write", "export", "import"},
+                         "head_office": {"read", "create", "write", "export", "import"}},
     "payment": {"finance_manager": _ALL, "sales_manager": _ALL, "head_office": {"read", "create", "write", "submit", "print"}},   # head_office: if direction == 'pay'
     "purchase_request": {"purchasing_manager": _ALL, "project_admin": _RCWS, "head_office": _ALL, "outlet_staff": _RCWS},
     "purchase_order": {"purchasing_manager": _ALL, "finance_manager": _RP, "head_office": _ALL},
@@ -1485,6 +1883,7 @@ MATRIX = {
     "stock_transfer": {"head_office": _ALL, "outlet_staff": _R},
     "stock_transfer_receipt": {"head_office": _ALL, "outlet_staff": _RCWS | {"cancel"}},
     "stock_count": _STOCK_DOC, "stock_adjustment": _STOCK_DOC,
+    "stock_adjustment_value": {"head_office": {"read", "create", "export"}, "outlet_staff": {"read", "create"}},
     "outlet_sales": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     "outlet_takings": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     "consignment_settlement": {"head_office": _ALL - {"delete"}},
@@ -1623,6 +2022,21 @@ def scenario_permissions(api):
             g = granted(role, model)
             if "create" in g:
                 st, resp = cl.create(model, body)
+                if model == "outlet_sales" and role == "outlet_staff" and site == "demo-ritel":
+                    # Cileunyi takes Juragan's POS file: a source file record is head office's import, so staff get 403
+                    # (audit #7 S1 for file and loyverse), and a daily form there is refused by the sales-source rule
+                    check(f"{role} may not create {model} with source file -> 403 permission_denied", denied(st, resp), (st, resp))
+                    st, resp = cl.create(model, {"outlet": CLY, "date": "2026-11-04", "lines": [{"item": "BRG-0001", "qty": 1}]})
+                    rules = [e.get("rule") for e in (resp or {}).get("errors", [])] if isinstance(resp, dict) else []
+                    check(f"{role} may create {model} (permission passes; the POS-file outlet refuses the form by rule)", st == 422 and rules == ["source_matches_outlet"], (st, resp))
+                    continue
+                if model == "outlet_sales" and role == "outlet_staff":
+                    # Dago uses Moka (one source per outlet) and Moka records are head office's, so the role is allowed
+                    # to create but the sales-source rule refuses the daily form here: 422 from the rule, not 403
+                    st, resp = cl.create(model, {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
+                    rules = [e.get("rule") for e in (resp or {}).get("errors", [])] if isinstance(resp, dict) else []
+                    check(f"{role} may create {model} (permission passes; the Moka outlet refuses the form by rule)", st == 422 and "form_only_for_non_moka_outlets" in rules, (st, resp))
+                    continue
                 check(f"{role} may create {model} -> 201", st == 201, (st, resp))
             elif "read" in g:
                 st, resp = cl.call("GET", f"/api/v1/r/{model}?limit=1")
@@ -1857,6 +2271,77 @@ def scenario_tax_jasa(api):
     check("submit the PKP invoice", st == 200, resp)
     stored = api.get("sales_invoice", resp.get("name", inv["name"]))
     eq("a submitted invoice keeps its stored tax_rate, DPP ratio and ppn", (stored["tax_rate"], stored["dpp_num"], stored["dpp_den"], stored["ppn"]), (12, 11, 12, 1_100_000))
+    # manpower: wages on their own line are not PPh 23 base, the management fee is (pph23_exclude per line)
+    st, mp = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "items": [
+        {"item": ndt, "qty": 1, "rate": 10_000_000, "description": "Gaji tenaga kerja", "pph23_exclude": True},
+        {"item": ndt, "qty": 1, "rate": 1_000_000, "description": "Management fee"}]})
+    check("manpower invoice (wages 10.000.000 untaxed for PPh 23, fee 1.000.000) created", st == 201, (st, mp))
+    if st == 201:
+        eq("manpower invoice: dpp 11.000.000, ppn 1.210.000, grand_total 12.210.000", (mp["dpp"], mp["ppn"], mp["grand_total"]), (11_000_000, 1_210_000, 12_210_000))
+        eq("manpower invoice: PPh 23 base 1.000.000 (the fee), PPh 23 20.000, amount_due 12.190.000", (mp["pph23_dpp"], mp["pph23_amount"], mp["amount_due"]), (1_000_000, 20_000, 12_190_000))
+        eq("lines default to pph23_exclude false; the wage line keeps true", [l["pph23_exclude"] in (True, "true") for l in mp["items"]], [True, False])
+    st, dsc = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "discount_amount": 1_100_000, "items": [
+        {"item": ndt, "qty": 1, "rate": 10_000_000, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate": 1_000_000}]})
+    if st == 201:
+        eq("header discount spreads pro rata: dpp 9.900.000, PPh 23 base 900.000, PPh 23 18.000", (dsc["dpp"], dsc["pph23_dpp"], dsc["pph23_amount"]), (9_900_000, 900_000, 18_000))
+    else:
+        fail("discounted manpower invoice created", (st, dsc))
+    eq("an invoice with no line excluded: PPh 23 base = dpp", inv.get("pph23_dpp"), inv.get("dpp"))
+    # down payment: the DP invoice splits wages and fee too; the final invoice deducts the DP's base, so the contract's
+    # total PPh 23 base is the fee (11.000.000 contract: wages 10.000.000, fee 1.000.000; DP 30% = 3.300.000)
+    st, dp = api.create("sales_invoice", {"customer": customer, "kind": "down_payment", "pph23_applies": True, "items": [
+        {"item": ndt, "qty": 1, "rate": 3_000_000, "description": "DP 30% gaji", "pph23_exclude": True},
+        {"item": ndt, "qty": 1, "rate": 300_000, "description": "DP 30% fee"}]})
+    dpn = submit_doc(api, "sales_invoice", dp["name"], "submit the DP invoice (wages and fee split)") if st == 201 else None
+    if dpn:
+        eq("DP invoice PPh 23 base = its fee line 300.000", api.get("sales_invoice", dpn)["pph23_dpp"], 300_000)
+        st, fin = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "dp_invoice": dpn, "down_payment": 3_300_000, "items": [
+            {"item": ndt, "qty": 1, "rate": 10_000_000, "description": "Gaji", "pph23_exclude": True},
+            {"item": ndt, "qty": 1, "rate": 1_000_000, "description": "Fee"}]})
+        if check("final invoice deducting the DP", st == 201, (st, fin)):
+            eq("final invoice base = fee 1.000.000 - DP base 300.000 = 700.000 (contract total = fee)", (fin["pph23_dpp"], fin["pph23_amount"]), (700_000, 14_000))
+        # a DP left all-base, then wages excluded on the final: base clamps to 0 and the save warns
+        st, dp2 = api.create("sales_invoice", {"customer": customer, "kind": "down_payment", "pph23_applies": True, "items": [{"item": ndt, "qty": 1, "rate": 3_000_000}]})
+        dp2n = submit_doc(api, "sales_invoice", dp2["name"], "submit an all-base DP invoice") if st == 201 else None
+        if dp2n:
+            st, w = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "dp_invoice": dp2n, "down_payment": 3_000_000, "items": [
+                {"item": ndt, "qty": 1, "rate": 10_000_000, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate": 1_000_000}]})
+            check("DP base above the final's line base: saved with a warning 'Dasar PPh 23 di faktur uang muka lebih besar'",
+                  st == 201 and any("faktur uang muka lebih besar" in str(x) for x in (w.get("warnings") or w.get("_warnings") or [])), (st, {k: w.get(k) for k in ("pph23_dpp", "warnings", "_warnings")}))
+    if mp.get("name"):
+        check_print("manpower invoice print names the PPh 23 base", api, "sales_invoice", mp["name"], "", ["PPh 23 dipotong pelanggan (dasar Rp 1.000.000)", "Rp 20.000", "Rp 12.190.000"])
+    st, fx = api.create("sales_invoice", {"customer": customer, "currency": "USD", "exchange_rate": 16000, "pph23_applies": True, "items": [
+        {"item": ndt, "qty": 1, "rate_fx": 900, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate_fx": 100}]})
+    if st == 201:
+        eq("USD invoice 900 untaxed + 100 fee at 16.000: PPh 23 base 1.600.000, PPh 23 32.000, PPh 23 (valas) 2",
+           (fx["pph23_dpp"], fx["pph23_amount"], float(fx["pph23_amount_fx"])), (1_600_000, 32_000, 2.0))
+    else:
+        fail("USD manpower invoice created", (st, fx))
+    # a USD DP (150 wages excluded + 50 fee at 16.000 = 3.200.000, base 800.000) deducted in full by a rupiah final
+    # (wages 10.000.000 excluded + fee 2.000.000): base 2.000.000 - 800.000 = 1.200.000, PPh 23 24.000
+    st, dpx = api.create("sales_invoice", {"customer": customer, "kind": "down_payment", "currency": "USD", "exchange_rate": 16000, "pph23_applies": True, "items": [
+        {"item": ndt, "qty": 1, "rate_fx": 150, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate_fx": 50}]})
+    dpxn = submit_doc(api, "sales_invoice", dpx["name"], "submit a USD DP invoice") if st == 201 else None
+    if dpxn:
+        st, fin = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "dp_invoice": dpxn, "down_payment": 3_200_000, "items": [
+            {"item": ndt, "qty": 1, "rate": 10_000_000, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate": 2_000_000}]})
+        eq("rupiah final deducting a USD DP: DP base 800.000, base 1.200.000, PPh 23 24.000",
+           (fin.get("pph23_dp_base"), fin.get("pph23_dpp"), fin.get("pph23_amount")), (800_000, 1_200_000, 24_000))
+    # large foreign amounts (a Decimal product above 10^16 is stored as 0 by the kernel): a USD DP 10.000 x 15.000 =
+    # 150.000.000 deducted by a final of 500.000.000: base 350.000.000, PPh 23 7.000.000; a KRW invoice 40.000.000 x 11 =
+    # 440.000.000: PPh 23 8.800.000, in won 800.000
+    st, dpb = api.create("sales_invoice", {"customer": customer, "kind": "down_payment", "currency": "USD", "exchange_rate": 15000, "pph23_applies": True,
+                                           "items": [{"item": ndt, "qty": 1, "rate_fx": 10_000}]})
+    dpbn = submit_doc(api, "sales_invoice", dpb["name"], "submit a USD DP invoice of 150.000.000") if st == 201 else None
+    if dpbn:
+        st, fin = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "dp_invoice": dpbn, "down_payment": 150_000_000,
+                                              "items": [{"item": ndt, "qty": 1, "rate": 500_000_000}]})
+        eq("final of 500.000.000 deducting a USD DP of 150.000.000: DP base 150.000.000, base 350.000.000, PPh 23 7.000.000",
+           (fin.get("pph23_dp_base"), fin.get("pph23_dpp"), fin.get("pph23_amount")), (150_000_000, 350_000_000, 7_000_000))
+    st, krw = api.create("sales_invoice", {"customer": customer, "currency": "KRW", "exchange_rate": 11, "pph23_applies": True,
+                                           "items": [{"item": ndt, "qty": 1, "rate_fx": 40_000_000}]})
+    eq("KRW invoice 40.000.000 x 11: PPh 23 base 440.000.000, PPh 23 8.800.000, PPh 23 (valas) 800.000",
+       (krw.get("pph23_dpp"), krw.get("pph23_amount"), float(krw.get("pph23_amount_fx") or 0)), (440_000_000, 8_800_000, 800_000.0))
     # a down payment invoice's own amount is its dpp / grand_total
     st, dp = api.create("sales_invoice", invoice_body(customer, ndt, rate=3_000_000, kind="down_payment"))
     eq("down_payment invoice: dpp 3.000.000, ppn 330.000, grand_total 3.330.000", (dp.get("dpp"), dp.get("ppn"), dp.get("grand_total")), (3_000_000, 330_000, 3_330_000))
@@ -2085,6 +2570,30 @@ def scenario_dashboards_fnb(api):
     check("fnb_overview 'Stok minus' list is not empty (the stock scenario made a negative balance)", len(negs) >= 1, negs)
     eq("fnb_overview negative_count", ws["negative_count"]["value"], len(negs))
 
+    # adjustments of every reason count in waste_by_outlet, in the adjustment's own period; a cancelled one nets to
+    # zero there even when it is cancelled weeks later. The expected value comes from the stock balance, not from the
+    # rows the widget reads.
+    before = balance(api, DAGO, "BRG-0001")["value"]
+    st, adj = api.create("stock_adjustment", {"outlet": DAGO, "reason": "expired", "items": [{"item": "BRG-0001", "qty": 2}]})
+    if check("setup: expired adjustment of 2 kg at Dago today", st == 201, (st, adj)):
+        submit_doc(api, "stock_adjustment", adj["name"], "submit the expired adjustment")
+    expired_value = balance(api, DAGO, "BRG-0001")["value"] - before
+    check("the expired adjustment took value out of Dago's stock", expired_value < 0, expired_value)
+    if st == 201:
+        st2, resp = api.create("stock_adjustment_value", {"stock_adjustment": adj["name"], "entry": "post", "outlet": DAGO,
+                                                          "posting_date": adj["adjustment_date"], "value": -1})
+        check("a second value row for the same adjustment cannot be made by hand -> 422", st2 == 422, (st2, resp))
+    for days in (100, 20):
+        d = (today - datetime.timedelta(days=days)).isoformat()
+        st, old = api.create("stock_adjustment", {"outlet": DAGO, "reason": "damage", "adjustment_date": d, "items": [{"item": "BRG-0001", "qty": 1}]})
+        on = submit_doc(api, "stock_adjustment", old["name"], f"submit a damage adjustment dated {days} days ago") if st == 201 else None
+        if on:
+            st, resp = api.verb("stock_adjustment", on, "cancel")
+            check(f"cancel it today ({days} days later)", st == 200, (st, resp))
+    for period in (7, 30, 90):
+        ws_p = dashboard(api, "stock_recap", period)
+        eq(f"waste_by_outlet Dago over {period} days = the expired adjustment only ({expired_value}); the back-dated cancelled ones net to 0",
+           chart_map(ws_p.get("waste_by_outlet", {})).get(DAGO, 0), expired_value)
     ws = dashboard(api, "stock_recap", 90)
     bal = api.list("stock_balance")
     val = {}
@@ -2554,6 +3063,101 @@ def preview(cl, imp, filename, content, outlet):
     return cl.upload(f"/api/v1/imports/{imp}", {"outlet": outlet}, filename, content)
 
 
+def scenario_po_approval_fnb(api):
+    """demo-fnb's custom/purchase_order.rk: a head office PO above Rp 5.000.000 waits for the owner (contract 0007 §1)."""
+    hq = CTX.get("hq")
+    if hq is None:
+        fail("po_approval (fnb): head office member", CTX.get("login_error", "no head office member"))
+        return
+    st, meta = api.call("GET", "/api/v1/meta")
+    pols = [p.get("name") for p in (((meta or {}).get("models") or {}).get("purchase_order") or {}).get("approvals", [])]
+    check("meta: purchase_order carries po_approval from the site overlay", "po_approval" in pols, pols)
+    st, edge = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 100, "rate": 50_000}]})
+    st, resp = hq.verb("purchase_order", edge["name"], "submit")
+    check("a PO of exactly 5.000.000 by head office submits without approval", st == 200 and not approvals_of(api, "purchase_order", resp.get("name", edge["name"])), (st, resp))
+    st, big = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 100, "rate": 85_000}]})
+    check("head office creates a PO of 8.500.000", st == 201 and big["grand_total"] == 8_500_000, (st, big))
+    if st != 201:
+        return
+    st, resp = hq.verb("purchase_order", big["name"], "submit")
+    check("head office submits it: held, 202, po_approval pending for purchasing_manager",
+          st == 202 and resp["approval"]["policy"] == "po_approval" and resp["approval"]["state"] == "pending" and resp["approval"]["approvers"] == ["purchasing_manager"], (st, resp))
+    if st != 202:
+        return
+    eq("the held PO is still a draft", api.get("purchase_order", big["name"])["docstatus"], 0)
+    st2, r2 = decide(hq, resp["approval"]["id"])
+    check("head office cannot approve its own PO -> 403", st2 == 403, (st2, r2))
+    st2, r2 = decide(api, resp["approval"]["id"])
+    check("the owner approves: the PO is submitted and numbered PO/...", st2 == 200 and r2.get("record", {}).get("docstatus") == 1 and r2["record"]["name"].startswith("PO/"), (st2, r2))
+    approved_po = r2.get("record", {}).get("name", "") if st2 == 200 else ""
+    # a bill skips the owner only on an approved (submitted, live) PO and within its value; audit round 2 of #10
+    def bill_on(po_name, bill_no, rate):
+        st, vb = hq.create("vendor_bill", {"vendor": "VND-0001", "bill_no": bill_no, "bill_date": "2026-11-05", "outlet": DAGO,
+                                           "purchase_order": po_name, "items": [{"item": "BRG-0001", "qty": 100, "rate": rate}]})
+        if not check(f"head office records bill {bill_no} on {po_name}", st == 201, (st, vb)):
+            return None, None
+        return hq.verb("vendor_bill", vb["name"], "submit")
+    st, small = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 1, "rate": 10_000}]})
+    st, resp = hq.verb("purchase_order", small["name"], "submit")
+    small_po = resp.get("name", "") if st == 200 else ""
+    check("a PO of 10.000 is submitted without approval", st == 200 and small_po.startswith("PO/"), (st, resp))
+    st, resp = bill_on(small_po, "A1-50JT", 500_000)
+    check("a 50.000.000 bill on a 10.000 PO is held for the owner (202, bill_without_po_approval)",
+          st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    st, held = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 100, "rate": 510_000}]})
+    st, resp = hq.verb("purchase_order", held["name"], "submit")
+    check("a PO of 51.000.000 waits for the owner (202)", st == 202, (st, resp))
+    st, resp = bill_on(held["name"], "A2-51JT", 510_000)
+    check("a 51.000.000 bill on a PO still waiting for approval is held (202)",
+          st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    st, resp = hq.verb("purchase_order", small_po, "cancel")
+    check("head office cancels the 10.000 PO", st == 200, (st, resp))
+    st, resp = bill_on(small_po, "A3-50JT", 500_000)
+    check("a 50.000.000 bill on a cancelled PO is held (202)",
+          st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    if approved_po:
+        st, resp = bill_on(approved_po, "A4-8JT5", 85_000)
+        check("an 8.500.000 bill on the approved 8.500.000 PO is not asked again (200, no request)",
+              st == 200 and resp.get("approval") is None, (st, resp))
+    # a foreign-currency document waits whatever its rupiah value: the kurs is typed by the maker, so USD 100.000 at
+    # 1,01 (Rp 101.000) would otherwise pass every threshold (audit round 3 of #10, B4)
+    fx = {"currency": "USD", "exchange_rate": 1.01}
+    st, d = hq.create("purchase_order", dict(fx, vendor="VND-0001", outlet=DAGO, items=[{"item": "BRG-0001", "qty": 1, "rate": 0, "rate_fx": 100_000}]))
+    if check("head office drafts a USD 100.000 PO at kurs 1,01 (Rp 101.000)", st == 201 and d["grand_total"] == 101_000, (st, d)):
+        st, resp = hq.verb("purchase_order", d["name"], "submit")
+        check("the USD PO waits for the owner (202, po_approval)", st == 202 and resp["approval"]["policy"] == "po_approval", (st, resp))
+    st, d = hq.create("vendor_bill", dict(fx, vendor="VND-0001", bill_no="FX-101", bill_date="2026-11-05", outlet=DAGO,
+                                          items=[{"item": "BRG-0001", "qty": 1, "rate": 0, "rate_fx": 100_000}]))
+    if check("head office records a USD 100.000 bill at kurs 1,01 without a PO", st == 201, (st, d)):
+        st, resp = hq.verb("vendor_bill", d["name"], "submit")
+        check("the USD bill waits for the owner (202, bill_without_po_approval)", st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    # nor through a PO link: a bill in another currency than the base (IDR) always waits (audit round 4 of #10, D1)
+    st, d = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 1, "rate": 200_000}]})
+    st, resp = hq.verb("purchase_order", d["name"], "submit")
+    po200 = resp.get("name", "") if st == 200 else ""
+    check("a PO of 200.000 is submitted without approval", st == 200 and po200.startswith("PO/"), (st, resp))
+    st, d = hq.create("vendor_bill", dict(fx, vendor="VND-0001", bill_no="FX-D1", bill_date="2026-11-05", outlet=DAGO, purchase_order=po200,
+                                          items=[{"item": "BRG-0001", "qty": 1, "rate": 0, "rate_fx": 100_000}]))
+    if check("head office records a USD 100.000 bill at kurs 1,01 (Rp 101.000) on the 200.000 PO", st == 201 and d["grand_total"] == 101_000, (st, d)):
+        st, resp = hq.verb("vendor_bill", d["name"], "submit")
+        check("the USD bill on an approved PO still waits for the owner (202, bill_without_po_approval)",
+              st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    st, d = hq.create("payment", dict(fx, direction="pay", vendor="VND-0001", amount_fx=100_000))
+    if check("head office drafts a USD 100.000 outgoing payment at kurs 1,01", st == 201 and d["amount"] == 101_000, (st, d)):
+        st, resp = hq.verb("payment", d["name"], "submit")
+        check("the USD payment waits for the owner (202, payout_approval)", st == 202 and resp["approval"]["policy"] == "payout_approval", (st, resp))
+    # the PO approval cannot be skipped by billing and paying directly
+    st, vb = hq.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "TANPA-PO-1", "bill_date": "2026-11-05", "outlet": DAGO,
+                                       "items": [{"item": "BRG-0001", "qty": 100, "rate": 85_000}]})
+    if check("head office records an 8.500.000 bill without a PO", st == 201, (st, vb)):
+        st, resp = hq.verb("vendor_bill", vb["name"], "submit")
+        check("the bill without a PO is held for the owner (202, bill_without_po_approval)", st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    st, pay = hq.create("payment", {"direction": "pay", "vendor": "VND-0001", "amount": 50_000_000})
+    if check("head office drafts a 50.000.000 outgoing payment", st == 201, (st, pay)):
+        st, resp = hq.verb("payment", pay["name"], "submit")
+        check("the outgoing payment is held for the owner (202, payout_approval)", st == 202 and resp["approval"]["policy"] == "payout_approval", (st, resp))
+
+
 def scenario_outlet_sales(api):
     hq, dago = CTX.get("hq") or api, CTX.get("staff_dago")
     st, meta = api.call("GET", "/api/v1/meta")
@@ -2702,6 +3306,20 @@ def scenario_outlet_sales(api):
                   st == 409 and resp["error"]["code"] == "duplicate_sales", (st, resp))
     st, again = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), CIMAHI)
     check("the daily form file again: duplicate true", st == 200 and again["duplicate"] is True, (st, again))
+    # a corrected sheet: cancel the submitted form and drop the draft, then the corrected file imports and submits
+    st, resp = api.verb("outlet_sales", dfn, "cancel")
+    check("cancel the submitted daily form of Cimahi 04/11", st == 200, (st, resp))
+    for d in api.find("outlet_sales", "outlet == '%s' && source == 'form' && docstatus == 0" % CIMAHI):
+        api.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(d['name'])}")
+    fixed = read_sample("daily-form-sample.csv").replace(b"TH-ORI,40,600000", b"TH-ORI,42,630000") + b"04/11/2026,TH-ISI,1,20000,0\n"
+    st, pvc = preview(hq, "daily_form", "koreksi.csv", fixed, CIMAHI)
+    check("corrected sheet (a qty changed, TH-ISI on two rows): previewed, not a duplicate, nothing skipped, no errors",
+          st == 200 and pvc["duplicate"] is False and pvc["skipped"] == 0 and pvc["errors"] == [] and len(pvc["preview"]) == 1 and len(pvc["preview"][0]["lines"]) == 4, (st, pvc))
+    if st == 200:
+        st, cc = hq.call("POST", f"/api/v1/imports/daily_form/{pvc['id']}/commit")
+        if check("corrected sheet committed", st == 200 and len(cc.get("records", [])) == 1, (st, cc)):
+            cn = submit_doc(api, "outlet_sales", cc["records"][0], "submit the corrected daily form")
+            eq("corrected form: gross 1.340.000 (630.000 + 450.000 + 240.000 + 20.000)", api.get("outlet_sales", cn)["gross_total"], 1_340_000)
     st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1, "discount": 99_999_999}]})
     check("discount above gross -> 422 'Diskon tidak boleh melebihi penjualan kotor'", st == 422 and any("Diskon tidak boleh" in x for x in messages(resp)), (st, resp))
     # a Moka outlet takes no daily form, by REST or by import (one sales source per outlet)
@@ -2715,6 +3333,31 @@ def scenario_outlet_sales(api):
     check("a negative qty without a refund -> 422 'hanya boleh negatif di baris retur'", st == 422 and any("hanya boleh negatif di baris retur" in x for x in messages(resp)), (st, resp))
     st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 1}]})
     check("a negative qty with a refund on a daily form (not Moka) -> 422", st == 422 and any("hanya boleh negatif di baris retur" in x for x in messages(resp)), (st, resp))
+    # real refund shapes: a discounted line refunded (Discounts negative) and two partial refunds of one item on one
+    # receipt at different times; the record's totals equal the file's (Net Sales sum 0 + 30.000 - 30.000)
+    st, pvr = preview(hq, "moka_item_details", "moka-sample-refunds.csv", read_sample("moka-sample-refunds.csv"), DAGO)
+    check("refund shapes: preview 5 rows, no errors (two partial refunds are not 'Baris ganda')", st == 200 and pvr["rows"] == 5 and pvr["errors"] == [], (st, pvr))
+    if st == 200 and pvr["errors"] == []:
+        st, cr = hq.call("POST", f"/api/v1/imports/moka_item_details/{pvr['id']}/commit")
+        if check("refund shapes committed", st == 200 and len(cr.get("records", [])) == 1, (st, cr)):
+            r = api.get("outlet_sales", cr["records"][0])
+            eq("refund shapes: gross 90.000, discount 0, refund 90.000, net 0 (= Moka Net Sales)", (r["gross_total"], r["discount_total"], r["refund_total"], r["net_total"]), (90_000, 0, 90_000, 0))
+            eq("imported record keeps source moka", r["source"], "moka")
+    # source moka is the importer's (head office): outlet staff cannot type it to book a negative net (audit round 2
+    # of #7, S1 and S1b)
+    dago = CTX.get("staff_dago")
+    if dago:
+        st, resp = dago.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "source": "moka",
+                                                "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 500_000}]})
+        check("outlet staff creating a source moka record with net -500.000 -> 403", st == 403, (st, resp))
+        # Dago is a Moka outlet here (one source per outlet), so its staff cannot create a daily form record at all; the
+        # "turn a form record into source moka" probe of #7 has no record to start from
+        st, resp = dago.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
+        check("outlet staff creating a daily form record at a Moka outlet -> 422 by the sales-source rule", st == 422, (st, resp))
+        moka_rec = next(iter(api.find("outlet_sales", "source == 'moka' && outlet == '%s'" % DAGO)), None)
+        if moka_rec:
+            st, resp = dago.call("GET", f"/api/v1/r/outlet_sales/{Api.q(moka_rec['name'])}")
+            check("outlet staff still reads its outlet's Moka records", st == 200, (st, resp))
     st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": []})
     if st == 201:
         fail("min_rows 1: an outlet_sales without lines is refused", "201: the kernel saved it")
@@ -3153,6 +3796,22 @@ def scenario_ritel_access(api):
     check("outlet_staff cannot see consignment settlements -> 403", denied(st, resp), (st, resp))
     st, resp = staff.create("outlet_takings", {"outlet": CBR, "date": "2026-11-01", "lines": [{"method": "cash", "expected": 1}]})
     check("Cileunyi staff cannot record Cibiru's takings -> 403/404", st in (403, 404, 422), (st, resp))
+    # audit #7 S1 for the POS sources ritel_cabang adds: a refund line (net < 0) is allowed only on an imported record,
+    # so staff cannot type source file or loyverse at their own outlet, nor turn a record they can write into one
+    for src in ("file", "loyverse"):
+        st, resp = staff.create("outlet_sales", {"outlet": CLY, "date": "2026-11-04", "source": src,
+                                                 "lines": [{"item": "BRG-0001", "qty": -5, "gross": 0, "refund": 500_000}]})
+        check(f"outlet staff creating a source {src} record with net -500.000 -> 403", denied(st, resp), (st, resp))
+    imported = next(iter(api.find("outlet_sales", "source == 'file' && outlet == '%s' && docstatus == 0" % CLY)), None)
+    if imported is None:
+        st, imported = api.create("outlet_sales", {"outlet": CLY, "date": "2026-11-05", "source": "file", "lines": [{"item": "BRG-0001", "qty": 1}]})
+    if imported and imported.get("name"):
+        st, resp = staff.patch("outlet_sales", imported["name"], {"lines": [{"item": "BRG-0001", "qty": -5, "gross": 0, "refund": 900_000}]})
+        check("outlet staff editing a source file draft into net -900.000 -> 403", denied(st, resp), (st, resp))
+        st, resp = staff.verb("outlet_sales", imported["name"], "submit")
+        check("outlet staff submitting a source file draft -> 403", denied(st, resp), (st, resp))
+        if api.get("outlet_sales", imported["name"]).get("date") == "2026-11-05":
+            api.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(imported['name'])}")
 
 
 def setup_demo_ritel(api, k):
@@ -3200,8 +3859,8 @@ def setup_demo_fnb(api, k):
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa],
-    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail],
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
                    scenario_permissions],
