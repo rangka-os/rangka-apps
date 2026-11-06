@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Unified withholding slips (BPPU) the firm issues for PPh 23 it withheld from vendor bills dated in the period, as
+# Coretax imports them (BpuBulk, DJP template bppu.xml and converter "BPPU Excel to XML v.3").
+name: coretax_bupot
+model: tax_period
+label: {id: XML Bukti Potong PPh 23 (Coretax)}
+output: xml
+template: coretax_bupot.xml
+related:
+  bills:
+    model: vendor_bill
+    range: {bill_date: [period_start, period_end]}
+    filter: docstatus == 1 && pph23_amount > 0
+    sort: name
+    limit: 1000
+    require:
+      - check: "size(recipient_tin) == 16 && recipient_tin.matches('^[0-9]+$')"
+        message: {id: 'Pemasok belum punya NPWP atau NIK 16 angka: lengkapi Data pajak pemasok'}
+      - check: "size(recipient_idtku) == 22 && recipient_idtku.startsWith(recipient_tin)"
+        message: {id: 'NITKU pemasok harus 22 angka dan diawali NPWP/NIK-nya'}
+      - check: "pph23_object_code.matches('^24-10[0-6]-[0-9]{2}$')"
+        message: {id: 'Kode objek PPh 23 belum diisi di tagihan (misalnya 24-104-17 jasa tenaga kerja)'}
+      - check: "pph23_rate > 0 && pph23_amount - round(pph23_base * pph23_rate / 100) <= 1 && round(pph23_base * pph23_rate / 100) - pph23_amount <= 1"
+        message: {id: 'PPh 23 di tagihan tidak sama dengan DPP PPh 23 x tarif'}

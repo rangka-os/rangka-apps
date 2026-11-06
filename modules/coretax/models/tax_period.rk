@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One tax period (masa pajak, a calendar month) of the org, with its Coretax downloads (print formats coretax_faktur
+# and coretax_bupot). The seller's identity defaults from the org's NPWP; NITKU is NPWP + 000000 for the head office.
+name: tax_period
+label: {id: Masa pajak, en: Tax period}
+icon: invoice
+naming: MASA-{####}
+title_field: period_key
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, print: true, export: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, print: true, export: true}
+fields:
+  - name: year
+    type: data
+    label: {id: Tahun}
+    required: true
+    in_list: true
+  - name: month
+    type: select
+    label: {id: Bulan}
+    required: true
+    in_list: true
+    help: {id: 'Bulan berikutnya: setor PPh 23 tgl 15, unggah faktur dan lapor PPh Unifikasi tgl 20, setor dan lapor PPN akhir bulan'}
+    options:
+      - {value: '01', label: {id: Januari}}
+      - {value: '02', label: {id: Februari}}
+      - {value: '03', label: {id: Maret}}
+      - {value: '04', label: {id: April}}
+      - {value: '05', label: {id: Mei}}
+      - {value: '06', label: {id: Juni}}
+      - {value: '07', label: {id: Juli}}
+      - {value: '08', label: {id: Agustus}}
+      - {value: '09', label: {id: September}}
+      - {value: '10', label: {id: Oktober}}
+      - {value: '11', label: {id: November}}
+      - {value: '12', label: {id: Desember}}
+  # One period per month (unique), and its first and last day as YYYY-MM-DD text: the print formats select the
+  # documents dated within (range, contract 0028); a "-31" upper bound is right for every month in text order.
+  - name: period_key
+    type: data
+    label: {id: Masa}
+    unique: true
+    in_list: true
+    compute: "year + '-' + month"
+  - {name: period_start, type: data, label: {id: Awal masa}, hidden: true, compute: "year + '-' + month + '-01'"}
+  - {name: period_end, type: data, label: {id: Akhir masa}, hidden: true, compute: "year + '-' + month + '-31'"}
+  - name: seller_tin
+    type: data
+    label: {id: NPWP usaha (16 angka)}
+    required: true
+    default: "org.npwp.replace('.', '').replace('-', '')"
+  - name: seller_nitku
+    type: data
+    label: {id: NITKU usaha (22 angka)}
+    help: {id: 'ID TKU tempat usaha dari Coretax; kantor pusat = NPWP + 000000'}
+    required: true
+    default: "org.npwp == '' ? '' : org.npwp.replace('.', '').replace('-', '') + '000000'"
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: year_format
+    on: save
+    check: "year.matches('^20[0-9]{2}$')"
+    message: {id: 'Tahun 4 angka, misalnya 2026'}
+  - name: seller_tin_16
+    on: save
+    check: "size(seller_tin) == 16 && seller_tin.matches('^[0-9]+$')"
+    message: {id: NPWP usaha harus 16 angka}
+  - name: seller_nitku_22
+    on: save
+    check: "size(seller_nitku) == 22 && seller_nitku.matches('^[0-9]+$') && seller_nitku.startsWith(seller_tin)"
+    message: {id: NITKU usaha harus 22 angka dan diawali NPWP usaha}
+views:
+  list:
+    columns: [name, period_key, year, month]
+    sort: -period_key
+  form:
+    layout:
+      - section: {id: Masa pajak}
+        columns:
+          - [year, month]
+          - [period_key]
+      - section: {id: Identitas pajak usaha}
+        columns:
+          - [seller_tin]
+          - [seller_nitku]
+      - section: {id: Catatan}
+        fields: [notes]

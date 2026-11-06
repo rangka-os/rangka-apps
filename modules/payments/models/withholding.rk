@@ -50,6 +50,18 @@ fields:
     label: {id: PPh 23 dipotong}
     compute: round(dpp * rate / 100)
     in_list: true
+  # Reconciliation per period (module coretax): what the invoice said the customer would withhold, and the gap with
+  # this slip. The slips themselves reach Coretax from the customer (the withholder); they are not imported.
+  - name: invoice_pph23
+    type: currency
+    label: {id: PPh 23 di faktur}
+    compute: sales_invoice.pph23_amount
+    in_list: true
+  - name: difference
+    type: currency
+    label: {id: Selisih dengan faktur}
+    compute: amount - invoice_pph23
+    in_list: true
   - name: document
     type: attach
     label: {id: Berkas bukti potong}
@@ -60,5 +72,5 @@ rules:
     message: {id: Faktur bukan milik pelanggan ini}
 views:
   list:
-    columns: [name, customer, sales_invoice, cert_no, cert_date, amount]
+    columns: [name, customer, sales_invoice, cert_no, cert_date, amount, invoice_pph23, difference]
     sort: -cert_date

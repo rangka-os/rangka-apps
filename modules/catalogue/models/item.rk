@@ -113,3 +113,14 @@ fields:
   - name: notes
     type: text
     label: {id: Catatan}
+  # e-Faktur (module coretax): the 6-digit Coretax goods/services code; empty = 000000 (no specific code).
+  - name: coretax_code
+    type: data
+    label: {id: Kode barang/jasa Coretax}
+    help: {id: '6 angka dari referensi kode barang/jasa Coretax. Kosongkan bila tidak tahu (000000)'}
+    depends_on: app_installed('coretax')
+rules:
+  - name: coretax_code_6
+    on: save
+    check: "coretax_code == '' || coretax_code.matches('^[0-9]{6}$')"
+    message: {id: Kode barang/jasa Coretax harus 6 angka}

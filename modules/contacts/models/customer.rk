@@ -101,6 +101,39 @@ fields:
   - name: npwp
     type: npwp
     label: {id: NPWP}
+  # Tax identity for e-Faktur (module coretax, contract 0028): a buyer is identified by NPWP 16 digits plus its NITKU
+  # (22 digits, NPWP + 000000 for the head office), else NIK, else a passport. vat_collector sets the transaction
+  # code (02 government, 03 other collectors such as BUMN).
+  - name: nitku
+    type: data
+    label: {id: NITKU}
+    help: {id: 'ID TKU 22 digit dari Coretax. Kosongkan bila pusat (NPWP + 000000)'}
+    depends_on: app_installed('coretax')
+  - name: nik
+    type: data
+    label: {id: NIK}
+    help: {id: 'Untuk pembeli orang pribadi tanpa NPWP'}
+    depends_on: app_installed('coretax')
+  - name: passport_no
+    type: data
+    label: {id: No. paspor}
+    help: {id: 'Untuk pembeli warga negara asing tanpa NPWP/NIK'}
+    depends_on: app_installed('coretax')
+  - name: country
+    type: data
+    label: {id: Kode negara}
+    help: {id: 'Kode 3 huruf, IDN untuk Indonesia'}
+    default: "'IDN'"
+    depends_on: app_installed('coretax')
+  - name: vat_collector
+    type: select
+    label: {id: Pemungut PPN}
+    default: "'none'"
+    depends_on: app_installed('coretax')
+    options:
+      - {value: none, label: {id: Bukan pemungut}}
+      - {value: government, label: {id: Instansi pemerintah}}
+      - {value: other, label: {id: Pemungut lain (BUMN dsb.)}}
   - name: contacts
     type: table
     of: contact_person
@@ -110,6 +143,18 @@ rules:
     on: save
     check: npwp == '' || size(npwp) == 16
     message: {id: NPWP harus 16 angka}
+  - name: nitku_22
+    on: save
+    check: "nitku == '' || (size(nitku) == 22 && nitku.matches('^[0-9]+$') && npwp != '' && nitku.startsWith(npwp))"
+    message: {id: NITKU harus 22 angka dan diawali NPWP}
+  - name: nik_16
+    on: save
+    check: "nik == '' || (size(nik) == 16 && nik.matches('^[0-9]+$'))"
+    message: {id: NIK harus 16 angka}
+  - name: country_code
+    on: save
+    check: "country == '' || country.matches('^[A-Z]{3}$')"
+    message: {id: 'Kode negara 3 huruf besar, misalnya IDN'}
 views:
   form:
     layout:
@@ -117,6 +162,10 @@ views:
         columns:
           - [customer_name, city, address]
           - [npwp, phone, email]
+      - section: {id: Data pajak (e-Faktur)}
+        columns:
+          - [nitku, nik, passport_no]
+          - [country, vat_collector]
       - section: {id: Pembayaran}
         columns:
           - [payment_days, price_tier]

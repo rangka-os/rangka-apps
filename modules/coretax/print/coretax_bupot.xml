@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+{{- /* Element names and order follow the DJP template bppu.xml (pajak.go.id Coretax templates); column meanings from
+  "BPPU Excel to XML v.3.xlsx" sheet BPPU. Coretax computes the tax from TaxBase x Rate. */}}
+<BpuBulk xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<TIN>{{.Doc.seller_tin}}</TIN>
+	<ListOfBpu>
+{{- $d := .Doc}}
+{{- range .Related.bills}}
+		<Bpu>
+			<TaxPeriodMonth>{{dec $d.month 0}}</TaxPeriodMonth>
+			<TaxPeriodYear>{{$d.year}}</TaxPeriodYear>
+			<CounterpartTin>{{.recipient_tin}}</CounterpartTin>
+			<IDPlaceOfBusinessActivityOfIncomeRecipient>{{.recipient_idtku}}</IDPlaceOfBusinessActivityOfIncomeRecipient>
+			<TaxCertificate>N/A</TaxCertificate>
+			<TaxObjectCode>{{.pph23_object_code}}</TaxObjectCode>
+			<TaxBase>{{dec .pph23_base 2}}</TaxBase>
+			<Rate>{{dec .pph23_rate 2}}</Rate>
+			<Document>CommercialInvoice</Document>
+			<DocumentNumber>{{.bill_no}}</DocumentNumber>
+			<DocumentDate>{{isodate .bill_date}}</DocumentDate>
+			<IDPlaceOfBusinessActivity>{{$d.seller_nitku}}</IDPlaceOfBusinessActivity>
+			<GovTreasurerOpt>N/A</GovTreasurerOpt>
+			<SP2DNumber xsi:nil="true"/>
+			<WithholdingDate>{{isodate .bill_date}}</WithholdingDate>
+		</Bpu>
+{{- end}}
+	</ListOfBpu>
+</BpuBulk>

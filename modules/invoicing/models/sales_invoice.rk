@@ -217,6 +217,72 @@ fields:
   - {name: retention_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Retensi ditahan (valas)}, compute: "round(dpp_fx * retention_percent / 100, 2)"}
   - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, compute: "pph23_applies && dpp != 0 ? round(dpp_fx * (pph23_dpp * 1.0 / dpp * pph23_rate / 100), 2) : 0"}
   - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - retention_amount_fx - pph23_amount_fx"}
+  # e-Faktur (module coretax, contract 0028): the buyer's tax identity and the transaction code, computed from the
+  # customer while the invoice is a draft and frozen when it is submitted, so the Coretax file of its period carries
+  # the identity the invoice was issued to. TIN = NPWP + NITKU (head office: NPWP + 000000); National ID = NIK with
+  # sixteen zeros as TIN and 000000 as ID TKU; Passport likewise (template Faktur PK v1.6.1, sheet Keterangan).
+  # Code: 02/03 for a VAT collector, else 04 with DPP nilai lain (PMK 131/2024: 11/12), 01 when the DPP factor is 1/1.
+  - name: buyer_id_type
+    type: data
+    label: {id: Jenis ID pembeli}
+    hidden: true
+    depends_on: app_installed('coretax')
+    compute: "customer.npwp != '' ? 'TIN' : (customer.nik != '' ? 'National ID' : (customer.passport_no != '' ? 'Passport' : ''))"
+  - name: buyer_tin
+    type: data
+    label: {id: NPWP pembeli}
+    hidden: true
+    depends_on: app_installed('coretax')
+    compute: "customer.npwp != '' ? customer.npwp : '00000000' + '00000000'"
+  - name: buyer_doc_no
+    type: data
+    label: {id: Nomor dokumen pembeli}
+    hidden: true
+    depends_on: app_installed('coretax')
+    compute: "customer.npwp != '' ? '-' : (customer.nik != '' ? customer.nik : customer.passport_no)"
+  - name: buyer_idtku
+    type: data
+    label: {id: NITKU pembeli}
+    hidden: true
+    depends_on: app_installed('coretax')
+    compute: "customer.npwp == '' ? '000000' : (customer.nitku != '' ? customer.nitku : customer.npwp + '000000')"
+  - name: buyer_name
+    type: data
+    label: {id: Nama pembeli}
+    hidden: true
+    depends_on: app_installed('coretax')
+    compute: customer.customer_name
+  - name: buyer_address
+    type: data
+    label: {id: Alamat pembeli}
+    hidden: true
+    depends_on: app_installed('coretax')
+    compute: "customer.city != '' && customer.address != '' ? customer.address + ', ' + customer.city : customer.address"
+  - name: buyer_email
+    type: data
+    label: {id: Email pembeli}
+    hidden: true
+    depends_on: app_installed('coretax')
+    compute: customer.email
+  - name: buyer_country
+    type: data
+    label: {id: Negara pembeli}
+    hidden: true
+    depends_on: app_installed('coretax')
+    compute: "customer.country != '' ? customer.country : 'IDN'"
+  - name: efaktur_code
+    type: data
+    label: {id: Kode transaksi e-Faktur}
+    depends_on: app_installed('coretax') && tax_rate > 0
+    compute: "tax_rate == 0 ? '' : (customer.vat_collector == 'government' ? '02' : (customer.vat_collector == 'other' ? '03' : (dpp_num == dpp_den ? '01' : '04')))"
+  # The invoice this one amends (kernel amended_from as a link), so the Coretax export can refuse a replacement of
+  # an invoice of an earlier period: that one is a Faktur Pengganti made in Coretax.
+  - name: replaces
+    type: link
+    to: sales_invoice
+    label: {id: Mengganti faktur}
+    hidden: true
+    compute: amended_from
 rules:
   # A distributor bills what was delivered (module delivery): per item, no more than delivered, less returns and
   # earlier invoices of the order (order_fulfilment). The flow invoice_qty_from_deliveries sets the draft that way.
@@ -388,7 +454,7 @@ views:
           - [subtotal, dpp, grand_total]
           - [amount_due, paid_amount, outstanding]
       - section: {id: Catatan}
-        fields: [notes]
+        fields: [notes, efaktur_code]
       - section: {id: Mata uang asing}
         columns:
           - [currency, exchange_rate, subtotal_fx]

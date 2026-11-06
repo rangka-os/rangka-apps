@@ -14,6 +14,7 @@ modules:
   tax_id: ^1.0
   currency: ^1.0
   invoicing: ^1.0
+  coretax: ^1.0
   quotation: ^1.0
   orders: ^1.0
   workforce: ^1.0
@@ -35,6 +36,8 @@ menu:
     items: [payment, bank_transaction, invoice_reminder, withholding, vendor_bill]
   - group: {id: Pembelian}
     items: [purchase_request, purchase_order]
+  - group: {id: Pajak}
+    items: [tax_period]
   - group: {id: Data induk}
     items: [customer, vendor, item, uom, price_list, tax_code, currency]
 # Answers set the first defaults of a new installation (PKP decides tax_rate, the business line the sample items and terms).

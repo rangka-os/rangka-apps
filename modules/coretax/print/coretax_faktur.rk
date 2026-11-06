@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# e-Faktur keluaran of the period as Coretax imports it (TaxInvoiceBulk, DJP sample "Faktur PK Template v1.4").
+# Every submitted invoice dated in the period that charges PPN; retention invoices (no PPN) and cancelled ones are out.
+# require refuses the download while an invoice cannot be imported as it is.
+name: coretax_faktur
+model: tax_period
+label: {id: XML Faktur Keluaran (Coretax)}
+output: xml
+template: coretax_faktur.xml
+related:
+  invoices:
+    model: sales_invoice
+    range: {posting_date: [period_start, period_end]}
+    filter: docstatus == 1 && tax_rate > 0 && kind != 'retention'
+    sort: name
+    children: true
+    limit: 1000
+    require:
+      - check: buyer_id_type != ''
+        message: {id: 'Pelanggan belum punya NPWP, NIK, atau nomor paspor: lengkapi Data pajak pelanggan. Penjualan eceran tanpa identitas dilaporkan sebagai digunggung, bukan lewat file ini'}
+      - check: "buyer_id_type != 'TIN' || (size(buyer_tin) == 16 && size(buyer_idtku) == 22 && buyer_idtku.startsWith(buyer_tin))"
+        message: {id: 'NPWP (16 angka) atau NITKU (22 angka) pelanggan belum benar'}
+      - check: "buyer_id_type != 'National ID' || (size(buyer_doc_no) == 16 && buyer_doc_no.matches('^[0-9]+$'))"
+        message: {id: 'NIK pelanggan harus 16 angka'}
+      - check: buyer_name != '' && buyer_address != ''
+        message: {id: 'Nama dan alamat pelanggan wajib diisi untuk faktur pajak'}
+      - check: "efaktur_code != '' && items.map(i, i.coretax_unit == '' ? 1 : 0).sum() == 0"
+        message: {id: 'Faktur ini diajukan sebelum ekspor Coretax dipasang: buat faktur pajaknya langsung di Coretax'}
+      - check: replaces == '' || replaces.posting_date >= doc.period_start
+        message: {id: 'Faktur ini mengganti faktur masa sebelumnya: buat Faktur Pengganti di Coretax, jangan diimpor'}
