@@ -46,11 +46,13 @@ fields:
     type: select
     label: {id: Metode}
     default: "'transfer'"
+    # "Potong retur" (sales_return) is not listed here: it only works with the delivery module, and a select option
+    # cannot depend on an installed app, so a site that installs delivery adds it in custom/payment.rk
+    # (examples/sites/demo-grosir). Without it the option was always refused (audit re-pin alpha.7, L2).
     options:
       - {value: transfer, label: {id: Transfer}}
       - {value: cash, label: {id: Tunai}}
       - {value: giro, label: {id: Giro}}
-      - {value: sales_return, label: {id: Potong retur}}
       - {value: qris, label: {id: QRIS}}
       - {value: va, label: {id: Virtual account}}
       - {value: ewallet, label: {id: E-wallet}}
