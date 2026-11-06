@@ -166,3 +166,18 @@ steps:
       project: posts[9].project
       party: posts[9].party
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
+  - create: gl_entry
+    if: posts.size() > 10
+    set:
+      posting_date: posts[10].posting_date
+      account: posts[10].account
+      amount: 0 - posts[10].amount
+      voucher_type: posts[10].voucher_type
+      voucher: posts[10].voucher
+      entry: "'reverse'"
+      line: posts[10].line
+      reverses: posts[10].name
+      outlet: posts[10].outlet
+      project: posts[10].project
+      party: posts[10].party
+      lock_date: "locks.size() > 0 ? locks[0].closed_until : null"

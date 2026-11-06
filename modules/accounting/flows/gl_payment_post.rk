@@ -4,21 +4,37 @@ name: gl_payment_post
 label: {id: Jurnal pembayaran}
 on: payment.submitted
 steps:
+  - find: sales_return
+    if: event.method == 'sales_return' && event.sales_return != ''
+    where: name == event.sales_return
+    as: ret
   - find_all: period_close
     where: docstatus == 1
     sort: -closed_until
     limit: 1
     as: locks
   - create: gl_entry
-    if: "(event.direction == 'receive' ? event.amount : event.amount + event.withheld_total) != 0"
+    if: "(event.direction == 'receive' ? (event.direction == 'receive' && event.method == 'sales_return' && ret != null && ret.return_total > 0 ? round(event.amount * 1.0 * ret.return_value / ret.return_total) : event.amount) : event.amount + event.withheld_total) != 0"
     set:
       posting_date: "event.payment_date"
       account: "event.direction == 'receive' ? (event.method == 'cash' ? '11100' : (event.method == 'sales_return' ? '41200' : '11200')) : '21100'"
-      amount: "event.direction == 'receive' ? event.amount : event.amount + event.withheld_total"
+      amount: "event.direction == 'receive' ? (event.direction == 'receive' && event.method == 'sales_return' && ret != null && ret.return_total > 0 ? round(event.amount * 1.0 * ret.return_value / ret.return_total) : event.amount) : event.amount + event.withheld_total"
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
       line: "'1'"
+      party: "event.direction == 'receive' ? event.customer : event.vendor"
+      lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
+  - create: gl_entry
+    if: "(event.direction == 'receive' && event.method == 'sales_return' && ret != null && ret.return_total > 0 ? event.amount - round(event.amount * 1.0 * ret.return_value / ret.return_total) : 0) != 0"
+    set:
+      posting_date: "event.payment_date"
+      account: "'21200'"
+      amount: "event.direction == 'receive' && event.method == 'sales_return' && ret != null && ret.return_total > 0 ? event.amount - round(event.amount * 1.0 * ret.return_value / ret.return_total) : 0"
+      voucher_type: event.model
+      voucher: event.name
+      entry: "'post'"
+      line: "'2'"
       party: "event.direction == 'receive' ? event.customer : event.vendor"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
@@ -30,7 +46,7 @@ steps:
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
-      line: "'2'"
+      line: "'3'"
       party: "event.direction == 'receive' ? event.customer : event.vendor"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
@@ -42,6 +58,6 @@ steps:
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
-      line: "'3'"
+      line: "'4'"
       party: "event.direction == 'receive' ? event.customer : event.vendor"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"

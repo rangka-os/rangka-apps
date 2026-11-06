@@ -3,6 +3,7 @@
 name: gl_goods_receipt_post
 label: {id: Jurnal terima barang}
 on: goods_receipt.submitted
+if: "app_installed('stock')"
 steps:
   - find: vendor
     where: name == event.vendor

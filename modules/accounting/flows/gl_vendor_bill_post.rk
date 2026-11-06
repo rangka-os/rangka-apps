@@ -13,7 +13,7 @@ steps:
     if: "(event.dpp) != 0"
     set:
       posting_date: "event.bill_date"
-      account: "(event.posting == 'stock' || (event.posting == null && (event.goods_receipt != '' || event.purchase_order != ''))) ? '21150' : ((event.posting == 'project' || (event.posting == null && event.project != '')) ? '51400' : (event.expense_account != null ? event.expense_account : '61900'))"
+      account: "((event.posting != null ? event.posting : (event.project != '' ? 'project' : ((event.goods_receipt != '' || event.purchase_order != '') && app_installed('stock') ? 'stock' : 'expense')))) == 'project' ? '51400' : (((event.posting != null ? event.posting : (event.project != '' ? 'project' : ((event.goods_receipt != '' || event.purchase_order != '') && app_installed('stock') ? 'stock' : 'expense')))) == 'stock' ? '21150' : (event.expense_account != null ? event.expense_account : '61900'))"
       amount: "event.dpp"
       voucher_type: event.model
       voucher: event.name
@@ -26,7 +26,7 @@ steps:
     if: "(event.ppn) != 0"
     set:
       posting_date: "event.bill_date"
-      account: "'11500'"
+      account: "tax.pkp ? '11500' : (((event.posting != null ? event.posting : (event.project != '' ? 'project' : ((event.goods_receipt != '' || event.purchase_order != '') && app_installed('stock') ? 'stock' : 'expense')))) == 'stock' ? '51100' : (((event.posting != null ? event.posting : (event.project != '' ? 'project' : ((event.goods_receipt != '' || event.purchase_order != '') && app_installed('stock') ? 'stock' : 'expense')))) == 'project' ? '51400' : (((event.posting != null ? event.posting : (event.project != '' ? 'project' : ((event.goods_receipt != '' || event.purchase_order != '') && app_installed('stock') ? 'stock' : 'expense')))) == 'stock' ? '21150' : (event.expense_account != null ? event.expense_account : '61900'))))"
       amount: "event.ppn"
       voucher_type: event.model
       voucher: event.name

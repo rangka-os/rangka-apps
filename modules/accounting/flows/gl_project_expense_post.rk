@@ -3,7 +3,6 @@
 name: gl_project_expense_post
 label: {id: Jurnal biaya proyek}
 on: project_expense.submitted
-if: "event.vendor_bill == null"
 steps:
   - find_all: period_close
     where: docstatus == 1
@@ -27,7 +26,7 @@ steps:
     if: "(0 - event.amount) != 0"
     set:
       posting_date: "event.expense_date"
-      account: "'11100'"
+      account: "event.vendor_bill == null ? '11100' : '61900'"
       amount: "0 - event.amount"
       voucher_type: event.model
       voucher: event.name

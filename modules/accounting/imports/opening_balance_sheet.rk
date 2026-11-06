@@ -13,6 +13,7 @@ map:
   cash: Kas
   bank: Bank
   receivable: Piutang
+  inventory: Persediaan
   fixed_assets: Aset tetap
   accumulated_depreciation: Akumulasi penyusutan
   payable: Utang usaha

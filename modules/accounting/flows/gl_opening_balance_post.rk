@@ -43,6 +43,17 @@ steps:
       line: "'3'"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
+    if: "(event.inventory) != 0"
+    set:
+      posting_date: "event.opening_date"
+      account: "'11400'"
+      amount: "event.inventory"
+      voucher_type: event.model
+      voucher: event.name
+      entry: "'post'"
+      line: "'4'"
+      lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
+  - create: gl_entry
     if: "(event.fixed_assets) != 0"
     set:
       posting_date: "event.opening_date"
@@ -51,7 +62,7 @@ steps:
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
-      line: "'4'"
+      line: "'5'"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
     if: "(0 - event.accumulated_depreciation) != 0"
@@ -62,7 +73,7 @@ steps:
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
-      line: "'5'"
+      line: "'6'"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
     if: "(0 - event.payable) != 0"
@@ -73,7 +84,7 @@ steps:
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
-      line: "'6'"
+      line: "'7'"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
     if: "(0 - event.bank_loan) != 0"
@@ -84,7 +95,7 @@ steps:
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
-      line: "'7'"
+      line: "'8'"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
     if: "(0 - event.other_liabilities) != 0"
@@ -95,7 +106,7 @@ steps:
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
-      line: "'8'"
+      line: "'9'"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
     if: "(0 - event.paid_in_capital) != 0"
@@ -106,16 +117,16 @@ steps:
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
-      line: "'9'"
+      line: "'10'"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
-    if: "(0 - (event.cash + event.bank + event.receivable + event.fixed_assets - event.accumulated_depreciation - event.payable - event.bank_loan - event.other_liabilities - event.paid_in_capital)) != 0"
+    if: "(0 - (event.cash + event.bank + event.receivable + event.inventory + event.fixed_assets - event.accumulated_depreciation - event.payable - event.bank_loan - event.other_liabilities - event.paid_in_capital)) != 0"
     set:
       posting_date: "event.opening_date"
       account: "'31900'"
-      amount: "0 - (event.cash + event.bank + event.receivable + event.fixed_assets - event.accumulated_depreciation - event.payable - event.bank_loan - event.other_liabilities - event.paid_in_capital)"
+      amount: "0 - (event.cash + event.bank + event.receivable + event.inventory + event.fixed_assets - event.accumulated_depreciation - event.payable - event.bank_loan - event.other_liabilities - event.paid_in_capital)"
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
-      line: "'10'"
+      line: "'11'"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"

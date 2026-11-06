@@ -3,7 +3,8 @@ name: financial_report_compute
 label: {id: Hitung laporan keuangan}
 # Sums gl_entry into the report when it is created. Lines carry +debit/-credit, so a credit balance (revenue,
 # liability, equity) is the negative of the sum. pl: the period, narrowed to the outlet or project when set (profit
-# and loss); all: the whole business up to period_to (balance sheet, cash).
+# and loss); upto: the whole business up to period_to (balance sheet, cash). The cash summary counts Kas and Bank
+# only: takings held at an outlet (1-1150) count as cash when they are deposited, not twice.
 on: financial_report.created
 steps:
   - find: financial_report
@@ -36,11 +37,11 @@ steps:
       total_assets: "upto.map(r, r.account.startsWith('1') ? r.amount : 0).sum()"
       trade_payables: "0 - upto.map(r, r.account.startsWith('211') ? r.amount : 0).sum()"
       tax_payables: "0 - upto.map(r, r.account.startsWith('212') || r.account.startsWith('213') ? r.amount : 0).sum()"
-      other_liabilities: "0 - upto.map(r, r.account.startsWith('214') || r.account.startsWith('215') || r.account.startsWith('219') || r.account.startsWith('22') ? r.amount : 0).sum()"
+      other_liabilities: "0 - upto.map(r, r.account.startsWith('214') || r.account.startsWith('215') || r.account.startsWith('216') || r.account.startsWith('219') || r.account.startsWith('22') ? r.amount : 0).sum()"
       total_liabilities: "0 - upto.map(r, r.account.startsWith('2') ? r.amount : 0).sum()"
       capital: "0 - upto.map(r, r.account.startsWith('3') ? r.amount : 0).sum()"
       retained_earnings: "0 - upto.map(r, r.posting_date < event.period_from && (r.account.startsWith('4') || r.account.startsWith('5') || r.account.startsWith('6')) ? r.amount : 0).sum()"
       current_profit: "0 - upto.map(r, r.posting_date >= event.period_from && (r.account.startsWith('4') || r.account.startsWith('5') || r.account.startsWith('6')) ? r.amount : 0).sum()"
-      cash_opening: "upto.map(r, r.posting_date < event.period_from && (r.account.startsWith('111') || r.account.startsWith('112')) ? r.amount : 0).sum()"
-      cash_in: "upto.map(r, r.posting_date >= event.period_from && r.amount > 0 && (r.account.startsWith('111') || r.account.startsWith('112')) ? r.amount : 0).sum()"
-      cash_out: "0 - upto.map(r, r.posting_date >= event.period_from && r.amount < 0 && (r.account.startsWith('111') || r.account.startsWith('112')) ? r.amount : 0).sum()"
+      cash_opening: "upto.map(r, r.posting_date < event.period_from && (r.account == '11100' || r.account.startsWith('112')) ? r.amount : 0).sum()"
+      cash_in: "upto.map(r, r.posting_date >= event.period_from && r.amount > 0 && (r.account == '11100' || r.account.startsWith('112')) ? r.amount : 0).sum()"
+      cash_out: "0 - upto.map(r, r.posting_date >= event.period_from && r.amount < 0 && (r.account == '11100' || r.account.startsWith('112')) ? r.amount : 0).sum()"

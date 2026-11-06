@@ -67,9 +67,11 @@ def expected_pl(api, d0, d1):
     for i in docs(api, "sales_invoice"):
         if inm(i["posting_date"]) and i["kind"] == "regular":
             e["revenue"] += i["subtotal"] - i["discount_amount"]
+    returns = {r["name"]: r for r in docs(api, "sales_return")}
     for p in docs(api, "payment"):
         if inm(p["payment_date"]) and p["direction"] == "receive" and p["method"] == "sales_return":
-            e["sales_returns"] += p["amount"]
+            r = returns[p["sales_return"]]
+            e["sales_returns"] += round(p["amount"] * r["return_value"] / r["return_total"])   # its PPN is not revenue
     for d in docs(api, "delivery_note"):
         if inm(d["delivery_date"]):
             e["cogs"] += d["cogs_total"]
@@ -92,16 +94,22 @@ def expected_pl(api, d0, d1):
         if inm(b["production_date"]):
             e["direct_labour"] += b["labour_cost"] or 0
     for x in docs(api, "project_expense"):
-        if inm(x["expense_date"]) and not x.get("vendor_bill"):
+        if inm(x["expense_date"]):
             e["project_costs"] += x["amount"]
+            if x.get("vendor_bill"):                 # moved out of the bill's operating expense into the project
+                e["operating_expenses"] -= x["amount"]
+    pkp, stock = org_pkp(api), has(api, "stock_move")
     for b in docs(api, "vendor_bill"):
         if not inm(b["bill_date"]):
             continue
-        kind = bill_kind(b)
+        kind = bill_kind(b, stock)
+        ppn = 0 if pkp else b["ppn"]          # not PKP: input PPN cannot be credited, it is a cost
         if kind == "project":
-            e["project_costs"] += b["dpp"]
+            e["project_costs"] += b["dpp"] + ppn
         elif kind == "expense":
-            e["operating_expenses"] += b["dpp"]
+            e["operating_expenses"] += b["dpp"] + ppn
+        else:
+            e["cogs"] += ppn
     for t in docs(api, "outlet_takings"):
         if inm(t["date"]):
             e["operating_expenses"] += t["fee_total"] - t["difference_total"]
@@ -111,13 +119,25 @@ def expected_pl(api, d0, d1):
     return e
 
 
-def bill_kind(b):
-    p = b.get("posting") or ""
-    if p:
-        return p
-    if b.get("goods_receipt") or b.get("purchase_order"):
+def org_pkp(api):
+    """tax.pkp of the signed-in org: a regular invoice carries the org's PPN rate; else the site config."""
+    inv = docs(api, "sales_invoice", "docstatus == 1 && kind == 'regular'")
+    if inv:
+        return any(i["tax_rate"] > 0 for i in inv)
+    st, meta = api.call("GET", "/api/v1/meta")
+    return bool((((meta or {}).get("config") or {}).get("tax") or {}).get("pkp"))
+
+
+def bill_kind(b, stock):
+    """What a bill pays for, from its links: a project's cost; goods received into stock (only where stock is kept,
+    or a consignment bill, which the consignment flow marks stock); else an expense."""
+    if b.get("posting") == "expense":            # the person chose an expense account
+        return "expense"
+    if b.get("project"):
+        return "project"
+    if stock and (b.get("goods_receipt") or b.get("purchase_order") or b.get("posting") == "stock"):
         return "stock"
-    return "project" if b.get("project") else "expense"
+    return "expense"
 
 
 def expected_balances(api, d1):
@@ -137,15 +157,15 @@ def expected_balances(api, d1):
             recv += i["amount_due"] + i["retention_amount"]
             if i["kind"] == "retention":
                 recv -= i["subtotal"] - i["discount_amount"]
-    pay = 0
+    pay, stock = 0, has(api, "stock_move")
     opening_vendors = {v["name"] for v in docs(api, "vendor", "vendor_name == 'Saldo awal'")}
     for g in docs(api, "goods_receipt"):
-        if upto(g["received_on"]) and g["vendor"] not in opening_vendors:
+        if stock and upto(g["received_on"]) and g["vendor"] not in opening_vendors:   # no stock module: no stock journal
             pay += g["total_value"]
     pay += consign_back   # consigned goods sent back clear the unbilled payable (their moves are negative)
     for b in docs(api, "vendor_bill"):
         if upto(b["bill_date"]):
-            pay += b["amount_due"] - (b["dpp"] if bill_kind(b) == "stock" else 0)
+            pay += b["amount_due"] - (b["dpp"] if bill_kind(b, stock) == "stock" else 0)
     for p in docs(api, "payment"):
         if not upto(p["payment_date"]):
             continue
@@ -223,6 +243,18 @@ def scenario_accounting(api):
         eq(f"accounting: revenue of outlet {outlet} = its sales", ro.get("revenue"), per_outlet[outlet] + inv_outlet)
         eq("accounting: the balance sheet stays the whole business with an outlet filter", ro.get("total_assets"), rep.get("total_assets"))
 
+    # a project's costs in its profit and loss = the costs in its project_ledger (labour, expenses, vendor bills)
+    if has(api, "project_ledger"):
+        led = defaultdict(int)
+        for r in rows(api, "project_ledger"):
+            if d0 <= r["posting_date"] <= d1 and r["kind"] != "revenue":
+                led[r["project"]] -= r["amount"]
+        for prj in sorted(led, key=led.get, reverse=True)[:3]:
+            st, rp = report(api, d0, d1, project=prj)
+            eq(f"accounting: costs of project {prj} = its project ledger", (rp.get("direct_labour") or 0) + (rp.get("project_costs") or 0), led[prj])
+    bills = [b for b in docs(api, "vendor_bill", "docstatus == 1") if b.get("project")]
+    eq("accounting: every bill on a project is a project cost (not goods)", sorted({b.get("posting") for b in bills} - {"project"}), [])
+
     # saving the report again recomputes it (after new documents)
     st, again = api.patch("financial_report", rep["name"], {"period_to": d1})
     eq("accounting: saving a report again recomputes the same numbers", ((again or {}).get("record", again) or {}).get("net_profit"), rep.get("net_profit"))
@@ -236,7 +268,29 @@ def scenario_accounting(api):
     st, resp = api.call("DELETE", f"/api/v1/r/gl_entry/{Api.q(gl[0]['name'])}")
     eq("accounting: a journal line cannot be deleted", st, 409)
 
+    scenario_non_pkp(api)
     scenario_period_close_and_opening(api, gl)
+
+
+def scenario_non_pkp(api):
+    """demo-jasa's second PT is not PKP: PPN on its vendor bills is a cost, never PPN masukan (audit M2)."""
+    if CTX.get("site") != "demo-jasa":
+        return
+    k = CTX["kernel"]
+    org2 = Api.login(k.base, k.owner_email, k.owner_pw, org="cv_contoh_pelatihan")
+    if not check("accounting: owner signs in to the non-PKP PT", org2 is not None, "login refused"):
+        return
+    taxed = [b for b in docs(org2, "vendor_bill") if b["ppn"] > 0]
+    lines = rows(org2, "gl_entry", "account == '11500'")
+    check(f"accounting: non-PKP PT: {len(taxed)} taxed vendor bills, no PPN masukan line", not lines, [(l["voucher"], l["amount"]) for l in lines][:5])
+    for b in taxed[:3]:
+        got = sum(l["amount"] for l in rows(org2, "gl_entry", f"voucher == '{b['name']}' && entry == 'post'") if l["amount"] > 0)
+        eq(f"accounting: non-PKP bill {b['name']}: cost = DPP + PPN", got, b["dpp"] + b["ppn"])
+    gl2 = rows(org2, "gl_entry")
+    if gl2:
+        d0, d1 = month_of(gl2)
+        st, rep = report(org2, d0, d1)
+        eq("accounting: non-PKP PT balance sheet balances", (rep.get("balanced"), rep.get("difference")), (True, 0))
 
 
 def scenario_period_close_and_opening(api, gl):
@@ -252,6 +306,8 @@ def scenario_period_close_and_opening(api, gl):
     lines = rows(api, "gl_entry", f"voucher == '{obn}'")
     eq("accounting: Saldo awal kas 5 juta: Kas debit, Ekuitas saldo awal kredit",
        sorted((l["account"], l["amount"]) for l in lines), [("11100", 5_000_000), ("31900", -5_000_000)])
+    st, fut = api.create("period_close", {"closed_until": "2999-12-31"})
+    check("accounting: Tutup buku for a future date is refused", st == 422, (st, str(fut)[:200]))
     st, pc = api.create("period_close", {"closed_until": day})
     pc = (pc or {}).get("record", pc) or {}
     st, s = api.verb("period_close", pc.get("name", "x"), "submit")
@@ -279,8 +335,8 @@ def scenario_period_close_and_opening(api, gl):
     api.verb("opening_balance", ob3n, "cancel")
 
     # import: Neraca awal from a spreadsheet arrives as a draft Saldo awal
-    csv = ("Tanggal,Kas,Bank,Piutang,Aset tetap,Akumulasi penyusutan,Utang usaha,Utang bank,Utang lain,Modal\n"
-           f"{day},2000000,15000000,0,40000000,10000000,3000000,20000000,0,20000000\n")
+    csv = ("Tanggal,Kas,Bank,Piutang,Persediaan,Aset tetap,Akumulasi penyusutan,Utang usaha,Utang bank,Utang lain,Modal\n"
+           f"{day},2000000,15000000,0,7000000,40000000,10000000,3000000,20000000,0,20000000\n")
     st, pv = api.upload("/api/v1/imports/opening_balance_sheet", {}, "neraca-awal.csv", csv.encode())
     if not check("accounting: Neraca awal import preview without errors", st == 200 and pv.get("errors") == [], (st, pv)):
         return
@@ -292,13 +348,16 @@ def scenario_period_close_and_opening(api, gl):
     name = recs[0] if isinstance(recs[0], str) else recs[0].get("name")
     draft = api.get("opening_balance", name)
     eq("accounting: imported Saldo awal: equity difference = assets - liabilities - modal", draft.get("opening_equity"),
-       2_000_000 + 15_000_000 + 40_000_000 - 10_000_000 - 3_000_000 - 20_000_000 - 20_000_000)
+       2_000_000 + 15_000_000 + 7_000_000 + 40_000_000 - 10_000_000 - 3_000_000 - 20_000_000 - 20_000_000)
     st, s = api.verb("opening_balance", name, "submit")
     check("accounting: imported Saldo awal submits", st == 200, (st, str(s)[:300]))
+    name = ((s or {}).get("record", s) or {}).get("name", name)
     last = max(r["posting_date"] for r in rows(api, "gl_entry"))
     st, rep = report(api, day, last)
     eq("accounting: with the opening balance the balance sheet still balances", (rep.get("balanced"), rep.get("difference")), (True, 0))
     eq("accounting: fixed assets net of depreciation in the balance sheet", rep.get("fixed_assets_net"), 30_000_000)
+    eq("accounting: opening stock value (a business with stock before the books) in Persediaan",
+       sum(l["amount"] for l in rows(api, "gl_entry", f"voucher == '{name}' && account == '11400'")), 7_000_000)
 
 
 SCENARIOS = [scenario_accounting]

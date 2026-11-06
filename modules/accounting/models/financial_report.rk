@@ -52,7 +52,7 @@ fields:
   - {name: difference, type: currency, label: {id: Selisih neraca}, compute: total_assets - total_liabilities - total_equity}
   - {name: balanced, type: check, label: {id: Neraca seimbang}, compute: computed_at != null && difference == 0, in_list: true}
   # Arus kas sederhana (akun kas dan bank, seluruh usaha)
-  - {name: cash_opening, type: currency, label: {id: Kas dan bank awal periode}, read_only: true}
+  - {name: cash_opening, type: currency, label: {id: Kas dan bank awal periode (tanpa kas outlet belum disetor)}, read_only: true}
   - {name: cash_in, type: currency, label: {id: Uang masuk}, read_only: true}
   - {name: cash_out, type: currency, label: {id: Uang keluar}, read_only: true}
   - {name: cash_closing, type: currency, label: {id: Kas dan bank akhir periode}, compute: cash_opening + cash_in - cash_out}

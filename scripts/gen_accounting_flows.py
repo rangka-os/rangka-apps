@@ -58,9 +58,20 @@ NET = "moves.map(m, m.value).sum()"
 MOVE_DATE = "moves.size() > 0 ? moves[0].posting_date : today()"
 
 CASH = "event.method == 'cash' ? '11100' : (event.method == 'sales_return' ? '41200' : '11200')"
-BILL_DEBIT = ("(event.posting == 'stock' || (event.posting == null && (event.goods_receipt != '' || event.purchase_order != ''))) ? '21150'"
-              " : ((event.posting == 'project' || (event.posting == null && event.project != '')) ? '51400'"
+# What a vendor bill pays for (vendor_bill.posting, defaulted from its links; old bills without it follow the same
+# order): a project's cost, goods already received into stock (only where the stock module is installed), else the
+# expense account chosen.
+BILL_KIND = ("(event.posting != null ? event.posting : (event.project != '' ? 'project'"
+             " : ((event.goods_receipt != '' || event.purchase_order != '') && app_installed('stock') ? 'stock' : 'expense')))")
+BILL_DEBIT = ("(" + BILL_KIND + ") == 'project' ? '51400' : ((" + BILL_KIND + ") == 'stock' ? '21150'"
               " : (event.expense_account != null ? event.expense_account : '61900'))")
+# A business that is not PKP cannot credit input PPN: it is part of the cost (goods: HPP, as the receipt valued the
+# stock without it).
+BILL_PPN = "tax.pkp ? '11500' : ((" + BILL_KIND + ") == 'stock' ? '51100' : (" + BILL_DEBIT + "))"
+# Potong retur: the credit note covers the return value plus its PPN; only the value is retur penjualan, the PPN
+# reduces PPN keluaran, in the proportion of what this payment credits.
+RETURN_VALUE = "round(event.amount * 1.0 * ret.return_value / ret.return_total)"
+SALES_RETURN = "event.direction == 'receive' && event.method == 'sales_return' && ret != null && ret.return_total > 0"
 CASH_TAKEN = "event.lines.filter(l, l.method == 'cash').map(l, l.received).sum()"
 
 # model: label, date, outlet, project, party, extra steps (before the lock), if, lines [(account, amount)]
@@ -79,16 +90,20 @@ POSTINGS = {
                ("'21200'", "0 - event.ppn")]),
     "payment": dict(
         label="Jurnal pembayaran", date="event.payment_date", party="event.direction == 'receive' ? event.customer : event.vendor",
-        # Receive: cash or bank (Potong retur: retur penjualan) and the PPh 23 the customer withheld, against piutang.
-        # Pay: utang usaha against cash or bank.
+        extra=["  - find: sales_return", "    if: event.method == 'sales_return' && event.sales_return != ''",
+               "    where: name == event.sales_return", "    as: ret"],
+        # Receive: cash or bank (Potong retur: retur penjualan, its PPN off PPN keluaran) and the PPh 23 the customer
+        # withheld, against piutang. Pay: utang usaha against cash or bank.
         lines=[("event.direction == 'receive' ? (" + CASH + ") : '21100'",
-                "event.direction == 'receive' ? event.amount : event.amount + event.withheld_total"),
+                "event.direction == 'receive' ? (" + SALES_RETURN + " ? " + RETURN_VALUE + " : event.amount) : event.amount + event.withheld_total"),
+               ("'21200'", SALES_RETURN + " ? event.amount - " + RETURN_VALUE + " : 0"),
                ("event.direction == 'receive' ? '11510' : '21300'",
                 "event.direction == 'receive' ? event.withheld_total : 0 - event.withheld_total"),
                ("event.direction == 'receive' ? '11300' : (" + CASH + ")",
                 "0 - event.amount - event.withheld_total")]),
     "goods_receipt": dict(
         label="Jurnal terima barang", date="event.received_on", outlet="event.outlet", party="event.vendor",
+        cond="app_installed('stock')",
         # Stock in at the receipt value; payable not yet billed, or opening equity for the "Saldo awal" vendor.
         extra=["  - find: vendor", "    where: name == event.vendor", "    as: v"],
         lines=[("'11400'", "event.total_value"),
@@ -97,7 +112,7 @@ POSTINGS = {
         label="Jurnal tagihan pemasok", date="event.bill_date", project="event.project", party="event.vendor",
         # Goods (received before): utang belum ditagih; a project's cost; else the expense account chosen.
         lines=[(BILL_DEBIT, "event.dpp"),
-               ("'11500'", "event.ppn"),
+               (BILL_PPN, "event.ppn"),
                ("'21100'", "0 - event.amount_due"),
                ("'21300'", "0 - event.pph23_amount")]),
     "outlet_sales": dict(
@@ -123,9 +138,11 @@ POSTINGS = {
         lines=[("'51300'", "event.cost_amount"), ("'21500'", "0 - event.cost_amount")]),
     "project_expense": dict(
         label="Jurnal biaya proyek", date="event.expense_date", project="event.project", party="event.vendor",
-        # A cost on a vendor bill is journaled by the bill; one without is paid from cash.
-        cond="event.vendor_bill == null",
-        lines=[("'51400'", "event.amount"), ("'11100'", "0 - event.amount")]),
+        # Paid from cash; or, when it points at a vendor bill (always one without a project, which the bill journaled
+        # as an operating expense), the cost moves from that expense to the project, so the project's profit and loss
+        # matches its project_ledger (which counts the expense at its full amount) and nothing is counted twice.
+        lines=[("'51400'", "event.amount"),
+               ("event.vendor_bill == null ? '11100' : '61900'", "0 - event.amount")]),
     "delivery_note": dict(
         label="Jurnal surat jalan", date="event.delivery_date", outlet="event.outlet", party="event.customer",
         lines=[("'51100'", "event.cogs_total"), ("'11400'", "0 - event.cogs_total")]),
@@ -153,10 +170,11 @@ POSTINGS = {
     "opening_balance": dict(
         label="Jurnal saldo awal", date="event.opening_date",
         lines=[("'11100'", "event.cash"), ("'11200'", "event.bank"), ("'11300'", "event.receivable"),
+               ("'11400'", "event.inventory"),
                ("'12100'", "event.fixed_assets"), ("'12900'", "0 - event.accumulated_depreciation"),
                ("'21100'", "0 - event.payable"), ("'22100'", "0 - event.bank_loan"),
                ("'21900'", "0 - event.other_liabilities"), ("'31100'", "0 - event.paid_in_capital"),
-               ("'31900'", "0 - (event.cash + event.bank + event.receivable + event.fixed_assets"
+               ("'31900'", "0 - (event.cash + event.bank + event.receivable + event.inventory + event.fixed_assets"
                             " - event.accumulated_depreciation - event.payable - event.bank_loan"
                             " - event.other_liabilities - event.paid_in_capital)")]),
 }
