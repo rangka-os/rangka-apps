@@ -217,6 +217,15 @@ fields:
   - {name: retention_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Retensi ditahan (valas)}, compute: "round(dpp_fx * retention_percent / 100, 2)"}
   - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, compute: "pph23_applies && dpp != 0 ? round(dpp_fx * (pph23_dpp * 1.0 / dpp * pph23_rate / 100), 2) : 0"}
   - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - retention_amount_fx - pph23_amount_fx"}
+  # Whether rule credit_limit warned on this submit (the same expression, computed in the same step from the same
+  # customer row). The rule runs before any flow lock (contract 0025 §5); flow sales_invoice_credit_recheck reads the customer
+  # again after the ledger hook has locked and updated it, and refuses an invoice that is over the limit only because
+  # another one was submitted at the same moment, so nobody passes the limit without having seen the warning.
+  - name: credit_warned
+    type: check
+    label: {id: Peringatan batas kredit saat diajukan}
+    hidden: true
+    compute: "customer != '' && customer.outstanding + amount_due > customer.credit_limit"
 rules:
   # A distributor bills what was delivered (module delivery): per item, no more than delivered, less returns and
   # earlier invoices of the order (order_fulfilment). The flow invoice_qty_from_deliveries sets the draft that way.

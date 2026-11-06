@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: sales_invoice_credit_recheck
+label: {id: Cek ulang batas kredit faktur}
+# Inside an invoice's submit (t_561e44ec). Rule credit_limit warns before any lock (contract 0025 §5), so two invoices
+# of one customer submitted at the same moment each saw the other's room and neither warned. The ledger hook has
+# locked and updated the customer row by now, so its outstanding includes every invoice committed meanwhile and this
+# one: an invoice over the limit that did not warn is refused (submitted again, it shows the warning). Flows run in name
+# order; this one sorts after the other sales_invoice.submitted flows, so it takes the customer lock after their locks
+# (sales_invoice, customer_order, order_fulfilment, customer), the order every flow reading these models keeps.
+on: sales_invoice.submitted
+if: "event.customer != '' && !event.credit_warned"
+steps:
+  - {find: customer, where: name == event.customer, as: cust}
+  - create: credit_guard
+    if: cust != null && cust.outstanding > cust.credit_limit
+    set:
+      reason: "'invoice_over_limit'"
+      document: event.name
