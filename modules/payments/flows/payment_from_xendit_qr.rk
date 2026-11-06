@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Rel uang U13/U17 (ready, not active): A QR callback (qr.payment SUCCEEDED is paid; a refund or a failed QR is not). Xendit's external_id is
+# the invoice number. The callback becomes a DRAFT payment allocated to that invoice (a flow cannot submit; finance
+# submits it, which settles the invoice), carrying gateway xendit and the gateway id.
+# Not active yet: the kernel has no connector runtime (no /hooks), so nothing fires this flow except
+# POST /api/v1/flows/<name>/run with the callback as event (how day_one tests it). It is written against the xendit
+# connector's trigger, not a payment.* port, because ports are not in the kernel yet (contract 0002 §B, proposal
+# 0023); the three payment_from_xendit_* flows hold the same steps, one per trigger.
+# Guards: only a completed payment of a positive amount records money; a gateway id already held by a live payment
+# records nothing (a repeated callback), and the claim below is refused by its unique index for the second of two
+# racing callbacks; only a submitted invoice is paid (a cancelled one, or an unknown number, records nothing and tells
+# the owner, since the money did arrive at Xendit); the allocation never exceeds what the invoice still owes after
+# open drafts, and the rest stays unallocated on the payment.
+name: payment_from_xendit_qr
+label: {id: QRIS Xendit dibayar jadi pembayaran}
+on: xendit.qr_paid
+if: event.paid && event.paid_amount > 0
+idempotency: event.gateway_ref
+steps:
+  - {find: payment, where: "gateway_ref == event.gateway_ref && docstatus != 2", as: done}
+  - {find: sales_invoice, where: "name == event.external_id && docstatus == 1", as: inv}
+  - {find_all: payment, where: "docstatus == 0 && reference == event.external_id", as: drafts}
+  - create: payment
+    if: done == null && inv != null
+    set:
+      direction: "'receive'"
+      customer: inv.customer
+      payment_date: today()
+      amount: event.paid_amount
+      method: event.method
+      gateway: "'xendit'"
+      gateway_ref: event.gateway_ref
+      reference: inv.name
+      notes: "'Dari Xendit ' + event.gateway_ref"
+      allocations: "min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum()) > 0 ? [{'sales_invoice': inv.name, 'amount': min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum())}] : []"
+    as: pay
+  # a payment made inside a flow does not run the claim flows (the kernel does not nest flows): claim the id here, as
+  # payment_gateway_claim_created does (a claim left by a deleted or cancelled payment is taken over)
+  - {find: gateway_ref_claim, where: gateway_ref == event.gateway_ref, as: held}
+  - update: held
+    if: done == null && inv != null && held != null
+    set: {payment: pay.name}
+  - create: gateway_ref_claim
+    if: done == null && inv != null && held == null
+    set: {gateway_ref: event.gateway_ref, payment: pay.name}
+  - notify: owner
+    if: done == null && inv == null
+    channel: email
+    template: {id: 'Xendit {event.gateway_ref}: Rp {event.paid_amount} untuk {event.external_id}, faktur tidak ada/terbuka. Catat manual.'}

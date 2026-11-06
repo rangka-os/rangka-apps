@@ -1344,6 +1344,85 @@ def statement_csv(rows, seq=True):
     return ("\n".join(out) + "\n").encode()
 
 
+def scenario_xendit_callbacks(api):
+    """Rel uang U13/U17 (ready, not active): synthetic Xendit callbacks, as the xendit connector's triggers emit them,
+    run through payment_from_xendit_* with POST /flows/<name>/run (the kernel has no connector runtime yet). A paid
+    callback drafts one payment for the invoice; repeats, non-payments, cancelled or unknown invoices record nothing."""
+    if not installed(api, "gateway_ref_claim"):
+        fail("xendit callbacks", "payments module not installed on this site")
+        return
+    customer = api.list("customer")[0]["name"]
+    item = (services(api) or api.list("item"))[0]["name"]
+
+    def submitted(rate):
+        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0))
+        st, resp = api.verb("sales_invoice", inv.get("name", ""), "submit", {"force": True})
+        check(f"xendit: submit invoice {rate}", st == 200, (st, resp))
+        return resp.get("name", inv.get("name")) if isinstance(resp, dict) else inv.get("name")
+
+    def callback(flow, **event):
+        st, out = api.call("POST", f"/api/v1/flows/payment_from_xendit_{flow}/run", {"event": event})
+        return st, out or {}
+
+    def payments_of(ref):
+        return api.find("payment", f"gateway_ref == '{ref}' && docstatus != 2")
+
+    inv = submitted(1_250_000)
+    st, out = callback("va", gateway_ref="va-pay-0001", external_id=inv, paid_amount=1_250_000, paid=True, method="va",
+                       paid_at="2026-11-06T10:00:00Z", bank_code="BCA", account_number="1234567890")
+    pays = payments_of("va-pay-0001")
+    check("VA paid: one draft payment for the invoice, gateway xendit, the whole amount allocated", st == 200 and len(pays) == 1
+          and pays[0]["docstatus"] == 0 and pays[0]["gateway"] == "xendit" and pays[0]["method"] == "va" and pays[0]["reference"] == inv, (st, out, pays))
+    if not pays:
+        return
+    pay = api.get("payment", pays[0]["name"])
+    eq("VA paid: allocation to the invoice", [(a["sales_invoice"], a["amount"]) for a in pay.get("allocations", [])], [(inv, 1_250_000)])
+    check("VA paid: the gateway id is claimed", len(api.find("gateway_ref_claim", "gateway_ref == 'va-pay-0001'")) == 1, "")
+    st, out = callback("va", gateway_ref="va-pay-0001", external_id=inv, paid_amount=1_250_000, paid=True, method="va")
+    eq("the same VA callback again: no second payment", len(payments_of("va-pay-0001")), 1)
+    st, resp = api.verb("payment", pay["name"], "submit")
+    check("finance submits the drafted payment", st == 200, (st, resp))
+    pay_name = resp.get("name", pay["name"]) if isinstance(resp, dict) else pay["name"]   # the draft is renamed on submit
+    eq("the invoice is settled", api.get("sales_invoice", inv)["outstanding"], 0)
+    st, out = callback("va", gateway_ref="va-pay-0001", external_id=inv, paid_amount=1_250_000, paid=True, method="va")
+    eq("the callback after submit: still one payment", len(payments_of("va-pay-0001")), 1)
+
+    # non-payments: a failed QR, an expired link, a zero amount
+    inv2 = submitted(800_000)
+    st, out = callback("qr", gateway_ref="qr-0002", external_id=inv2, paid_amount=800_000, paid=False, method="qris", status="FAILED")
+    check("QR callback that did not succeed: skipped, no payment", out.get("skipped") is True and not payments_of("qr-0002"), out)
+    st, out = callback("invoice", gateway_ref="inv-0003", external_id=inv2, paid_amount=0, paid=False, method="other", status="EXPIRED")
+    check("expired payment link: skipped, no payment", out.get("skipped") is True and not payments_of("inv-0003"), out)
+    st, out = callback("qr", gateway_ref="qr-0004", external_id=inv2, paid_amount=0, paid=True, method="qris")
+    check("a paid callback of 0: skipped", out.get("skipped") is True and not payments_of("qr-0004"), out)
+
+    # overpaid and split: the allocation never exceeds what is still open after earlier drafts
+    st, out = callback("qr", gateway_ref="qr-0005", external_id=inv2, paid_amount=500_000, paid=True, method="qris")
+    st, out = callback("invoice", gateway_ref="inv-0006", external_id=inv2, paid_amount=500_000, paid=True, method="ewallet")
+    a5 = api.get("payment", (payments_of("qr-0005") or [{"name": ""}])[0]["name"])
+    a6 = api.get("payment", (payments_of("inv-0006") or [{"name": ""}])[0]["name"])
+    eq("two link/QR payments on one invoice: 500.000 then the 300.000 still open", (a5.get("allocated_total"), a6.get("allocated_total"), a6.get("unallocated")), (500_000, 300_000, 200_000))
+
+    # a cancelled invoice and an unknown number: nothing recorded, the owner is told
+    inv3 = submitted(450_000)
+    api.verb("sales_invoice", inv3, "cancel")
+    st, out = callback("va", gateway_ref="va-0007", external_id=inv3, paid_amount=450_000, paid=True, method="va")
+    check("paid callback for a cancelled invoice: no payment, the owner is notified",
+          not payments_of("va-0007") and any("va-0007" in n.get("text", "") for n in out.get("notifications", [])), out)
+    st, out = callback("va", gateway_ref="va-0008", external_id="INV-TIDAK-ADA", paid_amount=99_000, paid=True, method="va")
+    check("paid callback for an unknown invoice number: no payment, the owner is notified",
+          not payments_of("va-0008") and any("INV-TIDAK-ADA" in n.get("text", "") for n in out.get("notifications", [])), out)
+
+    # a cancelled payment gives its gateway id back: the callback can be recorded again
+    st, resp = api.verb("payment", pay_name, "cancel")
+    check("cancel the Xendit payment", st == 200, (st, resp))
+    st, out = callback("va", gateway_ref="va-pay-0001", external_id=inv, paid_amount=1_250_000, paid=True, method="va")
+    again = payments_of("va-pay-0001")
+    check("after the cancel the same callback drafts a new payment and takes over the claim",
+          len(again) == 1 and again[0]["name"] != pay_name
+          and api.find("gateway_ref_claim", "gateway_ref == 'va-pay-0001'")[0]["payment"] == again[0]["name"], (again, out))
+
+
 def qris_payload(name, nmid, city="BANDUNG", poi="11", amount=None):
     """A synthetic QRIS (EMVCo merchant-presented) payload with a correct CRC-16/CCITT-FALSE: no real merchant."""
     def tlv(tag, value):
@@ -4765,7 +4844,7 @@ day_one_produksi.bind(sys.modules[__name__])
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction, scenario_xendit_callbacks],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods],
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
