@@ -35,6 +35,23 @@ widgets:
     filter: state == 'planned' || state == 'running'
     compact: true
     span: 4
+  # A margin is only as good as its labour cost: absensi without pay add no cost, so they are counted here (G5).
+  - name: timesheets_without_pay
+    type: number
+    label: {id: Absensi tanpa upah}
+    description: {id: 'Absensi diajukan yang upahnya belum diisi: untung proyek di atas belum termasuk biaya tenaga ini'}
+    model: timesheet
+    filter: docstatus == 1 && cost_missing
+    good_when: down
+    span: 6
+  - name: workers_without_pay
+    type: number
+    label: {id: Tenaga tanpa upah}
+    description: {id: 'Tenaga aktif yang upah per hari dan per jamnya belum diisi'}
+    model: worker
+    filter: active && cost_day_rate == 0 && cost_hour_rate == 0
+    good_when: down
+    span: 6
   - name: margin_by_project
     type: chart
     chart: bar

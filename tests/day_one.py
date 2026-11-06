@@ -2157,6 +2157,75 @@ def scenario_project_margin(api):
     eq("project_margin margin_by_project shows the project's margin (35.000.000 - the 9.000.000 expense = 26.000.000)", chart_map(ws.get("margin_by_project", {})).get(p), 26_000_000)
 
 
+def scenario_manpower_recap(api):
+    """Gladi 6 Nov G5 + G7: pay (cost) is imported with the worker list, kept apart from the selling rate, and reaches
+    the project margin; attendance arrives as one monthly recap row per worker per project (days present, overtime
+    hours) instead of one timesheet per person per day. A timesheet with no pay is flagged, never silently 0 cost."""
+    pa = CTX.get("pa")
+    if pa is None:
+        fail("manpower recap: members", CTX.get("login_error", "members missing"))
+        return
+    # G5: the worker list carries pay next to the selling rate; the pay columns are optional (old files still import)
+    wl = ("Nama,Nomor karyawan,Jabatan,WhatsApp,Tarif harian,Upah harian,Tarif lembur per jam,Upah lembur per jam\n"
+          "Operator Satu,MP-001,Operator forklift,+620000000031,225000,150000,30000,20000\n"
+          "Operator Dua,MP-002,Operator forklift,+620000000032,225000,,,\n").encode()
+    pv, c = import_commit(api, "worker_list", "tenaga-dengan-upah.csv", wl, label="worker list with pay (2 workers)")
+    ws = {w["employee_no"]: w for w in api.list("worker", limit=500) if w.get("employee_no", "").startswith("MP-")}
+    eq("worker list: pay apart from the selling rate (MP-001 jual 225.000, upah 150.000, lembur 30.000/20.000)",
+       tuple((ws.get("MP-001") or {}).get(f) for f in ("day_rate", "cost_day_rate", "overtime_rate", "overtime_cost_rate")), (225_000, 150_000, 30_000, 20_000))
+    eq("worker list: an empty pay cell stays 0 (MP-002)", (ws.get("MP-002") or {}).get("cost_day_rate"), 0)
+    old = b"Nama,Nomor karyawan,Jabatan,WhatsApp,Tarif harian\nOperator Lama,MP-003,Helper,+620000000033,200000\n"
+    import_commit(api, "worker_list", "tenaga-template-lama.csv", old, label="worker list in the old template (no pay columns)")
+    if c is None or "MP-001" not in ws:
+        return
+    st, prj = pa.create("project", {"project_name": "Outsourcing gudang Agro", "customer": "CUST-0001", "state": "running", "contract_value": 120_000_000})
+    if not check("manpower project", st == 201, (st, prj)):
+        return
+    p = prj["name"]
+    st, asg = pa.create("assignment", {"project": p, "worker": ws["MP-001"]["name"], "start_date": "2026-10-21", "end_date": "2027-10-20", "day_rate": 250_000})
+    check("assignment of MP-001 at the client rate 250.000 (pay and overtime from the worker)", st == 201 and (asg.get("cost_rate"), asg.get("overtime_rate"), asg.get("overtime_cost_rate")) == (150_000, 30_000, 20_000), (st, asg))
+    # G7: one recap row per worker per project per cut-off period (21 Oct to 20 Nov)
+    head = "Proyek,No. pegawai,Nama,Dari tanggal,Sampai tanggal,Hari hadir,Jam lembur\n"
+    recap = (head + f"{p},MP-001,Operator Satu,21/10/2026,20/11/2026,22,10\n" + f"{p},MP-002,Operator Dua,21/10/2026,20/11/2026,20,\n").encode()
+    pv, c = import_commit(pa, "attendance_recap", "rekap-absensi-okt-nov.csv", recap, label="monthly attendance recap (2 workers)")
+    if c is None:
+        return
+    tss = {pa.get("timesheet", n)["worker"]: pa.get("timesheet", n) for n in c["records"]}
+    t1, t2 = tss.get(ws["MP-001"]["name"], {}), tss.get(ws["MP-002"]["name"], {})
+    eq("recap row -> one draft timesheet for the period", (t1.get("work_date"), t1.get("period_to"), t1.get("days"), t1.get("overtime_hours"), t1.get("docstatus")), ("2026-10-21", "2026-11-20", 22, 10, 0))
+    eq("the recap finds the worker's assignment on the project (client rate 250.000)", (t1.get("assignment"), t1.get("day_rate")), (asg.get("name"), 250_000))
+    eq("MP-001: 22 x 250.000 + 10 h x 30.000 = 5.800.000; cost 22 x 150.000 + 10 h x 20.000 = 3.500.000", (t1.get("amount"), t1.get("cost_amount"), t1.get("cost_missing")), (5_800_000, 3_500_000, False))
+    eq("MP-002 without assignment: worker rate 20 x 225.000 = 4.500.000, no pay -> flagged, not a silent 0", (t2.get("amount"), t2.get("cost_amount"), t2.get("cost_missing")), (4_500_000, 0, True))
+    st, dup = pa.upload("/api/v1/imports/attendance_recap", {}, "rekap-absensi-okt-nov-lagi.csv", recap)
+    check("the same recap again -> duplicate, nothing created twice", st == 200 and dup.get("duplicate") is True, (st, dup))
+    bad = (head + f"{p},MP-001,Operator Satu,21/11/2026,20/12/2026,35,\n"      # 35 days in a 30-day period
+                + f"{p},MP-001,Operator Satu,01/12/2026,15/01/2027,20,\n"      # a period longer than 31 days
+                + f"{p},MP-002,Operator Dua,21/11/2026,20/12/2026,0,\n").encode()  # nothing worked
+    st, pv = pa.upload("/api/v1/imports/attendance_recap", {}, "rekap-salah.csv", bad)
+    eq("a recap with impossible rows: every bad row is reported (rows 2-4)", sorted({e["row"] for e in (pv or {}).get("errors", [])}), [2, 3, 4])
+    st, cm = pa.call("POST", f"/api/v1/imports/attendance_recap/{pv['id']}/commit") if st == 200 else (st, pv)
+    check("... and it cannot be committed: 422 import_errors", st == 422, (st, cm))
+    st, pv = pa.upload("/api/v1/imports/attendance_recap", {}, "rekap-pegawai-asing.csv", (head + f"{p},MP-999,Tidak Ada,21/11/2026,20/12/2026,20,\n").encode())
+    check("an unknown employee number is reported on its row", st == 200 and [e["row"] for e in pv.get("errors", [])] == [2], (st, pv))
+    t1n, t2n = (submit_doc(pa, "timesheet", t["name"], f"project admin submits the recap timesheet of {t.get('worker')}") for t in (t1, t2))
+    rows = lambda: api.find("project_ledger", "project == '%s'" % p)
+    eq("ledger: only the paid worker's cost -3.500.000 (MP-002 has none to post)", sorted((r["kind"], r["amount"]) for r in rows()), [("labor", -3_500_000)])
+    d = dashboard(api, "project_margin", 365)
+    flagged = len(api.find("timesheet", "docstatus == 1 && cost_missing"))
+    eq("project_margin: submitted timesheets without pay are counted, so the margin reads as incomplete", num(d.get("timesheets_without_pay", {})), flagged)
+    check("... and MP-002's recap is one of them", flagged >= 1, flagged)
+    nopay = len([w for w in api.list("worker", limit=500) if w["active"] in (True, "true") and not w.get("cost_day_rate") and not w.get("cost_hour_rate")])
+    eq("project_margin: active workers without pay", num(d.get("workers_without_pay", {})), nopay)
+    st, resp = pa.verb("timesheet", t1n, "cancel") if t1n else (0, "not submitted")
+    check("a recap timesheet can be cancelled", st == 200, (st, resp))
+    eq("cancel reverses its cost: labor rows sum 0", sum(r["amount"] for r in rows()), 0)
+    # a daily timesheet keeps its 1,5-day limit; a recap period may not run backwards
+    st, resp = pa.create("timesheet", {"project": p, "worker": ws["MP-001"]["name"], "work_date": "2026-11-10", "days": 2, "description": "x"})
+    check("a daily timesheet of 2 days is still refused", st == 422, (st, resp))
+    st, resp = pa.create("timesheet", {"project": p, "worker": ws["MP-001"]["name"], "work_date": "2026-11-10", "period_to": "2026-11-01", "days": 5, "description": "x"})
+    check("a recap whose end is before its start -> 422", st == 422, (st, resp))
+
+
 def scenario_roles_jasa(api):
     sm, fm, pm, pa = (CTX.get(x) for x in ("sm", "fm", "pm", "pa"))
     if not all((sm, fm, pm, pa)):
@@ -2335,7 +2404,8 @@ MATRIX = {
     "wage_sheet": {"head_office": {"read", "create", "write", "export", "print"}, "outlet_staff": {"create"}},
     "giro": {"finance_manager": {"read", "create", "write", "export", "print"}, "sales_manager": {"read", "create", "write", "export", "print"},
              "field_sales": _R},
-    **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("assignment", "timesheet", "acceptance")},
+    **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("assignment", "acceptance")},
+    "timesheet": {"project_admin": _ALL | {"import"}, "sales_manager": _R, "finance_manager": _R},
     "project": {"project_admin": _ALL, "sales_manager": {"read", "write"}, "finance_manager": {"read", "write"}},   # write for the billing flows
     "project_ledger": {"project_admin": {"read", "create", "export"}, "finance_manager": {"read", "create", "export"},
                        "sales_manager": {"read", "create", "export"}, "purchasing_manager": {"read", "create"}},
@@ -4369,7 +4439,7 @@ day_one_produksi.bind(sys.modules[__name__])
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,

@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# Monthly attendance recap (G7): one row per worker per project per cut-off period, as fingerprint machines and HR apps
+# export it (Rekap Absensi: days present and overtime hours per person for a date range, often the 21st to the 20th).
+# Each row becomes one draft timesheet for the period, priced from the worker's assignment on the project
+# (timesheet_assignment_on_create) or, without one, from the worker. Proyek is the project number (PRJ-...), No.
+# pegawai the worker's employee number. Columns Nama and others are ignored. The same worker, project and start date
+# twice is skipped by the key; a wrong file is undone by deleting its drafts, a submitted one by cancelling it.
+name: attendance_recap
+label: {id: Rekap absensi bulanan, en: Monthly attendance recap}
+model: timesheet
+source: xlsx
+header_row: 1
+key: [Proyek, No. pegawai, Dari tanggal]
+map:
+  project: Proyek
+  worker: {value: No. pegawai, match: employee_no}
+  work_date: Dari tanggal
+  period_to: Sampai tanggal
+  days: Hari hadir
+  overtime_hours: "='Jam lembur' in row && row['Jam lembur'] != '' ? row['Jam lembur'] : '0'"
+  rate_basis: "='day'"
+  description: "='Rekap absensi ' + row['Dari tanggal'] + ' s.d. ' + row['Sampai tanggal']"
