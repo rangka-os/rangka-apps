@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+# Retail back office for a shop that keeps its POS (Jalur A): sales arrive as POS files per outlet, stock per outlet
+# follows them, purchasing and supplier bills, consignment in, daily takings, and the reports an owner reads weekly.
+# No cashier, receipt or shift here. Built on the fnb_cabang modules without recipes: an item without a recipe takes
+# itself out of stock on a sale.
+name: ritel_cabang
+version: 1.0.0
+title: {id: Ritel multi cabang, en: Multi-branch retail}
+label: {id: Rangka Ritel Cabang, en: Rangka Multi-branch Retail}
+summary:
+  id: Impor penjualan dari kasir lama, stok per cabang, pembelian, barang titipan, setoran harian dan laporan barang laku.
+rangka: '>=0.5'
+modules:
+  contacts: ^1.0
+  catalogue: ^1.0
+  outlets: ^1.0
+  users: ^1.0
+  stock: ^1.0
+  outlet_sales: ^1.0
+  procurement: ^1.0
+  payments: ^1.0
+  invoicing: ^1.0
+  consignment: ^1.0
+dashboards: [ritel_overview, ritel_stock, ritel_tax]
+roles: [head_office, outlet_staff]
+home: {dashboard: ritel_overview}
+# invoicing is only here because payments requires it; sales_invoice has no menu entry. recipe is installed with
+# stock but has no menu entry: a shop sells goods as they are.
+menu:
+  - group: {id: Penjualan toko}
+    items: [outlet_sales, outlet_takings]
+  - group: {id: Stok}
+    items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
+  - group: {id: Pembelian}
+    items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment]
+  - group: {id: Titipan}
+    items: [consignment_settlement]
+  - group: {id: Data induk}
+    items: [item, item_category, outlet, uom, uom_conversion, vendor]
+onboarding:
+  - ask: {id: 'Berapa cabang toko kamu?'}
+    sets: seed.outlets
+  - ask: {id: 'Cabang mana yang pakai Moka?'}
+    sets: imports.moka_item_details.outlets
+  - ask: {id: 'Kasir apa yang dipakai cabang lain?'}
+    options: [form, file, loyverse]
+    sets: outlet.sales_source
+  - ask: {id: 'Apakah usaha kamu PKP (memungut PPN)?'}
+    options: ['true', 'false']
+    sets: tax.pkp

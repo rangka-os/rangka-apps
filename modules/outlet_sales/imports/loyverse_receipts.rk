@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# Loyverse Back Office "Receipts by item" export (Reports > Receipts > Export > Receipts by item), one store per file.
+# GUESSED HEADERS: taken from Loyverse's help pages, not from a real export yet. Check them against the first real
+# file and fix them here (the Moka import failed on guessed headers before rangka-apps P2).
+# Loyverse writes a refund as its own receipt (Receipt type "Refund") with a positive Quantity; it is turned into a
+# negative line with its Net sales in refund, so net sales match Loyverse; the sign of Quantity and Net sales on a
+# refund row does not matter (both are taken as amounts). The Date column must be a date without
+# the time (set the export's date format in Loyverse), else the row is refused.
+name: loyverse_receipts
+label: {id: Penjualan Loyverse (per barang), en: Loyverse sales (receipts by item)}
+model: outlet_sales
+source: csv
+header_row: 1
+per: outlet
+key: [Date, Receipt number, SKU, Variant]
+group: [Date]
+map:
+  date: Date
+  source: "='loyverse'"
+  note: "='Loyverse ' + row['Date']"
+lines:
+  field: lines
+  map:
+    item: {value: SKU, match: sku}
+    qty: "=row['Receipt type'] == 'Refund' ? -max(double(row['Quantity']), -double(row['Quantity'])) : double(row['Quantity'])"
+    gross: "=row['Receipt type'] == 'Refund' ? 0 : int(row['Gross sales'])"
+    discount: "=row['Receipt type'] == 'Refund' ? 0 : int(row['Discounts'])"
+    refund: "=row['Receipt type'] == 'Refund' ? max(int(row['Net sales']), -int(row['Net sales'])) : 0"

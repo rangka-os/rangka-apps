@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: consignment_bill
+label: {id: Tagihan setoran titipan}
+# Runs in the submitter's transaction (rangka-os #34). One live vendor_bill per consignor and bill_ref (month); only one
+# settlement per consignor and month can be live (period_key), so:
+# - no bill yet: a draft bill with one line per item sold (qty_sold x rate);
+# - a draft bill left by a cancelled settlement of that month: its lines are replaced by this (amended) settlement's;
+# - a submitted bill: nothing is created; head office is told to check it, so a payable is never written twice.
+on: consignment_settlement.submitted
+if: event.total > 0
+steps:
+  - {find: vendor_bill, where: "vendor == event.consignor && bill_no == event.bill_ref && docstatus != 2", as: bill}
+  - create: vendor_bill
+    if: bill == null
+    set:
+      vendor: event.consignor
+      bill_no: event.bill_ref
+      bill_date: today()
+      items: "event.items.filter(i, i.qty_sold > 0).map(i, {'item': i.item, 'qty': i.qty_sold, 'rate': i.rate})"
+    as: created
+  - update: bill
+    if: bill != null && bill.docstatus == 0
+    set:
+      items: "event.items.filter(i, i.qty_sold > 0).map(i, {'item': i.item, 'qty': i.qty_sold, 'rate': i.rate})"
+  - notify: head_office
+    if: bill == null
+    channel: in_app
+    template: {id: 'Setoran titipan {event.name} jadi draf tagihan {created.name}, cek lalu ajukan'}
+  - notify: head_office
+    if: bill != null && bill.docstatus == 0
+    channel: in_app
+    template: {id: 'Draf tagihan {bill.name} diperbarui dari setoran titipan {event.name}'}
+  - notify: head_office
+    if: bill != null && bill.docstatus == 1
+    channel: in_app
+    template: {id: 'Tagihan {bill.name} untuk periode ini sudah diajukan. Batalkan dulu tagihan itu, lalu ajukan ulang setoran {event.name}'}

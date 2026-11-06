@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+# Consignment in (barang titipan): a shop sells goods a supplier still owns and pays for what sold, usually monthly.
+# The goods come in through goods_receipt from the consignor (stock moves, no payable: payables come only from
+# vendor_bill); item.consignor and item.consignment_cost (catalogue) mark them. Unsold goods go back through
+# stock_adjustment with reason consignment_return. The monthly settlement becomes a draft vendor_bill (flow
+# consignment_bill), so it is paid like any other bill.
+name: consignment
+version: 1.0.0
+title: {id: Konsinyasi, en: Consignment}
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, outlets: ^1.0, stock: ^1.0, procurement: ^1.0}

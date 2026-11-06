@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: consignment_settlement
+label: {id: Setoran titipan, en: Consignment settlement}
+icon: invoice
+is_submittable: true
+naming: KNS-{YYYY}-{####}
+title_field: consignor
+# One consignor, one month, all outlets. Per item: received, sold and returned in the month, and what is left on the
+# shelf; the shop owes qty_sold x rate. Submitting creates a draft vendor_bill for the consignor (flow consignment_bill),
+# which head office checks, submits and pays. One settlement per consignor and month (period_key is unique; an amended
+# copy carries amended_from, so a cancelled settlement can be amended), so two settlements can never bill one month.
+# A settlement whose bill is submitted cannot be cancelled (flow consignment_bill_cancelled): cancel the bill first. qty_sold is typed from the "Titipan terjual" list of the retail dashboard;
+# filling it from the stock moves needs a kernel hook (draft contract 0021, K-o).
+# No delete for head office: deleting a cancelled settlement would free its month's key while its amended copy is
+# live, and a second settlement of that month would then go unbilled. Only the owner may delete.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, submit: true, cancel: true, amend: true, export: true, print: true}
+fields:
+  - name: consignor
+    type: link
+    to: vendor
+    label: {id: Penitip}
+    required: true
+    in_list: true
+  - name: month
+    type: data
+    label: {id: Bulan}
+    help: {id: 'Format TTTT-BB, misalnya 2026-10'}
+    required: true
+    in_list: true
+  - name: items
+    type: table
+    of: consignment_settlement_item
+    label: {id: Barang titipan}
+    min_rows: 1
+  - name: qty_sold_total
+    type: float
+    label: {id: Total terjual}
+    compute: items.map(i, i.qty_sold).sum()
+  - name: total
+    type: currency
+    label: {id: Nilai setor}
+    compute: items.map(i, i.amount).sum()
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+  # The bill number of this consignor and month: the flow keeps one live vendor_bill per bill_ref.
+  - name: bill_ref
+    type: data
+    label: {id: Nomor tagihan titipan}
+    compute: "'TTP/' + month"
+    in_list: true
+  - name: period_key
+    type: data
+    label: {id: Kunci periode}
+    compute: "consignor + '|' + month + (amended_from == '' ? '' : '|' + amended_from)"
+    unique: true
+rules:
+  - name: month_format
+    on: save
+    check: "month.matches('^20[0-9]{2}-(0[1-9]|1[0-2])$')"
+    message: {id: 'Bulan ditulis TTTT-BB, misalnya 2026-10'}
+  - name: qty_not_negative
+    on: save
+    check: "items.map(i, i.qty_received < 0 || i.qty_sold < 0 || i.qty_returned < 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang tidak boleh negatif}
+  - name: rate_for_sold_items
+    on: save
+    check: "items.map(i, i.qty_sold > 0 && i.rate <= 0 ? 1 : 0).sum() == 0"
+    message: {id: 'Harga setor wajib diisi untuk barang yang terjual'}
+  - name: sold_within_stock
+    on: save
+    check: "items.map(i, i.qty_left < 0 ? 1 : 0).sum() == 0"
+    message: {id: 'Terjual ditambah dikembalikan melebihi stok awal ditambah diterima'}
+views:
+  list:
+    columns: [name, consignor, month, status, total, bill_ref]
+    filters: [consignor]
+    sort: -month
+  form:
+    layout:
+      - section: {id: Setoran titipan}
+        columns:
+          - [consignor, month]
+          - [bill_ref]
+      - section: {id: Barang titipan}
+        fields: [items]
+      - section: {id: Ringkasan}
+        columns:
+          - [qty_sold_total, total]
+      - section: {id: Catatan}
+        fields: [notes]
