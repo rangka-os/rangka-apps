@@ -39,6 +39,7 @@ fields:
       - {value: '11200', label: {id: '1-1200 Bank'}}
       - {value: '11300', label: {id: '1-1300 Piutang usaha'}}
       - {value: '11320', label: {id: '1-1320 Piutang retensi'}}
+      - {value: '11330', label: {id: '1-1330 Piutang karyawan'}}
       - {value: '11400', label: {id: '1-1400 Persediaan'}}
       - {value: '11410', label: {id: '1-1410 Persediaan dalam perjalanan'}}
       - {value: '11420', label: {id: '1-1420 Barang dalam proses'}}

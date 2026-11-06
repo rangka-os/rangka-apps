@@ -22,7 +22,7 @@ MODEL = os.path.join(ROOT, "modules", "accounting", "models", "gl_entry.rk")
 # liabilitas, 3 ekuitas, 4 pendapatan, 5 beban pokok, 61 beban operasional, 69 beban pajak.
 ACCOUNTS = [
     ("1-1100", "Kas"), ("1-1150", "Kas outlet belum disetor"), ("1-1200", "Bank"),
-    ("1-1300", "Piutang usaha"), ("1-1320", "Piutang retensi"),
+    ("1-1300", "Piutang usaha"), ("1-1320", "Piutang retensi"), ("1-1330", "Piutang karyawan"),
     ("1-1400", "Persediaan"), ("1-1410", "Persediaan dalam perjalanan"), ("1-1420", "Barang dalam proses"),
     ("1-1500", "PPN masukan"), ("1-1510", "PPh 23 dibayar dimuka"),
     ("1-2100", "Aset tetap"), ("1-2900", "Akumulasi penyusutan"),
