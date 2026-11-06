@@ -22,7 +22,7 @@ steps:
     find: payslip
     where: profile == prof.name && tax_year == run.tax_year && tax_month == run.tax_month && docstatus != 2
     as: other
-  - if: other != null
+  - if: prof != null && run != null && other != null
     create: payroll_guard
     set:
       reason: "'second_slip'"
