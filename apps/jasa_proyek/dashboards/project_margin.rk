@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+# Margin per project from project_ledger: revenue rows are positive, cost rows negative, so a sum is the margin.
+name: project_margin
+label: {id: Untung per proyek, en: Project margin}
+default_period: 365
+cache: 5m
+widgets:
+  - name: margin_total
+    type: number
+    label: {id: Untung proyek}
+    description: {id: 'Pendapatan dikurangi biaya tenaga kerja, proyek dan pemasok (DPP), dari dokumen yang diajukan sejak buku ini aktif'}
+    model: project_ledger
+    aggregate: sum
+    field: amount
+    period: posting_date
+    compact: true
+    span: 4
+  - name: revenue_total
+    type: number
+    label: {id: Pendapatan proyek}
+    model: project_ledger
+    aggregate: sum
+    field: amount
+    filter: kind == 'revenue'
+    period: posting_date
+    compact: true
+    span: 4
+  - name: backlog_total
+    type: number
+    label: {id: Nilai kontrak berjalan}
+    description: {id: 'Nilai kontrak proyek yang belum selesai'}
+    model: project
+    aggregate: sum
+    field: contract_value
+    filter: state == 'planned' || state == 'running'
+    compact: true
+    span: 4
+  - name: margin_by_project
+    type: chart
+    chart: bar
+    label: {id: Untung per proyek}
+    model: project_ledger
+    group_by: project
+    aggregate: sum
+    field: amount
+    period: posting_date
+    sort: -value
+    span: 6
+  - name: result_by_kind
+    type: chart
+    chart: bar
+    label: {id: Pendapatan dan biaya}
+    model: project_ledger
+    group_by: kind
+    aggregate: sum
+    field: amount
+    period: posting_date
+    span: 6
+  - name: latest_rows
+    type: list
+    label: {id: Catatan terakhir}
+    model: project_ledger
+    sort: -posting_date
+    limit: 10
+    columns: [project, kind, source_name, amount]
+    span: 12

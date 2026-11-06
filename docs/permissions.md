@@ -24,7 +24,9 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | project (finance and sales write only for the invoice flows that keep `billed_amount`; contract terms freeze once billed) | r w | r w | | all | | | |
 | assignment, timesheet, acceptance | r | r | | all | | | |
 | billing_milestone (state written by flows; no delete; finance and sales write only through the invoice flows, an amount edit by them is refused) | r w | r w e | | r c w e i | | | |
-| project_expense | r | all but d | | all | | | |
+| project_expense | r | all but d | r | all | | | |
+| project_guard (never stored; a flow's refusal) | | c | c | | | | |
+| project_ledger (rows written by flows) | r c e | r c e | r c | r c e | | | |
 | sales_invoice | all | all | | r | | | r |
 | withholding | r p | all | | | | | |
 | invoice_reminder | r c w d e | r c w d e | | | | | r c |

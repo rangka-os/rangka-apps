@@ -2052,6 +2052,105 @@ def scenario_milestone_money(api):
     check("a retention release on another project than its invoice's -> 422", st == 422, (st, resp))
 
 
+def scenario_project_margin(api):
+    """Tahap 2 J5: project_ledger rows written by flows inside each submit and cancel; their sum is the margin.
+    Each document is submitted by the role that does it, so the flows' create permission is exercised."""
+    pa, fm, pm = CTX.get("pa"), CTX.get("fm"), CTX.get("pm")
+    if None in (pa, fm, pm):
+        fail("project margin: members", CTX.get("login_error", "members missing"))
+        return
+    customer, ndt = "CUST-0001", services(api)[0]["name"]
+    st, prj = pa.create("project", {"project_name": "Konsultasi transfer pricing", "customer": customer, "state": "running", "contract_value": 60_000_000})
+    if not check("project for the margin checks", st == 201, (st, prj)):
+        return
+    p = prj["name"]
+    def rows():
+        return api.find("project_ledger", "project == '%s'" % p)
+    def margin():
+        return sum(r["amount"] for r in rows())
+    st, inv = fm.create("sales_invoice", {"customer": customer, "project": p, "items": [{"item": ndt, "qty": 1, "rate": 40_000_000}]})
+    invn = submit_doc(fm, "sales_invoice", inv["name"], "finance submits a 40.000.000 project invoice", force=True) if st == 201 else None
+    st, cw = api.create("worker", {"worker_name": "Konsultan TP", "hour_rate": 500_000, "cost_hour_rate": 150_000})
+    st, asg = pa.create("assignment", {"project": p, "worker": cw["name"], "start_date": "2026-11-01", "end_date": "2026-11-30", "rate_basis": "hour"})
+    st, ts = pa.create("timesheet", {"project": p, "worker": cw["name"], "assignment": asg["name"], "work_date": "2026-11-05", "hours": 20, "description": "Analisis"})
+    tsn = submit_doc(pa, "timesheet", ts["name"], "project admin submits 20 hours (cost 3.000.000)") if st == 201 else None
+    st, ex = pa.create("project_expense", {"project": p, "category": "travel", "description": "Tiket", "amount": 2_000_000})
+    submit_doc(pa, "project_expense", ex["name"], "project admin submits a 2.000.000 expense") if st == 201 else None
+    st, vb = pm.create("vendor_bill", {"vendor": "VND-0001", "project": p, "bill_no": "SUB-TP-1", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 25_000_000}]})
+    vbn = submit_doc(pm, "vendor_bill", vb["name"], "purchasing submits a 25.000.000 subcontract bill") if st == 201 else None
+    got = sorted((r["kind"], r["amount"]) for r in rows())
+    eq("ledger rows: revenue +40.000.000, labor -3.000.000, expense -2.000.000, vendor -25.000.000", got,
+       sorted([("revenue", 40_000_000), ("labor", -3_000_000), ("expense", -2_000_000), ("vendor", -25_000_000)]))
+    eq("margin 10.000.000", margin(), 10_000_000)
+    if vbn:
+        st, resp = pm.verb("vendor_bill", vbn, "cancel")
+        check("purchasing cancels the subcontract bill", st == 200, (st, resp))
+        eq("cancel writes the opposite row: margin 35.000.000", margin(), 35_000_000)
+    st, ret = fm.create("sales_invoice", {"customer": customer, "project": p, "kind": "retention", "retention_of": invn, "items": [{"item": ndt, "qty": 1, "rate": 0}]})
+    eq("margin unchanged by anything not submitted", margin(), 35_000_000)
+    st, resp = pa.call("PATCH", f"/api/v1/r/project_ledger/{Api.q(rows()[0]['name'])}", {"amount": 1})
+    check("people cannot edit a ledger row (no write)", st == 403, (st, resp))
+    # no row can be made up by hand, even by a role that holds create (flows run as that role)
+    for who, cl in (("project_admin", pa), ("finance_manager", fm), ("sales_manager", CTX.get("sm"))):
+        st, resp = cl.create("project_ledger", {"project": p, "posting_date": "2026-11-20", "kind": "revenue", "source_model": "manual", "source_name": "manual", "amount": 100_000_000})
+        check(f"{who} cannot make up a revenue row -> 422", st == 422, (st, resp))
+    if invn:
+        st, resp = fm.create("project_ledger", {"project": p, "posting_date": "2026-11-20", "kind": "revenue", "source_model": "sales_invoice", "source_name": invn, "sales_invoice": invn, "amount": 40_000_000})
+        check("a second copy of the invoice's own row -> 422 (entry_key unique)", st == 422, (st, resp))
+    # an expense cannot point at a vendor bill of no project (its cost would reach no ledger)
+    st, nb = pm.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "NOPRJ-1", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 1_000_000}]})
+    # an expense counts at its own full amount whatever its linked bill does (audit round 3): it may link a bill
+    # recorded without the project (that bill reaches no ledger), a draft or a smaller one, never a bill of this project
+    before_m = margin()
+    st, draft_bill = pm.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "DRAFT-BILL", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 8_000_000}]})
+    st, resp = pa.create("project_expense", {"project": p, "description": "Ke tagihan draft", "amount": 8_000_000, "vendor_bill": draft_bill.get("name", "")})
+    check("D1: an expense cannot link a draft bill (it could gain the project later, and its name changes at submit) -> 422", st == 422, (st, resp))
+    sb = submit_doc(pm, "vendor_bill", draft_bill["name"], "submit the project-less bill") if draft_bill.get("name") else None
+    st, e1 = pa.create("project_expense", {"project": p, "description": "Ke tagihan tanpa proyek", "amount": 8_000_000, "vendor_bill": sb or ""})
+    e1n = submit_doc(pa, "project_expense", e1["name"], "expense of 8.000.000 linked to a submitted bill without project") if st == 201 else None
+    if sb:
+        st, resp = pm.verb("vendor_bill", sb, "cancel")
+        check("D2: a bill linked by a live expense cannot be cancelled (it could come back with the project) -> 422", st == 422, (st, resp))
+    nbn = submit_doc(pm, "vendor_bill", nb["name"], "submit the small bill without project") if nb.get("name") else ""
+    st, e2 = pa.create("project_expense", {"project": p, "description": "Ke tagihan kecil", "amount": 9_000_000, "vendor_bill": nbn or ""})
+    submit_doc(pa, "project_expense", e2["name"], "expense of 9.000.000 linked to a 1.000.000 bill without project") if st == 201 else None
+    eq("both expenses lower the margin by their full amount (17.000.000)", before_m - margin(), 17_000_000)
+    st, vbp = pm.create("vendor_bill", {"vendor": "VND-0001", "project": p, "bill_no": "PRJ-BILL", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 1_000_000}]})
+    st, resp = pa.create("project_expense", {"project": p, "description": "x", "amount": 1_000_000, "vendor_bill": vbp.get("name", "")})
+    check("an expense linking a bill of this project (counted on its own) -> 422", st == 422, (st, resp))
+    if e1n:
+        pa.verb("project_expense", e1n, "cancel")
+        eq("cancelling the 8.000.000 expense gives it back", before_m - margin(), 9_000_000)
+        if sb:
+            st, resp = pm.verb("vendor_bill", sb, "cancel")
+            check("once the expense is cancelled, its bill can be cancelled", st == 200, (st, resp))
+    # a project invoice with DPP 0 (fully discounted) submits and cancels: its post and reverse rows have distinct keys
+    st, z = fm.create("sales_invoice", {"customer": customer, "project": p, "discount_amount": 1_000_000, "items": [{"item": ndt, "qty": 1, "rate": 1_000_000}]})
+    zn = submit_doc(fm, "sales_invoice", z["name"], "finance submits a DPP 0 project invoice", force=True) if st == 201 else None
+    if zn:
+        st, resp = fm.verb("sales_invoice", zn, "cancel")
+        check("the DPP 0 project invoice can be cancelled (no entry_key clash)", st == 200, (st, resp))
+    # a reversal row needs the row it reverses: none for a document that never had one, and only one per row
+    st, ex = pa.create("project_expense", {"project": p, "category": "other", "description": "Batal", "amount": 500_000})
+    exn = submit_doc(pa, "project_expense", ex["name"], "submit an expense to cancel") if st == 201 else None
+    if exn:
+        pa.verb("project_expense", exn, "cancel")
+        post = [r for r in rows() if r["source_name"] == exn and r["entry"] == "post"]
+        st, resp = pa.create("project_ledger", {"project": p, "posting_date": ex["expense_date"], "kind": "expense", "entry": "reverse", "source_model": "project_expense",
+                                                "source_name": exn, "project_expense": exn, "reverses": post[0]["name"] if post else "", "amount": 500_000})
+        check("a second reversal of the same row -> 422", st == 422, (st, resp))
+    allr = rows()
+    posts = {r["name"]: r for r in allr if r["entry"] == "post"}
+    revs = [r for r in allr if r["entry"] == "reverse"]
+    check("every reversal points at the post row of the same document, with the opposite amount",
+          all(r["reverses"] in posts and posts[r["reverses"]]["source_name"] == r["source_name"] and r["amount"] == -posts[r["reverses"]]["amount"] for r in revs), revs)
+    eq("no document has two reversals; each cancelled one here has one",
+       sorted(r["source_name"] for r in revs), sorted({r["source_name"] for r in revs}))
+    eq("four reversals: the subcontract bill, the DPP 0 invoice, the 500.000 expense and the 8.000.000 expense", len(revs), 4)
+    ws = dashboard(api, "project_margin", 365)
+    eq("project_margin margin_by_project shows the project's margin (35.000.000 - the 9.000.000 expense = 26.000.000)", chart_map(ws.get("margin_by_project", {})).get(p), 26_000_000)
+
+
 def scenario_roles_jasa(api):
     sm, fm, pm, pa = (CTX.get(x) for x in ("sm", "fm", "pm", "pa"))
     if not all((sm, fm, pm, pa)):
@@ -2212,7 +2311,10 @@ MATRIX = {
     "customer_order": {"sales_manager": _ALL, "project_admin": _RCWS, "finance_manager": _RP},
     **{m: {"project_admin": _ALL, "sales_manager": _R, "finance_manager": _R} for m in ("assignment", "timesheet", "acceptance")},
     "project": {"project_admin": _ALL, "sales_manager": {"read", "write"}, "finance_manager": {"read", "write"}},   # write for the billing flows
-    "project_expense": {"project_admin": _ALL, "finance_manager": _ALL - {"delete"}, "sales_manager": _R},
+    "project_ledger": {"project_admin": {"read", "create", "export"}, "finance_manager": {"read", "create", "export"},
+                       "sales_manager": {"read", "create", "export"}, "purchasing_manager": {"read", "create"}},
+    "project_expense": {"project_admin": _ALL, "finance_manager": _ALL - {"delete"}, "sales_manager": _R, "purchasing_manager": _R},
+    "project_guard": {"purchasing_manager": {"create"}, "finance_manager": {"create"}},
     "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R},
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
                           "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
@@ -4223,7 +4325,7 @@ def setup_demo_fnb(api, k):
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_milestone_money, scenario_project_costs, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail],
+                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
