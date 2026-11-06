@@ -5,17 +5,8 @@ default_period: 30
 cache: 5m
 # The owner's daily questions: what did the salesmen sell, which orders wait, who pays late, which giro is due.
 widgets:
-  # riset desain K-A2: "perlu_" lists open the home as "Perlu diurus" rows (P2: what waits on the owner first)
-  - name: perlu_pesanan_tertahan
-    type: list
-    label: {id: Pesanan belum jalan}
-    description: {id: 'Draf dan pesanan yang menunggu persetujuan kredit'}
-    model: customer_order
-    filter: docstatus == 0
-    sort: delivery_date
-    limit: 10
-    columns: [customer, salesman, delivery_date, estimated_total]
-    span: 12
+  # riset desain K-A2: "perlu_" lists open the home as "Perlu diurus" rows (P2). Held orders are not listed here:
+  # they already wait in Persetujuan, which the same panel shows.
   - name: perlu_telat_bayar
     type: list
     label: {id: Pelanggan telat bayar}

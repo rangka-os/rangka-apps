@@ -76,11 +76,12 @@
   <thead><tr><th>No</th><th>Barang</th><th class="num">Qty</th><th>Satuan</th><th>Cek terima</th></tr></thead>
   <tbody>
   {{range $row := .Doc.items}}
+  {{- $u := $row.uom -}}{{- range $.Related.uoms -}}{{- if eq .name $row.uom -}}{{- $u = .uom_name -}}{{- end -}}{{- end -}}
   <tr>
     <td class="no"></td>
     <td>{{if $row.description}}{{$row.description}}{{else}}{{$row.item}}{{end}}</td>
     <td class="num qty">{{number $row.qty}}</td>
-    <td>{{$row.uom}}</td>
+    <td>{{$u}}</td>
     <td class="check"></td>
   </tr>
   {{end}}

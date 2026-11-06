@@ -7,3 +7,9 @@ label: {id: Surat jalan, en: Delivery note}
 paper: A4
 template: delivery_note.html
 default: true
+related:
+  # unit names for the lines (a related list needs a match; uom is not submittable, so docstatus 0 loads every unit)
+  uoms:
+    model: uom
+    match: {docstatus: docstatus}
+    limit: 1000
