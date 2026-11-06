@@ -14,7 +14,9 @@ title_field: title
 permissions:
   # Changing where customers pay is a money control: only finance (and the owner's head office) write it.
   - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true}
-  - {role: head_office, read: true, create: true, write: true, delete: true, export: true}
+  # head office does not delete: removing the default account leaves the next invoices without "cara bayar" and the
+  # owner would not see it (card t_5b705279); finance and the owner delete
+  - {role: head_office, read: true, create: true, write: true, export: true}
   # whoever submits an invoice reads the default account: the flow payment_instruction_on_submit runs as them
   - {role: sales_manager, read: true}
   - {role: sales_rep, read: true}

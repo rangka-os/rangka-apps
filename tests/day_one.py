@@ -2671,7 +2671,7 @@ MATRIX = {
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
                           "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
-    "bank_account": {"finance_manager": {"read", "create", "write", "delete", "export"}, "head_office": {"read", "create", "write", "delete", "export"},
+    "bank_account": {"finance_manager": {"read", "create", "write", "delete", "export"}, "head_office": {"read", "create", "write", "export"},
                      "sales_manager": _R, "sales_rep": _R, "field_sales": _R, "project_admin": _R},
     "payment_instruction": {"finance_manager": {"read", "create", "export"}, "sales_manager": {"read", "create", "export"},
                             "head_office": _R, "sales_rep": _R, "project_admin": _R},
@@ -3944,6 +3944,23 @@ def scenario_credit_limit_warning(api):
         fm.verb("sales_invoice", resp.get("name", inv["name"]), "cancel")
 
 
+def scenario_bank_account_delete(api):
+    """Card t_5b705279 (audit fnb bank owner N1): head office keeps writing Rekening & QRIS, but deleting the default
+    account would leave the next invoices without "cara bayar" unseen by the owner, so only finance and the owner delete."""
+    hq = CTX.get("hq")
+    if hq is None:
+        fail("bank_account delete: head office member", CTX.get("login_error", "no head office member"))
+        return
+    st, acct = hq.create("bank_account", {"bank": "BCA", "account_no": "5550000005", "holder": "Tahu Contoh", "is_default": True})
+    if not check("head office creates the default bank account", st == 201, (st, acct)):
+        return
+    st, resp = hq.call("DELETE", f"/api/v1/r/bank_account/{Api.q(acct['name'])}")
+    check("head office deleting the bank account -> 403", st == 403, (st, resp))
+    check("the account is still there", api.call("GET", f"/api/v1/r/bank_account/{Api.q(acct['name'])}")[0] == 200)
+    st, resp = api.call("DELETE", f"/api/v1/r/bank_account/{Api.q(acct['name'])}")
+    check("the owner deletes it", st in (200, 204), (st, resp))
+
+
 def scenario_po_approval_fnb(api):
     """demo-fnb's custom/purchase_order.rk: a head office PO above Rp 5.000.000 waits for the owner (contract 0007 §1)."""
     hq = CTX.get("hq")
@@ -4787,7 +4804,7 @@ SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction],
-    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods],
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods, scenario_bank_account_delete],
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
                    scenario_permissions, scenario_payment_methods],
