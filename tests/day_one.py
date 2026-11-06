@@ -816,6 +816,12 @@ def scenario_projects(api):
         return
     eq("project state defaults to planned", p["state"], "planned")
     eq("project number PRJ-<year>-nnnn", p["name"].startswith("PRJ-"), True)
+    eq("project billing_model defaults to fixed, contract_value 0", (p["billing_model"], p["contract_value"]), ("fixed", 0))
+    st, eng = api.create("project", {"project_name": "Pendampingan pajak 2026", "customer": customer, "billing_model": "milestone",
+                                     "contract_kind": "spk", "contract_no": "SPK/001/XI/2026", "contract_date": "2026-11-02", "contract_value": 100_000_000})
+    check("create an engagement: milestone billing, SPK, contract 100.000.000", st == 201 and eng["contract_value"] == 100_000_000 and eng["billing_model"] == "milestone", (st, eng))
+    st, resp = api.create("project", {"project_name": "x", "customer": customer, "contract_value": -1})
+    check("negative contract value -> 422 'Nilai kontrak tidak boleh negatif'", st == 422 and any("Nilai kontrak" in m for m in messages(resp)), (st, resp))
 
     st, a = api.create("assignment", {"project": p["name"], "worker": worker, "start_date": "2026-11-10", "end_date": "2026-11-20"})
     check("create assignment", st == 201, a)
