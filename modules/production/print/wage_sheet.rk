@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Lembar upah borongan of one batch: who did which stage, how much, the wage, and a column to sign on receipt
+# when the wage is paid in cash. Workers and stages are loaded so the sheet prints names, not codes: a related
+# list needs a match, and neither model is submittable, so docstatus == docstatus (both 0) loads all of them.
+name: wage_sheet
+model: wage_sheet
+label: {id: Lembar upah, en: Wage sheet}
+paper: A4
+template: wage_sheet.html
+default: true
+related:
+  workers:
+    model: worker
+    match: {docstatus: docstatus}
+    limit: 1000
+  stages:
+    model: production_stage
+    match: {docstatus: docstatus}
+    limit: 1000

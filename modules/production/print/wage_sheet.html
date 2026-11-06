@@ -1,0 +1,76 @@
+{{define "style"}}
+/* Arah E: netral, satu tanda merek, total upah paling besar, kolom tanda terima per baris. */
+.lh { display: flex; gap: 4mm; align-items: flex-start; padding-bottom: 4mm; margin-bottom: 5mm; border-bottom: 1px solid #1C1917; }
+.lh .logo { max-height: 16mm; max-width: 40mm; }
+.lh .mono { width: 12mm; height: 12mm; border-radius: 2.5mm; background: #1C1917; color: #fff; font-weight: 700; font-size: 16pt; line-height: 12mm; text-align: center; flex: none; }
+.lh .legal-name { font-size: 1.3em; font-weight: 600; }
+.lh .address { white-space: pre-line; }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 6mm; }
+.head h1 { font-size: 1.6em; margin: 0; letter-spacing: 0.02em; }
+.head .no { font-size: 1.1em; font-weight: 600; margin-top: 1mm; }
+.status { display: inline-block; margin-top: 2mm; padding: 0.6mm 2.4mm; border: 1px solid #1C1917; border-radius: 99px; font-size: 0.9em; font-weight: 600; }
+.box { min-width: 62mm; padding: 3mm 4mm; border: 1px solid #D6D3D1; border-radius: 2mm; background: #F5F5F4; text-align: right; }
+.box .k { color: #57534E; }
+.box .v { font-size: 1.9em; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.meta { margin: 5mm 0 2mm; }
+.meta td { border: 0; padding: 0.6mm 0; }
+.meta td:first-child { color: #57534E; width: 32mm; }
+.items { margin-top: 4mm; }
+.items th { border-bottom: 1px solid #1C1917; color: #57534E; font-weight: 600; font-size: 0.9em; }
+.items td { padding-top: 3mm; padding-bottom: 3mm; }
+.items td.sign { width: 34mm; }
+.items tr.cancel td { color: #57534E; text-decoration: line-through; }
+.items tfoot td { border-top: 1px solid #1C1917; border-bottom: 0; font-weight: 700; font-size: 1.1em; }
+.num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.note { margin-top: 3mm; font-size: 0.9em; }
+.signoff { display: flex; justify-content: flex-end; gap: 10mm; margin-top: 10mm; break-inside: avoid; }
+.signoff > div { width: 55mm; text-align: center; }
+.signoff .space { height: 18mm; border-bottom: 1px solid #1C1917; margin-bottom: 1.5mm; }
+{{end}}
+{{define "letterhead"}}{{with .Letterhead}}<header class="lh">
+{{if .logo_src}}<img class="logo" src="{{.logo_src}}" alt="">{{else if .legal_name}}<div class="mono" aria-hidden="true">{{upper (slice .legal_name 0 1)}}</div>{{end}}
+<div>
+<div class="legal-name">{{.legal_name}}</div>
+{{with .tagline}}<div class="muted">{{.}}</div>{{end}}
+{{with .address}}<div class="address">{{.}}</div>{{end}}
+</div></header>{{end}}{{end}}
+{{template "letterhead" .}}
+{{- $cancelled := .Doc.cancelled -}}
+<div class="head">
+  <div>
+    <h1>Lembar upah borongan</h1>
+    <div class="no">{{.Doc.name}}</div>
+    <div class="status">{{if $cancelled}}Batal, upah tidak dibayar{{else}}Siap dibayar{{end}}</div>
+  </div>
+  <div class="box">
+    <div class="k">Total upah</div>
+    <div class="v">{{rupiah .Doc.total}}</div>
+    <div class="k">{{len .Doc.lines}} baris kerja</div>
+  </div>
+</div>
+<table class="meta">
+  <tr><td>Tanggal kerja</td><td>{{date .Doc.work_date "long"}}</td></tr>
+  <tr><td>Batch produksi</td><td>{{.Doc.production_batch}}</td></tr>
+</table>
+<table class="items">
+  <thead><tr><th>Pekerja</th><th>Tahap</th><th class="num">Hasil kerja</th><th class="num">Tarif</th><th class="num">Upah</th><th>Tanda terima</th></tr></thead>
+  <tbody>
+  {{range $l := .Doc.lines}}
+  {{- $who := $l.worker -}}{{- range $.Related.workers -}}{{- if eq .name $l.worker -}}{{- $who = .worker_name -}}{{- end -}}{{- end -}}
+  {{- $stage := $l.stage -}}{{- $unit := "" -}}{{- range $.Related.stages -}}{{- if eq .name $l.stage -}}{{- $stage = .stage_name -}}{{- $unit = .unit -}}{{- end -}}{{- end -}}
+  <tr{{if $l.cancelled}} class="cancel"{{end}}>
+    <td><strong>{{$who}}</strong></td>
+    <td>{{$stage}}</td>
+    <td class="num">{{number $l.qty}} {{$unit}}</td>
+    <td class="num">{{rupiah $l.rate}}{{with $unit}}<span class="muted">/{{.}}</span>{{end}}</td>
+    <td class="num">{{rupiah $l.amount}}</td>
+    <td class="sign"></td>
+  </tr>
+  {{end}}
+  </tbody>
+  <tfoot><tr><td colspan="4">Total upah</td><td class="num">{{rupiah .Doc.total}}</td><td></td></tr></tfoot>
+</table>
+<p class="note muted">Upah dihitung dari hasil kerja di batch ini. Kalau ada yang salah, betulkan di batch produksinya, bukan di lembar ini.</p>
+<div class="signoff">
+  <div><div>Dibayar oleh</div><div class="space"></div><div class="muted">Nama dan tanggal</div></div>
+</div>

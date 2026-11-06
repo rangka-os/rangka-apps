@@ -1,7 +1,11 @@
 {{define "style"}}
-.msg { white-space: pre-wrap; border: 1px solid #d6d3d1; border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 1.05em; }
-.wa { display: inline-block; padding: 8px 14px; border-radius: 6px; background: #128c7e; color: #fff; text-decoration: none; font-weight: 700; }
-.muted { color: #78716c; font-size: 0.9em; }
+/* Arah E: pratinjau pesan netral; tombol utama ink, bukan hijau WhatsApp. */
+h1 { font-size: 1.3em; }
+.to { margin: 0 0 3mm; }
+.msg { white-space: pre-wrap; border: 1px solid #D6D3D1; border-radius: 3mm; border-top-left-radius: 0.8mm; background: #F5F5F4; padding: 4mm; margin: 3mm 0 4mm; font-size: 1.05em; max-width: 120mm; }
+.wa { display: inline-block; padding: 2.4mm 5mm; border-radius: 2mm; background: #1C1917; color: #fff; text-decoration: none; font-weight: 600; }
+.muted { color: #57534E; font-size: 0.9em; }
+@media print { .wa { display: none; } }
 {{end}}
 {{- $c := .Links.customer -}}
 {{- $p := "" -}}{{- with $c.phone -}}{{- $p = . -}}{{- end -}}
@@ -11,9 +15,11 @@
 {{- $ref := .Doc.name -}}{{- $qris := "" -}}{{- $howto := "" -}}
 {{- with .Related.cara_bayar -}}{{- with index . 0 -}}
 {{- $bank = printf "%s %s a.n. %s" .bank .account_no .holder -}}{{- $ref = .reference -}}
-{{- if .qris_nmid -}}{{- $qris = printf "\nAtau bayar lewat QRIS %s (NMID %s), isi nominal sesuai tagihan." .qris_merchant_name .qris_nmid -}}{{- end -}}
+{{- if .qris_nmid -}}{{- $qris = printf "\nBisa juga scan QRIS %s (NMID %s), isi nominal %s." .qris_merchant_name .qris_nmid (rupiah $.Doc.outstanding) -}}{{- end -}}
 {{- with .instructions -}}{{- $howto = printf "\n%s" . -}}{{- end -}}
 {{- end -}}{{- end -}}
+{{- $payline := printf "Mohon tulis %s di berita transfer saat membayar." $ref -}}
+{{- if $bank -}}{{- $payline = printf "Pembayaran bisa transfer ke %s. Mohon tulis %s di berita transfer." $bank $ref -}}{{- end -}}
 {{- $late := overdue .Doc.due_date -}}
 {{- $msg := "" -}}
 {{- $open := eq (printf "%v" .Doc.docstatus) "1" -}}
@@ -28,12 +34,12 @@
 {{- else if or (not .Doc.outstanding) (not $owed) -}}
 {{- $msg = printf "Halo %s, terima kasih. Pembayaran faktur %s sudah kami terima dan faktur ini sudah lunas.\n\n%s" $c.customer_name .Doc.name .Letterhead.legal_name -}}
 {{- else if gt $late 0 -}}
-{{- $msg = printf "Halo %s, kami mengingatkan faktur %s sebesar %s sudah lewat %d hari dari jatuh tempo (%s).\n\nPembayaran ke %s. Mohon tulis %s di berita transfer.%s%s\n\nAbaikan pesan ini kalau sudah membayar. Terima kasih.\n%s" $c.customer_name .Doc.name (rupiah .Doc.outstanding) $late (date .Doc.due_date) $bank $ref $qris $howto .Letterhead.legal_name -}}
+{{- $msg = printf "Halo %s, kami mengingatkan faktur %s sebesar %s sudah lewat %d hari dari jatuh tempo (%s).\n\n%s%s%s\n\nKalau sudah membayar, abaikan pesan ini. Terima kasih.\n%s" $c.customer_name .Doc.name (rupiah .Doc.outstanding) $late (date .Doc.due_date) $payline $qris $howto .Letterhead.legal_name -}}
 {{- else -}}
-{{- $msg = printf "Halo %s, berikut tagihan %s no. %s sebesar %s, jatuh tempo %s.\n\nPembayaran ke %s. Mohon tulis %s di berita transfer.%s%s\n\nTerima kasih." $c.customer_name .Letterhead.legal_name .Doc.name (rupiah .Doc.outstanding) (date .Doc.due_date) $bank $ref $qris $howto -}}
+{{- $msg = printf "Halo %s, ini tagihan dari %s.\n\nFaktur %s\nTagihan %s\nJatuh tempo %s\n\n%s%s%s\n\nTerima kasih." $c.customer_name .Letterhead.legal_name .Doc.name (rupiah .Doc.outstanding) (date .Doc.due_date) $payline $qris $howto -}}
 {{- end -}}
 <h1>Pesan tagihan WhatsApp</h1>
-<p>Untuk: <strong>{{$c.customer_name}}</strong>{{if $p}} · +{{$p}}{{else if $open}} · <em>nomor WhatsApp pelanggan belum diisi</em>{{end}}</p>
+<p class="to">Untuk <strong>{{$c.customer_name}}</strong>{{if $p}} · +{{$p}}{{else if $open}} · <em>nomor WhatsApp pelanggan belum diisi</em>{{end}}</p>
 <div class="msg">{{$msg}}</div>
 {{if $p}}<p><a class="wa" href="https://wa.me/{{$p}}?text={{$msg}}">Buka di WhatsApp</a></p>{{end}}
-<p class="muted">Setelah terkirim, catat di Pengingat tagihan supaya tidak menagih dua kali di hari yang sama.</p>
+<p class="muted">Sesudah terkirim, catat di Pengingat tagihan supaya pelanggan tidak ditagih dua kali di hari yang sama.</p>
