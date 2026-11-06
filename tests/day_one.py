@@ -1151,8 +1151,8 @@ def scenario_procurement(api):
     check("submit big purchase order", st in (200, 202), (st, resp))
     bign = resp.get("name", big["name"]) if st == 200 else big["name"]
     reqs = [a for a in approvals_of(api, "purchase_order", bign) if a.get("policy") == "po_approval"]
-    check("po_approval: a PO above 5.000.000 asks purchasing_manager or head_office at submit (request recorded)",
-          len(reqs) == 1 and reqs[0].get("approvers") == ["purchasing_manager", "head_office"] and reqs[0].get("state") in ("approved", "pending"), reqs)
+    check("po_approval: a PO above 5.000.000 asks finance_manager at submit (request recorded)",
+          len(reqs) == 1 and reqs[0].get("approvers") == ["finance_manager"] and reqs[0].get("state") in ("approved", "pending"), reqs)
     check("po_approval: the PO under the limit made no request", not approvals_of(api, "purchase_order", pon), approvals_of(api, "purchase_order", pon))
 
     # foreign-currency PO: the IDR header comes from the converted subtotal
@@ -1429,8 +1429,8 @@ def scenario_roles_jasa(api):
             st, resp = pa.verb("timesheet", t["name"], "submit")
             check("project_admin submits the timesheet", st == 200, (st, resp))
 
-    # purchasing_manager: PO rights are purchasing_manager and head_office only, and both approve po_approval, so a PO above
-    # 5.000.000 is self-approved (request recorded); under the limit no request is made
+    # purchasing_manager raises POs; a PO above 5.000.000 waits for finance_manager (demo-jasa custom/purchase_order.rk), so
+    # the maker never approves; under the limit no request is made
     st, resp = pa.create("purchase_order", {"vendor": "VND-0002", "order_date": "2026-11-03", "items": [{"item": "BRG-0004", "qty": 1, "rate": 85_000}]})
     check("project_admin may not create a purchase order -> 403 permission_denied", st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
     def po(qty):
@@ -1440,10 +1440,18 @@ def scenario_roles_jasa(api):
     big_po, total = po(100)
     eq("the big PO is 8.500.000 (above 5.000.000)", total, 8_500_000)
     st, resp = pm.verb("purchase_order", big_po, "submit")
-    done = resp.get("name", big_po) if st == 200 else big_po
-    reqs = [a for a in approvals_of(api, "purchase_order", done) if a.get("policy") == "po_approval"]
-    check("purchasing_manager submits a big PO: self-approved, numbered PO/CIN/..., po_approval recorded approved",
-          st == 200 and done.startswith("PO/CIN/") and len(reqs) == 1 and reqs[0]["state"] == "approved", (st, resp, reqs))
+    check("purchasing_manager submits a big PO: held, 202, po_approval pending for finance_manager",
+          st == 202 and resp["approval"]["state"] == "pending" and resp["approval"]["approvers"] == ["finance_manager"], (st, resp))
+    if st == 202:
+        st2, r2 = decide(pm, resp["approval"]["id"])
+        check("the maker (purchasing_manager) cannot approve its PO -> 403", st2 == 403, (st2, r2))
+        st2, r2 = decide(fm, resp["approval"]["id"])
+        check("finance_manager approves: the PO is submitted and numbered PO/CIN/...", st2 == 200 and r2.get("record", {}).get("name", "").startswith("PO/CIN/"), (st2, r2))
+    st, fxpo = pm.create("purchase_order", {"vendor": "VND-0002", "currency": "USD", "exchange_rate": 1.01,
+                                            "items": [{"item": "BRG-0004", "qty": 1, "rate": 0, "rate_fx": 100_000}]})
+    if check("purchasing_manager drafts a USD 100.000 PO at kurs 1,01", st == 201, (st, fxpo)):
+        st, resp = pm.verb("purchase_order", fxpo["name"], "submit")
+        check("a USD PO waits for finance_manager whatever its rupiah value (202)", st == 202 and resp["approval"]["approvers"] == ["finance_manager"], (st, resp))
     small_po, total = po(10)
     st, resp = pm.verb("purchase_order", small_po, "submit")
     check("PO under the limit (850.000) is submitted without an approval request", st == 200 and not approvals_of(api, "purchase_order", resp.get("name", small_po)), (st, resp))
@@ -1489,6 +1497,7 @@ MATRIX = {
     "stock_transfer": {"head_office": _ALL, "outlet_staff": _R},
     "stock_transfer_receipt": {"head_office": _ALL, "outlet_staff": _RCWS | {"cancel"}},
     "stock_count": _STOCK_DOC, "stock_adjustment": _STOCK_DOC,
+    "stock_adjustment_value": {"head_office": {"read", "create", "export"}, "outlet_staff": {"read", "create"}},
     "outlet_sales": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
 }
 _CHECKED = ("read", "create", "write", "delete", "submit", "cancel", "amend", "export", "import", "print")
@@ -1536,7 +1545,7 @@ def money_bodies(api, site):
         "purchase_order": dict({"vendor": vendor, "items": [{"item": item, "qty": 1, "rate": 1_000}]}, **outlet),
         "vendor_bill": {"vendor": vendor, "bill_no": "IZIN-1", "bill_date": "2026-11-03", "items": [{"item": item, "qty": 1, "rate": 1_000}]},
         "goods_receipt": {"vendor": vendor, "outlet": DAGO if site == "demo-fnb" else (api.list("outlet") or [{"name": ""}])[0]["name"], "items": [{"item": item, "qty": 1, "rate": 1_000}]},
-        "outlet_sales": {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]},
+        "outlet_sales": {"outlet": DAGO, "date": "2026-11-04", "source": "moka", "moka_outlet": "Tahu Contoh - Dago", "lines": [{"item": "BRG-0007", "qty": 1}]},
     }
     return {m: v for m, v in b.items() if installed(api, m)}
 
@@ -1621,6 +1630,13 @@ def scenario_permissions(api):
             g = granted(role, model)
             if "create" in g:
                 st, resp = cl.create(model, body)
+                if model == "outlet_sales" and role == "outlet_staff":
+                    # Dago uses Moka (one source per outlet) and Moka records are head office's, so the role is allowed
+                    # to create but the sales-source rule refuses the daily form here: 422 from the rule, not 403
+                    st, resp = cl.create(model, {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
+                    rules = [e.get("rule") for e in (resp or {}).get("errors", [])] if isinstance(resp, dict) else []
+                    check(f"{role} may create {model} (permission passes; the Moka outlet refuses the form by rule)", st == 422 and rules == ["form_only_for_non_moka_outlets"], (st, resp))
+                    continue
                 check(f"{role} may create {model} -> 201", st == 201, (st, resp))
             elif "read" in g:
                 st, resp = cl.call("GET", f"/api/v1/r/{model}?limit=1")
@@ -1883,6 +1899,14 @@ def scenario_tax_jasa(api):
             {"item": ndt, "qty": 1, "rate": 1_000_000, "description": "Fee"}]})
         if check("final invoice deducting the DP", st == 201, (st, fin)):
             eq("final invoice base = fee 1.000.000 - DP base 300.000 = 700.000 (contract total = fee)", (fin["pph23_dpp"], fin["pph23_amount"]), (700_000, 14_000))
+        # a DP left all-base, then wages excluded on the final: base clamps to 0 and the save warns
+        st, dp2 = api.create("sales_invoice", {"customer": customer, "kind": "down_payment", "pph23_applies": True, "items": [{"item": ndt, "qty": 1, "rate": 3_000_000}]})
+        dp2n = submit_doc(api, "sales_invoice", dp2["name"], "submit an all-base DP invoice") if st == 201 else None
+        if dp2n:
+            st, w = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "dp_invoice": dp2n, "down_payment": 3_000_000, "items": [
+                {"item": ndt, "qty": 1, "rate": 10_000_000, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate": 1_000_000}]})
+            check("DP base above the final's line base: saved with a warning 'Dasar PPh 23 di faktur uang muka lebih besar'",
+                  st == 201 and any("faktur uang muka lebih besar" in str(x) for x in (w.get("warnings") or w.get("_warnings") or [])), (st, {k: w.get(k) for k in ("pph23_dpp", "warnings", "_warnings")}))
     if mp.get("name"):
         check_print("manpower invoice print names the PPh 23 base", api, "sales_invoice", mp["name"], "", ["PPh 23 dipotong pelanggan (dasar Rp 1.000.000)", "Rp 20.000", "Rp 12.190.000"])
     st, fx = api.create("sales_invoice", {"customer": customer, "currency": "USD", "exchange_rate": 16000, "pph23_applies": True, "items": [
@@ -1892,6 +1916,31 @@ def scenario_tax_jasa(api):
            (fx["pph23_dpp"], fx["pph23_amount"], float(fx["pph23_amount_fx"])), (1_600_000, 32_000, 2.0))
     else:
         fail("USD manpower invoice created", (st, fx))
+    # a USD DP (150 wages excluded + 50 fee at 16.000 = 3.200.000, base 800.000) deducted in full by a rupiah final
+    # (wages 10.000.000 excluded + fee 2.000.000): base 2.000.000 - 800.000 = 1.200.000, PPh 23 24.000
+    st, dpx = api.create("sales_invoice", {"customer": customer, "kind": "down_payment", "currency": "USD", "exchange_rate": 16000, "pph23_applies": True, "items": [
+        {"item": ndt, "qty": 1, "rate_fx": 150, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate_fx": 50}]})
+    dpxn = submit_doc(api, "sales_invoice", dpx["name"], "submit a USD DP invoice") if st == 201 else None
+    if dpxn:
+        st, fin = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "dp_invoice": dpxn, "down_payment": 3_200_000, "items": [
+            {"item": ndt, "qty": 1, "rate": 10_000_000, "pph23_exclude": True}, {"item": ndt, "qty": 1, "rate": 2_000_000}]})
+        eq("rupiah final deducting a USD DP: DP base 800.000, base 1.200.000, PPh 23 24.000",
+           (fin.get("pph23_dp_base"), fin.get("pph23_dpp"), fin.get("pph23_amount")), (800_000, 1_200_000, 24_000))
+    # large foreign amounts (a Decimal product above 10^16 is stored as 0 by the kernel): a USD DP 10.000 x 15.000 =
+    # 150.000.000 deducted by a final of 500.000.000: base 350.000.000, PPh 23 7.000.000; a KRW invoice 40.000.000 x 11 =
+    # 440.000.000: PPh 23 8.800.000, in won 800.000
+    st, dpb = api.create("sales_invoice", {"customer": customer, "kind": "down_payment", "currency": "USD", "exchange_rate": 15000, "pph23_applies": True,
+                                           "items": [{"item": ndt, "qty": 1, "rate_fx": 10_000}]})
+    dpbn = submit_doc(api, "sales_invoice", dpb["name"], "submit a USD DP invoice of 150.000.000") if st == 201 else None
+    if dpbn:
+        st, fin = api.create("sales_invoice", {"customer": customer, "pph23_applies": True, "dp_invoice": dpbn, "down_payment": 150_000_000,
+                                              "items": [{"item": ndt, "qty": 1, "rate": 500_000_000}]})
+        eq("final of 500.000.000 deducting a USD DP of 150.000.000: DP base 150.000.000, base 350.000.000, PPh 23 7.000.000",
+           (fin.get("pph23_dp_base"), fin.get("pph23_dpp"), fin.get("pph23_amount")), (150_000_000, 350_000_000, 7_000_000))
+    st, krw = api.create("sales_invoice", {"customer": customer, "currency": "KRW", "exchange_rate": 11, "pph23_applies": True,
+                                           "items": [{"item": ndt, "qty": 1, "rate_fx": 40_000_000}]})
+    eq("KRW invoice 40.000.000 x 11: PPh 23 base 440.000.000, PPh 23 8.800.000, PPh 23 (valas) 800.000",
+       (krw.get("pph23_dpp"), krw.get("pph23_amount"), float(krw.get("pph23_amount_fx") or 0)), (440_000_000, 8_800_000, 800_000.0))
     # a down payment invoice's own amount is its dpp / grand_total
     st, dp = api.create("sales_invoice", invoice_body(customer, ndt, rate=3_000_000, kind="down_payment"))
     eq("down_payment invoice: dpp 3.000.000, ppn 330.000, grand_total 3.330.000", (dp.get("dpp"), dp.get("ppn"), dp.get("grand_total")), (3_000_000, 330_000, 3_330_000))
@@ -2120,6 +2169,30 @@ def scenario_dashboards_fnb(api):
     check("fnb_overview 'Stok minus' list is not empty (the stock scenario made a negative balance)", len(negs) >= 1, negs)
     eq("fnb_overview negative_count", ws["negative_count"]["value"], len(negs))
 
+    # adjustments of every reason count in waste_by_outlet, in the adjustment's own period; a cancelled one nets to
+    # zero there even when it is cancelled weeks later. The expected value comes from the stock balance, not from the
+    # rows the widget reads.
+    before = balance(api, DAGO, "BRG-0001")["value"]
+    st, adj = api.create("stock_adjustment", {"outlet": DAGO, "reason": "expired", "items": [{"item": "BRG-0001", "qty": 2}]})
+    if check("setup: expired adjustment of 2 kg at Dago today", st == 201, (st, adj)):
+        submit_doc(api, "stock_adjustment", adj["name"], "submit the expired adjustment")
+    expired_value = balance(api, DAGO, "BRG-0001")["value"] - before
+    check("the expired adjustment took value out of Dago's stock", expired_value < 0, expired_value)
+    if st == 201:
+        st2, resp = api.create("stock_adjustment_value", {"stock_adjustment": adj["name"], "entry": "post", "outlet": DAGO,
+                                                          "posting_date": adj["adjustment_date"], "value": -1})
+        check("a second value row for the same adjustment cannot be made by hand -> 422", st2 == 422, (st2, resp))
+    for days in (100, 20):
+        d = (today - datetime.timedelta(days=days)).isoformat()
+        st, old = api.create("stock_adjustment", {"outlet": DAGO, "reason": "damage", "adjustment_date": d, "items": [{"item": "BRG-0001", "qty": 1}]})
+        on = submit_doc(api, "stock_adjustment", old["name"], f"submit a damage adjustment dated {days} days ago") if st == 201 else None
+        if on:
+            st, resp = api.verb("stock_adjustment", on, "cancel")
+            check(f"cancel it today ({days} days later)", st == 200, (st, resp))
+    for period in (7, 30, 90):
+        ws_p = dashboard(api, "stock_recap", period)
+        eq(f"waste_by_outlet Dago over {period} days = the expired adjustment only ({expired_value}); the back-dated cancelled ones net to 0",
+           chart_map(ws_p.get("waste_by_outlet", {})).get(DAGO, 0), expired_value)
     ws = dashboard(api, "stock_recap", 90)
     bal = api.list("stock_balance")
     val = {}
@@ -2173,7 +2246,7 @@ def scenario_prints_fnb(api):
 # ---------- scenarios: multi-branch F&B (demo-fnb): stock and outlet sales
 
 KG, PORSI = "UOM-001", "UOM-006"
-HO, DAGO, BRAGA = "OUT-01", "OUT-02", "OUT-03"
+HO, DAGO, BRAGA, CIMAHI = "OUT-01", "OUT-02", "OUT-03", "OUT-04"   # Dago and Braga use Moka, Cimahi the daily form
 FIXTURES = os.path.join(ROOT, "examples", "fixtures", "demo-fnb")
 CTX = {}   # kernel, org and the signed-in clients, set by main() for demo-fnb
 
@@ -2221,7 +2294,7 @@ def receive(api, outlet, lines, label, vendor="VND-0001"):
 
 def scenario_fnb_fixtures(api):
     outlets = api.list("outlet")
-    check("fixtures: 3 outlets, one head office", len(outlets) == 3 and [o["name"] for o in outlets if o.get("is_head_office") in (True, "true")] == [HO], outlets)
+    check("fixtures: 4 outlets, one head office", len(outlets) == 4 and [o["name"] for o in outlets if o.get("is_head_office") in (True, "true")] == [HO], outlets)
     eq("fixtures: uoms Kg, Gram, Karung, Liter, Pcs, Porsi", sorted(u["uom_name"] for u in api.list("uom")), ["Gram", "Karung", "Kg", "Liter", "Pcs", "Porsi"])
     items = api.list("item")
     eq("fixtures: 6 materials and 4 products", (len([i for i in items if i["kind"] == "material"]), len([i for i in items if i["kind"] == "product"])), (6, 4))
@@ -2558,8 +2631,9 @@ def scenario_stock_access(api):
         check("the stock hook wrote the count move for the staff's submit (-2 kg)", len(mv) == 1 and mv[0]["qty"] == -2 and mv[0]["reason"] == "count", mv)
     st, resp = dago.create("stock_count", {"outlet": BRAGA, "items": [{"item": m, "counted_qty": 1}]})
     check("outlet_staff (Dago) creates a stock_count for Braga -> 403", st == 403, (st, resp))
-    st, resp = dago.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-05", "lines": [{"item": "BRG-0007", "qty": 1}]})
-    check("outlet_staff (Dago) creates outlet_sales for Braga -> 403", st == 403, (st, resp))
+    # Cimahi takes the daily form, so no sales rule fails first (the kernel checks rules before row scope)
+    st, resp = dago.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-05", "lines": [{"item": "BRG-0007", "qty": 1}]})
+    check("outlet_staff (Dago) creates outlet_sales for Cimahi -> 403", st == 403, (st, resp))
 
     # transfers (contract 0010 §5): the scope lists [outlet, from_outlet, to_outlet], so outlets read transfers in and out of their outlet; only head
     # office creates them (outlet_staff has read only), and outlets receive goods with a stock_transfer_receipt of their own outlet
@@ -2571,7 +2645,7 @@ def scenario_stock_access(api):
     st, resp = dago.create("stock_transfer", {"from_outlet": DAGO, "to_outlet": BRAGA, "items": [{"item": m, "qty": 1}]})
     check("outlet_staff (Dago) creates a stock_transfer from Dago to Braga -> 403 permission_denied (outlet_staff has read only on transfers)",
           st == 403 and resp["error"]["code"] == "permission_denied", (st, resp))
-    st, braga_sales = api.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
+    st, braga_sales = api.create("outlet_sales", {"outlet": BRAGA, "date": "2026-11-04", "source": "moka", "moka_outlet": "Tahu Contoh - Braga", "lines": [{"item": "BRG-0007", "qty": 1}]})
     check("setup: owner creates a draft outlet_sales for Braga", st == 201, (st, braga_sales))
     if st == 201:
         st, resp = dago.call("GET", f"/api/v1/r/outlet_sales/{Api.q(braga_sales['name'])}")
@@ -2586,6 +2660,101 @@ def read_sample(name):
 
 def preview(cl, imp, filename, content, outlet):
     return cl.upload(f"/api/v1/imports/{imp}", {"outlet": outlet}, filename, content)
+
+
+def scenario_po_approval_fnb(api):
+    """demo-fnb's custom/purchase_order.rk: a head office PO above Rp 5.000.000 waits for the owner (contract 0007 §1)."""
+    hq = CTX.get("hq")
+    if hq is None:
+        fail("po_approval (fnb): head office member", CTX.get("login_error", "no head office member"))
+        return
+    st, meta = api.call("GET", "/api/v1/meta")
+    pols = [p.get("name") for p in (((meta or {}).get("models") or {}).get("purchase_order") or {}).get("approvals", [])]
+    check("meta: purchase_order carries po_approval from the site overlay", "po_approval" in pols, pols)
+    st, edge = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 100, "rate": 50_000}]})
+    st, resp = hq.verb("purchase_order", edge["name"], "submit")
+    check("a PO of exactly 5.000.000 by head office submits without approval", st == 200 and not approvals_of(api, "purchase_order", resp.get("name", edge["name"])), (st, resp))
+    st, big = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 100, "rate": 85_000}]})
+    check("head office creates a PO of 8.500.000", st == 201 and big["grand_total"] == 8_500_000, (st, big))
+    if st != 201:
+        return
+    st, resp = hq.verb("purchase_order", big["name"], "submit")
+    check("head office submits it: held, 202, po_approval pending for purchasing_manager",
+          st == 202 and resp["approval"]["policy"] == "po_approval" and resp["approval"]["state"] == "pending" and resp["approval"]["approvers"] == ["purchasing_manager"], (st, resp))
+    if st != 202:
+        return
+    eq("the held PO is still a draft", api.get("purchase_order", big["name"])["docstatus"], 0)
+    st2, r2 = decide(hq, resp["approval"]["id"])
+    check("head office cannot approve its own PO -> 403", st2 == 403, (st2, r2))
+    st2, r2 = decide(api, resp["approval"]["id"])
+    check("the owner approves: the PO is submitted and numbered PO/...", st2 == 200 and r2.get("record", {}).get("docstatus") == 1 and r2["record"]["name"].startswith("PO/"), (st2, r2))
+    approved_po = r2.get("record", {}).get("name", "") if st2 == 200 else ""
+    # a bill skips the owner only on an approved (submitted, live) PO and within its value; audit round 2 of #10
+    def bill_on(po_name, bill_no, rate):
+        st, vb = hq.create("vendor_bill", {"vendor": "VND-0001", "bill_no": bill_no, "bill_date": "2026-11-05", "outlet": DAGO,
+                                           "purchase_order": po_name, "items": [{"item": "BRG-0001", "qty": 100, "rate": rate}]})
+        if not check(f"head office records bill {bill_no} on {po_name}", st == 201, (st, vb)):
+            return None, None
+        return hq.verb("vendor_bill", vb["name"], "submit")
+    st, small = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 1, "rate": 10_000}]})
+    st, resp = hq.verb("purchase_order", small["name"], "submit")
+    small_po = resp.get("name", "") if st == 200 else ""
+    check("a PO of 10.000 is submitted without approval", st == 200 and small_po.startswith("PO/"), (st, resp))
+    st, resp = bill_on(small_po, "A1-50JT", 500_000)
+    check("a 50.000.000 bill on a 10.000 PO is held for the owner (202, bill_without_po_approval)",
+          st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    st, held = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 100, "rate": 510_000}]})
+    st, resp = hq.verb("purchase_order", held["name"], "submit")
+    check("a PO of 51.000.000 waits for the owner (202)", st == 202, (st, resp))
+    st, resp = bill_on(held["name"], "A2-51JT", 510_000)
+    check("a 51.000.000 bill on a PO still waiting for approval is held (202)",
+          st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    st, resp = hq.verb("purchase_order", small_po, "cancel")
+    check("head office cancels the 10.000 PO", st == 200, (st, resp))
+    st, resp = bill_on(small_po, "A3-50JT", 500_000)
+    check("a 50.000.000 bill on a cancelled PO is held (202)",
+          st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    if approved_po:
+        st, resp = bill_on(approved_po, "A4-8JT5", 85_000)
+        check("an 8.500.000 bill on the approved 8.500.000 PO is not asked again (200, no request)",
+              st == 200 and resp.get("approval") is None, (st, resp))
+    # a foreign-currency document waits whatever its rupiah value: the kurs is typed by the maker, so USD 100.000 at
+    # 1,01 (Rp 101.000) would otherwise pass every threshold (audit round 3 of #10, B4)
+    fx = {"currency": "USD", "exchange_rate": 1.01}
+    st, d = hq.create("purchase_order", dict(fx, vendor="VND-0001", outlet=DAGO, items=[{"item": "BRG-0001", "qty": 1, "rate": 0, "rate_fx": 100_000}]))
+    if check("head office drafts a USD 100.000 PO at kurs 1,01 (Rp 101.000)", st == 201 and d["grand_total"] == 101_000, (st, d)):
+        st, resp = hq.verb("purchase_order", d["name"], "submit")
+        check("the USD PO waits for the owner (202, po_approval)", st == 202 and resp["approval"]["policy"] == "po_approval", (st, resp))
+    st, d = hq.create("vendor_bill", dict(fx, vendor="VND-0001", bill_no="FX-101", bill_date="2026-11-05", outlet=DAGO,
+                                          items=[{"item": "BRG-0001", "qty": 1, "rate": 0, "rate_fx": 100_000}]))
+    if check("head office records a USD 100.000 bill at kurs 1,01 without a PO", st == 201, (st, d)):
+        st, resp = hq.verb("vendor_bill", d["name"], "submit")
+        check("the USD bill waits for the owner (202, bill_without_po_approval)", st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    # nor through a PO link: a bill in another currency than the base (IDR) always waits (audit round 4 of #10, D1)
+    st, d = hq.create("purchase_order", {"vendor": "VND-0001", "outlet": DAGO, "items": [{"item": "BRG-0001", "qty": 1, "rate": 200_000}]})
+    st, resp = hq.verb("purchase_order", d["name"], "submit")
+    po200 = resp.get("name", "") if st == 200 else ""
+    check("a PO of 200.000 is submitted without approval", st == 200 and po200.startswith("PO/"), (st, resp))
+    st, d = hq.create("vendor_bill", dict(fx, vendor="VND-0001", bill_no="FX-D1", bill_date="2026-11-05", outlet=DAGO, purchase_order=po200,
+                                          items=[{"item": "BRG-0001", "qty": 1, "rate": 0, "rate_fx": 100_000}]))
+    if check("head office records a USD 100.000 bill at kurs 1,01 (Rp 101.000) on the 200.000 PO", st == 201 and d["grand_total"] == 101_000, (st, d)):
+        st, resp = hq.verb("vendor_bill", d["name"], "submit")
+        check("the USD bill on an approved PO still waits for the owner (202, bill_without_po_approval)",
+              st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    st, d = hq.create("payment", dict(fx, direction="pay", vendor="VND-0001", amount_fx=100_000))
+    if check("head office drafts a USD 100.000 outgoing payment at kurs 1,01", st == 201 and d["amount"] == 101_000, (st, d)):
+        st, resp = hq.verb("payment", d["name"], "submit")
+        check("the USD payment waits for the owner (202, payout_approval)", st == 202 and resp["approval"]["policy"] == "payout_approval", (st, resp))
+    # the PO approval cannot be skipped by billing and paying directly
+    st, vb = hq.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "TANPA-PO-1", "bill_date": "2026-11-05", "outlet": DAGO,
+                                       "items": [{"item": "BRG-0001", "qty": 100, "rate": 85_000}]})
+    if check("head office records an 8.500.000 bill without a PO", st == 201, (st, vb)):
+        st, resp = hq.verb("vendor_bill", vb["name"], "submit")
+        check("the bill without a PO is held for the owner (202, bill_without_po_approval)", st == 202 and resp["approval"]["policy"] == "bill_without_po_approval", (st, resp))
+    st, pay = hq.create("payment", {"direction": "pay", "vendor": "VND-0001", "amount": 50_000_000})
+    if check("head office drafts a 50.000.000 outgoing payment", st == 201, (st, pay)):
+        st, resp = hq.verb("payment", pay["name"], "submit")
+        check("the outgoing payment is held for the owner (202, payout_approval)", st == 202 and resp["approval"]["policy"] == "payout_approval", (st, resp))
 
 
 def scenario_outlet_sales(api):
@@ -2619,12 +2788,12 @@ def scenario_outlet_sales(api):
 
     # upload -> preview
     st, pv = preview(hq, "moka_item_details", "moka-sample.csv", moka, DAGO)
-    check("upload the Moka sample: preview 6 rows, no errors, not a duplicate", st == 200 and pv["rows"] == 6 and pv["errors"] == [] and pv["skipped"] == 0 and pv["duplicate"] is False, (st, pv))
+    check("upload the Moka sample: preview 7 rows (one a refund), no errors, not a duplicate", st == 200 and pv["rows"] == 7 and pv["errors"] == [] and pv["skipped"] == 0 and pv["duplicate"] is False, (st, pv))
     if st != 200:
         return
     prev = pv["preview"]
-    check("preview: one outlet_sales record for 02/11/2026 with 6 lines, source moka, outlet Dago",
-          len(prev) == 1 and len(prev[0]["lines"]) == 6 and prev[0]["date"] == "2026-11-02" and prev[0]["source"] == "moka" and prev[0]["outlet"] == DAGO, prev)
+    check("preview: one outlet_sales record for 02/11/2026 with 7 lines, source moka, outlet Dago",
+          len(prev) == 1 and len(prev[0]["lines"]) == 7 and prev[0]["date"] == "2026-11-02" and prev[0]["source"] == "moka" and prev[0]["outlet"] == DAGO, prev)
     st, c = hq.call("POST", f"/api/v1/imports/moka_item_details/{pv['id']}/commit")
     check("commit creates the draft outlet_sales", st == 200 and len(c.get("records", [])) == 1, (st, c))
     if st != 200:
@@ -2633,12 +2802,15 @@ def scenario_outlet_sales(api):
     check("imported record is a draft (docstatus 0, no stock moved yet)", sales["docstatus"] == 0 and not moves_of(api, sales["name"]), sales)
     eq("imported totals: gross 259.000, discount 16.000, refund 15.000", (sales["gross_total"], sales["discount_total"], sales["refund_total"]), (259_000, 16_000, 15_000))
     eq("imported net_total 228.000 (= Moka's Net Sales)", sales["net_total"], 228_000)
-    eq("imported qty_total 13", sales["qty_total"], 13)
-    eq("imported lines match items by sku", [l["item"] for l in sales["lines"]], ["BRG-0007", "BRG-0008", "BRG-0009", "BRG-0008", "BRG-0007", "BRG-0010"])
+    eq("imported qty_total 12 (the refund line counts -1)", sales["qty_total"], 12)
+    eq("moka_outlet keeps the file's Outlet column", sales["moka_outlet"], "Tahu Contoh - Dago")
+    eq("refund line kept as Moka wrote it: qty -1, gross 0, refund 15.000, net -15.000",
+       [(l["qty"], l["gross"], l["refund"], l["net"]) for l in sales["lines"] if l["refund"]], [(-1, 0, 15_000, -15_000)])
+    eq("imported lines match items by sku", [l["item"] for l in sales["lines"]], ["BRG-0007", "BRG-0008", "BRG-0009", "BRG-0008", "BRG-0007", "BRG-0007", "BRG-0010"])
 
     # the same file again
     st, pv2 = preview(hq, "moka_item_details", "moka-sample.csv", moka, DAGO)
-    check("the same file again: duplicate true (skipped rows 6)", st == 200 and pv2["duplicate"] is True and pv2["skipped"] == 6, (st, pv2))
+    check("the same file again: duplicate true (skipped rows 7)", st == 200 and pv2["duplicate"] is True and pv2["skipped"] == 7, (st, pv2))
     st, c2 = hq.call("POST", f"/api/v1/imports/moka_item_details/{pv2['id']}/commit")
     check("committing the duplicate -> 409 already_imported", st == 409 and c2["error"]["code"] == "already_imported", (st, c2))
     eq("still one imported record", len(api.find("outlet_sales", "source == 'moka' && outlet == '%s'" % DAGO)), 1)
@@ -2652,18 +2824,38 @@ def scenario_outlet_sales(api):
     if st == 200:
         got = sorted((r["date"], len(r["lines"])) for r in (api.get("outlet_sales", n) for n in c3["records"]))
         eq("new records: 02/11 with 2 lines, 03/11 with 1 line", got, [("2026-11-02", 2), ("2026-11-03", 1)])
-    # the same Moka file for another outlet is not a duplicate (scope is per outlet)
-    st, pvb = preview(hq, "moka_item_details", "moka-sample.csv", moka, BRAGA)
-    check("the same file for another outlet is not a duplicate", st == 200 and pvb["duplicate"] is False and pvb["skipped"] == 0 and pvb["errors"] == [], (st, pvb))
+    # the Outlet column must be the chosen outlet's moka_name: Dago's file uploaded for Braga is refused
+    wrong = "beda dengan Nama outlet di Moka"
+    st, pvw = preview(hq, "moka_item_details", "moka-sample.csv", moka, BRAGA)
+    check("Dago's Moka file uploaded for Braga: preview error 'Kolom Outlet ... beda dengan Nama outlet di Moka'",
+          st == 200 and pvw["duplicate"] is False and any(wrong in e["message"] for e in pvw["errors"]), (st, pvw))
+    if st == 200:
+        st, c = hq.call("POST", f"/api/v1/imports/moka_item_details/{pvw['id']}/commit")
+        check("the wrong-outlet file cannot be committed: 422 import_errors", st == 422 and c["error"]["code"] == "import_errors", (st, c))
+    # an All Outlets export (Dago and Braga rows) for Dago: the Braga rows are refused, nothing is committed
+    braga = read_sample("moka-sample-braga.csv")
+    allout = moka + braga.split(b"\n", 1)[1]
+    st, pva = preview(hq, "moka_item_details", "all-outlets.csv", allout, DAGO)
+    check("All Outlets file for Dago: Dago's 7 rows skipped (already imported), Braga's 7 rows grouped apart and refused",
+          st == 200 and pva["skipped"] == 7 and len(pva["preview"]) == 1 and any(wrong in e["message"] for e in pva["errors"]), (st, pva))
+    if st == 200:
+        st, c = hq.call("POST", f"/api/v1/imports/moka_item_details/{pva['id']}/commit")
+        check("the All Outlets file cannot be committed for Dago: 422 import_errors", st == 422 and c["error"]["code"] == "import_errors", (st, c))
+    # an outlet without moka_name (head office) refuses any Moka file
+    st, pvh = preview(hq, "moka_item_details", "moka-sample.csv", moka, "OUT-01")
+    check("outlet without Nama outlet di Moka (head office): the Moka file is refused", st == 200 and any(wrong in e["message"] for e in pvh["errors"]), (st, pvh))
+    # Braga's own export: no errors (used below for the negative-stock checks)
+    st, pvb = preview(hq, "moka_item_details", "moka-sample-braga.csv", braga, BRAGA)
+    check("Braga's own Moka file for Braga: no errors, not a duplicate", st == 200 and pvb["duplicate"] is False and pvb["skipped"] == 0 and pvb["errors"] == [], (st, pvb))
 
     # submit: stock moves through the recipes, cogs, margin
     sn = submit_doc(api, "outlet_sales", sales["name"], "submit the imported sales record")
     s2 = api.get("outlet_sales", sn)
-    eq("recipes explode: line cogs [3.396, 2.280, 7.740, 4.560, 1.698, 15.680]", [l["cogs"] for l in s2["lines"]], [3396, 2280, 7740, 4560, 1698, 15680])
+    eq("recipes explode: line cogs [3.396, 2.280, 7.740, 4.560, 1.698, 0, 15.680] (no cogs on the refund line)", [l["cogs"] or 0 for l in s2["lines"]], [3396, 2280, 7740, 4560, 1698, 0, 15680])
     eq("cogs_total 35.354", s2["cogs_total"], 35_354)
     eq("margin = net 228.000 - cogs 35.354 = 192.646", s2["margin"], 192_646)
     mv = moves_of(api, sn)
-    check("moves: one per line and material (6 lines -> 22 moves), all reason sale, none negative",
+    check("moves: one per sold line and material (6 sold lines -> 22 moves; the refund line posts none: materials stay used), all reason sale, none negative",
           len(mv) == 22 and all(x["reason"] == "sale" and not x["negative"] for x in mv), [(x["item"], x["qty"]) for x in mv])
     b = balance(api, DAGO, "BRG-0001")
     eqf("tahu mentah at Dago: 100 - 1,85 = 98,15 kg", b["qty"], 98.15)
@@ -2690,7 +2882,7 @@ def scenario_outlet_sales(api):
         # fnb dashboard "Stok minus" list: Task 10 (a dashboard widget)
 
     # the daily form: created by REST with 2 lines, then imported
-    st, df = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [
+    st, df = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": [
         {"item": "BRG-0007", "qty": 40, "gross": 600_000}, {"item": "BRG-0008", "qty": 25, "gross": 450_000, "discount": 15_000}]})
     check("daily form created via REST with 2 lines", st == 201, (st, df))
     if st != 201:
@@ -2700,7 +2892,7 @@ def scenario_outlet_sales(api):
     dfn = submit_doc(api, "outlet_sales", df["name"], "submit the daily form")
     dd = api.get("outlet_sales", dfn)
     eq("daily form cogs: 40 ORI + 25 PDS through the recipes", dd["cogs_total"], 40 * 1698 + 25 * 2280)
-    st, pvf = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), DAGO)
+    st, pvf = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), CIMAHI)
     check("daily_form import: preview 3 rows, one record, no errors", st == 200 and pvf["rows"] == 3 and pvf["errors"] == [] and len(pvf["preview"]) == 1, (st, pvf))
     if st == 200:
         st, cf = hq.call("POST", f"/api/v1/imports/daily_form/{pvf['id']}/commit")
@@ -2711,13 +2903,61 @@ def scenario_outlet_sales(api):
             st, resp = api.verb("outlet_sales", rec["name"], "submit")
             check("a second submitted daily form for the same outlet and day -> 409 duplicate_sales",
                   st == 409 and resp["error"]["code"] == "duplicate_sales", (st, resp))
-    st, again = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), DAGO)
+    st, again = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), CIMAHI)
     check("the daily form file again: duplicate true", st == 200 and again["duplicate"] is True, (st, again))
-    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1, "discount": 99_999_999}]})
+    # a corrected sheet: cancel the submitted form and drop the draft, then the corrected file imports and submits
+    st, resp = api.verb("outlet_sales", dfn, "cancel")
+    check("cancel the submitted daily form of Cimahi 04/11", st == 200, (st, resp))
+    for d in api.find("outlet_sales", "outlet == '%s' && source == 'form' && docstatus == 0" % CIMAHI):
+        api.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(d['name'])}")
+    fixed = read_sample("daily-form-sample.csv").replace(b"TH-ORI,40,600000", b"TH-ORI,42,630000") + b"04/11/2026,TH-ISI,1,20000,0\n"
+    st, pvc = preview(hq, "daily_form", "koreksi.csv", fixed, CIMAHI)
+    check("corrected sheet (a qty changed, TH-ISI on two rows): previewed, not a duplicate, nothing skipped, no errors",
+          st == 200 and pvc["duplicate"] is False and pvc["skipped"] == 0 and pvc["errors"] == [] and len(pvc["preview"]) == 1 and len(pvc["preview"][0]["lines"]) == 4, (st, pvc))
+    if st == 200:
+        st, cc = hq.call("POST", f"/api/v1/imports/daily_form/{pvc['id']}/commit")
+        if check("corrected sheet committed", st == 200 and len(cc.get("records", [])) == 1, (st, cc)):
+            cn = submit_doc(api, "outlet_sales", cc["records"][0], "submit the corrected daily form")
+            eq("corrected form: gross 1.340.000 (630.000 + 450.000 + 240.000 + 20.000)", api.get("outlet_sales", cn)["gross_total"], 1_340_000)
+    st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1, "discount": 99_999_999}]})
     check("discount above gross -> 422 'Diskon tidak boleh melebihi penjualan kotor'", st == 422 and any("Diskon tidak boleh" in x for x in messages(resp)), (st, resp))
+    # a Moka outlet takes no daily form, by REST or by import (one sales source per outlet)
+    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-05", "lines": [{"item": "BRG-0007", "qty": 1}]})
+    check("a daily form for Dago (a Moka outlet) -> 422 'Outlet ini memakai Moka'", st == 422 and any("Outlet ini memakai Moka" in x for x in messages(resp)), (st, resp))
+    st, pvd = preview(hq, "daily_form", "daily-form-sample.csv", read_sample("daily-form-sample.csv"), DAGO)
+    check("the daily_form import for Dago: preview error 'Outlet ini memakai Moka'", st == 200 and any("Outlet ini memakai Moka" in e["message"] for e in pvd["errors"]), (st, pvd))
     st, resp = api.create("outlet_sales", {"date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
     check("outlet_sales without an outlet -> 422", st == 422, (st, resp))
-    st, resp = api.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": []})
+    st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": -1, "gross": 0}]})
+    check("a negative qty without a refund -> 422 'hanya boleh negatif di baris retur'", st == 422 and any("hanya boleh negatif di baris retur" in x for x in messages(resp)), (st, resp))
+    st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 1}]})
+    check("a negative qty with a refund on a daily form (not Moka) -> 422", st == 422 and any("hanya boleh negatif di baris retur" in x for x in messages(resp)), (st, resp))
+    # real refund shapes: a discounted line refunded (Discounts negative) and two partial refunds of one item on one
+    # receipt at different times; the record's totals equal the file's (Net Sales sum 0 + 30.000 - 30.000)
+    st, pvr = preview(hq, "moka_item_details", "moka-sample-refunds.csv", read_sample("moka-sample-refunds.csv"), DAGO)
+    check("refund shapes: preview 5 rows, no errors (two partial refunds are not 'Baris ganda')", st == 200 and pvr["rows"] == 5 and pvr["errors"] == [], (st, pvr))
+    if st == 200 and pvr["errors"] == []:
+        st, cr = hq.call("POST", f"/api/v1/imports/moka_item_details/{pvr['id']}/commit")
+        if check("refund shapes committed", st == 200 and len(cr.get("records", [])) == 1, (st, cr)):
+            r = api.get("outlet_sales", cr["records"][0])
+            eq("refund shapes: gross 90.000, discount 0, refund 90.000, net 0 (= Moka Net Sales)", (r["gross_total"], r["discount_total"], r["refund_total"], r["net_total"]), (90_000, 0, 90_000, 0))
+            eq("imported record keeps source moka", r["source"], "moka")
+    # source moka is the importer's (head office): outlet staff cannot type it to book a negative net (audit round 2
+    # of #7, S1 and S1b)
+    dago = CTX.get("staff_dago")
+    if dago:
+        st, resp = dago.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "source": "moka",
+                                                "lines": [{"item": "BRG-0007", "qty": -5, "gross": 0, "refund": 500_000}]})
+        check("outlet staff creating a source moka record with net -500.000 -> 403", st == 403, (st, resp))
+        # Dago is a Moka outlet here (one source per outlet), so its staff cannot create a daily form record at all; the
+        # "turn a form record into source moka" probe of #7 has no record to start from
+        st, resp = dago.create("outlet_sales", {"outlet": DAGO, "date": "2026-11-04", "lines": [{"item": "BRG-0007", "qty": 1}]})
+        check("outlet staff creating a daily form record at a Moka outlet -> 422 by the sales-source rule", st == 422, (st, resp))
+        moka_rec = next(iter(api.find("outlet_sales", "source == 'moka' && outlet == '%s'" % DAGO)), None)
+        if moka_rec:
+            st, resp = dago.call("GET", f"/api/v1/r/outlet_sales/{Api.q(moka_rec['name'])}")
+            check("outlet staff still reads its outlet's Moka records", st == 200, (st, resp))
+    st, resp = api.create("outlet_sales", {"outlet": CIMAHI, "date": "2026-11-04", "lines": []})
     if st == 201:
         fail("min_rows 1: an outlet_sales without lines is refused", "201: the kernel saved it")
     else:
@@ -2751,7 +2991,7 @@ SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_permissions, scenario_dashboards_jasa],
-    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions],
 }
 
 
