@@ -2458,7 +2458,9 @@ def scenario_cost_visibility(api):
     eq("sales_manager cannot export the project ledger", est, 403)
     st, d = sm.call("GET", "/api/v1/dashboards/project_margin")
     shown = sorted(w["name"] for w in d.get("widgets", []) if not w.get("hidden")) if st == 200 else st
-    eq("project_margin for sales_manager: only the contract backlog shows (no margin made of revenue rows, no pay)", shown, ["backlog_total"])
+    # roles: [finance_manager, project_admin]: a kernel that enforces dashboard roles (contract 0027, alpha.9) answers
+    # 403; an older kernel opens it and the widget `if:` leaves only the contract backlog
+    check("project_margin for sales_manager: closed (403) or only the contract backlog shows (no margin made of revenue rows, no pay)", shown in (403, ["backlog_total"]), shown)
     fmd = dashboard(fm, "project_margin", 365)
     check("project_margin for finance: margin widgets show", not fmd.get("margin_total", {}).get("hidden") and "margin_total" in fmd, list(fmd))
     st, d = sm.call("GET", "/api/v1/dashboards/jasa_overview")
