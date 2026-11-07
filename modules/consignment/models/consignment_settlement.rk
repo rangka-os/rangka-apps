@@ -68,6 +68,17 @@ rules:
   # Terjual may be negative: a sale of an earlier, already settled month came back to the shelf with a Retur ke stok
   # (contract 0022), so this month pays the consignor that much less and a unit sold again is paid once (audit
   # stock-returns r2 F2). The settlement as a whole never asks the consignor for money: carry what is left over.
+  # A correction belongs to the item that came back: net Terjual per item never below 0 (else another item's sale would
+  # pay for it and the consignor would not be billed for that sale, audit r3 R3-2), one rate and one sale line per item
+  # so the bill's net line per item is the settlement's amount.
+  - name: net_sold_per_item
+    on: save
+    check: "items.map(i, items.filter(j, j.item == i.item).map(j, j.qty_sold).sum() < 0 ? 1 : 0).sum() == 0"
+    message: {id: 'Koreksi retur melebihi penjualan barang itu bulan ini: isi sebatas penjualannya, sisanya bawa ke setoran bulan berikutnya'}
+  - name: one_rate_per_item
+    on: save
+    check: "items.map(i, items.map(j, j.item == i.item && j.rate != i.rate ? 1 : 0).sum() + (i.qty_sold > 0 && items.map(j, j.item == i.item && j.qty_sold > 0 ? 1 : 0).sum() > 1 ? 1 : 0)).sum() == 0"
+    message: {id: 'Satu barang cukup satu baris terjual dengan satu harga setor; baris koreksi memakai harga setor yang sama'}
   - name: total_not_negative
     on: save
     check: total >= 0

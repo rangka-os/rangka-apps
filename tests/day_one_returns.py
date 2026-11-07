@@ -134,21 +134,33 @@ def scenario_ritel_returns(api):
     race_cancel_vs_return(api, hq, staff, CLY, item)
 
 
-def consignment_correction(hq):
-    """Audit r2 F2: consigned goods sold and settled in one month, back on the shelf the next. Terjual may be negative
-    (the correction), the settlement as a whole may not: what is left is carried to the next month."""
-    items = [i for i in rows_all(hq, "item", "consignor != ''")][:2]
-    if not check("two consigned items to settle", len(items) == 2, len(items)):
+def consignment_correction(api):
+    """Audit r2 F2 / r3: consigned goods sold and settled in one month, back on the shelf the next. A line's Terjual may
+    be negative (the correction of that item), the item's net may not, nor the settlement: the rest is carried to next
+    month. The consignor's bill is the net per item, so it equals the settlement total."""
+    consigned = rows_all(api, "item", "consignor != ''")
+    if not check("consigned items to settle", consigned, len(consigned)):
         return
-    v = items[0]["consignor"]
-    items = [i for i in items if i["consignor"] == v] or items[:1]
-    line = lambda i, sold: {"item": i["name"], "qty_sold": sold, "rate": 10_000}
-    st, bad = hq.create("consignment_settlement", {"consignor": v, "month": "2099-01", "items": [line(items[0], -1)]})
+    v = consigned[0]["consignor"]
+    mine = [i for i in consigned if i["consignor"] == v]
+    a = mine[0]
+    line = lambda i, sold, got=0: {"item": i["name"], "qty_sold": sold, "qty_received": got, "rate": 10_000}
+    st, bad = api.create("consignment_settlement", {"consignor": v, "month": "2099-01", "items": [line(a, -1)]})
     check("a settlement whose total would be minus -> 422 (carry the correction to next month)", refused(st, bad, "tidak boleh minus"), (st, bad))
-    lines = [line(items[0], -1), dict(line(items[0], 3), qty_received=3)]
-    st, ok_ = hq.create("consignment_settlement", {"consignor": v, "month": "2099-02", "items": lines})
-    if check("a correction line -1 next to 3 sold is accepted (pays 2)", st == 201 and ok_.get("total") == 20_000, (st, ok_)):
-        hq.call("DELETE", f"/api/v1/r/consignment_settlement/{Api.q(ok_['name'])}")
+    if len(mine) > 1:
+        st, bad = api.create("consignment_settlement", {"consignor": v, "month": "2099-01", "items": [line(a, 2, 2), line(mine[1], -2)]})
+        check("a correction on an item that did not sell this month cannot be paid by another item's sale -> 422", refused(st, bad, "melebihi penjualan barang itu"), (st, bad))
+    st, ok_ = api.create("consignment_settlement", {"consignor": v, "month": "2099-02", "items": [line(a, -1), line(a, 3, 3)]})
+    if not check("a correction line -1 next to 3 sold of the same item is accepted (pays 2)", st == 201 and ok_.get("total") == 20_000, (st, ok_)):
+        return
+    st, resp = api.verb("consignment_settlement", ok_["name"], "submit")
+    check("the settlement with a correction submits", st == 200, (st, resp))
+    bills = rows_all(api, "vendor_bill", f"vendor == '{v}' && bill_no == 'TTP/2099-02' && docstatus == 0")
+    got = [(round(x["qty"]), round(x["rate"])) for b in bills for x in api.get("vendor_bill", b["name"]).get("items", [])]
+    check("the consignor's bill is the net per item: 2 x 10.000, the same as the settlement total (audit r3 R3-1)",
+          len(bills) == 1 and got == [(2, 10_000)], (bills, got))
+    st, resp = api.verb("consignment_settlement", (resp or {}).get("name", ok_["name"]), "cancel")
+    check("and the settlement cancels again (its draft bill stays a draft)", st == 200, (st, resp))
 
 
 def race_cancel_vs_return(api, hq, staff, outlet, item, rounds=6):
