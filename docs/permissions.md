@@ -28,13 +28,14 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | assignment (cost rates) | | r | | all | | | |
 | timesheet (pay and cost) | | r | | all + i (`attendance_recap` import) | | | |
 | billing_milestone (state written by flows; no delete; finance and sales write only through the invoice flows, an amount edit by them is refused) | r w | r w e | | r c w e i | | | |
-| project_expense | r | all but d | r | all | | | |
+| project_expense (sales only `reimbursable` rows, billed on to the client; purchasing only rows linking a `vendor_bill`, for its cancel guard) | r | all but d | r | all | | | |
 | project_guard (never stored; a flow's refusal) | | c | c | | | | |
-| project_ledger (rows written by flows; sales only `kind == 'revenue'`, purchasing only `kind == 'vendor'`) | r c | r c e | r c | r c e | | | |
+| project_ledger (`append_only`, contract 0026: rows written by flows only, nobody edits or deletes one; create is what those flows need; sales only `kind == 'revenue'`, purchasing only `kind == 'vendor'`) | r c | r c e | r c | r c e | | | |
 | sales_invoice | all | all | | r | | | r |
+| credit_guard (never stored; a flow's refusal when a submit at the same moment used the customer's credit limit) | c | c | | c | c | | |
 | withholding | r p | all | | | | | |
 | invoice_reminder | r c w d e | r c w d e | | | | | r c |
-| bank_account (rekening and static QRIS; only finance and head office change where customers pay; field_sales: r) | r | r c w d e | | r | r c w d e | | r |
+| bank_account (rekening and static QRIS; only finance and head office change where customers pay, only finance deletes; field_sales: r) | r | r c w d e | | r | r c w e | | r |
 | payment_instruction (copy made by `payment_instruction_on_submit` as the submitter; never written or deleted; not field_sales, whose row scope `salesman` it lacks) | r c e | r c e | | r | r | | r |
 | bank_transaction | r c w e i | r c w d e i | | | r c w e i | | |
 | payment | all | all | | | r c w s p if `direction == 'pay'` (vendor payments only) | | |
@@ -48,7 +49,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | stock_transfer | | | | | all | r | |
 | stock_transfer_receipt | | | | | all | r c w s x | |
 | stock_count, stock_adjustment | | | | | all | r c w s | |
-| stock_adjustment_value (rows written by flows only: every field read_only; old adjustments by flow `adjustment_value_backfill`) | | | | | r c e | r c | |
+| stock_adjustment_value (`append_only`, contract 0026: rows written by flows only, nobody edits or deletes one; old adjustments by the schedule of flow `adjustment_value_backfill`) | | | | | r c e | r c | |
 | recipe | | | | | r c w d e | r | |
 | outlet_sales | | | | | all + i | r c w s while `source == 'form'`, else r (records from Moka, a POS file or Loyverse are head office's imports) | |
 | outlet_takings | | | | | all + i | r c w s | |
@@ -66,7 +67,7 @@ masters (`item`, `item_category`, `uom`, `outlet`, `user`: r).
 | customer | as above | as above | as above | r | r (credit fields are finance's) |
 | customer_order | all | r p | r p | | r c w s p (own customers; rule `customer_of_salesman`) |
 | sales_invoice, payment | all | all | as above | | r p |
-| bank_account | r | r c w d e | r c w d e | | r |
+| bank_account | r | r c w d e | r c w e | | r |
 | giro (lines made by the flow `giro_from_payment`; bounced only by cancelling the payment) | r c w e p | r c w e p | | | r |
 | delivery_note, sales_return | all | r p | all | | r p |
 | order_fulfilment (every field read_only; written by the delivery flows of whoever submits) | r c w e | r c w e | r c w e | | r c w |
