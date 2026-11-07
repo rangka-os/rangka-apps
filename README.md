@@ -206,5 +206,7 @@ and hooks, never in flows driven by an LLM.
 
 ## Licence
 
-Not chosen yet; no `LICENSE` file is committed, so all rights are reserved until one is. The intent is a licence that
-lets partners build and sell templates on top of these apps.
+Elastic License 2.0 (ELv2), see `LICENSE`. Copyright 2026 Saga Tekno Studio. The code is public and free to
+self-host, change and use in your own business. You may not offer it to others as a hosted or managed service;
+partners who want to host Rangka for clients need a partner agreement with Saga. Rangka Cloud is the only
+closed part. Contributions need a contributor agreement (to be published).
