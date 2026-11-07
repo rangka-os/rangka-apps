@@ -101,7 +101,7 @@ fields:
   - name: npwp
     type: npwp
     label: {id: NPWP}
-  # Tax identity for e-Faktur (module coretax, contract 0028): a buyer is identified by NPWP 16 digits plus its NITKU
+  # Tax identity for e-Faktur (module coretax, contract 0029): a buyer is identified by NPWP 16 digits plus its NITKU
   # (22 digits, NPWP + 000000 for the head office), else NIK, else a passport. vat_collector sets the transaction
   # code (02 government, 03 other collectors such as BUMN).
   - name: nitku

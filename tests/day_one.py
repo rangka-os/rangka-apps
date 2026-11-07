@@ -3135,7 +3135,7 @@ def synthetic_id(n, digits=16):
 
 
 def scenario_coretax(api):
-    """Coretax export (module coretax, contract 0028): the e-Faktur keluaran XML of one tax period and the BPPU XML of the
+    """Coretax export (module coretax, contract 0029): the e-Faktur keluaran XML of one tax period and the BPPU XML of the
     PPh 23 the firm withheld, shaped like DJP's import samples, refused while a document cannot be imported."""
     import xml.etree.ElementTree as ET
     from decimal import Decimal, ROUND_HALF_UP

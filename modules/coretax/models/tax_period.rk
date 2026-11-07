@@ -35,7 +35,7 @@ fields:
       - {value: '11', label: {id: November}}
       - {value: '12', label: {id: Desember}}
   # One period per month (unique), and its first and last day as YYYY-MM-DD text: the print formats select the
-  # documents dated within (range, contract 0028); a "-31" upper bound is right for every month in text order.
+  # documents dated within (range, contract 0029); a "-31" upper bound is right for every month in text order.
   - name: period_key
     type: data
     label: {id: Masa}

@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
-# Coretax DJP export (contract 0028): per tax period (a month) the XML files Coretax imports, e-Faktur keluaran
+# Coretax DJP export (contract 0029): per tax period (a month) the XML files Coretax imports, e-Faktur keluaran
 # (TaxInvoiceBulk) and the unified withholding slips the firm issues (BPPU, BpuBulk), checked before download.
 # Decisions and sources: reports/keputusan-riset/09-pajak-coretax.md in the project folder.
 name: coretax

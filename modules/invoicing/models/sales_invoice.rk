@@ -219,7 +219,7 @@ fields:
   - {name: retention_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Retensi ditahan (valas)}, compute: "round(dpp_fx * retention_percent / 100, 2)"}
   - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, compute: "pph23_applies && dpp != 0 ? round(dpp_fx * (pph23_dpp * 1.0 / dpp * pph23_rate / 100), 2) : 0"}
   - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "grand_total_fx - retention_amount_fx - pph23_amount_fx"}
-  # e-Faktur (module coretax, contract 0028): the buyer's tax identity and the transaction code, computed from the
+  # e-Faktur (module coretax, contract 0029): the buyer's tax identity and the transaction code, computed from the
   # customer while the invoice is a draft and frozen when it is submitted, so the Coretax file of its period carries
   # the identity the invoice was issued to. TIN = NPWP + NITKU (head office: NPWP + 000000); National ID = NIK with
   # sixteen zeros as TIN and 000000 as ID TKU; Passport likewise (template Faktur PK v1.6.1, sheet Keterangan).
