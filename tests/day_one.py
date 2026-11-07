@@ -105,6 +105,7 @@ class Kernel:
     def __init__(self, site, state_dir, site_dir=None):
         self.site = site
         self.site_dir = site_dir or os.path.join(ROOT, "examples", "sites", site)
+        self.own_site = site_dir is not None   # a caller's throwaway copy: the test plan is added in place
         self.os_dir, self.binary, self.connectors = lib_env()
         self.pgtemp = os.path.join(self.os_dir, "kernel", "scripts", "pgtemp.sh")
         self.env = dict(os.environ, PGTEMP_STATE=os.path.join(state_dir, "pgtemp.state"))
@@ -117,6 +118,9 @@ class Kernel:
         self.owner_email = "owner@contoh.test"      # the seeded owner of every org; a throwaway account of a throwaway database
         self.owner_pw = secrets.token_urlsafe(18)
         self.orgs = SITE_ORGS[site]
+        self.state_dir = state_dir
+        self.plan_site = False  # test_plan_site added the test plan
+        self.sold_plan = None   # `rangka plan show --json` of the site as sold, before the test plan (contract 0028)
 
     def args(self):
         return ["--apps", os.path.join(ROOT, "apps"), "--site", self.site_dir, "--connectors", self.connectors, "--db", self.db]
@@ -126,6 +130,7 @@ class Kernel:
         if r.returncode != 0:
             sys.exit("pgtemp start failed: " + r.stderr)
         self.db = r.stdout.strip().split("\n")[-1]
+        self.test_plan_site()
         steps = [("migrate", [])]
         for org, fixtures in self.orgs:     # `seed --org` fills one org with its own fixtures
             steps.append(("seed", ["--fixtures", os.path.join(ROOT, "examples", "fixtures", fixtures),
@@ -134,7 +139,42 @@ class Kernel:
             r = subprocess.run([self.binary, verb] + self.args() + extra, capture_output=True, text=True)
             if r.returncode != 0:
                 sys.exit(f"rangka {verb} failed:\n{r.stdout}\n{r.stderr}")
+        self.lift_plan_limits()
         self.serve()
+
+    TEST_PLAN = "uji_day_one"
+
+    def test_plan_site(self):
+        """Plan limits (kernel contract 0028) count every outlet and person. The scenarios add scratch outlets and
+        staff on top of the fixtures (demo-fnb: 4 outlets on Tumbuh, 5 allowed), so the test runs on a copy of the
+        site whose features.rk also has a plan without limits; lift_plan_limits switches to it the way an operator
+        would (`rangka plan set`). The site itself, and the plan it sells, stay as they are."""
+        feat = os.path.join(self.site_dir, "features.rk")
+        if not os.path.exists(feat) or "limits:" not in open(feat).read():
+            return
+        if not self.own_site:   # same folder name: the default org is the site folder's name (kopi-senja)
+            copy = os.path.join(self.state_dir, "plan-site", os.path.basename(os.path.normpath(self.site_dir)))
+            shutil.copytree(self.site_dir, copy)
+            self.site_dir = copy
+        with open(os.path.join(self.site_dir, "features.rk"), "a") as f:
+            f.write(f"\n  - name: {self.TEST_PLAN}\n    label: {{id: Uji day_one, en: day_one test}}\n")
+        self.plan_site = True
+
+    def lift_plan_limits(self):
+        if not self.plan_site:
+            return
+        r = subprocess.run([self.binary, "plan", "show", "--json"] + self.args(), capture_output=True, text=True)
+        if r.returncode == 0:
+            try:
+                self.sold_plan = json.loads(r.stdout)
+            except ValueError:
+                self.sold_plan = None
+        r = subprocess.run([self.binary, "plan", "set", self.TEST_PLAN, "--by", "day_one", "--note", "outlet dan staf uji"] + self.args(),
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            if 'unknown command "plan"' in r.stderr:   # a kernel before contract 0028 limits nothing
+                return
+            sys.exit(f"rangka plan set failed:\n{r.stdout}\n{r.stderr}")
 
     def serve(self):
         first = self.orgs[0][0]
@@ -5068,6 +5108,12 @@ def main():
     api = Api(k.base)
     CTX["kernel"] = k
     CTX["site"] = a.site
+    if k.sold_plan and k.sold_plan.get("plan"):   # the plan the site sells, read before the test plan took over
+        sp = k.sold_plan
+        lim = (sp.get("usage", {}).get("outlets") or {}).get("limit")
+        check(f"paket {sp['plan']['name']} dari features.rk terbaca kernel (batas outlet {lim})", sp["plan"].get("known") is True, sp["plan"])
+        if a.site == "demo-fnb":
+            check("demo-fnb: paket Tumbuh, 4 outlet dari 5", sp["plan"]["name"] == "tumbuh" and lim == 5 and sp["usage"]["outlets"]["used"] == 4, sp.get("usage"))
     if a.site == "demo-fnb":
         setup_demo_fnb(api, k)
     if a.site == "demo-jasa":
