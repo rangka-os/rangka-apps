@@ -1,0 +1,90 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: course_session
+label: {id: Pertemuan, en: Class session}
+icon: calendar
+naming: PTM-{YYYY}-{#####}
+title_field: batch
+# One meeting of a batch, with its attendance. A new session gets one line per registered or active student of the
+# batch, marked present (flow session_fill_attendance); the teacher changes the ones who did not come.
+permissions:
+  - {role: course_admin, read: true, create: true, write: true, delete: true, export: true, print: true}
+  - {role: instructor, read: true, create: true, write: true, print: true}
+  - {role: finance_manager, read: true, export: true}
+fields:
+  - name: batch
+    type: link
+    to: course_batch
+    label: {id: Angkatan}
+    required: true
+    in_list: true
+  - {name: instructor, type: link, to: user, label: {id: Akun pengajar}, compute: batch.instructor}
+  - name: session_no
+    type: int
+    label: {id: Pertemuan ke}
+    required: true
+    in_list: true
+  - name: session_date
+    type: date
+    label: {id: Tanggal}
+    required: true
+    default: today()
+    in_list: true
+  - {name: start_time, type: data, label: {id: Jam mulai}}
+  - {name: end_time, type: data, label: {id: Jam selesai}}
+  - name: delivery
+    type: select
+    label: {id: Cara belajar}
+    default: batch.delivery
+    options:
+      - {value: offline, label: {id: Tatap muka}}
+      - {value: online, label: {id: Online}}
+      - {value: hybrid, label: {id: Campuran}}
+  - {name: class_link, type: data, label: {id: Tautan kelas online}, default: batch.class_link, depends_on: delivery != 'offline'}
+  - {name: topic, type: data, label: {id: Materi}, in_list: true}
+  - name: attendance
+    type: table
+    of: course_attendance
+    label: {id: Absen}
+  - {name: present_count, type: int, label: {id: Hadir}, compute: "attendance.map(a, a.status == 'present' ? 1 : 0).sum()", in_list: true}
+  - {name: absent_count, type: int, label: {id: Tidak hadir}, compute: "attendance.map(a, a.status != 'present' ? 1 : 0).sum()"}
+  - name: session_key
+    type: data
+    label: {id: Kunci pertemuan}
+    hidden: true
+    unique: true
+    compute: "batch + '|' + truncate(session_no, 4)"
+rules:
+  - name: session_no_positive
+    on: save
+    check: session_no >= 1
+    message: {id: 'Pertemuan ke minimal 1'}
+  - name: date_in_batch
+    on: save
+    check: session_date >= batch.start_date && (batch.end_date == '' || session_date <= batch.end_date)
+    message: {id: 'Tanggal pertemuan harus di antara tanggal mulai dan selesai angkatan'}
+  - name: attendance_of_batch
+    on: save
+    check: "attendance.map(a, a.batch == batch ? 0 : 1).sum() == 0"
+    message: {id: 'Ada peserta di absen yang bukan peserta angkatan ini'}
+  - name: times_format
+    on: save
+    check: >-
+      (start_time == '' || start_time.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$'))
+        && (end_time == '' || end_time.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$'))
+    message: {id: 'Jam ditulis JJ:MM, misalnya 19:00'}
+views:
+  list:
+    columns: [name, batch, session_no, session_date, topic, present_count]
+    filters: [batch]
+    sort: -session_date
+  form:
+    layout:
+      - section: {id: Pertemuan}
+        columns:
+          - [batch, session_no, session_date, topic]
+          - [start_time, end_time, delivery, class_link]
+      - section: {id: Absen}
+        fields: [attendance]
+      - section: {id: Ringkasan}
+        columns:
+          - [present_count, absent_count]

@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: invoice_course_once
+label: {id: Satu faktur per tagihan kursus}
+# Any invoice whose notes carry a course charge's number in [] (whatever the site's numbering of charges) is submitted
+# only when it names exactly one charge, that charge is submitted, the invoice goes to its payer for exactly its
+# amount, and no other submitted invoice carries the number. So a period is never invoiced twice, and the invoices of
+# an enrollment's instalments add up to its total.
+on: sales_invoice.submitted
+steps:
+  - find_all: course_charge
+    where: event.notes.contains('[' + name + ']')
+    as: tags
+  - find: sales_invoice
+    where: size(tags) == 1 && name != event.name && docstatus == 1 && notes.contains('[' + tags[0].name + ']')
+    as: twin
+  - if: >-
+      size(tags) > 1 || (size(tags) == 1 && (tags[0].docstatus != 1 || twin != null || tags[0].customer != event.customer
+        || tags[0].amount != event.dpp))
+    create: course_guard
+    set:
+      reason: "'invoice_twice'"
+      document: event.name

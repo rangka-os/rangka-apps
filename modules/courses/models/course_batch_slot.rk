@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: course_batch_slot
+is_child: true
+fields:
+  - name: weekday
+    type: select
+    label: {id: Hari}
+    required: true
+    options:
+      - {value: mon, label: {id: Senin}}
+      - {value: tue, label: {id: Selasa}}
+      - {value: wed, label: {id: Rabu}}
+      - {value: thu, label: {id: Kamis}}
+      - {value: fri, label: {id: Jumat}}
+      - {value: sat, label: {id: Sabtu}}
+      - {value: sun, label: {id: Minggu}}
+  - {name: start_time, type: data, label: {id: Jam mulai}, required: true}
+  - {name: end_time, type: data, label: {id: Jam selesai}, required: true}

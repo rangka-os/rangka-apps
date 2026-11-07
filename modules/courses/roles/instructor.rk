@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: instructor
+label: {id: Pengajar}
+description: {id: 'Melihat angkatan yang dia ajar dan mengisi absen pertemuan'}
+# Contract 0010 §5: batches, sessions and enrollments whose instructor is the member's own user record (rangka user add
+# --record). Money fields of an enrollment are hidden from this role (contract 0027).
+scope: {field: instructor, from: '[user.name]'}

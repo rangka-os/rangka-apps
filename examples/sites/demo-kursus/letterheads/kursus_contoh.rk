@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+# Site letterhead. Fictional data.
+legal_name: Lembaga Kursus Contoh Cerdas
+tagline: Kursus bahasa, bimbel dan pelatihan
+address: |
+  Jl. Contoh Pendidikan No. 7
+  Bandung 40100
+phone: '+62 22 000 0000'
+email: halo@kursuscontoh.test
+website: kursuscontoh.test
+bank:
+  - {bank: Bank Contoh, account: '000 000 0017', holder: Lembaga Kursus Contoh Cerdas, branch: Bandung}
+signatory: {name: Nama Penandatangan, title: Kepala Lembaga}
+footer: {id: Terima kasih sudah belajar bersama kami}

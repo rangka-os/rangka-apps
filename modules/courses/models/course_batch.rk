@@ -1,0 +1,112 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: course_batch
+label: {id: Angkatan, en: Batch}
+icon: calendar
+naming: ANG-{YYYY}-{###}
+title_field: batch_name
+# One running of a program: when it starts, how many seats it has, who teaches and when it meets each week. seats_taken
+# is kept by the enrollment flows (registered and active enrollments, counted under the flow read lock of contract
+# 0025), so two enrollments made at the same moment cannot both take the last seat: the rule seats_within_quota refuses
+# the second. The same rule refuses lowering the quota below the seats already taken.
+permissions:
+  - {role: course_admin, read: true, create: true, write: true, export: true, print: true}
+  - {role: finance_manager, read: true, export: true, print: true}
+  - {role: instructor, read: true, print: true}
+fields:
+  - name: batch_name
+    type: data
+    label: {id: Nama angkatan}
+    required: true
+    in_list: true
+  - name: program
+    type: link
+    to: course_program
+    label: {id: Program}
+    required: true
+    in_list: true
+  - name: start_date
+    type: date
+    label: {id: Mulai}
+    required: true
+    in_list: true
+  - name: end_date
+    type: date
+    label: {id: Selesai}
+  - name: quota
+    type: int
+    label: {id: Kuota peserta}
+    required: true
+    in_list: true
+  - {name: seats_taken, type: int, label: {id: Kursi terisi}, default: '0', read_only: true, in_list: true}
+  - {name: seats_left, type: int, label: {id: Sisa kursi}, compute: quota - seats_taken}
+  - name: teacher_name
+    type: data
+    label: {id: Nama pengajar}
+    in_list: true
+  # The teacher's account: the instructor role sees only the batches, sessions and enrollments that name it.
+  - name: instructor
+    type: link
+    to: user
+    label: {id: Akun pengajar}
+  - name: delivery
+    type: select
+    label: {id: Cara belajar}
+    required: true
+    default: program.delivery
+    chip: true
+    options:
+      - {value: offline, label: {id: Tatap muka}}
+      - {value: online, label: {id: Online}}
+      - {value: hybrid, label: {id: Campuran}}
+  - name: location
+    type: data
+    label: {id: Tempat}
+    depends_on: delivery != 'online'
+  - name: class_link
+    type: data
+    label: {id: Tautan kelas online}
+    depends_on: delivery != 'offline'
+  - name: schedule
+    type: table
+    of: course_batch_slot
+    label: {id: Jadwal mingguan}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: quota_positive
+    on: save
+    check: quota >= 1
+    message: {id: 'Kuota minimal 1 peserta'}
+  - name: seats_within_quota
+    on: save
+    check: seats_taken <= quota
+    message: {id: 'Kuota angkatan ini sudah penuh'}
+  - name: dates_order
+    on: save
+    check: end_date == '' || end_date >= start_date
+    message: {id: 'Tanggal selesai tidak boleh sebelum tanggal mulai'}
+  - name: online_needs_link
+    on: save
+    check: delivery == 'offline' || class_link.startsWith('https://')
+    message: {id: 'Kelas online butuh tautan kelas yang diawali https://'}
+  - name: schedule_times
+    on: save
+    check: "schedule.map(s, s.start_time.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$') && s.end_time.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$') && s.end_time > s.start_time ? 0 : 1).sum() == 0"
+    message: {id: 'Jam jadwal ditulis JJ:MM, misalnya 19:00, dan jam selesai sesudah jam mulai'}
+views:
+  list:
+    columns: [name, batch_name, program, start_date, teacher_name, quota, seats_taken]
+    sort: -start_date
+  form:
+    layout:
+      - section: {id: Angkatan}
+        columns:
+          - [batch_name, program, start_date, end_date]
+          - [quota, seats_taken, seats_left]
+      - section: {id: Pengajar dan tempat}
+        columns:
+          - [teacher_name, instructor]
+          - [delivery, location, class_link]
+      - section: {id: Jadwal mingguan}
+        fields: [schedule]
+      - section: {id: Catatan}
+        fields: [notes]
