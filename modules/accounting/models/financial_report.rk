@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: financial_report
+label: {id: Laporan keuangan, en: Financial report}
+icon: chart
+naming: LK-{YYYY}-{####}
+title_field: period_to
+# Laba rugi, neraca and a simple cash summary (SAK EMKM: laporan posisi keuangan, laporan laba rugi; the cash summary
+# is extra) for one period, summed from gl_entry by flow financial_report_compute when the report is created or saved
+# again (save it again to refresh after new documents). The profit and loss can be narrowed to one outlet or project;
+# the balance sheet and the cash summary are always the whole business up to period_to. Laba ditahan is the profit of
+# every line before period_from, so no closing entry is needed. Every number is read-only.
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true, print: true}
+fields:
+  - {name: period_from, type: date, label: {id: Dari tanggal}, required: true, in_list: true}
+  - {name: period_to, type: date, label: {id: Sampai tanggal}, required: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Cabang (laba rugi saja)}, in_list: true}
+  - {name: project, type: data, label: {id: Proyek (laba rugi saja)}}
+  - {name: computed_at, type: datetime, label: {id: Dihitung pada}, read_only: true}
+  - {name: line_count, type: int, label: {id: Baris jurnal dalam periode}, read_only: true}
+  # Laba rugi
+  - {name: revenue, type: currency, label: {id: Pendapatan usaha}, read_only: true}
+  - {name: sales_returns, type: currency, label: {id: Retur penjualan}, read_only: true}
+  - {name: net_revenue, type: currency, label: {id: Pendapatan bersih}, compute: revenue - sales_returns, in_list: true}
+  - {name: cogs, type: currency, label: {id: Harga pokok penjualan}, read_only: true}
+  - {name: stock_loss, type: currency, label: {id: Selisih dan susut persediaan}, read_only: true}
+  - {name: direct_labour, type: currency, label: {id: Upah langsung}, read_only: true}
+  - {name: project_costs, type: currency, label: {id: Biaya proyek}, read_only: true}
+  - {name: cost_of_revenue, type: currency, label: {id: Beban pokok pendapatan}, compute: cogs + stock_loss + direct_labour + project_costs}
+  - {name: gross_profit, type: currency, label: {id: Laba kotor}, compute: net_revenue - cost_of_revenue}
+  - {name: operating_expenses, type: currency, label: {id: Beban operasional}, read_only: true}
+  - {name: operating_profit, type: currency, label: {id: Laba usaha}, compute: gross_profit - operating_expenses}
+  - {name: other_income, type: currency, label: {id: Pendapatan lain-lain}, read_only: true}
+  - {name: tax_expense, type: currency, label: {id: Beban pajak}, read_only: true}
+  - {name: net_profit, type: currency, label: {id: Laba bersih}, compute: operating_profit + other_income - tax_expense, in_list: true}
+  # Neraca per period_to (whole business)
+  - {name: cash_and_bank, type: currency, label: {id: 'Kas, bank, dan kas outlet belum disetor'}, read_only: true}
+  - {name: receivables, type: currency, label: {id: Piutang}, read_only: true}
+  - {name: inventory, type: currency, label: {id: Persediaan}, read_only: true}
+  - {name: prepaid_taxes, type: currency, label: {id: Pajak dibayar dimuka}, read_only: true}
+  - {name: fixed_assets_net, type: currency, label: {id: Aset tetap bersih}, read_only: true}
+  - {name: total_assets, type: currency, label: {id: Jumlah aset}, read_only: true}
+  - {name: trade_payables, type: currency, label: {id: Utang usaha dan belum ditagih}, read_only: true}
+  - {name: tax_payables, type: currency, label: {id: Utang pajak}, read_only: true}
+  - {name: other_liabilities, type: currency, label: {id: Utang lain}, read_only: true}
+  - {name: total_liabilities, type: currency, label: {id: Jumlah liabilitas}, read_only: true}
+  - {name: capital, type: currency, label: {id: Modal dan ekuitas saldo awal}, read_only: true}
+  - {name: retained_earnings, type: currency, label: {id: Laba ditahan}, read_only: true}
+  - {name: current_profit, type: currency, label: {id: Laba periode berjalan (seluruh usaha)}, read_only: true}
+  - {name: total_equity, type: currency, label: {id: Jumlah ekuitas}, compute: capital + retained_earnings + current_profit}
+  - {name: difference, type: currency, label: {id: Selisih neraca}, compute: total_assets - total_liabilities - total_equity}
+  - {name: balanced, type: check, label: {id: Neraca seimbang}, compute: computed_at != null && difference == 0, in_list: true}
+  # Arus kas sederhana (akun kas dan bank, seluruh usaha)
+  - {name: cash_opening, type: currency, label: {id: Kas dan bank awal periode (tanpa kas outlet belum disetor)}, read_only: true}
+  - {name: cash_in, type: currency, label: {id: Uang masuk}, read_only: true}
+  - {name: cash_out, type: currency, label: {id: Uang keluar}, read_only: true}
+  - {name: cash_closing, type: currency, label: {id: Kas dan bank akhir periode}, compute: cash_opening + cash_in - cash_out}
+rules:
+  - name: period_order
+    on: save
+    check: period_from <= period_to
+    message: {id: Tanggal awal harus sebelum tanggal akhir}
+views:
+  list:
+    columns: [name, period_from, period_to, outlet, net_revenue, net_profit, balanced]
+    sort: -period_to
+  form:
+    layout:
+      - section: {id: Periode}
+        columns:
+          - [period_from, period_to, computed_at]
+          - [outlet, project, line_count]
+      - section: {id: Laba rugi}
+        columns:
+          - [revenue, sales_returns, net_revenue, cogs, stock_loss, direct_labour, project_costs]
+          - [cost_of_revenue, gross_profit, operating_expenses, operating_profit, other_income, tax_expense, net_profit]
+      - section: {id: Neraca}
+        columns:
+          - [cash_and_bank, receivables, inventory, prepaid_taxes, fixed_assets_net, total_assets]
+          - [trade_payables, tax_payables, other_liabilities, total_liabilities, capital, retained_earnings, current_profit, total_equity, difference, balanced]
+      - section: {id: Arus kas}
+        columns:
+          - [cash_opening, cash_in]
+          - [cash_out, cash_closing]

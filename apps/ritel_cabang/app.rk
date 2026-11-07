@@ -4,13 +4,14 @@
 # No cashier, receipt or shift here. Built on the fnb_cabang modules without recipes: an item without a recipe takes
 # itself out of stock on a sale.
 name: ritel_cabang
-version: 1.0.0
+version: 1.1.0
 title: {id: Ritel multi cabang, en: Multi-branch retail}
 label: {id: Rangka Ritel Cabang, en: Rangka Multi-branch Retail}
 summary:
   id: Impor penjualan dari kasir lama, stok per cabang, pembelian, barang titipan, setoran harian dan laporan barang laku.
 rangka: '>=0.5'
 modules:
+  accounting: ^1.0
   contacts: ^1.0
   catalogue: ^1.0
   outlets: ^1.0
@@ -20,6 +21,7 @@ modules:
   procurement: ^1.0
   payments: ^1.0
   invoicing: ^1.0
+  coretax: ^1.0
   consignment: ^1.0
 dashboards: [ritel_overview, ritel_stock, ritel_tax]
 roles: [head_office, outlet_staff]
@@ -28,13 +30,17 @@ home: {dashboard: ritel_overview}
 # stock but has no menu entry: a shop sells goods as they are.
 menu:
   - group: {id: Penjualan toko}
-    items: [outlet_sales, outlet_takings]
+    items: [outlet_sales, outlet_takings, pos_refund, outlet_return]
   - group: {id: Stok}
     items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
   - group: {id: Pembelian}
     items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment]
   - group: {id: Titipan}
     items: [consignment_settlement]
+  - group: {id: Pembukuan}
+    items: [financial_report, gl_entry, opening_balance, period_close]
+  - group: {id: Pajak}
+    items: [tax_period]
   - group: {id: Data induk}
     items: [item, item_category, outlet, uom, uom_conversion, vendor]
 onboarding:

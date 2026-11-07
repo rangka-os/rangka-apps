@@ -49,12 +49,25 @@ widgets:
   - name: margin_period
     type: number
     label: {id: Laba kotor}
-    description: {id: Penjualan bersih dikurangi harga pokok bahan}
+    description: {id: 'Penjualan bersih dikurangi harga pokok bahan saat terjual; bahan yang kembali ke stok ada di HPP kembali dari retur'}
     model: outlet_sales
     aggregate: sum
     field: margin
     filter: docstatus == 1
     period: date
+    compact: true
+    span: 3
+  # Goods back in stock with a Retur ke stok (contract 0022): their cost left HPP after the sale's margin was booked. A
+  # widget reads one model, so the margin above is per sale and this is what it rose by since (audit stock-returns H1).
+  - name: returned_cost
+    type: number
+    label: {id: HPP kembali dari retur}
+    description: {id: 'Harga pokok barang yang kembali ke stok lewat Retur ke stok; tambahkan ke Laba kotor'}
+    model: stock_move
+    aggregate: sum
+    field: value
+    filter: voucher_type == 'outlet_return'
+    period: posting_date
     compact: true
     span: 3
   - name: negative_count

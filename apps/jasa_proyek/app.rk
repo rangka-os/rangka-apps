@@ -7,6 +7,7 @@ summary:
   id: Dari penawaran dan penugasan tenaga kerja sampai faktur, pembayaran dan piutang, untuk satu atau beberapa PT.
 rangka: '>=0.5'
 modules:
+  accounting: ^1.0
   contacts: ^1.0
   catalogue: ^1.0
   users: ^1.0
@@ -14,6 +15,7 @@ modules:
   tax_id: ^1.0
   currency: ^1.0
   invoicing: ^1.0
+  coretax: ^1.0
   quotation: ^1.0
   orders: ^1.0
   workforce: ^1.0
@@ -21,6 +23,7 @@ modules:
   payments: ^1.0
   bank_statement: ^1.0
   procurement: ^1.0
+  payroll: ^1.0
 dashboards: [jasa_overview, ar_aging, project_margin]
 roles: [sales_manager, finance_manager, purchasing_manager, project_admin]
 home: {dashboard: jasa_overview}
@@ -31,10 +34,16 @@ menu:
     items: [project, billing_milestone, assignment, timesheet, project_expense, acceptance, project_ledger]
   - group: {id: Tenaga kerja}
     items: [worker]
+  - group: {id: Penggajian}
+    items: [payroll_run, payslip, payroll_close, payroll_profile]
   - group: {id: Keuangan}
     items: [payment, bank_transaction, invoice_reminder, withholding, vendor_bill, bank_account]
   - group: {id: Pembelian}
     items: [purchase_request, purchase_order]
+  - group: {id: Pembukuan}
+    items: [financial_report, gl_entry, opening_balance, period_close]
+  - group: {id: Pajak}
+    items: [tax_period]
   - group: {id: Data induk}
     items: [customer, vendor, item, uom, price_list, tax_code, currency]
 # Answers set the first defaults of a new installation (PKP decides tax_rate, the business line the sample items and terms).

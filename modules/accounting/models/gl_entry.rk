@@ -1,0 +1,156 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: gl_entry
+label: {id: Jurnal, en: Journal line}
+icon: book
+naming: GL-{YYYY}-{#######}
+title_field: voucher
+# One line of the books: an account and a signed amount (+ debit, - credit). The lines of one document (voucher_type,
+# voucher, entry) add up to 0. Written only by the posting flows of this module when a document is submitted (entry
+# post) or cancelled (entry reverse, the opposite of each post line on the same date); append_only (contract 0026):
+# nobody creates, edits or deletes a line by hand, the owner included. A correction is a cancel and amend of the
+# source document. A line dated on or before the last Tutup buku (lock_date) is refused, and with it the submit or
+# cancel that wrote it.
+append_only: true
+permissions:
+  - {role: finance_manager, read: true, create: true, export: true}
+  - {role: head_office, read: true, create: true, export: true}
+  # The flows run as the person submitting or cancelling, so each role that submits or cancels a posting document
+  # creates its lines and reads them back (the reverse flow finds the post lines). They read only the lines of those
+  # documents: wages (timesheet) and margins stay with finance and project admins.
+  - {role: sales_manager, read: true, create: true, if: "voucher_type in ['sales_invoice', 'payment', 'delivery_note', 'sales_return']"}
+  - {role: purchasing_manager, read: true, create: true, if: "voucher_type in ['vendor_bill', 'goods_receipt']"}
+  # project admins also read the debit line of vendor bills: a project expense on a bill moves its cost out of that line
+  - {role: project_admin, read: true, create: true, if: "voucher_type in ['timesheet', 'project_expense'] || (voucher_type == 'vendor_bill' && line in ['1', '2'])"}
+  - {role: outlet_staff, read: true, create: true, if: "voucher_type in ['outlet_sales', 'outlet_takings', 'goods_receipt', 'stock_adjustment', 'stock_count', 'stock_transfer_receipt', 'production_batch', 'outlet_return']"}
+fields:
+  - name: posting_date
+    type: date
+    label: {id: Tanggal}
+    required: true
+    in_list: true
+  - name: account
+    type: select
+    label: {id: Akun}
+    required: true
+    in_list: true
+    options:
+    # accounts:begin
+      - {value: '11100', label: {id: '1-1100 Kas'}}
+      - {value: '11150', label: {id: '1-1150 Kas outlet belum disetor'}}
+      - {value: '11200', label: {id: '1-1200 Bank'}}
+      - {value: '11300', label: {id: '1-1300 Piutang usaha'}}
+      - {value: '11320', label: {id: '1-1320 Piutang retensi'}}
+      - {value: '11330', label: {id: '1-1330 Piutang karyawan'}}
+      - {value: '11340', label: {id: '1-1340 Piutang dana gaji klien'}}
+      - {value: '11400', label: {id: '1-1400 Persediaan'}}
+      - {value: '11410', label: {id: '1-1410 Persediaan dalam perjalanan'}}
+      - {value: '11420', label: {id: '1-1420 Barang dalam proses'}}
+      - {value: '11500', label: {id: '1-1500 PPN masukan'}}
+      - {value: '11510', label: {id: '1-1510 PPh 23 dibayar dimuka'}}
+      - {value: '12100', label: {id: '1-2100 Aset tetap'}}
+      - {value: '12900', label: {id: '1-2900 Akumulasi penyusutan'}}
+      - {value: '21100', label: {id: '2-1100 Utang usaha'}}
+      - {value: '21150', label: {id: '2-1150 Utang belum ditagih'}}
+      - {value: '21200', label: {id: '2-1200 PPN keluaran'}}
+      - {value: '21300', label: {id: '2-1300 Utang PPh 23'}}
+      - {value: '21310', label: {id: '2-1310 Utang PPh final'}}
+      - {value: '21320', label: {id: '2-1320 Utang PPh 21'}}
+      - {value: '21400', label: {id: '2-1400 Uang muka pelanggan'}}
+      - {value: '21500', label: {id: '2-1500 Utang upah'}}
+      - {value: '21600', label: {id: '2-1600 Utang BPJS'}}
+      - {value: '21900', label: {id: '2-1900 Utang lain-lain'}}
+      - {value: '22100', label: {id: '2-2100 Utang bank'}}
+      - {value: '31100', label: {id: '3-1100 Modal disetor'}}
+      - {value: '31900', label: {id: '3-1900 Ekuitas saldo awal'}}
+      - {value: '41100', label: {id: '4-1100 Pendapatan usaha'}}
+      - {value: '41200', label: {id: '4-1200 Retur penjualan'}}
+      - {value: '49100', label: {id: '4-9100 Pendapatan lain-lain'}}
+      - {value: '51100', label: {id: '5-1100 Harga pokok penjualan'}}
+      - {value: '51200', label: {id: '5-1200 Selisih dan susut persediaan'}}
+      - {value: '51300', label: {id: '5-1300 Upah langsung'}}
+      - {value: '51400', label: {id: '5-1400 Biaya proyek'}}
+      - {value: '61100', label: {id: '6-1100 Beban gaji kantor'}}
+      - {value: '61200', label: {id: '6-1200 Biaya admin pembayaran'}}
+      - {value: '61300', label: {id: '6-1300 Selisih kas'}}
+      - {value: '61400', label: {id: '6-1400 Beban sewa'}}
+      - {value: '61500', label: {id: '6-1500 Beban listrik, air, internet'}}
+      - {value: '61600', label: {id: '6-1600 Beban transport dan kirim'}}
+      - {value: '61700', label: {id: '6-1700 Beban pemasaran'}}
+      - {value: '61800', label: {id: '6-1800 Beban perlengkapan dan perawatan'}}
+      - {value: '61900', label: {id: '6-1900 Beban operasional lain'}}
+      - {value: '69100', label: {id: '6-9100 Beban pajak'}}
+    # accounts:end
+  - name: amount
+    type: currency
+    label: {id: 'Nilai (+ debit, - kredit)'}
+    required: true
+  - {name: debit, type: currency, label: {id: Debit}, compute: "amount > 0 ? amount : 0", in_list: true}
+  - {name: credit, type: currency, label: {id: Kredit}, compute: "amount < 0 ? 0 - amount : 0", in_list: true}
+  - name: voucher_type
+    type: data
+    label: {id: Jenis dokumen}
+    required: true
+    in_list: true
+  - name: voucher
+    type: data
+    label: {id: Dokumen}
+    required: true
+    in_list: true
+  - name: entry
+    type: select
+    label: {id: Baris}
+    required: true
+    options:
+      - {value: post, label: {id: Diajukan}}
+      - {value: reverse, label: {id: Pembalik}}
+  - {name: line, type: data, label: {id: Urutan baris}, required: true, hidden: true}
+  - {name: reverses, type: link, to: gl_entry, label: {id: Membalik baris}, unique: true}
+  - name: entry_key
+    type: data
+    label: {id: Kunci baris}
+    hidden: true
+    unique: true
+    compute: "voucher_type + ':' + voucher + ':' + entry + ':' + line"
+  - {name: outlet, type: link, to: outlet, label: {id: Cabang}, in_list: true}
+  - {name: project, type: data, label: {id: Proyek}}
+  - {name: party, type: data, label: {id: Pihak}}
+  # a project expense's credit line: the vendor bill whose cost it moved into the project
+  - {name: against, type: data, label: {id: Tagihan asal}, hidden: true}
+  - {name: bill_left, type: currency, label: {id: Sisa biaya tagihan}, hidden: true}
+  - {name: lock_date, type: date, label: {id: Buku ditutup sampai}, hidden: true}
+  - name: account_class
+    type: select
+    label: {id: Golongan}
+    compute: "account.startsWith('1') ? 'asset' : (account.startsWith('2') ? 'liability' : (account.startsWith('3') ? 'equity' : (account.startsWith('4') ? 'revenue' : (account.startsWith('5') ? 'cost' : 'expense'))))"
+    options:
+      - {value: asset, label: {id: Aset}}
+      - {value: liability, label: {id: Liabilitas}}
+      - {value: equity, label: {id: Ekuitas}}
+      - {value: revenue, label: {id: Pendapatan}}
+      - {value: cost, label: {id: Beban pokok}}
+      - {value: expense, label: {id: Beban}}
+rules:
+  - name: not_zero
+    on: save
+    check: amount != 0
+    message: {id: Baris jurnal tidak boleh bernilai 0}
+  - name: period_open
+    on: save
+    check: lock_date == null || posting_date > lock_date
+    message: {id: 'Buku sudah ditutup sampai tanggal ini. Batalkan Tutup buku dulu kalau dokumen ini memang perlu diubah.'}
+  - name: bill_cost_left
+    on: save
+    check: against == '' || entry == 'reverse' || bill_left >= 0
+    message: {id: 'Biaya proyek atas tagihan ini melebihi sisa nilai tagihannya. Kurangi nilainya, atau catat tanpa tagihan.'}
+  - name: reverse_matches_post
+    on: save
+    check: >-
+      entry != 'reverse' || (reverses != '' && reverses.entry == 'post' && reverses.voucher_type == voucher_type
+        && reverses.voucher == voucher && reverses.line == line && reverses.account == account
+        && amount == 0 - reverses.amount && posting_date == reverses.posting_date)
+    message: {id: Baris pembalik harus menunjuk baris aslinya dengan nilai berlawanan}
+views:
+  list:
+    columns: [name, posting_date, account, debit, credit, voucher_type, voucher, outlet]
+    filters: [account, account_class, voucher_type, outlet, project, entry]
+    sort: -posting_date

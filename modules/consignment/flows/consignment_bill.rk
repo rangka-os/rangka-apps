@@ -3,7 +3,9 @@ name: consignment_bill
 label: {id: Tagihan setoran titipan}
 # Runs in the submitter's transaction (rangka-os #34). One live vendor_bill per consignor and bill_ref (month); only one
 # settlement per consignor and month can be live (period_key), so:
-# - no bill yet: a draft bill with one line per item sold (qty_sold x rate);
+# - no bill yet: a draft bill with one line per item sold, at the item's net Terjual (a correction line of a return
+#   nets against the sale of the same item; settlement rules keep one rate and one sale line per item), so the bill
+#   equals the settlement total (audit stock-returns r3 R3-1);
 # - a draft bill left by a cancelled settlement of that month: its lines are replaced by this (amended) settlement's;
 # - a submitted bill: nothing is created; head office is told to check it, so a payable is never written twice.
 on: consignment_settlement.submitted
@@ -16,12 +18,13 @@ steps:
       vendor: event.consignor
       bill_no: event.bill_ref
       bill_date: today()
-      items: "event.items.filter(i, i.qty_sold > 0).map(i, {'item': i.item, 'qty': i.qty_sold, 'rate': i.rate})"
+      posting: "'stock'"
+      items: "event.items.filter(i, i.qty_sold > 0 && event.items.filter(j, j.item == i.item).map(j, j.qty_sold).sum() > 0).map(i, {'item': i.item, 'qty': event.items.filter(j, j.item == i.item).map(j, j.qty_sold).sum(), 'rate': i.rate})"
     as: created
   - update: bill
     if: bill != null && bill.docstatus == 0
     set:
-      items: "event.items.filter(i, i.qty_sold > 0).map(i, {'item': i.item, 'qty': i.qty_sold, 'rate': i.rate})"
+      items: "event.items.filter(i, i.qty_sold > 0 && event.items.filter(j, j.item == i.item).map(j, j.qty_sold).sum() > 0).map(i, {'item': i.item, 'qty': event.items.filter(j, j.item == i.item).map(j, j.qty_sold).sum(), 'rate': i.rate})"
   - notify: head_office
     if: bill == null
     channel: in_app

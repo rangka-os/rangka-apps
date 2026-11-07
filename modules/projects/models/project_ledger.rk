@@ -4,6 +4,10 @@ label: {id: Buku untung proyek, en: Project ledger}
 icon: chart
 naming: PL-{YYYY}-{######}
 title_field: project
+# append_only (contract 0026): rows are created only by the flows the kernel starts on the source document's events (and
+# the schedule); nobody, the owner included, creates, edits or deletes one through the API, an import or a flow run by
+# hand. A correction is the reversing row written when the source document is cancelled.
+append_only: true
 # One signed row per submitted document that changes a project's result: revenue + (invoice dpp, retention releases
 # excluded), costs - (timesheet cost, project expense not on a vendor bill, vendor bill dpp). Cancelling the document
 # writes the opposite row on the document's own date, so the sum per project (and per period) is its margin. Rows are
@@ -47,6 +51,8 @@ fields:
       - {value: labor, label: {id: Biaya tenaga kerja}}
       - {value: expense, label: {id: Biaya proyek}}
       - {value: vendor, label: {id: Biaya pemasok}}
+      # Payroll (module payroll): the employer cost of a closed payroll run beyond what its recaps booked.
+      - {value: payroll, label: {id: Biaya gaji tambahan}}
   - name: source_model
     type: data
     label: {id: Dokumen}
@@ -72,6 +78,10 @@ fields:
     type: link
     to: vendor_bill
     label: {id: Tagihan pemasok}
+  - name: payroll_close
+    type: link
+    to: payroll_close
+    label: {id: Tutup periode gaji}
   - name: entry
     type: select
     label: {id: Baris}
@@ -88,17 +98,17 @@ fields:
     type: int
     label: {id: Status dokumen}
     hidden: true
-    compute: "kind == 'revenue' ? sales_invoice.docstatus : (kind == 'labor' ? timesheet.docstatus : (kind == 'expense' ? project_expense.docstatus : vendor_bill.docstatus))"
+    compute: "kind == 'revenue' ? sales_invoice.docstatus : (kind == 'labor' ? timesheet.docstatus : (kind == 'expense' ? project_expense.docstatus : (kind == 'payroll' ? payroll_close.docstatus : vendor_bill.docstatus)))"
   - name: source_amount
     type: currency
     label: {id: Nilai dokumen}
     hidden: true
-    compute: "kind == 'revenue' ? sales_invoice.dpp : (kind == 'labor' ? 0 - timesheet.cost_amount : (kind == 'expense' ? 0 - project_expense.amount : 0 - vendor_bill.dpp))"
+    compute: "kind == 'revenue' ? sales_invoice.dpp : (kind == 'labor' ? 0 - timesheet.cost_amount : (kind == 'expense' ? 0 - project_expense.amount : (kind == 'payroll' ? 0 - payroll_close.extra_cost : 0 - vendor_bill.dpp)))"
   - name: source_date
     type: date
     label: {id: Tanggal dokumen}
     hidden: true
-    compute: "kind == 'revenue' ? sales_invoice.posting_date : (kind == 'labor' ? timesheet.work_date : (kind == 'expense' ? project_expense.expense_date : vendor_bill.bill_date))"
+    compute: "kind == 'revenue' ? sales_invoice.posting_date : (kind == 'labor' ? timesheet.work_date : (kind == 'expense' ? project_expense.expense_date : (kind == 'payroll' ? payroll_close.period_to : vendor_bill.bill_date)))"
   - name: entry_key
     type: data
     label: {id: Kunci baris}
@@ -117,6 +127,7 @@ rules:
       || (kind == 'labor' && timesheet != '' && source_name == timesheet && timesheet.project == project)
       || (kind == 'expense' && project_expense != '' && source_name == project_expense && project_expense.project == project)
       || (kind == 'vendor' && vendor_bill != '' && source_name == vendor_bill && vendor_bill.project == project)
+      || (kind == 'payroll' && payroll_close != '' && source_name == payroll_close && payroll_close.project == project)
     message: {id: Baris buku untung proyek harus menunjuk dokumen sumbernya di proyek yang sama}
   - name: post_matches_document
     on: save

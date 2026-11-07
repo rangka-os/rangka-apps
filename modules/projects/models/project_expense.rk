@@ -15,9 +15,11 @@ title_field: description
 permissions:
   - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: finance_manager, read: true, create: true, write: true, submit: true, cancel: true, amend: true, export: true, print: true}
-  - {role: sales_manager, read: true}
-  # purchasing reads expenses: the guard flow on a vendor bill's cancel looks for expenses linking it, as them
-  - {role: purchasing_manager, read: true}
+  # Sales reads only the costs billed on to the client (they go on its invoice anyway); internal costs next to the
+  # revenue rows it reads in project_ledger would show it the margin (audit L1, t_23057937).
+  - {role: sales_manager, read: true, if: reimbursable}
+  # Purchasing reads only expenses that link a vendor bill: the guard flow on a bill's cancel looks for those, as them.
+  - {role: purchasing_manager, read: true, if: vendor_bill != ''}
 fields:
   - name: project
     type: link

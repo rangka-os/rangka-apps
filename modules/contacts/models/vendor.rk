@@ -33,6 +33,23 @@ fields:
   - name: npwp
     type: npwp
     label: {id: NPWP}
+  # Withholding (module coretax, BPPU): the income recipient is identified by NPWP or NIK (16 digits) and its NITKU;
+  # pph23_object_code is the Coretax tax object (24-104-xx for services) the bills of this vendor default to.
+  - name: nitku
+    type: data
+    label: {id: NITKU}
+    help: {id: 'ID TKU 22 digit. Kosongkan bila pusat (NPWP/NIK + 000000)'}
+    depends_on: app_installed('coretax')
+  - name: nik
+    type: data
+    label: {id: NIK}
+    help: {id: 'Untuk pemasok orang pribadi tanpa NPWP'}
+    depends_on: app_installed('coretax')
+  - name: pph23_object_code
+    type: data
+    label: {id: Kode objek PPh 23}
+    help: {id: 'Kode objek pajak Coretax, misalnya 24-104-17 jasa penyedia tenaga kerja, 24-104-36 kebersihan, 24-100-02 sewa'}
+    depends_on: app_installed('coretax')
   - name: pkp
     type: check
     label: {id: Pemasok PKP}
@@ -56,6 +73,18 @@ rules:
     on: save
     check: npwp == '' || size(npwp) == 16
     message: {id: NPWP harus 16 angka}
+  - name: nitku_22
+    on: save
+    check: "nitku == '' || (size(nitku) == 22 && nitku.matches('^[0-9]+$') && (npwp != '' ? nitku.startsWith(npwp) : nitku.startsWith(nik)))"
+    message: {id: NITKU harus 22 angka dan diawali NPWP atau NIK}
+  - name: nik_16
+    on: save
+    check: "nik == '' || (size(nik) == 16 && nik.matches('^[0-9]+$'))"
+    message: {id: NIK harus 16 angka}
+  - name: pph23_object_code_format
+    on: save
+    check: "pph23_object_code == '' || pph23_object_code.matches('^24-10[0-6]-[0-9]{2}$')"
+    message: {id: 'Kode objek PPh 23 berbentuk 24-1xx-xx (lihat daftar objek pajak Coretax)'}
 views:
   form:
     layout:
@@ -63,6 +92,10 @@ views:
         columns:
           - [vendor_name, city, address]
           - [npwp, phone, email]
+      - section: {id: Data pajak (bukti potong)}
+        columns:
+          - [nitku, nik]
+          - [pph23_object_code]
       - section: {id: Pembayaran}
         columns:
           - [payment_days]

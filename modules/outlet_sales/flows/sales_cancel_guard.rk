@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside an outlet_sales cancel: refused while a live Retur ke stok comes from it. The return's goods came in at this
+# sale's cost; cancelling the sale would put its goods back as well, so they would be counted back twice.
+name: sales_cancel_guard
+label: {id: Penjualan yang sudah dikembalikan ke stok tidak bisa dibatalkan}
+on: outlet_sales.cancelled
+steps:
+  # the Retur di kasir first: its lock is the one the return's submit flow takes, so a cancel and a submit of the same
+  # sale run one after the other and the later one sees the other (audit stock-returns M1)
+  - {find: pos_refund, where: sales == event.name, as: rf}
+  - {find: outlet_return, where: sales == event.name && docstatus == 1, as: ret}
+  - if: ret != null
+    create: outlet_sales_guard
+    set: {reason: "'sales_returned'", document: ret.name}

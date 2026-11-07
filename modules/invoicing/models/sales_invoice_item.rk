@@ -46,3 +46,8 @@ fields:
 
   - {name: rate_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Harga (valas)}, default: '0'}
   - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah (valas)}, compute: "round(qty * rate_fx * (1 - discount / 100), 2)"}
+  # e-Faktur line (module coretax): A goods / B services, the 6-digit Coretax code (000000 = none) and the unit code
+  # (UM.0033 Lainnya when the unit has none), from the item and unit while the invoice is a draft.
+  - {name: coretax_opt, type: data, label: {id: Barang/jasa (Coretax)}, hidden: true, compute: "item.kind == 'service' ? 'B' : 'A'"}
+  - {name: coretax_code, type: data, label: {id: Kode barang/jasa Coretax}, hidden: true, compute: "item.coretax_code != '' ? item.coretax_code : '000000'"}
+  - {name: coretax_unit, type: data, label: {id: Satuan Coretax}, hidden: true, compute: "uom.coretax_unit != '' ? uom.coretax_unit : 'UM.0033'"}

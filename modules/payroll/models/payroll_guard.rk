@@ -1,0 +1,74 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: payroll_guard
+label: {id: Penjaga penggajian, en: Payroll guard}
+icon: check
+naming: PGD-{######}
+title_field: reason
+# Never stored (the pattern of projects.project_guard): a flow that must refuse the action it runs in creates one, and
+# the rule of its reason fails with that message, which rolls the whole action back.
+permissions:
+  - {role: finance_manager, create: true}
+  # The recap guard runs inside a timesheet cancel, which the project admin does.
+  - {role: project_admin, create: true}
+  # The invoice notes lock runs inside an invoice save, which the sales manager does too.
+  - {role: sales_manager, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: run_closed, label: {id: Periode gaji sudah ditutup}}
+      - {value: invoice_submitted, label: {id: Faktur klien sudah diajukan}}
+      - {value: ytd_stale, label: {id: Penghasilan sebelumnya berubah}}
+      - {value: recap_has_slip, label: {id: Rekap dipakai slip gaji}}
+      - {value: second_slip, label: {id: Slip kedua di bulan pajak yang sama}}
+      - {value: later_slip, label: {id: Slip bulan sesudahnya sudah diajukan}}
+      - {value: overlap, label: {id: Periode tumpang tindih}}
+      - {value: invoice_tag, label: {id: Catatan faktur tenaga kerja}}
+      - {value: invoice_twice, label: {id: Faktur kedua periode gaji}}
+      - {value: pay_overlap, label: {id: Hari kerja dibayar dua kali}}
+  - name: document
+    type: data
+    label: {id: Dokumen}
+rules:
+  - name: run_closed
+    on: save
+    check: reason != 'run_closed'
+    message: {id: 'Periode gaji slip ini sudah ditutup; batalkan dokumen tutup periodenya dulu'}
+  - name: invoice_submitted
+    on: save
+    check: reason != 'invoice_submitted'
+    message: {id: 'Faktur klien periode gaji ini sudah diajukan; batalkan fakturnya dulu'}
+  - name: ytd_stale
+    on: save
+    check: reason != 'ytd_stale'
+    message: {id: 'Penghasilan bulan sebelumnya berubah sejak slip ini dibuat; hapus draf slip ini lalu buat lagi'}
+  - name: recap_has_slip
+    on: save
+    check: reason != 'recap_has_slip'
+    message: {id: 'Rekap absensi ini dipakai slip gaji yang sudah diajukan; batalkan slip gajinya dulu (selama periode gajinya belum ditutup)'}
+  - name: second_slip
+    on: save
+    check: reason != 'second_slip'
+    message: {id: 'Pekerja ini sudah punya slip gaji di bulan pajak ini (satu slip per pekerja per bulan pajak)'}
+  - name: later_slip
+    on: save
+    check: reason != 'later_slip'
+    message: {id: 'Slip pekerja ini untuk bulan pajak sesudahnya sudah diajukan; batalkan slip itu dulu'}
+  - name: overlap
+    on: save
+    check: reason != 'overlap'
+    message: {id: 'Proyek ini sudah punya periode gaji yang tanggalnya tumpang tindih'}
+  - name: invoice_tag
+    on: save
+    check: reason != 'invoice_tag'
+    message: {id: 'Catatan faktur tagihan tenaga kerja tidak bisa diubah (penanda periode gaji)'}
+  - name: invoice_twice
+    on: save
+    check: reason != 'invoice_twice'
+    message: {id: 'Faktur ini bukan faktur tutup periode gaji yang berlaku, atau periode itu sudah punya faktur diajukan'}
+  - name: pay_overlap
+    on: save
+    check: reason != 'pay_overlap'
+    message: {id: 'Pekerja ini sudah dibayar untuk sebagian hari periode ini di periode gaji lain'}

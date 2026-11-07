@@ -7,6 +7,8 @@ naming: SM-{YYYY}-{######}
 permissions:
   - {role: head_office, read: true, export: true}
   - {role: outlet_staff, read: true}
+  # the accounting flow of a sales return sums the moves it wrote, as the sales manager submitting it
+  - {role: sales_manager, read: true, if: "voucher_type in ['delivery_note', 'sales_return']"}
 fields:
   - {name: posting_date, type: date, label: {id: Tanggal}, read_only: true, in_list: true}
   - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, read_only: true, in_list: true}
@@ -22,9 +24,10 @@ fields:
   - {name: voucher, type: data, label: {id: Dokumen}, read_only: true, in_list: true}
   # Sold quantity and cost as positive numbers, for best-seller charts (a chart draws positive values). Every move of
   # an outlet_sales document counts: its sales take out (qty < 0) and the reversal of a cancelled one puts back, so a
-  # cancelled sale nets to zero.
-  - {name: sold_qty, type: float, label: {id: Qty terjual}, compute: "voucher_type == 'outlet_sales' ? -qty : 0"}
-  - {name: sold_cost, type: currency, label: {id: Harga pokok terjual}, compute: "voucher_type == 'outlet_sales' ? -value : 0"}
+  # cancelled sale nets to zero. A Retur ke stok (outlet_return, contract 0022) counts against them: goods back on the
+  # shelf are not sold and their cost leaves HPP, so a unit sold again is not counted (or paid to a consignor) twice.
+  - {name: sold_qty, type: float, label: {id: Qty terjual}, compute: "voucher_type == 'outlet_sales' || voucher_type == 'outlet_return' ? -qty : 0"}
+  - {name: sold_cost, type: currency, label: {id: Harga pokok terjual}, compute: "voucher_type == 'outlet_sales' || voucher_type == 'outlet_return' ? -value : 0"}
   - name: reason
     type: select
     label: {id: Sebab}

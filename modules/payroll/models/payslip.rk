@@ -1,0 +1,293 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: payslip
+label: {id: Slip gaji, en: Payslip}
+icon: invoice
+is_submittable: true
+naming: SLIP-{YYYY}-{#####}
+title_field: worker
+# One worker in one payroll run. Made as a draft from the worker's submitted attendance recap (flow payslip_from_recap)
+# or by hand for a monthly worker; submitted by finance while the run is open. Every amount is computed here from the
+# inputs, the profile and the run, with the rules of docs/payroll.md (PP 58/2023 + PMK 168/2023 for PPh 21, PP 44/2015,
+# 45/2015, 46/2015 and Perpres 82/2018 for BPJS, PP 35/2021 for overtime). The year-to-date fields are filled by
+# payslip_ytd_on_create from this worker's earlier submitted slips of the tax year; the December (or last) slip
+# recomputes the year with Pasal 17 and takes what January to November already withheld.
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  # Recaps are submitted by the project admin; their flow makes the draft slip as that person (no submit).
+  - {role: project_admin, read: true, create: true}
+fields:
+  - name: payroll_run
+    type: link
+    to: payroll_run
+    label: {id: Periode gaji}
+    required: true
+    in_list: true
+  - name: profile
+    type: link
+    to: payroll_profile
+    label: {id: Data gaji pekerja}
+    required: true
+  - {name: run_umk, type: currency, label: {id: UMK periode}, hidden: true, compute: payroll_run.umk}
+  - {name: run_jkk_rate, type: percent, label: {id: Tarif JKK periode}, hidden: true, compute: payroll_run.jkk_rate}
+  - {name: run_jp_cap, type: currency, label: {id: Batas JP periode}, hidden: true, compute: payroll_run.jp_wage_cap}
+  - {name: run_kes_cap, type: currency, label: {id: Batas Kesehatan periode}, hidden: true, compute: payroll_run.kes_wage_cap}
+  - {name: run_workdays, type: int, label: {id: Hari kerja per minggu periode}, hidden: true, compute: payroll_run.workdays_per_week}
+  - {name: run_period_from, type: date, label: {id: Periode dari}, hidden: true, compute: payroll_run.period_from}
+  - {name: run_period_to, type: date, label: {id: Periode sampai}, hidden: true, compute: payroll_run.period_to}
+  - name: worker
+    type: link
+    to: worker
+    label: {id: Tenaga kerja}
+    compute: profile.worker
+    in_list: true
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+    compute: payroll_run.project
+  - name: timesheet
+    type: link
+    to: timesheet
+    label: {id: Rekap absensi}
+  - {name: tax_year, type: int, label: {id: Tahun pajak}, default: payroll_run.tax_year}
+  - {name: tax_month, type: int, label: {id: Bulan pajak}, default: payroll_run.tax_month}
+  # December, or the month the worker leaves: PPh 21 is recomputed for the year (Pasal 17).
+  - name: last_month
+    type: check
+    label: {id: Masa pajak terakhir (Desember atau keluar)}
+    default: payroll_run.tax_month == 12
+  # Inputs, copied when the slip is made so a later change of the profile or the worker does not change a slip.
+  - name: pay_basis
+    type: select
+    label: {id: Dasar gaji}
+    default: profile.pay_basis
+    options:
+      - {value: daily, label: {id: Harian}}
+      - {value: monthly, label: {id: Bulanan}}
+  - {name: days, type: float, label: {id: Hari hadir}, default: '0', in_list: true}
+  - {name: day_rate, type: currency, label: {id: Upah per hari}, default: profile.worker.cost_day_rate}
+  - {name: monthly_salary, type: currency, label: {id: Gaji pokok per bulan}, default: profile.monthly_salary}
+  - {name: fixed_allowance, type: currency, label: {id: Tunjangan tetap}, default: profile.fixed_allowance}
+  - {name: daily_allowance, type: currency, label: {id: Tunjangan per hari hadir}, default: profile.daily_allowance}
+  - {name: overtime_hours, type: float, label: {id: Jam lembur}, default: '0'}
+  # Days with overtime: the first hour of each is paid 1,5x, the rest 2x (PP 35/2021, working days), when no weighted
+  # overtime rate is set.
+  - {name: overtime_days, type: float, label: {id: Hari ada lembur}, default: '0'}
+  - {name: overtime_rate, type: currency, label: {id: Upah lembur per jam (sudah ditimbang)}, default: profile.worker.overtime_cost_rate}
+  # THR: months of service (12 or more = one month's wage, fewer = pro rata; under 1 = none). 0 = no THR this month.
+  - {name: thr_tenure_months, type: float, label: {id: Masa kerja untuk THR (bulan)}, default: '0'}
+  - {name: other_income, type: currency, label: {id: Insentif lain}, default: '0'}
+  - {name: other_deduction, type: currency, label: {id: Potongan lain (kasbon)}, default: '0'}
+  - name: ptkp_status
+    type: select
+    label: {id: Status PTKP}
+    default: profile.ptkp_status
+    options:
+      - {value: tk0, label: {id: TK/0}}
+      - {value: tk1, label: {id: TK/1}}
+      - {value: tk2, label: {id: TK/2}}
+      - {value: tk3, label: {id: TK/3}}
+      - {value: k0, label: {id: K/0}}
+      - {value: k1, label: {id: K/1}}
+      - {value: k2, label: {id: K/2}}
+      - {value: k3, label: {id: K/3}}
+  - {name: has_tax_id, type: check, label: {id: Punya NIK/NPWP valid}, default: profile.has_tax_id}
+  - {name: bpjs_tk, type: check, label: {id: BPJS Ketenagakerjaan}, default: profile.bpjs_tk}
+  - {name: bpjs_jp, type: check, label: {id: Jaminan Pensiun}, default: profile.bpjs_jp}
+  - {name: bpjs_kes, type: check, label: {id: BPJS Kesehatan}, default: profile.bpjs_kes}
+  # The recap's own labour cost, already on the project ledger (project_labor_on_submit): the run books only the rest.
+  - {name: timesheet_cost, type: currency, label: {id: Biaya sudah dibukukan absensi}, compute: "timesheet != '' ? timesheet.cost_amount : 0"}
+  # Year to date (earlier submitted slips of this worker and tax year), filled by payslip_ytd_on_create.
+  - {name: ytd_gross, type: currency, label: {id: Bruto sebelumnya tahun ini}, default: '0', read_only: true}
+  - {name: ytd_pph21, type: currency, label: {id: PPh 21 sebelumnya tahun ini}, default: '0', read_only: true}
+  - {name: ytd_pension, type: currency, label: {id: JHT + JP pekerja sebelumnya}, default: '0', read_only: true}
+  - {name: ytd_months, type: int, label: {id: Bulan sebelumnya tahun ini}, default: '0', read_only: true}
+  # Pay.
+  - name: base_pay
+    type: currency
+    label: {id: Gaji pokok}
+    compute: "pay_basis == 'monthly' ? monthly_salary : round(days * day_rate)"
+  # Upah sebulan (pokok + tunjangan tetap) for the hourly overtime wage and THR; a daily worker's month is 25 days
+  # (6-day week) or 21 (5-day week).
+  - name: month_wage
+    type: currency
+    label: {id: Upah sebulan}
+    hidden: true
+    compute: "(pay_basis == 'monthly' ? monthly_salary : day_rate * (payroll_run.workdays_per_week == 5 ? 21 : 25)) + fixed_allowance"
+  - name: overtime_pay
+    type: currency
+    label: {id: Lembur}
+    compute: "overtime_rate > 0 ? round(overtime_hours * overtime_rate) : round(month_wage * 1.0 / 173 * (1.5 * (overtime_days < overtime_hours ? overtime_days : overtime_hours) + 2.0 * (overtime_hours - (overtime_days < overtime_hours ? overtime_days : overtime_hours))))"
+  - name: allowance_pay
+    type: currency
+    label: {id: Tunjangan}
+    compute: "fixed_allowance + round(days * daily_allowance)"
+  - name: thr_pay
+    type: currency
+    label: {id: THR}
+    compute: "thr_tenure_months >= 1 ? round(month_wage * 1.0 * (thr_tenure_months < 12 ? thr_tenure_months : 12) / 12) : 0"
+  - name: cash_gross
+    type: currency
+    label: {id: 'Penghasilan (gaji, tunjangan, lembur, THR)'}
+    compute: base_pay + overtime_pay + allowance_pay + thr_pay + other_income
+    in_list: true
+  # BPJS wage: pokok + tunjangan tetap, never below the UMK of the site.
+  - name: bpjs_base
+    type: currency
+    label: {id: Dasar upah BPJS}
+    compute: "base_pay + fixed_allowance > payroll_run.umk ? base_pay + fixed_allowance : payroll_run.umk"
+  - name: below_umk
+    type: check
+    label: {id: Upah di bawah UMK}
+    compute: "(pay_basis == 'monthly' ? monthly_salary : day_rate * (payroll_run.workdays_per_week == 5 ? 21 : 25)) < payroll_run.umk"
+  - {name: jkk, type: currency, label: {id: JKK (perusahaan)}, compute: "bpjs_tk ? round(bpjs_base * payroll_run.jkk_rate / 100) : 0"}
+  - {name: jkm, type: currency, label: {id: JKM (perusahaan)}, compute: "bpjs_tk ? round(bpjs_base * 0.3 / 100) : 0"}
+  - {name: jht_employer, type: currency, label: {id: 'JHT 3,7% (perusahaan)'}, compute: "bpjs_tk ? round(bpjs_base * 3.7 / 100) : 0"}
+  - {name: jht_employee, type: currency, label: {id: JHT 2% (pekerja)}, compute: "bpjs_tk ? round(bpjs_base * 2.0 / 100) : 0"}
+  - {name: jp_employer, type: currency, label: {id: JP 2% (perusahaan)}, compute: "bpjs_tk && bpjs_jp ? round((bpjs_base < payroll_run.jp_wage_cap ? bpjs_base : payroll_run.jp_wage_cap) * 2.0 / 100) : 0"}
+  - {name: jp_employee, type: currency, label: {id: JP 1% (pekerja)}, compute: "bpjs_tk && bpjs_jp ? round((bpjs_base < payroll_run.jp_wage_cap ? bpjs_base : payroll_run.jp_wage_cap) * 1.0 / 100) : 0"}
+  - {name: kes_employer, type: currency, label: {id: BPJS Kesehatan 4% (perusahaan)}, compute: "bpjs_kes ? round((bpjs_base < payroll_run.kes_wage_cap ? bpjs_base : payroll_run.kes_wage_cap) * 4.0 / 100) : 0"}
+  - {name: kes_employee, type: currency, label: {id: BPJS Kesehatan 1% (pekerja)}, compute: "bpjs_kes ? round((bpjs_base < payroll_run.kes_wage_cap ? bpjs_base : payroll_run.kes_wage_cap) * 1.0 / 100) : 0"}
+  # PPh 21. Gross includes the premiums the employer pays for the worker: JKK, JKM, BPJS Kesehatan 4% (not JHT, JP).
+  - name: gross_taxable
+    type: currency
+    label: {id: Bruto PPh 21}
+    compute: cash_gross + jkk + jkm + kes_employer
+  - name: ter_category
+    type: data
+    label: {id: Kategori TER}
+    compute: "ptkp_status == 'k3' ? 'C' : (ptkp_status in ['tk2', 'tk3', 'k1', 'k2'] ? 'B' : 'A')"
+  # TER in basis points of a percent (25 = 0,25%): the PP 58/2023 tables as [upper bound, step to the next rate], summed
+  # over the bounds the gross is above. Replace the three lists when the table changes.
+  - name: ter_bp
+    type: int
+    label: {id: TER (per sepuluh ribu)}
+    compute: >-
+      ter_category == 'A' ? [[5400000, 25], [5650000, 25], [5950000, 25], [6300000, 25], [6750000, 25], [7500000, 25], [8550000, 25], [9650000, 25], [10050000, 25], [10350000, 25], [10700000, 50], [11050000, 50], [11600000, 50], [12500000, 100], [13750000, 100], [15100000, 100], [16950000, 100], [19750000, 100], [24150000, 100], [26450000, 100], [28000000, 100], [30050000, 100], [32400000, 100], [35400000, 100], [39100000, 100], [43850000, 100], [47800000, 100], [51400000, 100], [56300000, 100], [62200000, 100], [68600000, 100], [77500000, 100], [89000000, 100], [103000000, 100], [125000000, 100], [157000000, 100], [206000000, 100], [337000000, 100], [454000000, 100], [550000000, 100], [695000000, 100], [910000000, 100], [1400000000, 100]].map(b, gross_taxable > b[0] ? b[1] : 0).sum()
+      : (ter_category == 'B' ? [[6200000, 25], [6500000, 25], [6850000, 25], [7300000, 25], [9200000, 50], [10750000, 50], [11250000, 50], [11600000, 50], [12600000, 100], [13600000, 100], [14950000, 100], [16400000, 100], [18450000, 100], [21850000, 100], [26000000, 100], [27700000, 100], [29350000, 100], [31450000, 100], [33950000, 100], [37100000, 100], [41100000, 100], [45800000, 100], [49500000, 100], [53800000, 100], [58500000, 100], [64000000, 100], [71000000, 100], [80000000, 100], [93000000, 100], [109000000, 100], [129000000, 100], [163000000, 100], [211000000, 100], [374000000, 100], [459000000, 100], [555000000, 100], [704000000, 100], [957000000, 100], [1405000000, 100]].map(b, gross_taxable > b[0] ? b[1] : 0).sum()
+      : [[6600000, 25], [6950000, 25], [7350000, 25], [7800000, 25], [8850000, 25], [9800000, 25], [10950000, 25], [11200000, 25], [12050000, 100], [12950000, 100], [14150000, 100], [15550000, 100], [17050000, 100], [19500000, 100], [22700000, 100], [26600000, 100], [28100000, 100], [30100000, 100], [32600000, 100], [35400000, 100], [38900000, 100], [43000000, 100], [47400000, 100], [51200000, 100], [55800000, 100], [60400000, 100], [66700000, 100], [74500000, 100], [83200000, 100], [95600000, 100], [110000000, 100], [134000000, 100], [169000000, 100], [221000000, 100], [390000000, 100], [463000000, 100], [561000000, 100], [709000000, 100], [965000000, 100], [1419000000, 100]].map(b, gross_taxable > b[0] ? b[1] : 0).sum())
+  # Truncated to the rupiah: round(x - 0.5) is the floor of a non-negative x made by one division of whole numbers
+  # (the validators know no floor or int).
+  - name: ter_pph21
+    type: currency
+    label: {id: PPh 21 TER bulan ini}
+    hidden: true
+    compute: "round(gross_taxable * ter_bp * (has_tax_id ? 100 : 120) / 1000000.0 - 0.5)"
+  # Annual recomputation (last_month).
+  - name: ptkp
+    type: currency
+    label: {id: PTKP setahun}
+    compute: "54000000 + (ptkp_status.startsWith('k') ? 4500000 : 0) + (ptkp_status.endsWith('1') ? 4500000 : (ptkp_status.endsWith('2') ? 9000000 : (ptkp_status.endsWith('3') ? 13500000 : 0)))"
+  - {name: year_gross, type: currency, label: {id: Bruto setahun}, compute: ytd_gross + gross_taxable}
+  # Biaya jabatan 5%, at most 500.000 per month worked (6.000.000 a year).
+  - name: job_cost
+    type: currency
+    label: {id: Biaya jabatan setahun}
+    compute: "round(year_gross * 5 / 100.0 - 0.5) < 500000 * (ytd_months + 1) ? round(year_gross * 5 / 100.0 - 0.5) : 500000 * (ytd_months + 1)"
+  - name: year_net
+    type: currency
+    label: {id: Neto setahun}
+    compute: year_gross - job_cost - ytd_pension - jht_employee - jp_employee
+  # Rounded down to thousands.
+  - name: year_pkp
+    type: currency
+    label: {id: PKP setahun}
+    compute: "year_net > ptkp ? round((year_net - ptkp) / 1000.0 - 0.5) * 1000 : 0"
+  # Pasal 17 layers 5/15/25/30/35% on PKP (a multiple of 1.000, so every layer is whole rupiah), x 120% without a tax
+  # number, truncated to the rupiah.
+  - name: year_pph21
+    type: currency
+    label: {id: PPh 21 setahun (Pasal 17)}
+    compute: >-
+      round(((year_pkp > 60000000 ? 60000000 : year_pkp) * 5
+      + (year_pkp > 250000000 ? 190000000 : (year_pkp > 60000000 ? year_pkp - 60000000 : 0)) * 15
+      + (year_pkp > 500000000 ? 250000000 : (year_pkp > 250000000 ? year_pkp - 250000000 : 0)) * 25
+      + (year_pkp > 5000000000 ? 4500000000 : (year_pkp > 500000000 ? year_pkp - 500000000 : 0)) * 30
+      + (year_pkp > 5000000000 ? year_pkp - 5000000000 : 0) * 35) * (has_tax_id ? 100 : 120) / 10000.0 - 0.5)
+  # Negative on a last slip = over-withheld this year, paid back to the worker on this slip.
+  - name: pph21
+    type: currency
+    label: {id: PPh 21 dipotong}
+    compute: "last_month ? year_pph21 - ytd_pph21 : ter_pph21"
+  - name: employee_bpjs
+    type: currency
+    label: {id: BPJS dipotong dari pekerja}
+    compute: jht_employee + jp_employee + kes_employee
+  - name: employer_bpjs
+    type: currency
+    label: {id: BPJS dibayar perusahaan}
+    compute: jkk + jkm + jht_employer + jp_employer + kes_employer
+  - name: net_pay
+    type: currency
+    label: {id: Gaji bersih}
+    compute: cash_gross - employee_bpjs - pph21 - other_deduction
+    in_list: true
+  - name: employer_cost
+    type: currency
+    label: {id: Biaya perusahaan}
+    compute: cash_gross + employer_bpjs
+  - {name: deposit_bpjs_tk, type: currency, label: {id: Setoran BPJS TK}, compute: jkk + jkm + jht_employer + jht_employee + jp_employer + jp_employee}
+  - {name: deposit_bpjs_kes, type: currency, label: {id: Setoran BPJS Kesehatan}, compute: kes_employer + kes_employee}
+rules:
+  - name: run_open
+    on: submit
+    check: "!payroll_run.closed"
+    message: {id: 'Periode gaji sudah ditutup; slip baru masuk periode yang masih terbuka'}
+  - name: inputs_not_negative
+    on: save
+    check: >-
+      days >= 0 && days <= 31 && day_rate >= 0 && monthly_salary >= 0 && fixed_allowance >= 0 && daily_allowance >= 0
+      && overtime_hours >= 0 && overtime_hours <= 744 && overtime_days >= 0 && overtime_days <= days + 0.0001 && overtime_rate >= 0
+      && thr_tenure_months >= 0 && other_income >= 0 && other_deduction >= 0
+    message: {id: 'Hari 0 sampai 31, hari lembur tidak melebihi hari hadir, angka tidak boleh negatif'}
+  - name: pay_entered
+    on: submit
+    check: "pay_basis == 'monthly' ? monthly_salary > 0 : (days > 0 && day_rate > 0)"
+    message: {id: 'Slip butuh hari hadir dan upah per hari (harian) atau gaji pokok (bulanan)'}
+  - name: same_project
+    on: save
+    check: timesheet == '' || (timesheet.project == payroll_run.project && timesheet.worker == profile.worker && timesheet.docstatus == 1)
+    message: {id: 'Rekap absensi harus milik pekerja dan proyek periode ini, dan sudah diajukan'}
+  - name: same_tax_month
+    on: save
+    check: tax_year == payroll_run.tax_year && tax_month == payroll_run.tax_month
+    message: {id: 'Tahun dan bulan pajak slip harus sama dengan periode gajinya'}
+  - name: net_not_negative
+    on: submit
+    check: net_pay >= 0
+    message: {id: 'Gaji bersih minus: kurangi potongan lain'}
+  - name: umk_warning
+    on: submit
+    level: warn
+    check: "!below_umk"
+    message: {id: 'Upah di bawah UMK lokasi kerja'}
+views:
+  list:
+    columns: [name, payroll_run, worker, days, cash_gross, pph21, net_pay, status]
+    filters: [payroll_run, worker]
+  form:
+    layout:
+      - section: {id: Slip}
+        columns:
+          - [payroll_run, profile, worker, timesheet]
+          - [tax_year, tax_month, last_month, ptkp_status, has_tax_id]
+      - section: {id: Kehadiran dan upah}
+        columns:
+          - [pay_basis, days, day_rate, monthly_salary, fixed_allowance, daily_allowance]
+          - [overtime_hours, overtime_days, overtime_rate, thr_tenure_months, other_income, other_deduction]
+      - section: {id: Penghasilan}
+        columns:
+          - [base_pay, overtime_pay, allowance_pay]
+          - [thr_pay, cash_gross]
+      - section: {id: BPJS}
+        columns:
+          - [bpjs_base, jkk, jkm, jht_employer, jp_employer, kes_employer, employer_bpjs]
+          - [bpjs_tk, bpjs_jp, bpjs_kes, jht_employee, jp_employee, kes_employee, employee_bpjs]
+      - section: {id: PPh 21}
+        columns:
+          - [gross_taxable, ter_category, ter_bp, pph21]
+          - [ytd_gross, ytd_pph21, year_gross, job_cost, year_net, year_pkp, year_pph21]
+      - section: {id: Bersih}
+        columns:
+          - [net_pay, employer_cost]
+          - [below_umk, timesheet_cost]

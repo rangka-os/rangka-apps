@@ -28,11 +28,12 @@ widgets:
   - name: cogs_total
     type: number
     label: {id: Harga pokok}
-    model: outlet_sales
+    description: {id: 'Dikurangi bahan yang kembali ke stok lewat Retur ke stok'}
+    model: stock_move
     aggregate: sum
-    field: cogs_total
-    filter: docstatus == 1
-    period: date
+    field: sold_cost
+    filter: "voucher_type == 'outlet_sales' || voucher_type == 'outlet_return'"
+    period: posting_date
     compact: true
     span: 3
   - name: negative_total
@@ -75,12 +76,12 @@ widgets:
     type: chart
     chart: bar
     label: {id: Harga pokok per bulan}
-    model: outlet_sales
-    group_by: date
+    model: stock_move
+    group_by: posting_date
     grain: month
     aggregate: sum
-    field: cogs_total
-    filter: docstatus == 1
+    field: sold_cost
+    filter: "voucher_type == 'outlet_sales' || voucher_type == 'outlet_return'"
     span: 6
   - name: net_by_outlet
     type: chart
@@ -98,12 +99,12 @@ widgets:
     type: chart
     chart: bar
     label: {id: Harga pokok per outlet}
-    model: outlet_sales
+    model: stock_move
     group_by: outlet
     aggregate: sum
-    field: cogs_total
-    filter: docstatus == 1
-    period: date
+    field: sold_cost
+    filter: "voucher_type == 'outlet_sales' || voucher_type == 'outlet_return'"
+    period: posting_date
     sort: -value
     span: 6
   - name: waste_by_outlet
