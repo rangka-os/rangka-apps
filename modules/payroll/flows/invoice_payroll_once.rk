@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: invoice_payroll_once
+label: {id: Satu faktur klien per periode gaji}
+# An invoice carrying a payroll run's tag ([PAY-...]) is submitted only while that run is closed, by the close named
+# in it ((TPG-...)), and when no other submitted invoice carries the tag. An amended copy of a cancelled invoice keeps
+# the old close's number, so it cannot bill the run a second time.
+on: sales_invoice.submitted
+if: event.notes.contains('[PAY-')
+steps:
+  - find: payroll_run
+    where: project == event.project && event.notes.contains('[' + name + ']')
+    as: run
+  - find: sales_invoice
+    where: run != null && name != event.name && docstatus == 1 && notes.contains('[' + run.name + ']')
+    as: twin
+  - if: run == null || !run.closed || !event.notes.contains('(' + run.closed_by + ')') || twin != null
+    create: payroll_guard
+    set:
+      reason: "'invoice_twice'"
+      document: event.name

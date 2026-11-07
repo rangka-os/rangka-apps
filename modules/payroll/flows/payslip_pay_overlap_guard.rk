@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payslip_pay_overlap_guard
+label: {id: Hari kerja yang sama tidak dibayar dua kali}
+# A worker's submitted slip of another run (any project) whose period shares a day with this one's: the same days would
+# be paid twice. Checked on the worker, not the profile, since a profile's worker can be changed.
+on: payslip.submitted
+steps:
+  - find: payslip
+    where: worker == event.worker && name != event.name && docstatus == 1 && payroll_run != event.payroll_run && run_period_from <= event.run_period_to && run_period_to >= event.run_period_from
+    as: other
+  - if: other != null
+    create: payroll_guard
+    set:
+      reason: "'pay_overlap'"
+      document: other.name

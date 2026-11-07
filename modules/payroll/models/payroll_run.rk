@@ -1,0 +1,220 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: payroll_run
+label: {id: Periode gaji, en: Payroll run}
+icon: calendar
+naming: PAY-{YYYY}-{####}
+title_field: project
+# One client contract (project) for one cut-off period. Create it before the attendance recaps are submitted: each
+# submitted recap of a worker with a payroll profile becomes a draft payslip of this run (flow payslip_from_recap).
+# The totals are kept by the flows of payslip submit and cancel. The run is not itself submitted: slips link to it, and
+# a submit would rename a DRAFT- record without its links following. It is closed by submitting a payroll_close
+# (Tutup periode gaji), which freezes the totals, books the extra employer cost on the project margin and makes the
+# client invoice; `closed` is set and cleared by that document's flows. The rates and wage caps are fields because they
+# change (JP cap every March, UMK every January, JKK per site risk).
+permissions:
+  # No delete: slips, the close and the margin row point at the run.
+  - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
+  - {role: project_admin, read: true}
+fields:
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek (kontrak klien)}
+    required: true
+    in_list: true
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Klien}
+    default: project.customer
+    read_only: true
+  - name: period_from
+    type: date
+    label: {id: Periode dari}
+    required: true
+    in_list: true
+  - name: period_to
+    type: date
+    label: {id: Periode sampai}
+    required: true
+    in_list: true
+  # The tax month is the month the pay is paid (masa pajak), not the cut-off period.
+  - name: tax_year
+    type: int
+    label: {id: Tahun pajak}
+    required: true
+  - name: tax_month
+    type: int
+    label: {id: Bulan pajak (1-12)}
+    required: true
+  - name: pay_date
+    type: date
+    label: {id: Tanggal bayar gaji}
+  - name: umk
+    type: currency
+    label: {id: UMK lokasi kerja}
+    required: true
+  - name: workdays_per_week
+    type: int
+    label: {id: Hari kerja per minggu}
+    default: '6'
+  - name: jkk_rate
+    type: percent
+    label: {id: Tarif JKK (risiko lokasi)}
+    default: '0.24'
+  - name: jp_wage_cap
+    type: currency
+    label: {id: Batas upah Jaminan Pensiun}
+    default: '11086300'
+  - name: kes_wage_cap
+    type: currency
+    label: {id: Batas upah BPJS Kesehatan}
+    default: '12000000'
+  # Client billing.
+  - name: billing_mode
+    type: select
+    label: {id: Cara tagih klien}
+    required: true
+    default: "'wages_plus_fee'"
+    options:
+      - {value: wages_plus_fee, label: {id: Gaji + BPJS + fee}}
+      - {value: fee_only, label: {id: Fee saja}}
+      - {value: none, label: {id: Tidak ditagih dari periode ini}}
+  - name: fee_mode
+    type: select
+    label: {id: Fee}
+    default: "'percent'"
+    options:
+      - {value: percent, label: {id: Persen dari biaya tenaga kerja}}
+      - {value: flat, label: {id: Flat per pekerja per bulan}}
+  - name: fee_percent
+    type: percent
+    label: {id: Fee persen}
+    default: '0'
+    depends_on: fee_mode == 'percent'
+  - name: fee_per_worker
+    type: currency
+    label: {id: Fee per pekerja}
+    default: '0'
+    depends_on: fee_mode == 'flat'
+  - name: wage_item
+    type: link
+    to: item
+    label: {id: Barang/jasa untuk baris gaji}
+  - name: bpjs_item
+    type: link
+    to: item
+    label: {id: Barang/jasa untuk baris BPJS}
+  - name: fee_item
+    type: link
+    to: item
+    label: {id: Barang/jasa untuk baris fee}
+  - name: invoice_date
+    type: date
+    label: {id: Tanggal faktur klien}
+  - name: pph23_applies
+    type: check
+    label: {id: Klien memotong PPh 23}
+    default: 'true'
+  - {name: closed, type: check, label: {id: Sudah ditutup}, default: 'false', read_only: true, in_list: true}
+  # Locks (written by the flows): once a slip is submitted the run's rates, period, tax month and project are those of
+  # the slips (lock_slip, the first submitted slip, stores copies); once closed, everything the close froze must stay
+  # (closed_by). Cleared when the last slip is cancelled or the close is cancelled.
+  - {name: lock_slip, type: link, to: payslip, label: {id: Slip pengunci}, hidden: true, read_only: true}
+  - {name: closed_by, type: link, to: payroll_close, label: {id: Ditutup oleh}, read_only: true}
+  # Tax month as text (YYYY-MM) and the month before, for the period rule.
+  - name: tax_ym
+    type: data
+    label: {id: Masa pajak}
+    hidden: true
+    compute: "truncate(tax_year, 4) + '-' + (tax_month < 10 ? '0' : '') + truncate(tax_month, 2)"
+  - name: tax_prev_ym
+    type: data
+    label: {id: Masa pajak sebelumnya}
+    hidden: true
+    compute: "tax_month == 1 ? truncate(tax_year - 1, 4) + '-12' : truncate(tax_year, 4) + '-' + (tax_month < 11 ? '0' : '') + truncate(tax_month - 1, 2)"
+  # One run per project and start of period.
+  - name: run_key
+    type: data
+    label: {id: Kunci periode}
+    hidden: true
+    unique: true
+    compute: "project + ':' + period_from"
+  # Totals of the submitted payslips (flows payroll_totals_on_payslip_*). Not typed by anyone.
+  - {name: headcount, type: int, label: {id: Jumlah pekerja}, default: '0', read_only: true, in_list: true}
+  - {name: total_cash_gross, type: currency, label: {id: 'Gaji, tunjangan, lembur, THR'}, default: '0', read_only: true}
+  - {name: total_employer_bpjs, type: currency, label: {id: BPJS bagian perusahaan}, default: '0', read_only: true}
+  - {name: total_employee_bpjs, type: currency, label: {id: BPJS bagian pekerja}, default: '0', read_only: true}
+  - {name: total_pph21, type: currency, label: {id: PPh 21 dipotong}, default: '0', read_only: true}
+  - {name: total_net_pay, type: currency, label: {id: Gaji bersih ditransfer}, default: '0', read_only: true, in_list: true}
+  - {name: total_employer_cost, type: currency, label: {id: Biaya perusahaan}, default: '0', read_only: true}
+  - {name: total_timesheet_cost, type: currency, label: {id: Biaya sudah dari absensi}, default: '0', read_only: true}
+  - {name: total_other_deduction, type: currency, label: {id: Potongan lain (kasbon)}, default: '0', read_only: true}
+  - {name: deposit_bpjs_tk, type: currency, label: {id: Setoran BPJS Ketenagakerjaan}, default: '0', read_only: true}
+  - {name: deposit_bpjs_kes, type: currency, label: {id: Setoran BPJS Kesehatan}, default: '0', read_only: true}
+  - name: fee_amount
+    type: currency
+    label: {id: Management fee}
+    compute: "billing_mode == 'none' ? 0 : (fee_mode == 'flat' ? fee_per_worker * headcount : round(total_employer_cost * fee_percent / 100))"
+  # What the margin still lacks after the recaps booked days x pay + overtime: allowances, THR, employer BPJS.
+  - name: extra_cost
+    type: currency
+    label: {id: Biaya tambahan ke untung proyek}
+    compute: total_employer_cost - total_timesheet_cost
+rules:
+  - name: period_order
+    on: save
+    check: period_to >= period_from && period_to < period_from + duration(31)
+    message: {id: 'Periode gaji: sampai tanggal tidak boleh sebelum tanggal mulai, paling lama 31 hari'}
+  - name: tax_month_range
+    on: save
+    check: tax_month >= 1 && tax_month <= 12 && tax_year >= 2024 && tax_year <= 2100
+    message: {id: 'Bulan pajak 1 sampai 12, tahun pajak mulai 2024 (TER)'}
+  - name: rates_range
+    on: save
+    check: umk > 0 && jkk_rate >= 0.24 && jkk_rate <= 1.74 && jp_wage_cap > 0 && kes_wage_cap > 0 && (workdays_per_week == 5 || workdays_per_week == 6) && fee_percent >= 0 && fee_per_worker >= 0
+    message: {id: 'Isi UMK; JKK 0,24 sampai 1,74 persen; batas upah lebih dari 0; hari kerja 5 atau 6; fee tidak negatif'}
+  # Pay of a period is paid (and taxed) in the month it ends or the month after: the tax month follows the period, so the
+  # same days cannot be put into two tax months.
+  - name: tax_month_follows_period
+    on: save
+    check: period_to.startsWith(tax_ym) || period_to.startsWith(tax_prev_ym)
+    message: {id: 'Bulan pajak harus bulan akhir periode atau bulan sesudahnya'}
+  - name: locked_by_slips
+    on: save
+    check: >-
+      lock_slip == '' || (lock_slip.project == project && lock_slip.tax_year == tax_year && lock_slip.tax_month == tax_month
+        && lock_slip.run_umk == umk && lock_slip.run_jkk_rate == jkk_rate && lock_slip.run_jp_cap == jp_wage_cap
+        && lock_slip.run_kes_cap == kes_wage_cap && lock_slip.run_workdays == workdays_per_week
+        && lock_slip.run_period_from == period_from && lock_slip.run_period_to == period_to)
+    message: {id: 'Periode sudah punya slip diajukan: proyek, periode, bulan pajak, UMK dan tarif terkunci'}
+  - name: locked_by_close
+    on: save
+    check: >-
+      !closed || (closed_by != '' && closed_by.billing_mode == billing_mode && closed_by.fee_amount == fee_amount
+        && closed_by.wage_item == wage_item && closed_by.bpjs_item == bpjs_item && closed_by.fee_item == fee_item
+        && closed_by.invoice_date == invoice_date && closed_by.pph23_applies == pph23_applies && closed_by.headcount == headcount
+        && closed_by.total_employer_cost == total_employer_cost)
+    message: {id: 'Periode gaji sudah ditutup: batalkan dokumen tutup periodenya dulu untuk mengubahnya'}
+views:
+  list:
+    columns: [name, project, period_from, period_to, headcount, total_net_pay, closed]
+    sort: -period_from
+  form:
+    layout:
+      - section: {id: Periode}
+        columns:
+          - [project, customer, period_from, period_to, closed]
+          - [tax_year, tax_month, pay_date]
+      - section: {id: Tarif dan batas}
+        columns:
+          - [umk, workdays_per_week, jkk_rate]
+          - [jp_wage_cap, kes_wage_cap]
+      - section: {id: Tagihan klien}
+        columns:
+          - [billing_mode, fee_mode, fee_percent, fee_per_worker, pph23_applies]
+          - [wage_item, bpjs_item, fee_item, invoice_date]
+      - section: {id: Ringkasan}
+        columns:
+          - [headcount, total_cash_gross, total_employer_bpjs, total_employee_bpjs, total_pph21, total_other_deduction, total_net_pay]
+          - [total_employer_cost, total_timesheet_cost, extra_cost, deposit_bpjs_tk, deposit_bpjs_kes, fee_amount]
