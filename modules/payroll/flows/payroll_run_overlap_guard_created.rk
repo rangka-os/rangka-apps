@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payroll_run_overlap_guard_created
+label: {id: Periode gaji satu proyek tidak tumpang tindih}
+# Two runs of one project over the same days would pay the same attendance twice.
+on: payroll_run.created
+steps:
+  - find: payroll_run
+    where: project == event.project && name != event.name && period_from <= event.period_to && period_to >= event.period_from
+    as: other
+  - if: other != null
+    create: payroll_guard
+    set:
+      reason: "'overlap'"
+      document: other.name

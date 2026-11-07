@@ -1,0 +1,80 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: payroll_close
+label: {id: Tutup periode gaji, en: Payroll close}
+icon: check
+is_submittable: true
+naming: TPG-{YYYY}-{####}
+title_field: payroll_run
+# Closing a payroll run. Its amounts are copied from the run when it is saved and frozen by the submit; the submit
+# closes the run (no slip can then be submitted into it or cancelled out of it), books the employer cost the recaps
+# did not book on the project margin, and makes the client invoice as a draft (payroll_close_on_submit). Cancelling
+# it reopens the run and reverses the margin row; it is refused while the client invoice is submitted.
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: project_admin, read: true}
+fields:
+  - name: payroll_run
+    type: link
+    to: payroll_run
+    label: {id: Periode gaji}
+    required: true
+    in_list: true
+  - {name: project, type: link, to: project, label: {id: Proyek}, compute: payroll_run.project, in_list: true}
+  - {name: customer, type: link, to: customer, label: {id: Klien}, compute: payroll_run.customer}
+  - {name: period_from, type: date, label: {id: Periode dari}, compute: payroll_run.period_from}
+  - {name: period_to, type: date, label: {id: Periode sampai}, compute: payroll_run.period_to, in_list: true}
+  - {name: billing_mode, type: data, label: {id: Cara tagih klien}, compute: payroll_run.billing_mode}
+  - {name: wage_item, type: link, to: item, label: {id: Baris gaji}, compute: payroll_run.wage_item}
+  - {name: bpjs_item, type: link, to: item, label: {id: Baris BPJS}, compute: payroll_run.bpjs_item}
+  - {name: fee_item, type: link, to: item, label: {id: Baris fee}, compute: payroll_run.fee_item}
+  - {name: invoice_date, type: date, label: {id: Tanggal faktur klien}, compute: payroll_run.invoice_date}
+  - {name: pph23_applies, type: check, label: {id: Klien memotong PPh 23}, compute: payroll_run.pph23_applies}
+  - {name: headcount, type: int, label: {id: Jumlah pekerja}, compute: payroll_run.headcount, in_list: true}
+  - {name: total_cash_gross, type: currency, label: {id: 'Gaji, tunjangan, lembur, THR'}, compute: payroll_run.total_cash_gross}
+  - {name: total_employer_bpjs, type: currency, label: {id: BPJS bagian perusahaan}, compute: payroll_run.total_employer_bpjs}
+  - {name: total_employee_bpjs, type: currency, label: {id: BPJS bagian pekerja}, compute: payroll_run.total_employee_bpjs}
+  - {name: total_pph21, type: currency, label: {id: Setoran PPh 21}, compute: payroll_run.total_pph21}
+  - {name: total_net_pay, type: currency, label: {id: Gaji bersih ditransfer}, compute: payroll_run.total_net_pay, in_list: true}
+  - {name: total_employer_cost, type: currency, label: {id: Biaya perusahaan}, compute: payroll_run.total_employer_cost}
+  - {name: total_timesheet_cost, type: currency, label: {id: Biaya sudah dari absensi}, compute: payroll_run.total_timesheet_cost}
+  - {name: total_other_deduction, type: currency, label: {id: Potongan lain (kasbon)}, compute: payroll_run.total_other_deduction}
+  - {name: deposit_bpjs_tk, type: currency, label: {id: Setoran BPJS Ketenagakerjaan}, compute: payroll_run.deposit_bpjs_tk}
+  - {name: deposit_bpjs_kes, type: currency, label: {id: Setoran BPJS Kesehatan}, compute: payroll_run.deposit_bpjs_kes}
+  - {name: fee_amount, type: currency, label: {id: Management fee}, compute: payroll_run.fee_amount}
+  # Margin: wages + fee billed, the employer cost the recaps did not book. Fee only: the client funds the wages outside
+  # the invoice, so the wages are not the firm's cost: the row takes the recaps' labour cost back off the project.
+  - name: extra_cost
+    type: currency
+    label: {id: Biaya tambahan ke untung proyek}
+    compute: "billing_mode == 'fee_only' ? 0 - total_timesheet_cost : payroll_run.extra_cost"
+rules:
+  - name: run_open
+    on: submit
+    check: "!payroll_run.closed"
+    message: {id: 'Periode gaji ini sudah ditutup'}
+  - name: has_payslips
+    on: submit
+    check: headcount > 0
+    message: {id: 'Belum ada slip gaji yang diajukan di periode ini'}
+  # The totals are copied when this document is saved: a slip submitted after that would be missing from them.
+  - name: totals_current
+    on: submit
+    check: headcount == payroll_run.headcount && total_employer_cost == payroll_run.total_employer_cost && total_pph21 == payroll_run.total_pph21
+    message: {id: 'Slip periode ini berubah sejak dokumen ini disimpan; simpan ulang lalu ajukan'}
+  - name: billing_items
+    on: submit
+    check: "billing_mode == 'none' || (fee_item != '' && (billing_mode == 'fee_only' || (wage_item != '' && bpjs_item != '')))"
+    message: {id: 'Pilih barang/jasa untuk baris gaji, BPJS dan fee di faktur klien (di periode gaji)'}
+views:
+  list:
+    columns: [name, payroll_run, project, period_to, headcount, total_net_pay, status]
+  form:
+    layout:
+      - section: {id: Periode}
+        columns:
+          - [payroll_run, project, customer]
+          - [period_from, period_to, billing_mode]
+      - section: {id: Setoran dan biaya}
+        columns:
+          - [headcount, total_cash_gross, total_employee_bpjs, total_other_deduction, total_net_pay, total_pph21]
+          - [total_employer_bpjs, deposit_bpjs_tk, deposit_bpjs_kes, total_employer_cost, total_timesheet_cost, extra_cost, fee_amount]

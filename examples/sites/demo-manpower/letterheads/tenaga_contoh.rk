@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+# Site letterhead. Fictional data.
+legal_name: PT Contoh Tenaga Mandiri
+tagline: Penyedia tenaga kerja
+address: |
+  Jl. Contoh Industri No. 5
+  Karawang 41300
+phone: '+62 267 000 0000'
+email: halo@contohtenaga.test
+website: contohtenaga.test
+bank:
+  - {bank: Bank Contoh, account: '000 000 0009', holder: PT Contoh Tenaga Mandiri, branch: Karawang}
+signatory: {name: Nama Penandatangan, title: Direktur}
+footer: {id: Terima kasih atas kepercayaan kamu}
