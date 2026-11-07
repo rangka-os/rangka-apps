@@ -20,6 +20,7 @@ modules:
   procurement: ^1.0
   payments: ^1.0
   invoicing: ^1.0
+  coretax: ^1.0
   consignment: ^1.0
 dashboards: [ritel_overview, ritel_stock, ritel_tax]
 roles: [head_office, outlet_staff]
@@ -35,6 +36,8 @@ menu:
     items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment]
   - group: {id: Titipan}
     items: [consignment_settlement]
+  - group: {id: Pajak}
+    items: [tax_period]
   - group: {id: Data induk}
     items: [item, item_category, outlet, uom, uom_conversion, vendor]
 onboarding:

@@ -20,6 +20,7 @@ modules:
   procurement: ^1.0
   payments: ^1.0
   invoicing: ^1.0
+  coretax: ^1.0
 dashboards: [produksi_overview, produksi_upah]
 roles: [head_office, outlet_staff]
 home: {dashboard: produksi_overview}
@@ -33,6 +34,8 @@ menu:
     items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
   - group: {id: Pembelian}
     items: [purchase_order, goods_receipt, vendor_bill, payment]
+  - group: {id: Pajak}
+    items: [tax_period]
   - group: {id: Data induk}
     items: [item, item_category, outlet, uom, vendor]
 onboarding:
