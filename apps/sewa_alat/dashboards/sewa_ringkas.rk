@@ -1,0 +1,86 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: sewa_ringkas
+label: {id: Sewa hari ini, en: Rentals today}
+description: {id: 'Alat yang keluar dan kembali hari ini, yang telat, dan jadwal sewa ke depan'}
+default_period: 30
+# Read from rental_schedule (one row per submitted booking, kept current by the flows). Late = still out after its
+# return date. The schedule list is the availability calendar: what is booked or out over the next 30 days.
+widgets:
+  - name: going_out_today
+    type: number
+    label: {id: Jadwal keluar hari ini}
+    model: rental_schedule
+    filter: state == 'booked' && start_date <= today()
+    span: 3
+  - name: back_today
+    type: number
+    label: {id: Harus kembali hari ini}
+    model: rental_schedule
+    filter: state == 'out' && end_date == today()
+    span: 3
+  - name: late
+    type: number
+    label: {id: Telat kembali}
+    model: rental_schedule
+    filter: state == 'out' && end_date < today()
+    good_when: down
+    span: 3
+  - name: deposit_held
+    type: number
+    label: {id: Deposit dipegang}
+    model: rental_schedule
+    aggregate: sum
+    field: deposit
+    filter: state in ['booked', 'out']
+    compact: true
+    span: 3
+  - name: late_list
+    type: list
+    label: {id: Telat kembali}
+    model: rental_schedule
+    filter: state == 'out' && end_date < today()
+    sort: end_date
+    limit: 20
+    columns: [booking, customer, rental_item, qty, end_date]
+    span: 6
+  - name: out_today_list
+    type: list
+    label: {id: Siapkan alat keluar}
+    model: rental_schedule
+    filter: state == 'booked' && start_date <= today()
+    sort: start_date
+    limit: 20
+    columns: [booking, customer, rental_item, qty, start_date]
+    span: 6
+  - name: out_by_item
+    type: chart
+    chart: bar
+    label: {id: Unit sedang di luar per alat}
+    model: rental_schedule
+    group_by: rental_item
+    aggregate: sum
+    field: qty
+    filter: state == 'out'
+    sort: -value
+    limit: 10
+    span: 6
+  - name: booked_by_day
+    type: chart
+    chart: bar
+    label: {id: Unit mulai disewa per tanggal}
+    model: rental_schedule
+    group_by: start_date
+    grain: day
+    aggregate: sum
+    field: qty
+    filter: state in ['booked', 'out'] && start_date >= today() && start_date <= today() + duration(30)
+    span: 6
+  - name: calendar
+    type: list
+    label: {id: Jadwal 30 hari ke depan}
+    model: rental_schedule
+    filter: state in ['booked', 'out'] && start_date <= today() + duration(30) && end_date >= today()
+    sort: start_date
+    limit: 50
+    columns: [rental_item, qty, start_date, end_date, customer, state]
+    span: 12

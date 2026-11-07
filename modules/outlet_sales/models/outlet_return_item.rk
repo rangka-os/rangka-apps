@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: outlet_return_item
+is_child: true
+fields:
+  - {name: item, type: link, to: item, label: {id: Barang}, required: true}
+  - {name: description, type: text, label: {id: Uraian}, default: item.item_name}
+  - {name: qty, type: float, label: {id: Qty kembali ke stok}, help: {id: 'Dalam satuan stok barang, sama dengan baris retur di kasir. Menu dengan resep mengembalikan bahannya'}, default: '1', stock: true}

@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: rental_booking_on_submit
+label: {id: 'Pesanan sewa diajukan: cek unit dan buat jadwal'}
+# Runs inside the booking's submit, as the person submitting it. Reading rental_schedule takes the flow read lock of
+# contract 0025 (org + model), so two bookings submitted at the same moment run one after the other and the second
+# one sees the first one's schedule row. The busiest day of the range is at the start of the range or at the start
+# of an overlapping booking: peak = the most units booked on one of those days. Equipment still out after its end
+# date counts as out until tomorrow. A booking that would need more than the item's units creates a rental_guard
+# (over_capacity), whose rule refuses the whole submit. Then the schedule row and a draft rent invoice (a flow cannot
+# submit) whose notes carry the booking number in ().
+on: rental_booking.submitted
+steps:
+  - {find: rental_item, where: name == event.rental_item, as: ri}
+  - find_all: rental_schedule
+    where: >-
+      rental_item == event.rental_item && state in ['booked', 'out'] && start_date < event.end_date
+      && (state == 'out' && end_date <= today() ? today() + duration(1) : end_date) > event.start_date
+    as: ov
+  - create: rental_guard
+    if: >-
+      (ov.size() == 0 ? 0 : max(ov.map(h, ov.filter(x,
+        x.start_date <= (h.start_date > event.start_date ? h.start_date : event.start_date)
+        && (x.state == 'out' && x.end_date <= today() ? today() + duration(1) : x.end_date) > (h.start_date > event.start_date ? h.start_date : event.start_date)
+      ).map(x, x.qty).sum()))) + event.qty > ri.units
+    set:
+      reason: "'over_capacity'"
+      document: event.name
+  - create: rental_schedule
+    set:
+      booking: event.name
+      customer: event.customer
+      rental_item: event.rental_item
+      qty: event.qty
+      start_date: event.start_date
+      end_date: event.end_date
+      deposit: event.deposit
+      state: "'booked'"
+  - create: sales_invoice
+    if: event.rent_amount > 0
+    set:
+      customer: event.customer
+      posting_date: event.start_date
+      notes: "'Sewa ' + ri.title + ' (' + event.name + ')'"
+      items: >-
+        [{'item': ri.item, 'description': 'Sewa ' + ri.title + ' ' + string(event.qty) + ' unit, ' + event.start_date + ' s.d. ' + event.end_date + ' (' + string(event.days) + ' hari)', 'qty': event.qty * event.days, 'rate': event.daily_rate}]

@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: rental_booking_on_cancel
+label: {id: Pesanan sewa dibatalkan}
+# Only a booking whose equipment has not gone out can be cancelled, and only while its rent invoice is not submitted
+# (cancel that first). The schedule row becomes cancelled, which frees the units. The deposit journal is reversed by
+# gl_rental_booking_reverse (paid back in full).
+on: rental_booking.cancelled
+steps:
+  - {find: rental_schedule, where: booking == event.name, as: s}
+  - {find: sales_invoice, where: "docstatus == 1 && notes.contains('(' + event.name + ')')", as: inv}
+  - create: rental_guard
+    if: s != null && s.state != 'booked'
+    set: {reason: "'in_use'", document: event.name}
+  - create: rental_guard
+    if: inv != null
+    set: {reason: "'invoice_submitted'", document: event.name}
+  - update: s
+    if: s != null
+    set: {state: "'cancelled'"}

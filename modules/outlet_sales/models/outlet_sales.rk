@@ -10,9 +10,9 @@ title_field: date
 # a second submitted record for the same outlet and date when source is form (409 duplicate_sales).
 # A refund from a POS file (Moka, Loyverse, Juragan's template) is its own line (qty < 0, gross 0, refund > 0, net < 0).
 # The kernel posts no stock move for a line with qty <= 0, so the goods of the original sale stay out of stock: a refund
-# lowers net sales and margin, not stock. For a shop that puts returned goods back on the shelf this undervalues stock
-# until the kernel has a return document (draft contract 0021); the retail dashboard shows returned qty per day.
-# That is also what Moka does with base ingredients on a refund. Returning materials to stock needs the kernel.
+# lowers net sales and margin, not stock (what Moka does with base ingredients too). Submitting a sale with refund lines
+# makes its Retur di kasir (pos_refund); goods put back on the shelf, or the materials of a cancelled order that was
+# never cooked, come back with a Retur ke stok (outlet_return, contract 0022) at the cost this sale took them out.
 on_submit: [stock.post_moves]
 on_cancel: [stock.reverse_moves]
 permissions:
@@ -155,7 +155,8 @@ rules:
     message: {id: 'Tanggal ini sudah diimpor sebelum pembaruan: hapus baris yang terulang, lalu centang Baris ganda sudah dihapus'}
 views:
   list:
-    columns: [name, outlet, date, source, status, net_total, cogs_total, margin]
+    # outlet, day and net sales first: they fit a phone screen (P7)
+    columns: [outlet, date, net_total, status, source, margin, cogs_total, name]
     filters: [outlet, source]
     sort: -date
   form:

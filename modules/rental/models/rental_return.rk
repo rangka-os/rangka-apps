@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: rental_return
+label: {id: Alat kembali, en: Rental return}
+icon: undo
+is_submittable: true
+naming: KBL-{YYYY}-{#####}
+title_field: booking
+# The equipment comes back on its actual date. Each day after the booking's end date costs the late fee per unit
+# (copied on the booking); damage is typed in. Both are kept from the deposit, late fee first, and the rest of the
+# deposit is paid back (journal: 2-1400 against 4-9200 Pendapatan denda dan ganti rugi and cash or bank). What the
+# deposit does not cover (extra_due) becomes a draft invoice to the customer. Submitting it moves the schedule from
+# out to returned (flow rental_return_on_submit); cancelling it moves it back, refused once the extra invoice is
+# submitted. The late fee counts at most 60 days; a loss beyond that is charged as damage (Biaya kerusakan atau hilang).
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, export: true, print: true}
+  - {role: finance_manager, read: true, cancel: true, amend: true, export: true, print: true}
+  - {role: head_office, read: true, export: true, print: true}
+fields:
+  - {name: booking, type: link, to: rental_booking, label: {id: Pesanan sewa}, required: true, in_list: true}
+  - {name: customer, type: data, label: {id: Pelanggan}, compute: booking.customer, in_list: true}
+  - {name: rental_item, type: data, label: {id: Alat}, compute: booking.rental_item}
+  - {name: return_date, type: date, label: {id: Tanggal kembali aktual}, required: true, default: today(), in_list: true}
+  - {name: planned_end, type: date, label: {id: Seharusnya kembali}, compute: booking.end_date}
+  - name: late_days
+    type: int
+    label: {id: Telat (hari)}
+    # 60 conditions summed (no date difference in the rule language): days after the planned end, at most 60.
+    compute: >-
+      (booking.end_date + duration(1) <= return_date ? 1 : 0) + (booking.end_date + duration(2) <= return_date ? 1 : 0) + (booking.end_date + duration(3) <= return_date ? 1 : 0) + (booking.end_date + duration(4) <= return_date ? 1 : 0) + (booking.end_date + duration(5) <= return_date ? 1 : 0) + (booking.end_date + duration(6) <= return_date ? 1 : 0) + (booking.end_date + duration(7) <= return_date ? 1 : 0) + (booking.end_date + duration(8) <= return_date ? 1 : 0) + (booking.end_date + duration(9) <= return_date ? 1 : 0) + (booking.end_date + duration(10) <= return_date ? 1 : 0) + (booking.end_date + duration(11) <= return_date ? 1 : 0) + (booking.end_date + duration(12) <= return_date ? 1 : 0) + (booking.end_date + duration(13) <= return_date ? 1 : 0) + (booking.end_date + duration(14) <= return_date ? 1 : 0) + (booking.end_date + duration(15) <= return_date ? 1 : 0) + (booking.end_date + duration(16) <= return_date ? 1 : 0) + (booking.end_date + duration(17) <= return_date ? 1 : 0) + (booking.end_date + duration(18) <= return_date ? 1 : 0) + (booking.end_date + duration(19) <= return_date ? 1 : 0) + (booking.end_date + duration(20) <= return_date ? 1 : 0) + (booking.end_date + duration(21) <= return_date ? 1 : 0) + (booking.end_date + duration(22) <= return_date ? 1 : 0) + (booking.end_date + duration(23) <= return_date ? 1 : 0) + (booking.end_date + duration(24) <= return_date ? 1 : 0) + (booking.end_date + duration(25) <= return_date ? 1 : 0) + (booking.end_date + duration(26) <= return_date ? 1 : 0) + (booking.end_date + duration(27) <= return_date ? 1 : 0) + (booking.end_date + duration(28) <= return_date ? 1 : 0) + (booking.end_date + duration(29) <= return_date ? 1 : 0) + (booking.end_date + duration(30) <= return_date ? 1 : 0) + (booking.end_date + duration(31) <= return_date ? 1 : 0) + (booking.end_date + duration(32) <= return_date ? 1 : 0) + (booking.end_date + duration(33) <= return_date ? 1 : 0) + (booking.end_date + duration(34) <= return_date ? 1 : 0) + (booking.end_date + duration(35) <= return_date ? 1 : 0) + (booking.end_date + duration(36) <= return_date ? 1 : 0) + (booking.end_date + duration(37) <= return_date ? 1 : 0) + (booking.end_date + duration(38) <= return_date ? 1 : 0) + (booking.end_date + duration(39) <= return_date ? 1 : 0) + (booking.end_date + duration(40) <= return_date ? 1 : 0) + (booking.end_date + duration(41) <= return_date ? 1 : 0) + (booking.end_date + duration(42) <= return_date ? 1 : 0) + (booking.end_date + duration(43) <= return_date ? 1 : 0) + (booking.end_date + duration(44) <= return_date ? 1 : 0) + (booking.end_date + duration(45) <= return_date ? 1 : 0) + (booking.end_date + duration(46) <= return_date ? 1 : 0) + (booking.end_date + duration(47) <= return_date ? 1 : 0) + (booking.end_date + duration(48) <= return_date ? 1 : 0) + (booking.end_date + duration(49) <= return_date ? 1 : 0) + (booking.end_date + duration(50) <= return_date ? 1 : 0) + (booking.end_date + duration(51) <= return_date ? 1 : 0) + (booking.end_date + duration(52) <= return_date ? 1 : 0) + (booking.end_date + duration(53) <= return_date ? 1 : 0) + (booking.end_date + duration(54) <= return_date ? 1 : 0) + (booking.end_date + duration(55) <= return_date ? 1 : 0) + (booking.end_date + duration(56) <= return_date ? 1 : 0) + (booking.end_date + duration(57) <= return_date ? 1 : 0) + (booking.end_date + duration(58) <= return_date ? 1 : 0) + (booking.end_date + duration(59) <= return_date ? 1 : 0) + (booking.end_date + duration(60) <= return_date ? 1 : 0)
+    in_list: true
+  - {name: late_fee, type: currency, label: {id: Denda telat}, compute: late_days * booking.qty * booking.late_fee_per_day}
+  - {name: damage_fee, type: currency, label: {id: Biaya kerusakan atau hilang}, default: '0'}
+  - {name: damage_notes, type: text, label: {id: Catatan kerusakan}}
+  - {name: deposit, type: currency, label: {id: Deposit diterima}, compute: booking.deposit}
+  # A PKP business charges PPN on the fee: nothing is kept from the deposit, the whole fee goes on the invoice (finding 3).
+  - {name: deposit_kept, type: check, label: {id: Denda dipotong dari deposit}, compute: '!tax.pkp'}
+  - {name: covered_late, type: currency, label: {id: Denda telat dipotong dari deposit}, compute: "!deposit_kept ? 0 : (late_fee < deposit ? late_fee : deposit)"}
+  - {name: covered_damage, type: currency, label: {id: Kerusakan dipotong dari deposit}, compute: "!deposit_kept ? 0 : (damage_fee < deposit - covered_late ? damage_fee : deposit - covered_late)"}
+  - {name: deposit_refund, type: currency, label: {id: Deposit dikembalikan}, compute: deposit - covered_late - covered_damage, in_list: true}
+  - {name: extra_due, type: currency, label: {id: Kekurangan ditagih}, compute: late_fee + damage_fee - covered_late - covered_damage, in_list: true}
+  - name: refund_method
+    type: select
+    label: {id: Deposit dikembalikan lewat}
+    default: "'cash'"
+    options:
+      - {value: cash, label: {id: Tunai}}
+      - {value: transfer, label: {id: Transfer bank}}
+rules:
+  - name: booking_submitted
+    on: save
+    check: booking.docstatus == 1
+    message: {id: Pesanan sewa belum diajukan atau sudah batal}
+  - name: not_before_start
+    on: save
+    check: return_date >= booking.start_date
+    message: {id: Tanggal kembali tidak boleh sebelum mulai sewa}
+  - name: late_over_60_days
+    on: save
+    level: warn
+    check: return_date <= booking.end_date + duration(60)
+    message: {id: 'Telat lebih dari 60 hari: denda telat dihitung 60 hari saja. Masukkan sisa kerugian di biaya kerusakan atau hilang.'}
+  - name: damage_not_negative
+    on: save
+    check: damage_fee >= 0
+    message: {id: Biaya kerusakan tidak boleh minus}
+views:
+  list:
+    columns: [name, booking, customer, return_date, late_days, deposit_refund, extra_due, status]
+    sort: -return_date
+  form:
+    layout:
+      - section: {id: Alat kembali}
+        columns:
+          - [booking, return_date, refund_method]
+          - [customer, rental_item, planned_end, late_days]
+      - section: {id: Denda dan kerusakan}
+        columns:
+          - [late_fee, damage_fee, damage_notes]
+          - [deposit, deposit_kept, covered_late, covered_damage]
+      - section: {id: Hasil}
+        columns:
+          - [deposit_refund]
+          - [extra_due]

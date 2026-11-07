@@ -1,0 +1,71 @@
+{{define "style"}}
+/* Arah E untuk thermal: hitam putih, satu tanda merek (nama usaha tebal), angka rata kanan tabular. */
+body { font-size: 8.5pt; }
+.c { text-align: center; }
+.brand { font-size: 1.25em; font-weight: 700; }
+.rule { border-top: 1px dashed #1C1917; margin: 2mm 0; }
+.row { display: flex; justify-content: space-between; gap: 2mm; }
+.row .num { white-space: nowrap; }
+.line { margin: 1mm 0; }
+.line .sub { color: #57534E; }
+.big { font-size: 1.35em; font-weight: 700; }
+.status { font-weight: 700; }
+.qris img { width: 42mm; height: 42mm; display: block; margin: 1mm auto; }
+.muted { color: #57534E; }
+{{end}}
+{{define "letterhead"}}{{with .Letterhead}}<div class="c">
+<div class="brand">{{.legal_name}}</div>
+{{with .address}}<div style="white-space:pre-line">{{.}}</div>{{end}}
+{{with .phone}}<div>{{.}}</div>{{end}}
+{{with .npwp}}<div>NPWP {{.}}</div>{{end}}
+</div>{{end}}{{end}}
+{{template "letterhead" .}}
+{{- $ds := printf "%v" .Doc.docstatus -}}
+{{- $out := printf "%v" .Doc.outstanding -}}
+{{- $owed := and .Doc.outstanding (ne $out "0") (ne (slice (printf "%v-" $out) 0 1) "-") -}}
+{{- $paid := and .Doc.paid_amount (ne (printf "%v" .Doc.paid_amount) "0") -}}
+<div class="rule"></div>
+<div class="row"><span>Nota</span><span>{{.Doc.name}}</span></div>
+<div class="row"><span>Tanggal</span><span>{{date .Doc.posting_date}}</span></div>
+<div class="row"><span>Pelanggan</span><span>{{.Links.customer.customer_name}}</span></div>
+<div class="rule"></div>
+{{range $row := .Doc.items}}
+{{- $u := or $row.uom_name $row.uom -}}
+<div class="line">
+  <div>{{if $row.description}}{{$row.description}}{{else}}{{$row.item}}{{end}}</div>
+  <div class="row sub"><span>{{number $row.qty}} {{$u}} x {{rupiah $row.rate}}{{if $row.discount}} (-{{number $row.discount}}%){{end}}</span><span class="num">{{rupiah $row.amount}}</span></div>
+</div>
+{{end}}
+<div class="rule"></div>
+{{if .Doc.discount_amount}}<div class="row"><span>Diskon</span><span class="num">-{{rupiah .Doc.discount_amount}}</span></div>{{end}}
+{{if .Doc.down_payment}}<div class="row"><span>Uang muka</span><span class="num">-{{rupiah .Doc.down_payment}}</span></div>{{end}}
+{{if taxrate .Doc .Tax}}<div class="row muted"><span>PPN {{number (taxrate .Doc .Tax)}}%</span><span class="num">{{rupiah .Doc.ppn}}</span></div>{{end}}
+{{- $net := or .Doc.retention_amount .Doc.pph23_amount -}}
+<div class="row{{if not $net}} big{{end}}"><span>Total</span><span class="num">{{rupiah .Doc.grand_total}}</span></div>
+{{if .Doc.retention_amount}}<div class="row"><span>Retensi {{number .Doc.retention_percent}}% ditahan</span><span class="num">-{{rupiah .Doc.retention_amount}}</span></div>{{end}}
+{{if .Doc.pph23_amount}}<div class="row"><span>PPh 23 dipotong</span><span class="num">-{{rupiah .Doc.pph23_amount}}</span></div>{{end}}
+{{if $net}}<div class="row big"><span>Tagihan bersih</span><span class="num">{{rupiah .Doc.amount_due}}</span></div>{{end}}
+{{if $paid}}<div class="row"><span>Sudah dibayar</span><span class="num">-{{rupiah .Doc.paid_amount}}</span></div>{{end}}
+{{if and (eq $ds "1") $owed $paid}}<div class="row big"><span>Sisa</span><span class="num">{{rupiah .Doc.outstanding}}</span></div>{{end}}
+<div class="c status">
+  {{- if eq $ds "0"}}DRAF, BELUM DITAGIHKAN
+  {{- else if eq $ds "2"}}BATAL
+  {{- else if not $owed}}LUNAS
+  {{- else}}Jatuh tempo {{date .Doc.due_date}}{{end -}}
+</div>
+{{if and (eq $ds "1") $owed}}
+{{with .Related.cara_bayar}}{{with index . 0}}
+<div class="rule"></div>
+<div class="c">
+  <div>Transfer {{.bank}} {{.account_no}}</div>
+  <div>a.n. {{.holder}}</div>
+  <div>Berita transfer: <strong>{{.reference}}</strong></div>
+  {{if .qris_payload}}<div class="qris"><img src="{{qr .qris_payload}}" alt="QRIS"><div>Scan QRIS, isi {{rupiah $.Doc.outstanding}}</div></div>{{end}}
+</div>
+{{end}}{{else}}{{with .Letterhead.bank}}{{with index . 0}}
+<div class="rule"></div>
+<div class="c"><div>Transfer {{.bank}} {{.account}}</div>{{with .holder}}<div>a.n. {{.}}</div>{{end}}<div>Berita transfer: <strong>{{$.Doc.name}}</strong></div></div>
+{{end}}{{end}}{{end}}
+{{end}}
+<div class="rule"></div>
+<div class="c muted">Terima kasih</div>

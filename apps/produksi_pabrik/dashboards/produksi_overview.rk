@@ -5,6 +5,17 @@ default_period: 30
 cache: 5m
 # The owner's questions: how much did we make, what did it really cost, how much went to waste, what expires soon.
 widgets:
+  # riset desain K-A2: "perlu_" lists open the home as "Perlu diurus" rows (P2); batch qty is left out (units differ)
+  - name: perlu_kedaluwarsa
+    type: list
+    label: {id: Batch mendekati kedaluwarsa}
+    description: {id: Kedaluwarsa dalam 30 hari}
+    model: production_batch
+    filter: "docstatus == 1 && expiry_date != '' && expiry_date <= today() + duration('30d')"
+    sort: expiry_date
+    limit: 10
+    columns: [item, expiry_date, name]
+    span: 12
   - name: batches
     type: number
     label: {id: Batch selesai}
@@ -13,12 +24,15 @@ widgets:
     filter: docstatus == 1
     period: production_date
     span: 3
-  - name: good_qty
+  # G10 (gladi 6 Nov): jumlah good_qty menjumlah pak + kg + batch setengah jadi, jadi angkanya tidak bermakna.
+  # Diganti rendemen rata-rata (persen, tanpa satuan); jumlah per produk ada di grafik di bawah.
+  - name: yield_avg
     type: number
-    label: {id: Hasil baik}
+    label: {id: Rendemen rata-rata (%)}
+    description: {id: 'Hasil baik dibanding rencana'}
     model: production_batch
-    aggregate: sum
-    field: good_qty
+    aggregate: avg
+    field: yield_percent
     filter: docstatus == 1
     period: production_date
     span: 3
@@ -33,13 +47,13 @@ widgets:
     period: production_date
     compact: true
     span: 3
-  - name: reject_qty
+  # Reject juga beda satuan per produk: yang dihitung batchnya, rinciannya di daftar batch
+  - name: reject_batches
     type: number
-    label: {id: Reject}
+    label: {id: Batch ada reject}
     model: production_batch
-    aggregate: sum
-    field: reject_qty
-    filter: docstatus == 1
+    aggregate: count
+    filter: docstatus == 1 && reject_qty > 0
     period: production_date
     good_when: down
     span: 3
@@ -57,12 +71,13 @@ widgets:
   - name: output_by_product
     type: chart
     chart: bar
-    label: {id: Hasil baik per produk}
+    label: {id: Hasil baik per produk jadi}
+    description: {id: 'Dalam satuan masing-masing produk; bahan setengah jadi tidak dihitung'}
     model: production_batch
     group_by: item
     aggregate: sum
     field: good_qty
-    filter: docstatus == 1
+    filter: docstatus == 1 && item.kind == 'product'
     period: production_date
     span: 6
   - name: recent_batches
@@ -75,16 +90,6 @@ widgets:
     limit: 10
     columns: [name, item, good_qty, hpp_per_unit, standard_unit_cost, expiry_date]
     span: 12
-  - name: expiring
-    type: list
-    label: {id: Batch mendekati kedaluwarsa}
-    description: {id: Kedaluwarsa dalam 30 hari}
-    model: production_batch
-    filter: "docstatus == 1 && expiry_date != '' && expiry_date <= today() + duration('30d')"
-    sort: expiry_date
-    limit: 10
-    columns: [name, item, good_qty, expiry_date]
-    span: 6
   - name: open_work_orders
     type: list
     label: {id: SPK berjalan}
@@ -93,4 +98,4 @@ widgets:
     sort: due_date
     limit: 10
     columns: [name, item, qty, due_date]
-    span: 6
+    span: 12

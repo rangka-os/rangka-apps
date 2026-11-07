@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: rental_return_on_cancel
+label: {id: Alat kembali dibatalkan}
+# A return entered by mistake: the schedule goes back to out (the deposit journal is reversed by gl_rental_return_reverse),
+# refused while the invoice for what the deposit did not cover is submitted (cancel that first).
+on: rental_return.cancelled
+steps:
+  - {find: rental_schedule, where: booking == event.booking, as: s}
+  - {find: sales_invoice, where: "docstatus == 1 && notes.contains('(' + event.name + ')')", as: inv}
+  - create: rental_guard
+    if: inv != null
+    set: {reason: "'invoice_submitted'", document: event.name}
+  - update: s
+    if: s != null && s.rental_return == event.name
+    set: {state: "'out'", returned_date: "null", rental_return: "''"}

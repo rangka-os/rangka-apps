@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: rental_guard
+label: {id: Penjaga jadwal sewa, en: Rental guard}
+icon: check
+naming: RGD-{######}
+title_field: reason
+# Never stored: a flow of this module creates one when the document it runs in must be refused (the pattern of
+# credit_guard); the matching rule fails with the reason's message, which rolls the whole submit or cancel back.
+# Create is granted to the roles whose submits and cancels run those flows.
+permissions:
+  - {role: sales_manager, create: true}
+  - {role: finance_manager, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: over_capacity, label: {id: Unit tidak cukup}}
+      - {value: not_booked, label: {id: Bukan pesanan yang menunggu keluar}}
+      - {value: not_out, label: {id: Alat belum keluar}}
+      - {value: in_use, label: {id: Alat sudah keluar}}
+      - {value: already_returned, label: {id: Alat sudah kembali}}
+      - {value: invoice_submitted, label: {id: Fakturnya sudah diajukan}}
+      - {value: invoice_stale, label: {id: Faktur untuk dokumen batal atau sudah ditagih}}
+      - {value: invoice_tag, label: {id: Catatan faktur sewa diubah}}
+      - {value: still_out, label: {id: Unit masih di luar}}
+      - {value: before_out, label: {id: Kembali sebelum keluar}}
+  - name: document
+    type: data
+    label: {id: Dokumen}
+rules:
+  - name: over_capacity
+    on: save
+    check: reason != 'over_capacity'
+    message: {id: 'Unit alat tidak cukup di tanggal itu: sudah dipesan pelanggan lain. Pilih tanggal lain atau kurangi jumlahnya.'}
+  - name: not_booked
+    on: save
+    check: reason != 'not_booked'
+    message: {id: 'Pesanan ini tidak sedang menunggu alat keluar (sudah keluar, kembali, atau batal).'}
+  - name: not_out
+    on: save
+    check: reason != 'not_out'
+    message: {id: 'Alat pesanan ini belum tercatat keluar, atau sudah kembali.'}
+  - name: in_use
+    on: save
+    check: reason != 'in_use'
+    message: {id: 'Alat pesanan ini sudah keluar. Catat alat kembali dulu, pesanan tidak bisa dibatalkan.'}
+  - name: already_returned
+    on: save
+    check: reason != 'already_returned'
+    message: {id: 'Alat sudah tercatat kembali. Batalkan catatan alat kembali dulu.'}
+  - name: invoice_submitted
+    on: save
+    check: reason != 'invoice_submitted'
+    message: {id: 'Fakturnya sudah diajukan. Batalkan fakturnya dulu.'}
+  - name: invoice_stale
+    on: save
+    check: reason != 'invoice_stale'
+    message: {id: 'Faktur ini untuk pesanan atau catatan alat kembali yang sudah batal, atau sudah ditagih di faktur lain. Hapus draf ini.'}
+  - name: invoice_tag
+    on: save
+    check: reason != 'invoice_tag'
+    message: {id: 'Catatan faktur sewa tidak bisa diubah: nomor pesanan di dalamnya dipakai untuk mencocokkan faktur.'}
+  - name: still_out
+    on: save
+    check: reason != 'still_out'
+    message: {id: 'Unit alat ini masih di luar (ada yang belum kembali). Catat alat kembali dulu sebelum alat keluar lagi.'}
+  - name: before_out
+    on: save
+    check: reason != 'before_out'
+    message: {id: Tanggal kembali tidak boleh sebelum tanggal alat keluar}

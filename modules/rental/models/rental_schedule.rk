@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: rental_schedule
+label: {id: Jadwal alat, en: Rental schedule}
+icon: calendar
+naming: JDW-{######}
+title_field: rental_item
+# One row per submitted booking, made and kept current by the flows of this module (a submitted document cannot
+# change): booked, out, returned or cancelled, with the actual dates. The availability check of a new booking reads
+# these rows. Its state fields are read_only, so a person cannot change them by hand; only the flows write them.
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, export: true}
+  - {role: finance_manager, read: true, write: true, export: true}
+  - {role: head_office, read: true, export: true}
+fields:
+  - {name: booking, type: link, to: rental_booking, label: {id: Pesanan sewa}, required: true, unique: true, read_only: true, in_list: true}
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, read_only: true, in_list: true}
+  - {name: rental_item, type: link, to: rental_item, label: {id: Alat}, required: true, read_only: true, in_list: true}
+  - {name: qty, type: int, label: {id: Jumlah unit}, read_only: true, in_list: true}
+  - {name: start_date, type: date, label: {id: Mulai sewa}, read_only: true, in_list: true}
+  - {name: end_date, type: date, label: {id: Tanggal kembali}, read_only: true, in_list: true}
+  - {name: deposit, type: currency, label: {id: Deposit}, read_only: true}
+  - name: state
+    type: select
+    label: {id: Status}
+    default: "'booked'"
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: booked, label: {id: Dipesan}}
+      - {value: out, label: {id: Keluar}}
+      - {value: returned, label: {id: Kembali}}
+      - {value: cancelled, label: {id: Batal}}
+  - {name: out_date, type: date, label: {id: Tanggal keluar}, read_only: true}
+  - {name: returned_date, type: date, label: {id: Tanggal kembali aktual}, read_only: true}
+  - {name: checkout, type: link, to: rental_checkout, label: {id: Bukti alat keluar}, read_only: true}
+  - {name: rental_return, type: link, to: rental_return, label: {id: Bukti alat kembali}, read_only: true}
+rules:
+  # Made by rental_booking_on_submit inside the booking's submit; a row for a draft booking (made by hand) would hold
+  # units for a booking that was never confirmed, and would block that booking's own row (booking is unique).
+  - name: booking_submitted
+    on: save
+    check: booking.docstatus != 0
+    message: {id: Jadwal hanya dibuat dari pesanan sewa yang sudah diajukan}
+views:
+  list:
+    columns: [booking, customer, rental_item, qty, start_date, end_date, state]
+    filters: [rental_item, state, customer]
+    sort: start_date
