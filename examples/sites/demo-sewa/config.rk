@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for a rental business (fictional): kamera dan alat pesta. The rental piece composed with the shared money
+# pieces (riset/desain/11-susunan-kepingan.md): sewa_alat drafts the invoices, faktur_piutang collects them,
+# pembukuan journals deposits and fines. Not PKP.
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: CV Contoh Sewa Kamera}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: false}
+orgs:
+  sewa_contoh:
+    name: CV Contoh Sewa Kamera
+    code: CSK
+    config:
+      org: {legal_name: CV Contoh Sewa Kamera}
+      tax: {pkp: false}
+apps: [sewa_alat, faktur_piutang, pembukuan]
+plan: tumbuh
+sso: {domains: [contohsewa.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, head_office]}

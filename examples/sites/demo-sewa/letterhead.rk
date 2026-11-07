@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+# Letterhead of the fictional CV Contoh Sewa Kamera (rent invoices).
+legal_name: CV Contoh Sewa Kamera
+tagline: Sewa kamera dan alat pesta
+address: |
+  Jl. Contoh Lensa No. 7
+  Yogyakarta 55000
+phone: '+62 274 000 0007'
+email: halo@contohsewa.test
+website: contohsewa.test
+bank:
+  - {bank: Bank Contoh, account: '777 000 0007', holder: CV Contoh Sewa Kamera, branch: Yogyakarta}
+signatory: {name: Rina Contoh, title: Pemilik}
+footer: {id: Deposit dikembalikan saat alat kembali lengkap dan baik}

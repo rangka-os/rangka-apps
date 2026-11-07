@@ -1,0 +1,34 @@
+# Synthetic demo data for CV Contoh Sewa Kamera, a fictional camera and party-equipment rental. No real people,
+# businesses or brands. Bookings are made by the scenarios (tests/day_one_rental.py), not seeded.
+uom:
+  - {name: UOM-001, uom_name: Unit}
+  - {name: UOM-002, uom_name: Set}
+item_category:
+  - {name: KTG-001, category_name: Kamera dan lensa}
+  - {name: KTG-002, category_name: Alat pesta}
+vendor:
+  - {name: VND-0001, vendor_name: Saldo awal, city: Yogyakarta, pkp: false, payment_days: 0}
+  - {name: VND-0002, vendor_name: CV Contoh Servis Kamera, city: Yogyakarta, pkp: false, payment_days: 14}
+user:
+  - {name: USR-001, full_name: Rina Contoh, role: Pemilik}
+  - {name: USR-002, full_name: Dimas Contoh, role: Admin sewa}
+  - {name: USR-003, full_name: Wulan Contoh, role: Keuangan}
+customer:
+  - {name: CUST-0001, customer_name: Budi Contoh Fotografer, city: Yogyakarta, payment_days: 0}
+  - {name: CUST-0002, customer_name: Sanggar Contoh Wedding Organizer, city: Sleman, payment_days: 7}
+  - {name: CUST-0003, customer_name: Komunitas Contoh Film Pendek, city: Bantul, payment_days: 0}
+  - {name: CUST-0004, customer_name: Ibu Contoh Arisan, city: Yogyakarta, payment_days: 0}
+item:
+  - {name: BRG-0001, item_name: Kamera mirrorless contoh A, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: SW-KAM-A, category: KTG-001}
+  - {name: BRG-0002, item_name: Lensa tele contoh 70-200, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: SW-LNS-T, category: KTG-001}
+  - {name: BRG-0003, item_name: Lampu studio contoh, kind: service, stock_uom: UOM-002, sales_uom: UOM-002, sku: SW-LMP, category: KTG-001}
+  - {name: BRG-0004, item_name: Tenda pesta 4x6 m, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: SW-TND, category: KTG-002}
+  - {name: BRG-0005, item_name: Kursi lipat, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: SW-KRS, category: KTG-002}
+  - {name: BRG-0006, item_name: Sound system kecil, kind: service, stock_uom: UOM-002, sales_uom: UOM-002, sku: SW-SND, category: KTG-002}
+rental_item:
+  - {name: ALT-0001, item: BRG-0001, units: 2, daily_rate: 250000, deposit_per_unit: 1000000, late_fee_per_day: 150000}
+  - {name: ALT-0002, item: BRG-0002, units: 1, daily_rate: 150000, deposit_per_unit: 750000, late_fee_per_day: 100000}
+  - {name: ALT-0003, item: BRG-0003, units: 3, daily_rate: 100000, deposit_per_unit: 300000, late_fee_per_day: 50000}
+  - {name: ALT-0004, item: BRG-0004, units: 4, daily_rate: 400000, deposit_per_unit: 500000, late_fee_per_day: 200000}
+  - {name: ALT-0005, item: BRG-0005, units: 100, daily_rate: 5000, deposit_per_unit: 10000, late_fee_per_day: 2500}
+  - {name: ALT-0006, item: BRG-0006, units: 2, daily_rate: 350000, deposit_per_unit: 1000000, late_fee_per_day: 200000}
