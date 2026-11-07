@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: pembelian_pemasok
+version: 1.0.0
+title: {id: Pembelian ke pemasok, en: Purchasing}
+label: {id: Rangka Pembelian, en: Rangka Purchasing}
+summary:
+  id: Permintaan dan pesanan pembelian, barang datang (menambah stok), dan tagihan pemasok.
+rangka: '>=0.5'
+# A piece (riset/desain/11-susunan-kepingan.md). With stok_outlet, goods received add to stock; without it, it records
+# purchases and supplier bills only (stock is optional for procurement).
+modules:
+  users: ^1.0
+  contacts: ^1.0
+  catalogue: ^1.0
+  procurement: ^1.0
+roles: [head_office, outlet_staff]
+menu:
+  - group: {id: Pembelian}
+    items: [purchase_request, purchase_order, goods_receipt, vendor_bill]
+  - group: {id: Pemasok}
+    items: [vendor]

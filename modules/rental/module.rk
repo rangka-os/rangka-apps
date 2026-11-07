@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: rental
+version: 1.0.0
+title: {id: Sewa alat, en: Equipment rental}
+# Rental of countable equipment (cameras, party tents, chairs, sound systems): a rental item is a catalogue item with
+# a number of units, a daily rate, a deposit per unit and a late fee per day. A booking reserves units for a range of
+# dates [start_date, end_date): the return day is free for the next booking. Its submit refuses a booking whose
+# overlap would need more units than the item has (flow rental_booking_on_submit, read lock of contract 0025), takes
+# the deposit (journal to 2-1400 Uang muka pelanggan) and drafts the rent invoice. Checkout and return are documents
+# of their own with the actual dates; the return computes the late fee and damage, keeps them from the deposit and
+# pays the rest back; what the deposit does not cover becomes a draft invoice. A submitted document cannot change, so
+# the state of each booking lives in rental_schedule, written only by the flows of this module.
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, invoicing: ^1.0}
+optional: {accounting: ^1.0}

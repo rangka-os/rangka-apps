@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: pembukuan
+version: 1.0.0
+title: {id: Pembukuan, en: Bookkeeping}
+label: {id: Rangka Pembukuan, en: Rangka Bookkeeping}
+summary:
+  id: Jurnal otomatis dari dokumen yang sudah ada, laba rugi, neraca, arus kas, saldo awal dan tutup buku.
+rangka: '>=0.5'
+# A piece (riset/desain/11-susunan-kepingan.md). It journals whatever the other pieces submit (its flows react only to
+# the models the site has), so it adds no work of its own beyond the opening balance.
+modules:
+  users: ^1.0
+  accounting: ^1.0
+roles: [head_office]
+menu:
+  - group: {id: Pembukuan}
+    items: [financial_report, gl_entry, opening_balance, period_close]

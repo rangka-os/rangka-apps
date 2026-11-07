@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: stok_ringkas
+label: {id: Ringkasan stok, en: Stock summary}
+default_period: 30
+cache: 5m
+# Stock only (piece stok_outlet): what is on the shelf, what is negative, and why stock moved. Sales and purchase figures
+# live in their own pieces' dashboards.
+widgets:
+  - name: stock_value_total
+    type: number
+    label: {id: Nilai stok}
+    description: {id: 'Semua outlet, saldo saat ini'}
+    model: stock_balance
+    aggregate: sum
+    field: value
+    compact: true
+    span: 4
+  - name: negative_total
+    type: number
+    label: {id: Saldo minus}
+    description: {id: 'Barang yang stoknya di bawah nol: cek opname atau barang masuk yang belum dicatat'}
+    model: stock_balance
+    filter: negative == true
+    good_when: down
+    span: 4
+  - name: moves_total
+    type: number
+    label: {id: Mutasi stok}
+    model: stock_move
+    period: posting_date
+    compact: true
+    span: 4
+  - name: stock_value_by_outlet
+    type: chart
+    chart: bar
+    label: {id: Nilai stok per outlet}
+    model: stock_balance
+    group_by: outlet
+    aggregate: sum
+    field: value
+    sort: -value
+    span: 6
+  - name: moves_by_reason
+    type: chart
+    chart: donut
+    label: {id: Mutasi stok per sebab}
+    model: stock_move
+    group_by: reason
+    period: posting_date
+    span: 6

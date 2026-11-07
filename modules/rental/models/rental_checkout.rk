@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: rental_checkout
+label: {id: Alat keluar, en: Rental checkout}
+icon: truck
+is_submittable: true
+naming: KLR-{YYYY}-{#####}
+title_field: booking
+# The equipment of a booking leaves on its actual date. Submitting it moves the booking's schedule from booked to out
+# (flow rental_checkout_on_submit refuses a booking that is not waiting to go out); cancelling it moves it back.
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true, export: true, print: true}
+  - {role: head_office, read: true, export: true, print: true}
+fields:
+  - {name: booking, type: link, to: rental_booking, label: {id: Pesanan sewa}, required: true, in_list: true}
+  - {name: customer, type: data, label: {id: Pelanggan}, compute: booking.customer, in_list: true}
+  - {name: rental_item, type: data, label: {id: Alat}, compute: booking.rental_item, in_list: true}
+  - {name: qty, type: int, label: {id: Jumlah unit}, compute: booking.qty}
+  - {name: out_date, type: date, label: {id: Tanggal keluar}, required: true, default: today(), in_list: true}
+  - {name: notes, type: text, label: {id: 'Catatan (kondisi alat, kelengkapan)'}}
+rules:
+  - name: booking_submitted
+    on: save
+    check: booking.docstatus == 1
+    message: {id: Pesanan sewa belum diajukan atau sudah batal}
+views:
+  list:
+    columns: [name, booking, customer, rental_item, out_date, status]
+    sort: -out_date
+  form:
+    layout:
+      - section: {id: Alat keluar}
+        columns:
+          - [booking, out_date]
+          - [customer, rental_item, qty]
+      - section: {id: Catatan}
+        fields: [notes]

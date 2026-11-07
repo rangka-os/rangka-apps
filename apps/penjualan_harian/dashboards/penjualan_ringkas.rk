@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: penjualan_ringkas
+label: {id: Ringkasan penjualan, en: Sales summary}
+default_period: 30
+cache: 5m
+# Daily sales only (piece penjualan_harian): what sold per outlet and what it cost. Stock lives in stok_ringkas.
+widgets:
+  - name: net_total
+    type: number
+    label: {id: Penjualan bersih}
+    model: outlet_sales
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    compact: true
+    span: 4
+  - name: margin_period
+    type: number
+    label: {id: Margin}
+    description: {id: Penjualan bersih dikurangi harga pokok bahan}
+    model: outlet_sales
+    aggregate: sum
+    field: margin
+    filter: docstatus == 1
+    period: date
+    compact: true
+    span: 4
+  - name: sales_days
+    type: number
+    label: {id: Catatan penjualan}
+    model: outlet_sales
+    filter: docstatus == 1
+    period: date
+    compact: true
+    span: 4
+  - name: net_by_outlet
+    type: chart
+    chart: bar
+    label: {id: Penjualan bersih per outlet}
+    model: outlet_sales
+    group_by: outlet
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    sort: -value
+    span: 6
+  - name: net_by_day
+    type: chart
+    chart: bar
+    label: {id: Penjualan bersih per hari}
+    model: outlet_sales
+    group_by: date
+    grain: day
+    aggregate: sum
+    field: net_total
+    filter: docstatus == 1
+    period: date
+    span: 6

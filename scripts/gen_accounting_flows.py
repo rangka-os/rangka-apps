@@ -31,6 +31,7 @@ ACCOUNTS = [
     ("2-1500", "Utang upah"), ("2-1600", "Utang BPJS"), ("2-1900", "Utang lain-lain"), ("2-2100", "Utang bank"),
     ("3-1100", "Modal disetor"), ("3-1900", "Ekuitas saldo awal"),
     ("4-1100", "Pendapatan usaha"), ("4-1200", "Retur penjualan"), ("4-9100", "Pendapatan lain-lain"),
+    ("4-9200", "Pendapatan denda dan ganti rugi sewa"),
     ("5-1100", "Harga pokok penjualan"), ("5-1200", "Selisih dan susut persediaan"), ("5-1300", "Upah langsung"),
     ("5-1400", "Biaya proyek"),
     ("6-1100", "Beban gaji kantor"), ("6-1200", "Biaya admin pembayaran"), ("6-1300", "Selisih kas"),
@@ -205,6 +206,18 @@ POSTINGS = {
                ("'21600'", "0 - (event.total_employer_bpjs + event.total_employee_bpjs)"),
                ("'11330'", "0 - event.total_other_deduction"),
                ("'11340'", "event.billing_mode == 'fee_only' ? event.total_employer_cost : 0")]),
+    "rental_booking": dict(
+        label="Jurnal deposit sewa", date="event.booking_date", party="event.customer",
+        # The deposit received when the booking is made is the customer's money held (uang muka pelanggan), not revenue.
+        lines=[("event.deposit_method == 'cash' ? '11100' : '11200'", "event.deposit"),
+               ("'21400'", "0 - event.deposit")]),
+    "rental_return": dict(
+        label="Jurnal pengembalian deposit sewa", date="event.return_date", party="event.customer",
+        # The deposit held comes out: the late fee and damage it covers are other income, the rest is paid back.
+        # What it does not cover is a draft invoice (flow rental_return_on_submit), journaled when it is submitted.
+        lines=[("'21400'", "event.deposit"),
+               ("'49200'", "0 - (event.covered_late + event.covered_damage)"),
+               ("event.refund_method == 'cash' ? '11100' : '11200'", "0 - event.deposit_refund")]),
     "opening_balance": dict(
         label="Jurnal saldo awal", date="event.opening_date",
         lines=[("'11100'", "event.cash"), ("'11200'", "event.bank"), ("'11300'", "event.receivable"),

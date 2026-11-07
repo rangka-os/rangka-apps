@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for a composed setup (riset/desain/11-susunan-kepingan.md): an outlet business whose only trouble is stock.
+# Pieces: stok_outlet (core) and penjualan_harian (suggested: the cashier's daily totals cut stock); nothing else.
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: Kedai Stok Contoh}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: false}
+orgs:
+  tahu_contoh:
+    name: Kedai Stok Contoh
+    code: TCN
+    config:
+      org: {legal_name: Kedai Stok Contoh}
+      tax: {pkp: false}
+apps: [stok_outlet, penjualan_harian]
+plan: tumbuh
+sso: {domains: [stokcontoh.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, head_office]}

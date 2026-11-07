@@ -3006,7 +3006,7 @@ def money_bodies(api, site):
         "purchase_request": dict({"needed_by": "2026-11-30", "items": [{"item": item, "qty": 1, "est_rate": 1_000}]}, **outlet),
         "purchase_order": dict({"vendor": vendor, "items": [{"item": item, "qty": 1, "rate": 1_000}]}, **outlet),
         "vendor_bill": {"vendor": vendor, "bill_no": "IZIN-1", "bill_date": "2026-11-03", "items": [{"item": item, "qty": 1, "rate": 1_000}]},
-        "goods_receipt": {"vendor": vendor, "outlet": DAGO if site in ("demo-fnb", "demo-ritel", "demo-produksi") else (api.list("outlet") or [{"name": ""}])[0]["name"], "items": [{"item": item, "qty": 1, "rate": 1_000}]},
+        "goods_receipt": {"vendor": vendor, "outlet": DAGO if site in ("demo-fnb", "demo-ritel", "demo-produksi") else ((api.list("outlet") if installed(api, "outlet") else []) or [{"name": ""}])[0]["name"], "items": [{"item": item, "qty": 1, "rate": 1_000}]},
         "outlet_sales": ({"outlet": DAGO, "date": "2026-11-04", "source": "moka", "moka_outlet": "Tahu Contoh - Dago", "lines": [{"item": "BRG-0007", "qty": 1}]} if site != "demo-ritel"
                          else {"outlet": CLY, "date": "2026-11-04", "source": "file", "lines": [{"item": "BRG-0001", "qty": 1}]}),
         "outlet_takings": {"outlet": CLY, "date": "2026-11-04", "lines": [{"method": "cash", "expected": 1_000, "received": 1_000}]},
@@ -5349,11 +5349,13 @@ import day_one_produksi  # noqa: E402
 import day_one_accounting  # noqa: E402
 import day_one_payroll  # noqa: E402
 import day_one_returns  # noqa: E402
+import day_one_rental  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
 day_one_payroll.bind(sys.modules[__name__])
 day_one_returns.bind(sys.modules[__name__])
+day_one_rental.bind(sys.modules[__name__])   # also registers demo-sewa (orgs, members, matrix rows)
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5366,9 +5368,10 @@ SCENARIOS = {
     "demo-grosir": day_one_grosir.SCENARIOS + [scenario_payment_instruction, scenario_permissions, scenario_payment_methods],
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
     "demo-manpower": day_one_payroll.SCENARIOS + [scenario_permissions],
+    "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],
 }
 # accounting last: it checks the books against every document the scenarios above submitted
-for _site in ("demo-jasa", "demo-fnb", "demo-ritel", "demo-grosir", "demo-produksi", "demo-manpower"):
+for _site in ("demo-jasa", "demo-fnb", "demo-ritel", "demo-grosir", "demo-produksi", "demo-manpower", "demo-sewa"):
     SCENARIOS[_site].append(day_one_accounting.scenario_accounting)
 
 
@@ -5409,6 +5412,8 @@ def main():
         day_one_produksi.setup_demo_produksi(api, k)
     if a.site == "demo-manpower":
         day_one_payroll.setup_demo_manpower(api, k)
+    if a.site == "demo-sewa":
+        day_one_rental.setup_demo_sewa(api, k)
     for sc in SCENARIOS[a.site]:
         if a.only and a.only not in sc.__name__:
             continue

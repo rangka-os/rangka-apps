@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: penjualan_harian
+version: 1.0.0
+title: {id: Penjualan harian, en: Daily sales}
+label: {id: Rangka Penjualan Harian, en: Rangka Daily Sales}
+summary:
+  id: Penjualan harian per outlet dari kasir yang sudah dipakai atau formulir harian, memotong stok lewat resep.
+rangka: '>=0.5'
+# A piece (riset/desain/11-susunan-kepingan.md). The cashier stays where it is: this takes its daily totals in. It needs
+# stock (outlet_sales requires it), so a site with this piece always has stok_outlet's modules too.
+modules:
+  users: ^1.0
+  contacts: ^1.0
+  catalogue: ^1.0
+  outlets: ^1.0
+  stock: ^1.0
+  outlet_sales: ^1.0
+dashboards: [penjualan_ringkas]
+roles: [head_office, outlet_staff]
+home: {dashboard: penjualan_ringkas}
+menu:
+  - group: {id: Penjualan outlet}
+    items: [outlet_sales, outlet_takings]
+onboarding:
+  - ask: {id: 'Outlet mana yang pakai Moka?'}
+    sets: imports.moka_item_details.outlets
+  - ask: {id: 'Outlet yang tidak pakai Moka mencatat penjualan pakai apa?'}
+    options: [form, file, loyverse]
+    sets: outlet.sales_source
