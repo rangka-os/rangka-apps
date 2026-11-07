@@ -144,8 +144,8 @@ rules:
     message: {id: Tagihan barang dagang hanya untuk usaha yang mencatat stok; pilih Beban operasional atau Biaya proyek}
   - name: posting_project_needs_project
     on: save
-    check: posting != 'project' || project != ''
-    message: {id: Pilih proyeknya untuk tagihan yang dicatat sebagai biaya proyek}
+    check: (posting != 'project' || project != '') && (project == '' || posting == 'project' || posting == null)
+    message: {id: 'Tagihan dengan proyek dicatat sebagai biaya proyek, dan biaya proyek perlu proyeknya'}
   - name: project_open
     on: save
     check: project == '' || project.state != 'closed'

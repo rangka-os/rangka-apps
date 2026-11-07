@@ -4,6 +4,10 @@ name: gl_project_expense_post
 label: {id: Jurnal biaya proyek}
 on: project_expense.submitted
 steps:
+  - find: gl_entry
+    if: event.vendor_bill != ''
+    where: voucher_type == 'vendor_bill' && voucher == event.vendor_bill && entry == 'post' && line == '1'
+    as: bl
   - find_all: period_close
     where: docstatus == 1
     sort: -closed_until
@@ -23,15 +27,28 @@ steps:
       party: "event.vendor"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
-    if: "(0 - event.amount) != 0"
+    if: "(0 - (event.vendor_bill != '' && bl != null ? (event.amount < bl.amount ? event.amount : bl.amount) : 0)) != 0"
     set:
       posting_date: "event.expense_date"
-      account: "event.vendor_bill == null ? '11100' : '61900'"
-      amount: "0 - event.amount"
+      account: "bl != null ? bl.account : '61900'"
+      amount: "0 - (event.vendor_bill != '' && bl != null ? (event.amount < bl.amount ? event.amount : bl.amount) : 0)"
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
       line: "'2'"
+      project: "''"
+      party: "event.vendor"
+      lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
+  - create: gl_entry
+    if: "(0 - (event.amount - (event.vendor_bill != '' && bl != null ? (event.amount < bl.amount ? event.amount : bl.amount) : 0))) != 0"
+    set:
+      posting_date: "event.expense_date"
+      account: "'11100'"
+      amount: "0 - (event.amount - (event.vendor_bill != '' && bl != null ? (event.amount < bl.amount ? event.amount : bl.amount) : 0))"
+      voucher_type: event.model
+      voucher: event.name
+      entry: "'post'"
+      line: "'3'"
       project: "event.project"
       party: "event.vendor"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"

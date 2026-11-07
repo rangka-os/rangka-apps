@@ -93,11 +93,14 @@ def expected_pl(api, d0, d1):
     for b in docs(api, "production_batch"):
         if inm(b["production_date"]):
             e["direct_labour"] += b["labour_cost"] or 0
+    bills = {b["name"]: b for b in docs(api, "vendor_bill")}
     for x in docs(api, "project_expense"):
         if inm(x["expense_date"]):
             e["project_costs"] += x["amount"]
-            if x.get("vendor_bill"):                 # moved out of the bill's operating expense into the project
-                e["operating_expenses"] -= x["amount"]
+            b = bills.get(x.get("vendor_bill") or "")
+            # an expense on a bill moves the cost out of the bill's account, at most the bill's DPP (the rest was cash)
+            if b and bill_kind(b, has(api, "stock_move")) == "expense":
+                e["operating_expenses"] -= min(x["amount"], b["dpp"])
     pkp, stock = org_pkp(api), has(api, "stock_move")
     for b in docs(api, "vendor_bill"):
         if not inm(b["bill_date"]):
@@ -252,6 +255,8 @@ def scenario_accounting(api):
         for prj in sorted(led, key=led.get, reverse=True)[:3]:
             st, rp = report(api, d0, d1, project=prj)
             eq(f"accounting: costs of project {prj} = its project ledger", (rp.get("direct_labour") or 0) + (rp.get("project_costs") or 0), led[prj])
+            eq(f"accounting: project {prj} carries no operating expense (a moved bill cost leaves the company's expense, not the project)",
+               rp.get("operating_expenses"), 0)
     bills = [b for b in docs(api, "vendor_bill", "docstatus == 1") if b.get("project")]
     eq("accounting: every bill on a project is a project cost (not goods)", sorted({b.get("posting") for b in bills} - {"project"}), [])
 

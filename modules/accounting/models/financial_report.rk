@@ -35,7 +35,7 @@ fields:
   - {name: tax_expense, type: currency, label: {id: Beban pajak}, read_only: true}
   - {name: net_profit, type: currency, label: {id: Laba bersih}, compute: operating_profit + other_income - tax_expense, in_list: true}
   # Neraca per period_to (whole business)
-  - {name: cash_and_bank, type: currency, label: {id: Kas dan bank}, read_only: true}
+  - {name: cash_and_bank, type: currency, label: {id: 'Kas, bank, dan kas outlet belum disetor'}, read_only: true}
   - {name: receivables, type: currency, label: {id: Piutang}, read_only: true}
   - {name: inventory, type: currency, label: {id: Persediaan}, read_only: true}
   - {name: prepaid_taxes, type: currency, label: {id: Pajak dibayar dimuka}, read_only: true}

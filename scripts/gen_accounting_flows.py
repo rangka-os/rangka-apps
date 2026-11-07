@@ -71,6 +71,8 @@ BILL_PPN = "tax.pkp ? '11500' : ((" + BILL_KIND + ") == 'stock' ? '51100' : (" +
 # Potong retur: the credit note covers the return value plus its PPN; only the value is retur penjualan, the PPN
 # reduces PPN keluaran, in the proportion of what this payment credits.
 RETURN_VALUE = "round(event.amount * 1.0 * ret.return_value / ret.return_total)"
+# The part of a project expense that moves out of its vendor bill's account (0 without a bill journal).
+MOVED = "event.vendor_bill != '' && bl != null ? (event.amount < bl.amount ? event.amount : bl.amount) : 0"
 SALES_RETURN = "event.direction == 'receive' && event.method == 'sales_return' && ret != null && ret.return_total > 0"
 CASH_TAKEN = "event.lines.filter(l, l.method == 'cash').map(l, l.received).sum()"
 
@@ -138,11 +140,15 @@ POSTINGS = {
         lines=[("'51300'", "event.cost_amount"), ("'21500'", "0 - event.cost_amount")]),
     "project_expense": dict(
         label="Jurnal biaya proyek", date="event.expense_date", project="event.project", party="event.vendor",
-        # Paid from cash; or, when it points at a vendor bill (always one without a project, which the bill journaled
-        # as an operating expense), the cost moves from that expense to the project, so the project's profit and loss
-        # matches its project_ledger (which counts the expense at its full amount) and nothing is counted twice.
+        # Paid from cash. When it points at a vendor bill (always one without a project), the project_ledger counts the
+        # expense at its full amount, so the cost moves into the project: out of the account the bill debited (its
+        # post line 1, without a project tag), at most the bill's own amount; anything above was paid in cash.
+        extra=["  - find: gl_entry", "    if: event.vendor_bill != ''",
+               "    where: voucher_type == 'vendor_bill' && voucher == event.vendor_bill && entry == 'post' && line == '1'",
+               "    as: bl"],
         lines=[("'51400'", "event.amount"),
-               ("event.vendor_bill == null ? '11100' : '61900'", "0 - event.amount")]),
+               ("bl != null ? bl.account : '61900'", "0 - (" + MOVED + ")", {"project": "''"}),
+               ("'11100'", "0 - (event.amount - (" + MOVED + "))")]),
     "delivery_note": dict(
         label="Jurnal surat jalan", date="event.delivery_date", outlet="event.outlet", party="event.customer",
         lines=[("'51100'", "event.cogs_total"), ("'11400'", "0 - event.cogs_total")]),
@@ -197,7 +203,9 @@ def post_flow(model, p):
     out.append("steps:")
     out += p.get("extra", [])
     out += LOCK
-    for i, (acct, amt) in enumerate(p["lines"], 1):
+    for i, ln in enumerate(p["lines"], 1):
+        acct, amt = ln[0], ln[1]
+        own = ln[2] if len(ln) > 2 else {}       # per-line overrides of outlet/project/party ('' = none)
         out += ["  - create: gl_entry",
                 f"    if: {q('(' + amt + ') != 0')}",
                 "    set:",
@@ -209,8 +217,9 @@ def post_flow(model, p):
                 "      entry: \"'post'\"",
                 f"      line: \"'{i}'\""]
         for f in ("outlet", "project", "party"):
-            if p.get(f):
-                out.append(f"      {f}: {q(p[f])}")
+            v = own.get(f, p.get(f))
+            if v:
+                out.append(f"      {f}: {q(v)}")
         out.append(f"      lock_date: {q(LOCK_DATE)}")
     return "\n".join(out) + "\n"
 
