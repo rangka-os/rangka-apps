@@ -2845,7 +2845,7 @@ MATRIX = {
     "project_expense": {"project_admin": _ALL, "finance_manager": _ALL - {"delete"}, "sales_manager": _R, "purchasing_manager": _R},
     "project_guard": {"purchasing_manager": {"create"}, "finance_manager": {"create"}},
     "credit_guard": {"finance_manager": {"create"}, "sales_manager": {"create"}, "project_admin": {"create"}, "head_office": {"create"}},   # never stored
-    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R, "field_sales": _RP},
+    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R, "field_sales": _RP, "head_office": {"read", "print", "export"}},
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
                           "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
@@ -3230,6 +3230,29 @@ def scenario_coretax(api):
         check("a replacement of an earlier period's invoice is refused (Faktur Pengganti is made in Coretax)",
               st == 422 and any(p["name"] == repl and "Pengganti" in p["message"] for p in resp["error"]["problems"]), (st, resp))
         api.verb("sales_invoice", repl, "cancel")
+        # audit 7 Nov #1: a second amend (C replaces B replaces the April invoice A) is still a replacement of A
+        st, am2 = api.verb("sales_invoice", repl, "amend")
+        if check("amend the replacement again", st in (200, 201), (st, am2)):
+            st, resp = api.verb("sales_invoice", am2["name"], "submit", {"force": True})
+            repl2 = resp.get("name", am2["name"]) if isinstance(resp, dict) else am2["name"]
+            eq("the chain keeps the first invoice's date", api.get("sales_invoice", repl2).get("origin_posting_date"), "2031-04-15")
+            st, resp = api.call("GET", url + "coretax_faktur")
+            check("a two-step replacement of an earlier period's invoice is refused too",
+                  st == 422 and any(p["name"] == repl2 and "Pengganti" in p["message"] for p in resp["error"]["problems"]), (st, resp))
+            api.verb("sales_invoice", repl2, "cancel")
+    # audit 7 Nov #2: Coretax takes at most 2 decimals of quantity
+    q3 = inv(ca, may + "13", [(1.004, 1_000_000, {})])
+    st, resp = api.call("GET", url + "coretax_faktur")
+    check("a line quantity with 3 decimals is refused before export",
+          st == 422 and any(p["name"] == q3 and "2 desimal" in p["message"] for p in resp["error"]["problems"]), (st, resp))
+    api.verb("sales_invoice", q3, "cancel")
+    # audit 7 Nov #9: a passport buyer needs a foreign country code
+    st, cp = api.create("customer", {"customer_name": "Mr Contoh Asing", "address": "Jl. Contoh No. 5", "passport_no": "X1234567"})
+    if check("customer with a passport only", st == 201, (st, cp)):
+        pp = inv(cp["name"], may + "14", [(1, 1_000_000, {})])
+        st, resp = api.call("GET", url + "coretax_faktur")
+        check("a passport buyer with country IDN is refused", st == 422 and any(p["name"] == pp for p in resp["error"]["problems"]), (st, resp))
+        api.verb("sales_invoice", pp, "cancel")
 
     st, body, ct = api.html(url + "coretax_faktur")
     check("faktur XML downloads", st == 200 and ct.startswith("application/xml"), (st, ct, body[:300]))
@@ -3294,6 +3317,21 @@ def scenario_coretax(api):
     b1 = bill(va["name"], "TAG/CT/001", may + "10", 10_000_000, 200_000)
     b2 = bill(vw["name"], "TAG/CT/002", may + "11", 3_000_000, 50_000, pph23_dpp=2_500_000)
     bill(va["name"], "TAG/CT/003", "2031-06-02", 1_000_000, 20_000)
+    st, resp = api.create("vendor_bill", {"vendor": va["name"], "bill_no": "TAG/CT/NEG", "bill_date": may + "10", "items": [{"item": svc["name"], "qty": 1, "rate": 1_000_000}],
+                                          "pph23_amount": 20_000, "pph23_dpp": -5})
+    check("vendor_bill refuses a negative PPh 23 base", st == 422, (st, resp))
+    # audit 7 Nov #3: a bill amended from an earlier period (its slip already reported there) is not a new slip
+    feb = bill(va["name"], "TAG/CT/APR", "2031-04-10", 1_000_000, 20_000)
+    api.verb("vendor_bill", feb, "cancel")
+    st, amb = api.verb("vendor_bill", feb, "amend")
+    if check("amend an April bill", st in (200, 201), (st, amb)):
+        api.patch("vendor_bill", amb["name"], {"bill_date": may + "15", "due_date": may + "15"})
+        st, resp = api.verb("vendor_bill", amb["name"], "submit", {"force": True})
+        fb2 = resp.get("name", amb["name"]) if isinstance(resp, dict) else amb["name"]
+        st, resp = api.call("GET", url + "coretax_bupot")
+        check("BPPU refuses a bill replacing an earlier period's bill (pembetulan in Coretax)",
+              st == 422 and any(p["name"] == fb2 and "pembetulan" in p["message"] for p in resp["error"]["problems"]), (st, resp))
+        api.verb("vendor_bill", fb2, "cancel")
     wrong = bill(va["name"], "TAG/CT/004", may + "12", 1_000_000, 15_000)
     st, resp = api.call("GET", url + "coretax_bupot")
     check("BPPU refused while a bill's PPh 23 is not base x rate", st == 422 and [p["name"] for p in resp["error"]["problems"]] == [wrong], (st, resp))

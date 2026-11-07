@@ -125,6 +125,19 @@ fields:
     hidden: true
     depends_on: app_installed('coretax')
     compute: "vendor.nitku != '' ? vendor.nitku : (vendor.npwp != '' ? vendor.npwp + '000000' : (vendor.nik != '' ? vendor.nik + '000000' : ''))"
+  # The first bill of the amend chain and its date (frozen at submit): a bill whose chain started in an earlier period
+  # had its withholding slip reported there; the correction is a pembetulan in Coretax, not a new slip.
+  - name: replaces
+    type: link
+    to: vendor_bill
+    label: {id: Mengganti tagihan}
+    hidden: true
+    compute: amended_from
+  - name: origin_bill_date
+    type: data
+    label: {id: Tanggal tagihan asal}
+    hidden: true
+    compute: "replaces == '' ? bill_date : (replaces.origin_bill_date != '' ? replaces.origin_bill_date : replaces.bill_date)"
   - name: amount_due
     type: currency
     label: {id: Tagihan bersih}
@@ -154,6 +167,10 @@ rules:
     on: save
     check: pph23_rate >= 0 && pph23_rate <= 100
     message: {id: Tarif PPh 23 antara 0 dan 100 persen}
+  - name: pph23_dpp_range
+    on: save
+    check: pph23_dpp >= 0 && pph23_dpp <= dpp
+    message: {id: DPP PPh 23 antara 0 dan DPP tagihan}
   - name: pph23_object_code_format
     on: save
     check: "pph23_object_code == '' || pph23_object_code.matches('^24-10[0-6]-[0-9]{2}$')"

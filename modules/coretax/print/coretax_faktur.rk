@@ -26,5 +26,9 @@ related:
         message: {id: 'Nama dan alamat pelanggan wajib diisi untuk faktur pajak'}
       - check: "efaktur_code != '' && items.map(i, i.coretax_unit == '' ? 1 : 0).sum() == 0"
         message: {id: 'Faktur ini diajukan sebelum ekspor Coretax dipasang: buat faktur pajaknya langsung di Coretax'}
-      - check: replaces == '' || replaces.posting_date >= doc.period_start
+      - check: origin_posting_date != '' && origin_posting_date >= doc.period_start
         message: {id: 'Faktur ini mengganti faktur masa sebelumnya: buat Faktur Pengganti di Coretax, jangan diimpor'}
+      - check: "items.map(i, i.qty * 100 - round(i.qty * 100) > 0.000001 || round(i.qty * 100) - i.qty * 100 > 0.000001 ? 1 : 0).sum() == 0"
+        message: {id: 'Jumlah barang di faktur pajak maksimal 2 desimal: pakai satuan yang lebih kecil (misalnya gram)'}
+      - check: buyer_id_type != 'Passport' || buyer_country != 'IDN'
+        message: {id: 'Pembeli dengan paspor harus punya kode negara selain IDN di Data pajak pelanggan'}

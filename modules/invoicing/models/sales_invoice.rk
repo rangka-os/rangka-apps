@@ -12,6 +12,8 @@ permissions:
   - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: sales_rep, read: true}
   - {role: field_sales, read: true, print: true}
+  # head office (ritel, produksi) downloads the Coretax faktur file of its tax periods, an export of these invoices
+  - {role: head_office, read: true, print: true, export: true}
   # project admins read invoices: the project flows that freeze contract terms read them as the project admin
   - {role: project_admin, read: true}
 fields:
@@ -283,6 +285,13 @@ fields:
     label: {id: Mengganti faktur}
     hidden: true
     compute: amended_from
+  # The posting date of the first invoice of the amend chain (A -> B -> C keeps A's date), frozen at submit: an
+  # invoice whose chain started in an earlier period is a Faktur Pengganti in Coretax, however many amends later.
+  - name: origin_posting_date
+    type: data
+    label: {id: Tanggal faktur asal}
+    hidden: true
+    compute: "replaces == '' ? posting_date : (replaces.origin_posting_date != '' ? replaces.origin_posting_date : replaces.posting_date)"
   # Whether rule credit_limit warned on this submit (the same expression, computed in the same step from the same
   # customer row). The rule runs before any flow lock (contract 0025 §5); flow sales_invoice_credit_recheck reads the customer
   # again after the ledger hook has locked and updated it, and refuses an invoice that is over the limit only because
