@@ -315,6 +315,10 @@ def scenario_pos_void_and_return(api):
     q, s1 = CTX.get("sale_qris"), CTX.get("sale1")
     if not (dika and shift and q and s1):
         return
+    bayu = CTX.get("bayu")
+    if bayu:
+        st, resp = bayu.verb("pos_sale", q["name"], "cancel")
+        check("Bayu (same outlet, other drawer) cannot void Dika's receipt -> 422 void_not_own", st == 422 and "void_not_own" in rules(resp), (st, resp))
     before = shift_of(api, shift)
     air_before = bal(api, DGO, AIR)
     st, resp = dika.verb("pos_sale", q["name"], "cancel")

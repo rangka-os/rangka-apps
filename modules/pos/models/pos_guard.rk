@@ -22,6 +22,7 @@ fields:
       - {value: close_stale, label: {id: Angka tutup sesi sudah berubah}}
       - {value: void_other_day, label: {id: Batal di hari lain}}
       - {value: void_shift_closed, label: {id: Batal setelah sesi ditutup}}
+      - {value: void_not_own, label: {id: Batal struk sesi kasir lain}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: shift_already_open
@@ -48,3 +49,7 @@ rules:
     on: save
     check: reason != 'void_shift_closed'
     message: {id: 'Sesi kasir transaksi ini sudah ditutup; transaksinya tidak bisa dibatalkan lagi'}
+  - name: void_not_own
+    on: save
+    check: reason != 'void_not_own'
+    message: {id: 'Struk ini dari sesi kasir orang lain; minta kasirnya atau kantor pusat yang membatalkan'}

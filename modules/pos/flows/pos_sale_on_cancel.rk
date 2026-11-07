@@ -2,7 +2,8 @@
 # Runs inside a sale's cancel (a void), as the cashier. A void is for the sale's own day only (void_other_day) and
 # while its shift is open (void_shift_closed: the closing count already holds this receipt's cash); the kernel runs no
 # `on: cancel` rule, so both checks are here, under the shift's lock. Otherwise the money goes back out of the drawer
-# (or back to the buyer's QRIS) and the shift's totals shrink; the void is counted.
+# (or back to the buyer's QRIS) and the shift's totals shrink; the void is counted. Only the shift's own cashier (or
+# head office) voids its receipts.
 name: pos_sale_on_cancel
 label: {id: 'Transaksi kasir dibatalkan: kurangi dari sesi kasir'}
 on: pos_sale.cancelled
@@ -14,6 +15,10 @@ steps:
   - if: s == null
     create: pos_guard
     set: {reason: "'void_shift_closed'", document: event.name}
+  # only the cashier of the shift (or head office, the owner) voids its receipts: the cash leaves that drawer's count
+  - if: "s != null && s.cashier != user.email && !('head_office' in user.roles) && !('owner' in user.roles)"
+    create: pos_guard
+    set: {reason: "'void_not_own'", document: event.name}
   - update: s
     if: s != null
     set:
