@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A line of a cashier sale. The unit is the item's stock unit, or another unit of the item (packing, a
+# uom_conversion: a dus of 24, a pack of 10); stock moves stock_qty (contract 0022 §1). The price per unit is the
+# item's price, or the unit's own price when it has one (a dus can be cheaper than 24 bottles), else the item's price
+# times the unit's factor. It is computed, so a cashier cannot type another price; the discount is in percent.
+name: pos_sale_item
+is_child: true
+fields:
+  - {name: item, type: link, to: item, label: {id: Barang atau menu}, required: true, peek: [rate, stock_uom]}
+  - {name: description, type: text, label: {id: Uraian}, default: item.item_name}
+  - name: packing
+    type: link
+    to: uom_conversion
+    label: {id: Satuan lain}
+    help: {id: 'Kosongkan untuk satuan stok barang. Pilih misalnya Dus isi 24'}
+  # the item of the unit picked (rule unit_of_item: a unit of this line's item)
+  - {name: packing_item, type: link, to: item, label: {id: Barang satuan}, hidden: true, compute: "packing != '' ? packing.item : item"}
+  - name: uom
+    type: link
+    to: uom
+    label: {id: Satuan}
+    compute: "packing != '' ? packing.uom : item.stock_uom"
+  - {name: qty, type: float, label: {id: Qty}, default: '1', required: true}
+  - name: stock_qty
+    type: float
+    label: {id: Qty satuan stok}
+    compute: "packing == '' ? qty : qty * packing.factor"
+    stock: true
+  - name: rate
+    type: currency
+    label: {id: Harga satuan}
+    compute: "packing == '' ? item.rate : (packing.rate > 0 ? packing.rate : round(item.rate * packing.factor))"
+  - name: gross
+    type: currency
+    label: {id: Harga}
+    compute: round(qty * rate)
+  - {name: discount_pct, type: float, label: {id: 'Diskon %'}, default: '0'}
+  - name: amount
+    type: currency
+    label: {id: Jumlah}
+    compute: round(qty * rate * (100 - discount_pct) / 100)
+  - {name: cogs, type: currency, label: {id: Harga pokok}, read_only: true}

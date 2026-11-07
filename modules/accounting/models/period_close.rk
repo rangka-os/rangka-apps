@@ -18,6 +18,7 @@ permissions:
   - {role: purchasing_manager, read: true}
   - {role: project_admin, read: true}
   - {role: outlet_staff, read: true}
+  - {role: cashier, read: true}
 fields:
   - {name: closed_until, type: date, label: {id: Tutup buku sampai tanggal}, required: true, in_list: true}
   - {name: notes, type: text, label: {id: Catatan}}

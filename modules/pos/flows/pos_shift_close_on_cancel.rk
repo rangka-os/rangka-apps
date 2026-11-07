@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Head office cancels a close (a miscount): the shift opens again, without its counted figures, and is closed with a
+# new Tutup sesi. Its selisih kas journal is reversed by gl_pos_shift_close_reverse.
+name: pos_shift_close_on_cancel
+label: {id: 'Tutup sesi dibatalkan: sesi kasir dibuka lagi'}
+on: pos_shift_close.cancelled
+steps:
+  - {find: pos_shift, where: name == event.shift, as: s}
+  - update: s
+    if: s != null && s.closed_by == event.name
+    set:
+      state: "'open'"
+      closed_by: "''"
+      counted_cash: '0'
+      cash_difference: '0'

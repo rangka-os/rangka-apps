@@ -133,6 +133,21 @@ POSTINGS = {
                ("'21310'", "0 - event.pph_final"),
                ("'51100'", "event.cogs_total"),
                ("'11400'", "0 - event.cogs_total")]),
+    "pos_sale": dict(
+        label="Jurnal transaksi kasir", date="event.date", outlet="event.outlet",
+        # module pos: one receipt, booked like a day of outlet_sales. Cash and QRIS both wait in Kas outlet belum
+        # disetor until the takings (outlet_takings) move them to Kas or Bank; revenue net of PPN, final PPh, HPP.
+        lines=[("'11150'", "event.grand_total"),
+               ("'41100'", "0 - (event.grand_total - event.ppn_in_sales)"),
+               ("'21200'", "0 - event.ppn_in_sales"),
+               ("'69100'", "event.pph_final"),
+               ("'21310'", "0 - event.pph_final"),
+               ("'51100'", "event.cogs_total"),
+               ("'11400'", "0 - event.cogs_total")]),
+    "pos_shift_close": dict(
+        label="Jurnal tutup sesi kasir", date="event.close_date", outlet="event.outlet",
+        # The drawer counted at closing against the cash it should hold: more cash is a gain, less a loss (Selisih kas).
+        lines=[("'11150'", "event.cash_difference"), ("'61300'", "0 - event.cash_difference")]),
     "outlet_takings": dict(
         label="Jurnal setoran outlet", date="event.date", outlet="event.outlet",
         # Cash and non-cash received, the payment fees, against the takings held; the difference is selisih kas.

@@ -12,6 +12,7 @@ permissions:
   - {role: project_admin, read: true, create: true, write: true, print: true}
   - {role: head_office, read: true, create: true, write: true, print: true}
   - {role: outlet_staff, read: true}
+  - {role: cashier, read: true}
 fields:
   - name: uom_name
     type: data

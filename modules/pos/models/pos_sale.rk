@@ -1,0 +1,206 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Transaksi kasir: one receipt. A draft is the open basket; submitting it is the payment: the receipt gets its number
+# per outlet and month (STRK-<outlet code>-<YYMM>-<n>, contract 0009 §2a), the goods leave the outlet's stock (a menu
+# item through its active recipe), and the shift's totals grow (flow pos_sale_on_submit). Prices come from the item
+# (or from the unit picked on the line, uom_conversion.rate); the cashier gives discounts, never a price. Prices
+# include PPN for a PKP business, as on outlet_sales, so the journal splits the PPN out the same way.
+# Void: cancel, only on the sale's day while its shift is open (flow pos_sale_on_cancel: the kernel does not run
+# `on: cancel` rules, so the checks live in the flow, under the shift's lock); the stock comes back at the cost it left with and the
+# shift's totals shrink. A partial return on the same day is a void and an amended receipt without the returned items
+# (the amendment keeps the number with -1). Goods that went to waste after the void go out with a stock_adjustment.
+name: pos_sale
+label: {id: Transaksi kasir, en: Cashier sale}
+icon: receipt
+is_submittable: true
+naming: STRK-{outlet.code}-{YY}{MM}-{#####}
+title_field: grand_total
+on_submit: [stock.post_moves]
+on_cancel: [stock.reverse_moves]
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: cashier, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, print: true}
+fields:
+  - name: shift
+    type: link
+    to: pos_shift
+    label: {id: Sesi kasir}
+    required: true
+    peek: [outlet, opening_date, cashier]
+  # outlet and date are not read_only: an amendment (a partial return) copies only writable values. The rules hold
+  # them to the shift's outlet and to the day of payment.
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    default: shift.outlet
+    in_list: true
+  - name: date
+    type: date
+    label: {id: Tanggal}
+    default: today()
+    in_list: true
+  - name: buyer
+    type: data
+    label: {id: Pembeli atau meja}
+    help: {id: 'Boleh kosong. Nama pembeli, nomor meja atau nomor antrean'}
+    in_list: true
+  - name: items
+    type: table
+    of: pos_sale_item
+    label: {id: Barang}
+    min_rows: 1
+  - name: gross_total
+    type: currency
+    label: {id: Harga sebelum diskon}
+    compute: "items.map(l, l.gross).sum()"
+  - name: subtotal
+    type: currency
+    label: {id: Subtotal}
+    compute: "items.map(l, l.amount).sum()"
+  - name: discount_amount
+    type: currency
+    label: {id: Diskon nota}
+    help: {id: 'Potongan rupiah untuk seluruh nota, setelah diskon per barang'}
+    default: '0'
+  - name: discount_total
+    type: currency
+    label: {id: Total diskon}
+    compute: gross_total - subtotal + discount_amount
+  - name: grand_total
+    type: currency
+    label: {id: Total}
+    compute: subtotal - discount_amount
+    in_list: true
+  # Payment. cash: all in cash (cash_received is what the buyer handed over; 0 = exact money). qris: all through the
+  # outlet's QRIS. split: split_cash in cash, the rest through QRIS.
+  - name: method
+    type: select
+    label: {id: Cara bayar}
+    required: true
+    default: "'cash'"
+    in_list: true
+    chip: true
+    options:
+      - {value: cash, label: {id: Tunai}}
+      - {value: qris, label: {id: QRIS}}
+      - {value: split, label: {id: Tunai + QRIS}}
+  - name: split_cash
+    type: currency
+    label: {id: Bagian tunai}
+    depends_on: method == 'split'
+  - name: cash_amount
+    type: currency
+    label: {id: Dibayar tunai}
+    compute: "method == 'cash' ? grand_total : (method == 'qris' ? 0 : split_cash)"
+  - name: qris_amount
+    type: currency
+    label: {id: Dibayar QRIS}
+    compute: grand_total - cash_amount
+  - name: qris_ref
+    type: data
+    label: {id: Ref QRIS}
+    help: {id: 'Nomor referensi di notifikasi pembayaran QRIS, kalau ada'}
+    depends_on: method != 'cash'
+  - name: cash_received
+    type: currency
+    label: {id: Uang diterima}
+    help: {id: 'Uang tunai dari pembeli. Kosongkan kalau uang pas'}
+    depends_on: method != 'qris'
+  - name: change_amount
+    type: currency
+    label: {id: Kembalian}
+    compute: "cash_received > cash_amount ? cash_received - cash_amount : 0"
+  - name: cogs_total
+    type: currency
+    label: {id: Harga pokok}
+    help: {id: 'Diisi sistem saat dibayar: barang atau bahan resep x rata-rata biaya'}
+    read_only: true
+  - name: margin
+    type: currency
+    label: {id: Margin}
+    compute: grand_total - cogs_total
+  # Same monthly tax recap as outlet_sales: PPN inside a PKP shop's prices, and the 0,5% final PPh of PP 55/2022.
+  - name: ppn_in_sales
+    type: currency
+    label: {id: PPN dalam penjualan}
+    compute: "tax.pkp ? round(grand_total * tax.ppn_rate * tax.dpp_num / (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num)) : 0"
+  - name: pph_final
+    type: currency
+    label: {id: 'PPh final 0,5%'}
+    compute: round((grand_total - ppn_in_sales) * 5 / 1000)
+stock:
+  date: date
+  moves:
+    - {lines: items, out: outlet, explode: recipe, reason: sale, cogs: cogs}
+  cogs_total: cogs_total
+rules:
+  - name: outlet_of_shift
+    on: save
+    check: outlet == shift.outlet
+    message: {id: 'Outlet transaksi harus sama dengan outlet sesi kasirnya'}
+  - name: shift_open
+    on: save
+    check: shift.state == 'open'
+    message: {id: 'Sesi kasir ini sudah ditutup; buka sesi baru'}
+  - name: own_shift
+    on: save
+    check: "shift.cashier == user.email || 'head_office' in user.roles || 'owner' in user.roles"
+    message: {id: 'Ini sesi kasir orang lain; pakai sesi kasirmu sendiri'}
+  # Jalur A or Jalur B per outlet: with outlet_sales installed, only an outlet whose sales source is the cashier.
+  - name: outlet_uses_cashier
+    on: save
+    check: "!app_installed('outlet_sales') || (outlet.moka_name == '' && outlet.sales_source == 'kasir')"
+    message: {id: 'Outlet ini mencatat penjualan lewat Moka, file POS atau formulir harian. Ubah Sumber penjualan outlet ke Kasir Juragan dulu'}
+  - name: qty_positive
+    on: save
+    check: "items.map(l, l.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: line_discount_range
+    on: save
+    check: "items.map(l, l.discount_pct < 0 || l.discount_pct > 100 ? 1 : 0).sum() == 0"
+    message: {id: Diskon barang harus 0 sampai 100 persen}
+  - name: unit_of_item
+    on: save
+    check: "items.map(l, l.packing_item != l.item ? 1 : 0).sum() == 0"
+    message: {id: 'Satuan yang dipilih bukan satuan barang itu'}
+  - name: priced
+    on: save
+    check: "items.map(l, l.rate <= 0 ? 1 : 0).sum() == 0"
+    message: {id: 'Ada barang tanpa harga jual; isi Harga jual di data barang'}
+  - name: receipt_discount_range
+    on: save
+    check: discount_amount >= 0 && discount_amount <= subtotal
+    message: {id: Diskon nota tidak boleh negatif atau melebihi subtotal}
+  - name: split_parts
+    on: save
+    check: "method != 'split' || (split_cash > 0 && split_cash < grand_total)"
+    message: {id: 'Bayar campur: bagian tunai harus lebih dari 0 dan kurang dari total'}
+  - name: cash_enough
+    on: save
+    check: "cash_received == 0 || cash_received >= cash_amount"
+    message: {id: 'Uang diterima kurang dari yang harus dibayar tunai'}
+  - name: paid_today
+    on: submit
+    check: date == today()
+    message: {id: 'Draf ini dari hari lain; buat transaksi baru untuk hari ini'}
+views:
+  list:
+    columns: [name, date, outlet, grand_total, method, status, buyer]
+    filters: [outlet, method, shift]
+    sort: -name
+  form:
+    layout:
+      - section: {id: Transaksi}
+        columns:
+          - [shift, outlet, date]
+          - [buyer]
+      - section: {id: Barang}
+        fields: [items]
+      - section: {id: Bayar}
+        columns:
+          - [subtotal, discount_amount, grand_total, method]
+          - [split_cash, qris_ref, cash_received, change_amount]
+      - section: {id: Ringkasan}
+        columns:
+          - [gross_total, discount_total, cogs_total, margin]
+          - [ppn_in_sales, pph_final]

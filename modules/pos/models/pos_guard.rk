@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Never stored: a flow of this module creates one when the write it runs in must be refused (the pattern of
+# rental_guard and outlet_sales_guard); the matching rule fails with the reason's message, which rolls the whole write
+# back (the flow runs inside it). Create is granted to the roles whose writes run those flows.
+name: pos_guard
+label: {id: Penjaga kasir, en: Cashier guard}
+icon: check
+naming: PGD-{######}
+title_field: reason
+permissions:
+  - {role: head_office, create: true}
+  - {role: cashier, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: shift_already_open, label: {id: Sesi kasir masih terbuka}}
+      - {value: shift_closed, label: {id: Sesi kasir sudah ditutup}}
+      - {value: shift_changed, label: {id: Data pembukaan sesi diubah}}
+      - {value: close_stale, label: {id: Angka tutup sesi sudah berubah}}
+      - {value: void_other_day, label: {id: Batal di hari lain}}
+      - {value: void_shift_closed, label: {id: Batal setelah sesi ditutup}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: shift_already_open
+    on: save
+    check: reason != 'shift_already_open'
+    message: {id: 'Kamu masih punya sesi kasir terbuka di outlet ini; tutup sesi itu dulu atau lanjutkan di sana'}
+  - name: shift_closed
+    on: save
+    check: reason != 'shift_closed'
+    message: {id: 'Sesi kasir ini baru saja ditutup; buka sesi baru lalu ulangi transaksinya'}
+  - name: shift_changed
+    on: save
+    check: reason != 'shift_changed'
+    message: {id: 'Outlet dan modal kas tidak bisa diubah setelah sesi dibuka; tutup sesi ini dan buka sesi baru'}
+  - name: close_stale
+    on: save
+    check: reason != 'close_stale'
+    message: {id: 'Ada transaksi baru di sesi ini sejak tutup sesi disimpan; simpan lagi untuk membaca angka terbaru, lalu ajukan'}
+  - name: void_other_day
+    on: save
+    check: reason != 'void_other_day'
+    message: {id: 'Transaksi hanya bisa dibatalkan di hari yang sama. Untuk hari lain, catat retur lewat kantor pusat'}
+  - name: void_shift_closed
+    on: save
+    check: reason != 'void_shift_closed'
+    message: {id: 'Sesi kasir transaksi ini sudah ditutup; transaksinya tidak bisa dibatalkan lagi'}

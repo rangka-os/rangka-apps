@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The float and the outlet of a shift are fixed once it is open: the expected cash is counted from the float, so
+# raising it later would hide a shortage. Writes by the flows (totals, the close) start no flow, so they pass.
+name: pos_shift_on_update
+label: {id: 'Sesi kasir diubah: modal dan outlet tetap'}
+on: pos_shift.updated
+steps:
+  - if: event.before != null && (event.before.opening_cash != event.opening_cash || event.before.outlet != event.outlet)
+    create: pos_guard
+    set: {reason: "'shift_changed'", document: event.name}

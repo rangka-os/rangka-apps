@@ -13,6 +13,7 @@ permissions:
   - {role: outlet_staff, read: true}
   - {role: sales_rep, read: true}
   - {role: field_sales, read: true}
+  - {role: cashier, read: true}
 fields:
   - name: outlet_name
     type: data
@@ -45,7 +46,8 @@ fields:
     help: {id: 'Persis seperti kolom Outlet di ekspor Moka, misalnya "Tahu Contoh - Dago". Kosongkan kalau outlet ini tidak pakai Moka'}
     depends_on: app_installed('outlet_sales')
   # The sales source of an outlet without Moka (moka_name empty): the daily form (default when empty), a file from
-  # another POS in Juragan's template, or a Loyverse export. One source per outlet, so a day is never counted twice.
+  # another POS in Juragan's template, a Loyverse export, or Juragan's own cashier (module pos). One source per outlet,
+  # so a day is never counted twice.
   - name: sales_source
     type: select
     label: {id: Sumber penjualan}
@@ -55,3 +57,5 @@ fields:
       - {value: form, label: {id: Formulir harian}}
       - {value: file, label: {id: File POS (template Juragan)}}
       - {value: loyverse, label: {id: Loyverse}}
+      # module pos: the outlet sells through Juragan's own cashier, so no daily form or POS file is taken for it
+      - {value: kasir, label: {id: Kasir Juragan}}

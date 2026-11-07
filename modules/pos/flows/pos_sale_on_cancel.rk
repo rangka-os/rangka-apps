@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Runs inside a sale's cancel (a void), as the cashier. A void is for the sale's own day only (void_other_day) and
+# while its shift is open (void_shift_closed: the closing count already holds this receipt's cash); the kernel runs no
+# `on: cancel` rule, so both checks are here, under the shift's lock. Otherwise the money goes back out of the drawer
+# (or back to the buyer's QRIS) and the shift's totals shrink; the void is counted.
+name: pos_sale_on_cancel
+label: {id: 'Transaksi kasir dibatalkan: kurangi dari sesi kasir'}
+on: pos_sale.cancelled
+steps:
+  - {find: pos_shift, where: name == event.shift && state == 'open', as: s}
+  - if: event.date != today()
+    create: pos_guard
+    set: {reason: "'void_other_day'", document: event.name}
+  - if: s == null
+    create: pos_guard
+    set: {reason: "'void_shift_closed'", document: event.name}
+  - update: s
+    if: s != null
+    set:
+      sales_count: s.sales_count - 1
+      gross_total: s.gross_total - event.gross_total
+      discount_total: s.discount_total - event.discount_total
+      net_total: s.net_total - event.grand_total
+      cash_total: s.cash_total - event.cash_amount
+      qris_total: s.qris_total - event.qris_amount
+      cogs_total: s.cogs_total - event.cogs_total
+      void_count: s.void_count + 1
+      void_total: s.void_total + event.grand_total

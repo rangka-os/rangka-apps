@@ -14,7 +14,7 @@ from collections import defaultdict
 H = {}
 
 STOCK_VOUCHERS = ("goods_receipt", "outlet_sales", "stock_adjustment", "stock_count", "stock_transfer",
-                  "stock_transfer_receipt", "delivery_note", "sales_return", "outlet_return", "production_batch")
+                  "stock_transfer_receipt", "delivery_note", "sales_return", "outlet_return", "production_batch", "pos_sale")
 
 
 def bind(m):
@@ -64,6 +64,14 @@ def expected_pl(api, d0, d1):
             e["revenue"] += s["net_total"] - s["ppn_in_sales"]
             e["cogs"] += s["cogs_total"]
             e["tax_expense"] += s["pph_final"]
+    for s in docs(api, "pos_sale"):                     # a cashier receipt (module pos) books like a day of outlet_sales
+        if inm(s["date"]):
+            e["revenue"] += s["grand_total"] - s["ppn_in_sales"]
+            e["cogs"] += s["cogs_total"]
+            e["tax_expense"] += s["pph_final"]
+    for sh in docs(api, "pos_shift_close"):             # a shift's counted drawer: selisih kas (6-1300)
+        if inm(sh["close_date"]):
+            e["operating_expenses"] -= sh["cash_difference"]
     for i in docs(api, "sales_invoice"):
         if inm(i["posting_date"]) and i["kind"] == "regular":
             e["revenue"] += i["subtotal"] - i["discount_amount"]

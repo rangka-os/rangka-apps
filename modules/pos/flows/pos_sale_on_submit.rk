@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Runs inside a sale's submit (the payment), as the cashier. Reading pos_shift takes the flow read lock of contract
+# 0025, so the sales of a shift are added one after the other and each sees the totals the previous one left. A shift
+# closed meanwhile is not found open: the sale is refused (pos_guard shift_closed) and rolls back with its stock
+# moves and its number. Otherwise the shift's totals grow by this receipt.
+name: pos_sale_on_submit
+label: {id: 'Transaksi kasir dibayar: tambah ke sesi kasir'}
+on: pos_sale.submitted
+steps:
+  - {find: pos_shift, where: name == event.shift && state == 'open', as: s}
+  - if: s == null
+    create: pos_guard
+    set: {reason: "'shift_closed'", document: event.name}
+  - update: s
+    if: s != null
+    set:
+      sales_count: s.sales_count + 1
+      gross_total: s.gross_total + event.gross_total
+      discount_total: s.discount_total + event.discount_total
+      net_total: s.net_total + event.grand_total
+      cash_total: s.cash_total + event.cash_amount
+      qris_total: s.qris_total + event.qris_amount
+      cogs_total: s.cogs_total + event.cogs_total
