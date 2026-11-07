@@ -27,11 +27,11 @@ menu:
   - group: {id: Stok}
     items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment, recipe]
   - group: {id: Pembelian}
-    items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment]
+    items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment, vendor]
   - group: {id: Pembukuan}
     items: [financial_report, gl_entry, opening_balance, period_close]
-  - group: {id: Data induk}
-    items: [outlet, item, uom, uom_conversion, vendor]
+  - group: {id: Pengaturan}
+    items: [outlet, item, uom, uom_conversion]
 onboarding:
   - ask: {id: 'Berapa outlet kamu?'}
     sets: seed.outlets

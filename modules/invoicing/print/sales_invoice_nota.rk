@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Nota for an 80 mm receipt printer: the invoice handed over the counter or with the goods (grosir, ritel). Same
+# figures as the A4 faktur, shortened: lines, total, what is still owed, and how to pay (QRIS when the org has one).
+name: sales_invoice_nota
+model: sales_invoice
+label: {id: Nota (printer kasir 80 mm), en: Receipt (80 mm)}
+paper: 80mm
+template: sales_invoice_nota.html
+related:
+  cara_bayar:
+    model: payment_instruction
+    match: {sales_invoice: name}
+    limit: 1

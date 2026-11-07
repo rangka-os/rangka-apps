@@ -155,7 +155,8 @@ rules:
     message: {id: 'Tanggal ini sudah diimpor sebelum pembaruan: hapus baris yang terulang, lalu centang Baris ganda sudah dihapus'}
 views:
   list:
-    columns: [name, outlet, date, source, status, net_total, cogs_total, margin]
+    # outlet, day and net sales first: they fit a phone screen (P7)
+    columns: [outlet, date, net_total, status, source, margin, cogs_total, name]
     filters: [outlet, source]
     sort: -date
   form:

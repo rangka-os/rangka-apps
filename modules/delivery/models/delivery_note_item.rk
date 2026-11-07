@@ -6,4 +6,6 @@ fields:
   - {name: description, type: text, label: {id: Uraian}, default: item.item_name}
   - {name: qty, type: float, label: {id: Qty kirim}, default: '1'}
   - {name: uom, type: link, to: uom, label: {id: Satuan}, default: item.stock_uom}
+  # the unit's name for the printed surat jalan (a print reads only top-level links)
+  - {name: uom_name, type: data, label: {id: Nama satuan}, hidden: true, compute: "uom != '' ? uom.uom_name : ''"}
   - {name: cogs, type: currency, label: {id: Harga pokok}, read_only: true}

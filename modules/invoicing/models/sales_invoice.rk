@@ -453,7 +453,8 @@ approvals:
 
 views:
   list:
-    columns: [name, customer, kind, posting_date, status, grand_total, outstanding]
+    # who, how much is left, when it is due first: the first three fit a phone screen (P7)
+    columns: [name, customer, outstanding, due_date, status, grand_total, posting_date, kind]
     sort: -posting_date
   form:
     layout:

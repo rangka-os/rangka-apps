@@ -30,7 +30,7 @@ home: {dashboard: grosir_overview}
 # recipe is installed with stock but has no menu entry: a distributor sells goods as they are.
 menu:
   - group: {id: Penjualan}
-    items: [customer_order, sales_invoice, payment, giro]
+    items: [customer_order, sales_invoice, payment, giro, bank_account]
   - group: {id: Pengiriman}
     items: [delivery_note, sales_return, order_fulfilment, return_credit]
   - group: {id: Gudang}
