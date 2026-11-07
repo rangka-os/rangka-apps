@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Composed setup (riset/desain/11): the shared money pieces together, to validate them as one site.
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: Kedai Stok Contoh}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: true}
+orgs:
+  tahu_contoh:
+    name: Kedai Stok Contoh
+    code: TCN
+    config:
+      org: {legal_name: Kedai Stok Contoh}
+      tax: {pkp: true}
+apps: [faktur_piutang, pajak, mutasi_bank, pembelian_pemasok, pembukuan]
+plan: tumbuh
+sso: {domains: [stokcontoh.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, head_office]}
