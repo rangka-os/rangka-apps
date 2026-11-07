@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: stok_outlet
+version: 1.0.0
+title: {id: Stok outlet, en: Outlet stock}
+label: {id: Rangka Stok Outlet, en: Rangka Outlet Stock}
+summary:
+  id: Saldo dan mutasi stok per outlet, transfer, opname, penyesuaian dan resep, tanpa harus memasang penjualan atau pembelian.
+rangka: '>=0.5'
+# A piece (riset/desain/11-susunan-kepingan.md): a small app a site composes with others in config.rk apps; the kernel
+# installs the union of their modules (contract 0001). This one is the stock core; penjualan_harian and
+# pembelian_pemasok feed it, and stay optional.
+modules:
+  users: ^1.0
+  contacts: ^1.0
+  catalogue: ^1.0
+  outlets: ^1.0
+  stock: ^1.0
+dashboards: [stok_ringkas]
+roles: [head_office, outlet_staff]
+home: {dashboard: stok_ringkas}
+menu:
+  - group: {id: Stok}
+    items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment, recipe]
+  - group: {id: Data barang}
+    items: [outlet, item, uom, uom_conversion]
+onboarding:
+  - ask: {id: 'Berapa outlet atau gudang yang stoknya dicatat?'}
+    sets: seed.outlets
+  # whole-rupiah average cost per stock unit: no grams (see apps/fnb_cabang/app.rk)
+  - ask: {id: 'Satuan stok apa yang kamu pakai untuk bahan atau barang? (gram dan karung diisi sebagai kemasan)'}
+    options: [kg, liter, pcs]
+    sets: item.stock_uom
