@@ -15,7 +15,7 @@ H = {}
 
 def bind(m):
     """Take the helpers of tests/day_one.py (ok, fail, gap, check, eq, CTX, Api, denied, ...)."""
-    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "denied", "approvals_of", "dashboard", "secrets", "messages"):
+    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "denied", "approvals_of", "dashboard", "secrets", "messages", "qris_payload", "check_print"):
         H[k] = getattr(m, k)
     globals().update(H)
 
@@ -550,6 +550,49 @@ def scenario_grosir_credit_race(api):
                 check(f"round {rnd}: submitted again the delivery is held for approval -> 202", st2 == 202, (st2, b2))
 
 
+def scenario_grosir_invoice_prints(api):
+    """A salesman prints his customer's invoice (A4, nota 80 mm, WhatsApp) with the cara bayar copy of that invoice only;
+    the nota carries retention down to the net bill; a cancelled invoice no longer tells the customer to pay (audit pr-desain-e)."""
+    got = _need("fm", "asep", "ujang")
+    if not got:
+        return
+    fm, asep, ujang = got
+    acct = None
+    if not api.find("bank_account", "default_claim == 'default'"):
+        st, acct = fm.create("bank_account", {"bank": "BCA", "account_no": "4440000004", "holder": "CV Contoh Niaga", "is_default": True,
+                                               "qris_payload": qris_payload("CV CONTOH NIAGA", "ID1020000000401")})
+        check("finance adds the default rekening + QRIS -> 201", st == 201, (st, acct))
+    rate = api.get("item", MI)["rate"]
+    # salesman is given: the field's default comes from the order or the customer, and a direct invoice has no order
+    st, inv = fm.create("sales_invoice", {"customer": "CUST-0001", "salesman": ASEP, "posting_date": "2026-11-06", "due_date": "2026-11-20",
+                                          "retention_percent": 5, "items": [{"item": MI, "qty": 10, "rate": rate}]})
+    if not check("an invoice for Asep's customer with 5% retention -> 201", st == 201, (st, inv)):
+        return
+    name = inv["name"]
+    st, resp = fm.verb("sales_invoice", name, "submit")
+    if not check("the invoice is submitted -> 200", st == 200, (st, resp)):
+        return
+    name = (resp or {}).get("name") or name   # the invoice number is given at submit
+    rec = api.get("sales_invoice", name)
+    eq("the invoice is Asep's", rec.get("salesman"), ASEP)
+    pis = api.find("payment_instruction", f"sales_invoice == '{name}'")
+    eq("its cara bayar copy carries the salesman", (pis or [{}])[0].get("salesman"), ASEP)
+    rp = lambda v: "Rp " + f"{int(v):,}".replace(",", ".")
+    for fmt in ("", "sales_invoice_nota", "sales_invoice_whatsapp"):
+        check_print(f"Asep prints {fmt or 'the A4 invoice'}", asep, "sales_invoice", name, fmt, [rp(rec["amount_due"]), name])
+    check_print("the nota shows retention and the net bill", api, "sales_invoice", name, "sales_invoice_nota",
+                ["Retensi 5% ditahan", "Tagihan bersih " + rp(rec["amount_due"]), "isi " + rp(rec["outstanding"])])
+    theirs = {p["name"] for p in ujang.list("payment_instruction", limit=200)}
+    check("Ujang does not see the cara bayar of Asep's invoice", not theirs & {p["name"] for p in pis}, sorted(theirs))
+    st, resp = fm.verb("sales_invoice", name, "cancel")
+    if check("the invoice is cancelled -> 200", st == 200, (st, resp)):
+        check_print("a cancelled invoice", api, "sales_invoice", name, "", ["Batal"], ["Cara bayar", "Isi nominal", "Scan QRIS"])
+        check_print("a cancelled nota", api, "sales_invoice", name, "sales_invoice_nota", ["BATAL"], ["Scan QRIS", "Berita transfer"])
+    if acct and acct.get("name"):   # leave the site without a default account, as the other scenarios expect
+        st, resp = fm.patch("bank_account", acct["name"], {"is_default": False})
+        check("the test rekening is no longer the default -> 200", st == 200, (st, resp))
+
+
 SCENARIOS = [scenario_grosir_fixtures, scenario_grosir_tier_price, scenario_grosir_salesman_scope, scenario_grosir_credit_hold,
              scenario_grosir_giro, scenario_grosir_ar_by_salesman, scenario_grosir_delivery, scenario_grosir_credit_at_delivery, scenario_grosir_credit_race, scenario_grosir_return,
-             scenario_dashboards_grosir]
+             scenario_grosir_invoice_prints, scenario_dashboards_grosir]

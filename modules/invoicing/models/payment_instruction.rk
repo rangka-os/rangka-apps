@@ -16,7 +16,9 @@ permissions:
   - {role: sales_manager, read: true, create: true, export: true}
   - {role: head_office, read: true}
   - {role: sales_rep, read: true}
-  # not field_sales: its row scope is salesman, which this model lacks, so it would read every invoice's amount
+  # field_sales reads only the copies of its own invoices: its row scope is salesman, copied from the invoice below.
+  # Without it the invoice print (related cara_bayar) answers 403 to the salesman.
+  - {role: field_sales, read: true}
   - {role: project_admin, read: true}
 fields:
   - name: sales_invoice
@@ -32,6 +34,8 @@ fields:
     label: {id: Rekening}
     required: true
     in_list: true
+  # The invoice's salesman (module distribution), copied so the field_sales row scope applies to this copy too.
+  - {name: salesman, type: link, to: user, label: {id: Salesman}, read_only: true, hidden: true}
   # Payment reference the customer writes in the transfer note; bank_transaction_suggest finds the invoice by it.
   - {name: reference, type: data, label: {id: Referensi bayar}, read_only: true, in_list: true}
   - {name: amount, type: currency, label: {id: Tagihan saat diajukan}, read_only: true}
@@ -49,7 +53,7 @@ rules:
     message: {id: Cara bayar dibuat saat faktur diajukan}
   - name: copy_of_invoice
     on: save
-    check: reference == sales_invoice.name && amount == sales_invoice.amount_due
+    check: reference == sales_invoice.name && amount == sales_invoice.amount_due && salesman == sales_invoice.salesman
     message: {id: Referensi dan nominal harus dari faktur ini}
   - name: copy_of_account
     on: save

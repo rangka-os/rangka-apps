@@ -2903,7 +2903,7 @@ MATRIX = {
     "bank_account": {"finance_manager": {"read", "create", "write", "delete", "export"}, "head_office": {"read", "create", "write", "export"},
                      "sales_manager": _R, "sales_rep": _R, "field_sales": _R, "project_admin": _R},
     "payment_instruction": {"finance_manager": {"read", "create", "export"}, "sales_manager": {"read", "create", "export"},
-                            "head_office": _R, "sales_rep": _R, "project_admin": _R},
+                            "head_office": _R, "sales_rep": _R, "field_sales": _R, "project_admin": _R},
     "gateway_ref_claim": {"finance_manager": {"read", "create", "write", "export"}, "sales_manager": {"read", "create", "write", "export"},
                           "head_office": {"read", "create", "write"}},
     "invoice_reminder": {"finance_manager": {"read", "create", "write", "delete", "export"}, "sales_manager": {"read", "create", "write", "delete", "export"},

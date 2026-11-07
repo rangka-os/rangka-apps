@@ -66,7 +66,7 @@
     </div>
   </div>
   {{if and (eq $ds "1") $owed}}<div class="due">
-    <div class="k">{{if $paid}}Sisa tagihan{{else}}Total tagihan{{end}}</div>
+    <div class="k">{{if $paid}}Sisa tagihan{{else if or .Doc.retention_amount .Doc.pph23_amount}}Tagihan bersih{{else}}Total tagihan{{end}}</div>
     <div class="v">{{rupiah .Doc.outstanding}}</div>
     <div class="k">Jatuh tempo {{date .Doc.due_date}}</div>
   </div>{{else if and (eq $ds "1") (not $owed)}}<div class="due">
@@ -131,6 +131,9 @@
 </table>
 <p class="note"><span class="muted">Terbilang:</span> {{terbilang .Doc.grand_total}}</p>
 {{if .Doc.notes}}<p class="note">{{.Doc.notes}}</p>{{end}}
+{{/* Cara bayar only while something is owed (or on a draft, which has no copy yet and shows the letterhead accounts):
+     a cancelled or paid invoice must not tell the customer to pay. */}}
+{{if or (eq $ds "0") (and (eq $ds "1") $owed)}}
 {{with .Related.cara_bayar}}{{with index . 0}}
 <section class="pay">
   <div>
@@ -149,6 +152,7 @@
 {{end}}{{else}}
 {{template "bank_accounts" .}}
 {{if .Letterhead.bank}}<p class="note">Mohon tulis nomor faktur <strong>{{.Doc.name}}</strong> di berita transfer supaya pembayaran langsung tercatat.</p>{{end}}
+{{end}}
 {{end}}
 <div class="foot">
   <div class="note muted">

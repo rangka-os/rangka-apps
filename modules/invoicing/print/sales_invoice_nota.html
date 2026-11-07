@@ -40,7 +40,11 @@ body { font-size: 8.5pt; }
 {{if .Doc.discount_amount}}<div class="row"><span>Diskon</span><span class="num">-{{rupiah .Doc.discount_amount}}</span></div>{{end}}
 {{if .Doc.down_payment}}<div class="row"><span>Uang muka</span><span class="num">-{{rupiah .Doc.down_payment}}</span></div>{{end}}
 {{if taxrate .Doc .Tax}}<div class="row muted"><span>PPN {{number (taxrate .Doc .Tax)}}%</span><span class="num">{{rupiah .Doc.ppn}}</span></div>{{end}}
-<div class="row big"><span>Total</span><span class="num">{{rupiah .Doc.grand_total}}</span></div>
+{{- $net := or .Doc.retention_amount .Doc.pph23_amount -}}
+<div class="row{{if not $net}} big{{end}}"><span>Total</span><span class="num">{{rupiah .Doc.grand_total}}</span></div>
+{{if .Doc.retention_amount}}<div class="row"><span>Retensi {{number .Doc.retention_percent}}% ditahan</span><span class="num">-{{rupiah .Doc.retention_amount}}</span></div>{{end}}
+{{if .Doc.pph23_amount}}<div class="row"><span>PPh 23 dipotong</span><span class="num">-{{rupiah .Doc.pph23_amount}}</span></div>{{end}}
+{{if $net}}<div class="row big"><span>Tagihan bersih</span><span class="num">{{rupiah .Doc.amount_due}}</span></div>{{end}}
 {{if $paid}}<div class="row"><span>Sudah dibayar</span><span class="num">-{{rupiah .Doc.paid_amount}}</span></div>{{end}}
 {{if and (eq $ds "1") $owed $paid}}<div class="row big"><span>Sisa</span><span class="num">{{rupiah .Doc.outstanding}}</span></div>{{end}}
 <div class="c status">
