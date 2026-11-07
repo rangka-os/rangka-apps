@@ -1,24 +1,28 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 name: rental_return_on_submit
 label: {id: Alat kembali dicatat}
-# The equipment must be out: a return before the checkout, or a second return, is refused. The schedule becomes
-# returned with the actual date. The deposit journal (2-1400 against 4-9200 and cash or bank) is gl_rental_return_post.
-# What the deposit does not cover becomes a draft invoice whose notes carry this return's number in ().
+# The equipment must be out: a return before the checkout, or a second return, is refused, and so is a return dated
+# before the equipment went out. The schedule becomes returned with the actual date. The deposit journal (2-1400
+# against 4-9200 and cash or bank) is gl_rental_return_post. What the deposit does not cover (in a PKP business: all
+# of the fee, with PPN on the invoice) becomes a draft invoice whose notes carry this return's number in ().
 on: rental_return.submitted
 steps:
+  - {find: rental_item, where: name == event.rental_item, as: ri}
   - {find: rental_schedule, where: booking == event.booking, as: s}
   - create: rental_guard
     if: s == null || s.state != 'out'
     set: {reason: "'not_out'", document: event.name}
+  - create: rental_guard
+    if: s != null && s.out_date != null && s.out_date != '' && event.return_date < s.out_date
+    set: {reason: "'before_out'", document: event.name}
   - update: s
     if: s != null
     set: {state: "'returned'", returned_date: event.return_date, rental_return: event.name}
-  - {find: rental_item, where: "s != null && name == s.rental_item", as: ri}
   - create: sales_invoice
     if: event.extra_due > 0 && ri != null
     set:
       customer: event.customer
       posting_date: event.return_date
-      notes: "'Kekurangan denda dan kerusakan sewa ' + event.booking + ' (' + event.name + ')'"
+      notes: "'Denda dan kerusakan sewa ' + event.booking + ' (' + event.name + ')'"
       items: >-
-        [{'item': ri.item, 'description': 'Denda telat ' + string(event.late_days) + ' hari dan kerusakan, setelah dipotong deposit', 'qty': 1, 'rate': event.extra_due}]
+        [{'item': ri.item, 'description': 'Denda telat ' + string(event.late_days) + ' hari dan kerusakan' + (event.deposit_kept ? ', setelah dipotong deposit' : ''), 'qty': 1, 'rate': event.extra_due}]

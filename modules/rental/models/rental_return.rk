@@ -32,8 +32,10 @@ fields:
   - {name: damage_fee, type: currency, label: {id: Biaya kerusakan atau hilang}, default: '0'}
   - {name: damage_notes, type: text, label: {id: Catatan kerusakan}}
   - {name: deposit, type: currency, label: {id: Deposit diterima}, compute: booking.deposit}
-  - {name: covered_late, type: currency, label: {id: Denda telat dipotong dari deposit}, compute: 'late_fee < deposit ? late_fee : deposit'}
-  - {name: covered_damage, type: currency, label: {id: Kerusakan dipotong dari deposit}, compute: 'damage_fee < deposit - covered_late ? damage_fee : deposit - covered_late'}
+  # A PKP business charges PPN on the fee: nothing is kept from the deposit, the whole fee goes on the invoice (finding 3).
+  - {name: deposit_kept, type: check, label: {id: Denda dipotong dari deposit}, compute: '!tax.pkp'}
+  - {name: covered_late, type: currency, label: {id: Denda telat dipotong dari deposit}, compute: "!deposit_kept ? 0 : (late_fee < deposit ? late_fee : deposit)"}
+  - {name: covered_damage, type: currency, label: {id: Kerusakan dipotong dari deposit}, compute: "!deposit_kept ? 0 : (damage_fee < deposit - covered_late ? damage_fee : deposit - covered_late)"}
   - {name: deposit_refund, type: currency, label: {id: Deposit dikembalikan}, compute: deposit - covered_late - covered_damage, in_list: true}
   - {name: extra_due, type: currency, label: {id: Kekurangan ditagih}, compute: late_fee + damage_fee - covered_late - covered_damage, in_list: true}
   - name: refund_method
@@ -52,6 +54,11 @@ rules:
     on: save
     check: return_date >= booking.start_date
     message: {id: Tanggal kembali tidak boleh sebelum mulai sewa}
+  - name: late_over_60_days
+    on: save
+    level: warn
+    check: return_date <= booking.end_date + duration(60)
+    message: {id: 'Telat lebih dari 60 hari: denda telat dihitung 60 hari saja. Masukkan sisa kerugian di biaya kerusakan atau hilang.'}
   - name: damage_not_negative
     on: save
     check: damage_fee >= 0
@@ -69,7 +76,7 @@ views:
       - section: {id: Denda dan kerusakan}
         columns:
           - [late_fee, damage_fee, damage_notes]
-          - [deposit, covered_late, covered_damage]
+          - [deposit, deposit_kept, covered_late, covered_damage]
       - section: {id: Hasil}
         columns:
           - [deposit_refund]

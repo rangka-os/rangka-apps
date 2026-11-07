@@ -2,13 +2,20 @@
 name: rental_checkout_on_submit
 label: {id: Alat keluar dicatat}
 # The booking must be waiting to go out (schedule booked): a second checkout of the same booking, or one of a
-# cancelled booking, is refused. The schedule becomes out with the actual date.
+# cancelled booking, is refused. The units physically out (other bookings still out, also late ones) plus this one
+# may not exceed the item's units. The schedule becomes out with the actual date. Reads rental_item before
+# rental_schedule, like every flow of this module (one lock order).
 on: rental_checkout.submitted
 steps:
+  - {find: rental_item, where: name == event.rental_item, as: ri}
   - {find: rental_schedule, where: booking == event.booking, as: s}
+  - {find_all: rental_schedule, where: "rental_item == event.rental_item && state == 'out'", as: out}
   - create: rental_guard
     if: s == null || s.state != 'booked'
     set: {reason: "'not_booked'", document: event.name}
+  - create: rental_guard
+    if: s != null && ri != null && out.map(x, x.qty).sum() + s.qty > ri.units
+    set: {reason: "'still_out'", document: event.name}
   - update: s
     if: s != null
     set: {state: "'out'", out_date: event.out_date, checkout: event.name}

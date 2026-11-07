@@ -8,12 +8,16 @@ Members: Admin sewa (sales_manager) books, records equipment out and back; Keuan
 corrects returns; Kantor pusat (head_office) reads. The owner (seeded) can do everything.
 """
 import datetime
+import os
+import shutil
+import tempfile
 import threading
+import zoneinfo
 
 H = {}
 LENS, CAMERA, LAMP, TENT, CHAIR, SOUND = "ALT-0002", "ALT-0001", "ALT-0003", "ALT-0004", "ALT-0005", "ALT-0006"
 BUDI, WO, FILM, ARISAN = "CUST-0001", "CUST-0002", "CUST-0003", "CUST-0004"
-TODAY = datetime.date.today()
+TODAY = datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Jakarta")).date()   # the kernel's today() (site timezone)
 
 
 def d(n):
@@ -35,7 +39,7 @@ MEMBERS = [("sm", "sales_manager"), ("fm", "finance_manager"), ("hq", "head_offi
 
 
 def bind(m):
-    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "denied", "dashboard", "num", "chart_map", "secrets", "messages"):
+    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "Kernel", "ROOT", "denied", "dashboard", "num", "chart_map", "secrets", "messages"):
         H[k] = getattr(m, k)
     globals().update(H)
     m.SITE_ORGS["demo-sewa"] = [("sewa_contoh", "demo-sewa")]
@@ -289,6 +293,94 @@ def scenario_rental_cancel(api):
         check("cancelling a booking whose rent invoice is submitted: refused (invoice_submitted)", st == 422 and "invoice_submitted" in rules(resp), (st, resp))
 
 
+def scenario_rental_still_out(api):
+    """A late unit is still out: the next booking of the only lens cannot go out until it is back; a return cannot be
+    dated before the checkout."""
+    sm = CTX.get("sm")
+    if not sm:
+        return
+    l1 = book(sm, LENS, 1, d(-3), 1, "lens L1 (day -3 to -2)")
+    l2 = book(sm, LENS, 1, d(-2), 2, "lens L2 (day -2 to 0), booked while L1 has not gone out")
+    if not (l1 and l2):
+        return
+    st, c = checkout(sm, l1["name"], d(-2))
+    check("lens L1 goes out on day -2 (one day after its start) -> 200", st == 200, (st, c))
+    st, c = checkout(sm, l2["name"], d(-2))
+    check("lens L2 cannot go out while L1 is still out (still_out)", st == 422 and "still_out" in rules(c), (st, c))
+    st, r = give_back(sm, l1["name"], d(-3))
+    check("lens L1 cannot come back before it went out (before_out)", st == 422 and "before_out" in rules(r), (st, r))
+    st, r = give_back(sm, l1["name"], d(0))
+    check("lens L1 back on day 0 (2 days late) -> 200", st == 200 and r.get("late_days") == 2, (st, r))
+    st, c = checkout(sm, l2["name"], d(0))
+    check("then lens L2 goes out -> 200", st == 200, (st, c))
+
+
+def scenario_rental_invoice_guards(api):
+    """Audit finding 1 and 2: a rental invoice is submitted once, only for a live document, and its notes are locked."""
+    sm = CTX.get("sm")
+    if not sm:
+        return
+    b = book(sm, CHAIR, 3, d(130), 1, "chairs x3 (draft rent invoice left by a cancel)")
+    if not b:
+        return
+    draft = api.find("sales_invoice", f"docstatus == 0 && notes.contains('({b['name']})')")
+    if not check("chairs x3: one draft rent invoice", len(draft) == 1, draft):
+        return
+    st, resp = sm.patch("sales_invoice", draft[0]["name"], {"notes": "Sewa kursi"})
+    check("the notes of a rent invoice cannot be edited (invoice_tag)", st == 422 and "invoice_tag" in rules(resp), (st, resp))
+    st, resp = sm.verb("rental_booking", b["name"], "cancel")
+    check("chairs x3: booking cancelled while its invoice is a draft -> 200", st == 200, (st, resp))
+    st, resp = sm.verb("sales_invoice", draft[0]["name"], "submit", {"force": True})
+    check("the left-over draft of a cancelled booking cannot be submitted (invoice_stale)", st == 422 and "invoice_stale" in rules(resp), (st, resp))
+    st, am = sm.verb("rental_booking", b["name"], "amend")
+    am = rec(am)
+    if check("chairs x3: the booking is amended (new dates come this way) -> 200/201", st in (200, 201) and am.get("name"), (st, am)):
+        st, sb = submit(sm, "rental_booking", am["name"])
+        check("the amended booking is submitted", st == 200, (st, sb))
+        am = sb if st == 200 else am   # a draft gets its number on submit
+        new = api.find("sales_invoice", f"docstatus == 0 && notes.contains('({am['name']})')")
+        if check("the amended booking has its own draft invoice", len(new) == 1, new):
+            st, resp = sm.verb("sales_invoice", new[0]["name"], "submit", {"force": True})
+            check("its invoice is submitted -> 200", st == 200, (st, resp))
+            st, twin = sm.create("sales_invoice", {"customer": BUDI, "notes": f"Sewa kursi ({am['name']})", "items": [{"item": "BRG-0005", "qty": 3, "rate": 5_000}]})
+            st, resp = sm.verb("sales_invoice", rec(twin).get("name", "x"), "submit", {"force": True})
+            check("a second invoice with the same booking number is refused (invoice_stale)", st == 422 and "invoice_stale" in rules(resp), (st, resp))
+
+
+def scenario_rental_pkp(api):
+    """Audit finding 3: a PKP business keeps nothing from the deposit (the fee carries PPN): the deposit goes back in
+    full and the whole fee is a draft invoice with PPN. Runs on a throwaway copy of the site with pkp: true."""
+    state, k = None, None
+    try:
+        state = tempfile.mkdtemp(prefix="day-one-sewa-pkp-")
+        site_dir = os.path.join(state, "site")
+        shutil.copytree(os.path.join(ROOT, "examples", "sites", "demo-sewa"), site_dir)
+        cfg = os.path.join(site_dir, "config.rk")
+        text = open(cfg).read()
+        assert "      tax: {pkp: false}" in text
+        open(cfg, "w").write(text.replace("      tax: {pkp: false}", "      tax: {pkp: true}").replace("pkp: false}", "pkp: true}"))
+        k = Kernel("demo-sewa", state, site_dir=site_dir)
+        k.start()
+        own = Api(k.base)
+        b = book(own, LAMP, 1, d(-4), 1, "PKP: lamp x1 (day -4 to -3)")
+        if not b:
+            return
+        checkout(own, b["name"], d(-4))
+        st, ret = give_back(own, b["name"], d(0), damage=20_000)
+        if not check("PKP: lamp back 3 days late -> 200", st == 200, (st, ret)):
+            return
+        eq("PKP: nothing kept from the deposit, 300.000 back, fee 3 x 50.000 + 20.000 = 170.000 billed",
+           (ret["deposit_kept"], ret["covered_late"], ret["covered_damage"], ret["deposit_refund"], ret["extra_due"]), (False, 0, 0, 300_000, 170_000))
+        eq("PKP: return journal 2-1400 +300.000 against Kas -300.000 (no 4-9200)", gl(own, "rental_return", ret["name"]), {"21400": 300_000, "11100": -300_000})
+        inv = own.find("sales_invoice", f"notes.contains('({ret['name']})')")
+        eq("PKP: the fee invoice carries PPN 12% of DPP 11/12", [(i["subtotal"], i["tax_rate"], i["ppn"]) for i in inv], [(170_000, 12, round(170_000 * 11 / 12 * 12 / 100))])
+    finally:
+        if k is not None:
+            k.stop()
+        if state is not None:
+            shutil.rmtree(state, ignore_errors=True)
+
+
 def scenario_rental_roles(api):
     """Per role: Admin sewa runs the counter but cannot change rates or undo a return; Keuangan sets rates and
     corrects returns but does not book; Kantor pusat reads."""
@@ -366,4 +458,4 @@ def _sum_by(rows, cond):
 
 
 SCENARIOS = [scenario_rental_fixtures, scenario_rental_booking_conflict, scenario_rental_race, scenario_rental_out_and_back,
-             scenario_rental_cancel, scenario_rental_roles, scenario_rental_dashboard]
+             scenario_rental_cancel, scenario_rental_still_out, scenario_rental_invoice_guards, scenario_rental_pkp, scenario_rental_roles, scenario_rental_dashboard]

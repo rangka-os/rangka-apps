@@ -22,6 +22,10 @@ fields:
       - {value: in_use, label: {id: Alat sudah keluar}}
       - {value: already_returned, label: {id: Alat sudah kembali}}
       - {value: invoice_submitted, label: {id: Fakturnya sudah diajukan}}
+      - {value: invoice_stale, label: {id: Faktur untuk dokumen batal atau sudah ditagih}}
+      - {value: invoice_tag, label: {id: Catatan faktur sewa diubah}}
+      - {value: still_out, label: {id: Unit masih di luar}}
+      - {value: before_out, label: {id: Kembali sebelum keluar}}
   - name: document
     type: data
     label: {id: Dokumen}
@@ -50,3 +54,19 @@ rules:
     on: save
     check: reason != 'invoice_submitted'
     message: {id: 'Fakturnya sudah diajukan. Batalkan fakturnya dulu.'}
+  - name: invoice_stale
+    on: save
+    check: reason != 'invoice_stale'
+    message: {id: 'Faktur ini untuk pesanan atau catatan alat kembali yang sudah batal, atau sudah ditagih di faktur lain. Hapus draf ini.'}
+  - name: invoice_tag
+    on: save
+    check: reason != 'invoice_tag'
+    message: {id: 'Catatan faktur sewa tidak bisa diubah: nomor pesanan di dalamnya dipakai untuk mencocokkan faktur.'}
+  - name: still_out
+    on: save
+    check: reason != 'still_out'
+    message: {id: 'Unit alat ini masih di luar (ada yang belum kembali). Catat alat kembali dulu sebelum alat keluar lagi.'}
+  - name: before_out
+    on: save
+    check: reason != 'before_out'
+    message: {id: Tanggal kembali tidak boleh sebelum tanggal alat keluar}

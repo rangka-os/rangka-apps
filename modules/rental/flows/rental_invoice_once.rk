@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: rental_invoice_once
+label: {id: Satu faktur per pesanan sewa atau per alat kembali}
+# The rent invoice of a booking carries its number in () (SWA-...), the invoice for what a deposit did not cover the
+# return's (KBL-...); an invoice cannot link the rental module. Such an invoice is submitted only while that document
+# is submitted (not a draft left behind by a cancel and amend) and when no other submitted invoice carries the same
+# number, so a booking or a return is never billed twice (audit 2026-11-07-audit-sewa-alat, finding 1).
+on: sales_invoice.submitted
+if: event.notes.contains('SWA-') || event.notes.contains('KBL-')
+steps:
+  - {find: rental_booking, where: "event.notes.contains('(' + name + ')')", as: b}
+  - {find: rental_return, where: "event.notes.contains('(' + name + ')')", as: r}
+  - find: sales_invoice
+    where: "name != event.name && docstatus == 1 && ((b != null && notes.contains('(' + b.name + ')')) || (r != null && notes.contains('(' + r.name + ')')))"
+    as: twin
+  - if: (b == null && r == null) || (b != null && b.docstatus != 1) || (r != null && r.docstatus != 1) || twin != null
+    create: rental_guard
+    set:
+      reason: "'invoice_stale'"
+      document: event.name
