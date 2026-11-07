@@ -11,6 +11,7 @@ summary:
   id: Pesanan salesman dengan harga per tier, tahan kredit otomatis, surat jalan, retur, giro dan piutang per salesman.
 rangka: '>=0.5'
 modules:
+  accounting: ^1.0
   contacts: ^1.0
   catalogue: ^1.0
   outlets: ^1.0
@@ -36,6 +37,8 @@ menu:
     items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
   - group: {id: Pembelian}
     items: [purchase_order, goods_receipt, vendor_bill]
+  - group: {id: Pembukuan}
+    items: [financial_report, gl_entry, opening_balance, period_close]
   - group: {id: Pajak}
     items: [tax_period]
   - group: {id: Data induk}

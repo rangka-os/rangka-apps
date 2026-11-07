@@ -152,6 +152,31 @@ fields:
     label: {id: Sisa tagihan}
     compute: amount_due - paid_amount
     in_list: true
+  # Accounting (module accounting): what the bill pays for. A project's cost goes to Biaya proyek; goods received
+  # into stock through a goods receipt or PO (or consigned goods sold) clear "Utang belum ditagih", only where the
+  # stock module keeps stock; anything else to the expense account chosen. The default follows the links on the bill.
+  - name: posting
+    type: select
+    label: {id: Dicatat sebagai}
+    default: "project != '' ? 'project' : ((goods_receipt != '' || purchase_order != '') && app_installed('stock') ? 'stock' : 'expense')"
+    depends_on: app_installed('accounting')
+    options:
+      - {value: stock, label: {id: Barang dagang atau bahan (sudah diterima)}}
+      - {value: project, label: {id: Biaya proyek}}
+      - {value: expense, label: {id: Beban operasional}}
+  - name: expense_account
+    type: select
+    label: {id: Akun beban}
+    default: "'61900'"
+    depends_on: app_installed('accounting') && posting == 'expense'
+    options:
+      - {value: '61100', label: {id: Beban gaji kantor}}
+      - {value: '61400', label: {id: Beban sewa}}
+      - {value: '61500', label: {id: 'Beban listrik, air, internet'}}
+      - {value: '61600', label: {id: Beban transport dan kirim}}
+      - {value: '61700', label: {id: Beban pemasaran}}
+      - {value: '61800', label: {id: Beban perlengkapan dan perawatan}}
+      - {value: '61900', label: {id: Beban operasional lain}}
   - name: notes
     type: text
     label: {id: Catatan}
@@ -163,6 +188,14 @@ fields:
   - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_fx + ppn_fx"}
   - {name: amount_due_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Tagihan bersih (valas)}, compute: "currency != '' && currency != 'IDR' ? round(grand_total_fx - pph23_amount / exchange_rate, 2) : 0"}  # pph23_amount is entered in rupiah only
 rules:
+  - name: posting_stock_needs_stock
+    on: save
+    check: posting != 'stock' || app_installed('stock')
+    message: {id: Tagihan barang dagang hanya untuk usaha yang mencatat stok; pilih Beban operasional atau Biaya proyek}
+  - name: posting_project_needs_project
+    on: save
+    check: (posting != 'project' || project != '') && (project == '' || posting == 'project' || posting == null)
+    message: {id: 'Tagihan dengan proyek dicatat sebagai biaya proyek, dan biaya proyek perlu proyeknya'}
   - name: pph23_rate_range
     on: save
     check: pph23_rate >= 0 && pph23_rate <= 100

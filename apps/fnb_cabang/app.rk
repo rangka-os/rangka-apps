@@ -7,6 +7,7 @@ summary:
   id: Penjualan harian, stok bahan baku, transfer, opname dan pembelian untuk beberapa outlet.
 rangka: '>=0.5'
 modules:
+  accounting: ^1.0
   contacts: ^1.0
   catalogue: ^1.0
   outlets: ^1.0
@@ -27,6 +28,8 @@ menu:
     items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment, recipe]
   - group: {id: Pembelian}
     items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment]
+  - group: {id: Pembukuan}
+    items: [financial_report, gl_entry, opening_balance, period_close]
   - group: {id: Data induk}
     items: [outlet, item, uom, uom_conversion, vendor]
 onboarding:
