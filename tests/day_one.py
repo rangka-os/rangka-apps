@@ -2483,15 +2483,23 @@ def scenario_project_margin(api):
         st, resp = pm.verb("vendor_bill", sb, "cancel")
         check("D2: a bill linked by a live expense cannot be cancelled (it could come back with the project) -> 422", st == 422, (st, resp))
     nbn = submit_doc(pm, "vendor_bill", nb["name"], "submit the small bill without project") if nb.get("name") else ""
-    st, e2 = pa.create("project_expense", {"project": p, "description": "Ke tagihan kecil", "amount": 9_000_000, "vendor_bill": nbn or ""})
-    submit_doc(pa, "project_expense", e2["name"], "expense of 9.000.000 linked to a 1.000.000 bill without project") if st == 201 else None
-    eq("both expenses lower the margin by their full amount (17.000.000)", before_m - margin(), 17_000_000)
+    # with the accounting module an expense moves its bill's cost into the project, so together the live expenses on
+    # one bill cannot exceed it (gl_entry rule bill_cost_left): 9.000.000 on a 1.000.000 bill is refused, 1.000.000 fits
+    st, big = pa.create("project_expense", {"project": p, "description": "Ke tagihan kecil", "amount": 9_000_000, "vendor_bill": nbn or ""})
+    if st == 201 and installed(api, "gl_entry"):
+        st2, resp = pa.verb("project_expense", big["name"], "submit")
+        check("accounting: an expense above its bill's cost is refused", st2 == 422 and "melebihi" in str(resp), (st2, str(resp)[:300]))
+        pa.call("DELETE", f"/api/v1/r/project_expense/{Api.q(big['name'])}")
+    small = 1_000_000 if installed(api, "gl_entry") else 9_000_000
+    st, e2 = pa.create("project_expense", {"project": p, "description": "Ke tagihan kecil", "amount": small, "vendor_bill": nbn or ""})
+    submit_doc(pa, "project_expense", e2["name"], f"expense of {small:,} linked to a 1.000.000 bill without project") if st == 201 else None
+    eq(f"both expenses lower the margin by their full amount ({8_000_000 + small:,})", before_m - margin(), 8_000_000 + small)
     st, vbp = pm.create("vendor_bill", {"vendor": "VND-0001", "project": p, "bill_no": "PRJ-BILL", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 1_000_000}]})
     st, resp = pa.create("project_expense", {"project": p, "description": "x", "amount": 1_000_000, "vendor_bill": vbp.get("name", "")})
     check("an expense linking a bill of this project (counted on its own) -> 422", st == 422, (st, resp))
     if e1n:
         pa.verb("project_expense", e1n, "cancel")
-        eq("cancelling the 8.000.000 expense gives it back", before_m - margin(), 9_000_000)
+        eq("cancelling the 8.000.000 expense gives it back", before_m - margin(), small)
         if sb:
             st, resp = pm.verb("vendor_bill", sb, "cancel")
             check("once the expense is cancelled, its bill can be cancelled", st == 200, (st, resp))
@@ -2519,7 +2527,9 @@ def scenario_project_margin(api):
        sorted(r["source_name"] for r in revs), sorted({r["source_name"] for r in revs}))
     eq("four reversals: the subcontract bill, the DPP 0 invoice, the 500.000 expense and the 8.000.000 expense", len(revs), 4)
     ws = dashboard(api, "project_margin", 365)
-    eq("project_margin margin_by_project shows the project's margin (35.000.000 - the 9.000.000 expense = 26.000.000)", chart_map(ws.get("margin_by_project", {})).get(p), 26_000_000)
+    # the remaining expense on the small bill: 9.000.000, or 1.000.000 where accounting refuses more than the bill
+    left = 1_000_000 if installed(api, "gl_entry") else 9_000_000
+    eq(f"project_margin margin_by_project shows the project's margin (35.000.000 - the {left:,} expense)", chart_map(ws.get("margin_by_project", {})).get(p), 35_000_000 - left)
 
 
 def scenario_manpower_recap(api):
@@ -2911,7 +2921,16 @@ MATRIX = {
     "goods_receipt": {"purchasing_manager": _ALL, "head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     "lead": _PIPE, "deal": _PIPE, "activity": _PIPE,
     "recipe": {"head_office": {"read", "create", "write", "delete", "export"}, "outlet_staff": _R},
-    "stock_move": {"head_office": {"read", "export"}, "outlet_staff": _R},
+    "stock_move": {"head_office": {"read", "export"}, "outlet_staff": _R, "sales_manager": _R},   # sales: delivery_note, sales_return moves only
+    # accounting: journal lines are append_only (contract 0026), so /meta reports no create for anyone; the posting flows
+    # of every submitting role still create them. Non-finance roles read only the lines of their own documents.
+    "gl_entry": {"finance_manager": {"read", "export"}, "head_office": {"read", "export"}, "sales_manager": _R,
+                 "purchasing_manager": _R, "project_admin": _R, "outlet_staff": _R},
+    "period_close": {"finance_manager": _ALL, "head_office": _ALL, "sales_manager": _R, "purchasing_manager": _R,
+                     "project_admin": _R, "outlet_staff": _R},
+    "opening_balance": {"finance_manager": _ALL | {"import"}, "head_office": _ALL | {"import"}},
+    "financial_report": {"finance_manager": {"read", "create", "write", "delete", "export", "print"},
+                         "head_office": {"read", "create", "write", "delete", "export", "print"}},
     "stock_balance": {"head_office": {"read", "export"}, "outlet_staff": _R},
     "stock_transfer": {"head_office": _ALL, "outlet_staff": _R},
     "stock_transfer_receipt": {"head_office": _ALL, "outlet_staff": _RCWS | {"cancel"}},
@@ -5322,9 +5341,11 @@ def setup_demo_fnb(api, k):
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import day_one_grosir  # noqa: E402
 import day_one_produksi  # noqa: E402
+import day_one_accounting  # noqa: E402
 import day_one_payroll  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
+day_one_accounting.bind(sys.modules[__name__])
 day_one_payroll.bind(sys.modules[__name__])
 
 SCENARIOS = {
@@ -5339,6 +5360,9 @@ SCENARIOS = {
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
     "demo-manpower": day_one_payroll.SCENARIOS + [scenario_permissions],
 }
+# accounting last: it checks the books against every document the scenarios above submitted
+for _site in ("demo-jasa", "demo-fnb", "demo-ritel", "demo-grosir", "demo-produksi", "demo-manpower"):
+    SCENARIOS[_site].append(day_one_accounting.scenario_accounting)
 
 
 def main():

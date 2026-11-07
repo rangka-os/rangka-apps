@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: period_close
+label: {id: Tutup buku, en: Period close}
+icon: lock
+is_submittable: true
+naming: TB-{YYYY}-{####}
+title_field: closed_until
+# Submitting locks the books up to and including closed_until: every posting flow reads the latest submitted close
+# into gl_entry.lock_date, and a journal line dated on or before it is refused, so a document of a closed period can
+# no longer be submitted, cancelled or amended. Cancelling the close opens the period again. The lock is the latest closed_until of the submitted closes, so an older close submitted later changes
+# nothing. The profit of earlier
+# periods is not moved by a closing entry: Laporan keuangan computes laba ditahan from the lines before its period.
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  # every role that submits a posting document reads the lock (the posting flows run as that person)
+  - {role: sales_manager, read: true}
+  - {role: purchasing_manager, read: true}
+  - {role: project_admin, read: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - {name: closed_until, type: date, label: {id: Tutup buku sampai tanggal}, required: true, in_list: true}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: not_in_future
+    on: save
+    check: closed_until <= today()
+    message: {id: Tutup buku hanya untuk tanggal yang sudah lewat}
+views:
+  list:
+    columns: [name, closed_until, status]
+    sort: -closed_until
