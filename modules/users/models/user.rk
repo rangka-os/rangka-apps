@@ -13,6 +13,7 @@ permissions:
   - {role: outlet_staff, read: true}
   - {role: sales_rep, read: true}
   - {role: field_sales, read: true}
+  - {role: course_admin, read: true}
 fields:
   - name: full_name
     type: data

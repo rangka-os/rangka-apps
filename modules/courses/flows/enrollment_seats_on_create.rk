@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: enrollment_seats_on_create
+label: {id: Pendaftaran baru memakai kursi angkatan}
+# Runs in the creator's transaction. The find_all takes the flow read lock on enrollment (contract 0025), so two
+# enrollments made at the same moment count one after the other; the batch rule seats_within_quota refuses the one that
+# would go over the quota, and that rolls its create back.
+on: enrollment.created
+steps:
+  - find_all: enrollment
+    where: batch == event.batch && (status == 'registered' || status == 'active')
+    as: taken
+  - {find: course_batch, where: name == event.batch, as: b}
+  - update: b
+    set:
+      seats_taken: size(taken)

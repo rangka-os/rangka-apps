@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for a course school (composed from pieces, riset/desain/11): an English class paid in instalments, a
+# monthly tutoring class (SPP), an online design course and an Excel training for a client company's employees. Not a
+# PKP: education services are VAT-exempt anyway. Data: examples/fixtures/demo-kursus (synthetic, fictional names).
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: Lembaga Kursus Contoh Cerdas}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: false}
+orgs:
+  kursus_contoh:
+    name: Lembaga Kursus Contoh Cerdas
+    code: LKC
+    config:
+      org: {legal_name: Lembaga Kursus Contoh Cerdas}
+      tax: {pkp: false}
+      numbering:
+        invoice: {pattern: "INV/{ORG}/{YY}/{####}", reset: yearly}
+apps: [kelas_kursus, faktur_piutang, pembukuan]
+plan: tumbuh
+sso: {domains: [kursuscontoh.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, finance_manager]}

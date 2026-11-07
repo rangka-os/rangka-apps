@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: courses
+version: 1.0.0
+title: {id: Kursus dan pelatihan, en: Courses and training}
+# Course schools, tutoring centres, online courses and company training: programs, batches (angkatan) with a quota, a
+# teacher and a weekly schedule, students (a person or an employee of a client company), enrollments, sessions with
+# attendance, and charges (paid in full, in instalments or monthly) that become draft sales invoices. Research and plan:
+# rangka research_notes/kursus, plans/kursus.md.
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, invoicing: ^1.0}

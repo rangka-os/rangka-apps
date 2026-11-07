@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: kelas_kursus
+version: 1.0.0
+title: {id: Kelas dan kursus, en: Classes and courses}
+label: {id: Rangka Kelas & Kursus, en: Rangka Classes & Courses}
+summary:
+  id: Program kelas, angkatan dengan kuota dan jadwal, peserta, pendaftaran, absen per pertemuan, dan tagihan bayar penuh, cicilan atau per bulan.
+rangka: '>=0.5'
+# A piece (riset/desain/11-susunan-kepingan.md) for course schools, tutoring, online courses and company training. The
+# charges become sales invoices; receiving their payment, reminders and aging come from faktur_piutang, the books from
+# pembukuan.
+modules:
+  users: ^1.0
+  contacts: ^1.0
+  catalogue: ^1.0
+  invoicing: ^1.0
+  courses: ^1.0
+dashboards: [kursus_ringkas]
+roles: [course_admin, instructor, finance_manager]
+home: {dashboard: kursus_ringkas}
+menu:
+  - group: {id: Kelas}
+    items: [course_batch, course_session, enrollment]
+  - group: {id: Peserta dan tagihan}
+    items: [student, course_charge]
+  - group: {id: Pengaturan kelas}
+    items: [course_program]

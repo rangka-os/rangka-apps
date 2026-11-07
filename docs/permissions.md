@@ -7,7 +7,8 @@ and may do everything. A model without `permissions:` would be open to every mem
 All roles live in the `users` module, which every module requires, so a permission never names a role the site lacks.
 An app lists the roles it uses in `roles:` (`crm`: sales_rep, sales_manager; `jasa_proyek`: sales_manager,
 finance_manager, purchasing_manager, project_admin; `fnb_cabang`, `ritel_cabang` and `produksi_pabrik`: head_office, outlet_staff;
-`grosir_distribusi`: sales_manager, finance_manager, head_office, field_sales).
+`grosir_distribusi`: sales_manager, finance_manager, head_office, field_sales; `kelas_kursus`: course_admin, instructor
+(its role file is in the `courses` module), finance_manager).
 
 Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e export, p print, i import.
 **all** = r c w d s x a e p (no import unless written). `outlet_staff` has a row scope
@@ -122,3 +123,23 @@ Sales and purchasing have no access.
 | payslip | | all | | r c (draft from the recap's flow) |
 | payroll_close (Tutup periode gaji: freezes totals, margin row, client invoice) | | all | | r |
 | payroll_guard (never stored; a flow's refusal, also inside a recap cancel and an invoice save) | c | c | | c |
+
+### Courses (module courses, piece kelas_kursus)
+
+Two roles: `course_admin` (Admin kursus, in the `users` module) runs programs, batches, students, enrollments, sessions
+and drafts charges; `instructor` (Pengajar, in the `courses` module, since its row scope names the courses field
+`instructor`) sees only the batches, sessions and enrollments that name their user record (`rangka user add --record`)
+and takes attendance; the money fields of an enrollment and a student's payer are `hidden_for: [instructor]` (contract
+0027). Submitting a charge makes the draft invoice, so it is finance's. The course admin also reads items, reads users,
+and reads, creates and writes customers (a student on their own gets a customer to bill; an employee is billed to the
+company). Seats and billed counts are written by flows. `MATRIX` rows live in `tests/day_one_courses.py`.
+
+| Model | course_admin | instructor | finance_manager | sales_manager |
+| --- | --- | --- | --- | --- |
+| course_program | r c w e p | r | r c w e p | |
+| course_batch (`seats_taken` written by the enrollment flows) | r c w e p | r p (own) | r e p | |
+| student (`bill_to` hidden from the instructor) | r c w e p | r | r c w e p | |
+| enrollment (no delete: set Keluar; finance writes only through the charge flows that lock the terms) | r c w e p | r (own, no money fields) | r w e p | |
+| course_session (attendance) | r c w d e p | r c w p (own) | r e | |
+| course_charge (no delete for anyone but the owner: a cancelled charge's key must stay) | r c w e p | | all but d | r (the invoice flows read it as the submitter) |
+| course_guard (never stored; a flow's refusal) | c | | c | c |

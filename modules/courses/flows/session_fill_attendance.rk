@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: session_fill_attendance
+label: {id: Absen pertemuan terisi dari peserta angkatan}
+# A session made without attendance gets one line per registered or active student of the batch, marked present.
+on: course_session.created
+if: size(event.attendance) == 0
+steps:
+  - find_all: enrollment
+    where: batch == event.batch && (status == 'registered' || status == 'active')
+    sort: student
+    as: list
+  - {find: course_session, where: name == event.name, as: me}
+  - update: me
+    if: size(list) > 0
+    set:
+      attendance: "list.map(e, {'enrollment': e.name, 'status': 'present'})"

@@ -5350,12 +5350,14 @@ import day_one_accounting  # noqa: E402
 import day_one_payroll  # noqa: E402
 import day_one_returns  # noqa: E402
 import day_one_rental  # noqa: E402
+import day_one_courses  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
 day_one_payroll.bind(sys.modules[__name__])
 day_one_returns.bind(sys.modules[__name__])
 day_one_rental.bind(sys.modules[__name__])   # also registers demo-sewa (orgs, members, matrix rows)
+day_one_courses.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5369,6 +5371,7 @@ SCENARIOS = {
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
     "demo-manpower": day_one_payroll.SCENARIOS + [scenario_permissions],
     "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],
+    "demo-kursus": day_one_courses.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
 # accounting last: it checks the books against every document the scenarios above submitted
 for _site in ("demo-jasa", "demo-fnb", "demo-ritel", "demo-grosir", "demo-produksi", "demo-manpower", "demo-sewa"):
