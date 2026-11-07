@@ -2886,7 +2886,7 @@ MATRIX = {
     "project_expense": {"project_admin": _ALL, "finance_manager": _ALL - {"delete"}, "sales_manager": _R, "purchasing_manager": _R},
     "project_guard": {"purchasing_manager": {"create"}, "finance_manager": {"create"}},
     "credit_guard": {"finance_manager": {"create"}, "sales_manager": {"create"}, "project_admin": {"create"}, "head_office": {"create"}},   # never stored
-    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R, "field_sales": _RP},
+    "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R, "field_sales": _RP, "head_office": {"read", "print", "export"}},
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
                           "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
     "withholding": {"finance_manager": _ALL, "sales_manager": _RP},
@@ -2906,7 +2906,8 @@ MATRIX = {
                 "field_sales": _RP},   # head_office: if direction == 'pay'
     "purchase_request": {"purchasing_manager": _ALL, "project_admin": _RCWS, "head_office": _ALL, "outlet_staff": _RCWS},
     "purchase_order": {"purchasing_manager": _ALL, "finance_manager": _RP, "head_office": _ALL},
-    "vendor_bill": {"purchasing_manager": _ALL, "finance_manager": {"read", "submit", "print"}, "head_office": _ALL},
+    "vendor_bill": {"purchasing_manager": _ALL, "finance_manager": {"read", "submit", "print", "export"}, "head_office": _ALL},
+    "tax_period": {r: {"read", "create", "write", "delete", "export", "print"} for r in ("finance_manager", "head_office")},
     "goods_receipt": {"purchasing_manager": _ALL, "head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     "lead": _PIPE, "deal": _PIPE, "activity": _PIPE,
     "recipe": {"head_office": {"read", "create", "write", "delete", "export"}, "outlet_staff": _R},
@@ -3163,6 +3164,255 @@ def aging_cells(text):
     """The five aging amounts of the statement (belum jatuh tempo, 1-30, 31-60, 61-90, > 90) as ints."""
     m = re.search(r"> 90 hari ((?:-?Rp [\d.]+ ?){5})", text)
     return [int(x.replace("Rp ", "").replace(".", "")) for x in re.findall(r"-?Rp [\d.]+", m.group(1))] if m else None
+
+
+
+# Element order of the DJP Coretax import samples (pajak.go.id, Coretax templates): "Sample Faktur PK Template v.1.4.xml"
+# and "bppu.xml". The Coretax files Juragan writes must carry exactly these elements in this order.
+CORETAX_INVOICE_TAGS = ["TaxInvoiceDate", "TaxInvoiceOpt", "TrxCode", "AddInfo", "CustomDoc", "CustomDocMonthYear", "RefDesc",
+                        "FacilityStamp", "SellerIDTKU", "BuyerTin", "BuyerDocument", "BuyerCountry", "BuyerDocumentNumber",
+                        "BuyerName", "BuyerAdress", "BuyerEmail", "BuyerIDTKU", "ListOfGoodService"]
+CORETAX_LINE_TAGS = ["Opt", "Code", "Name", "Unit", "Price", "Qty", "TotalDiscount", "TaxBase", "OtherTaxBase", "VATRate", "VAT", "STLGRate", "STLG"]
+CORETAX_BPU_TAGS = ["TaxPeriodMonth", "TaxPeriodYear", "CounterpartTin", "IDPlaceOfBusinessActivityOfIncomeRecipient", "TaxCertificate",
+                    "TaxObjectCode", "TaxBase", "Rate", "Document", "DocumentNumber", "DocumentDate", "IDPlaceOfBusinessActivity",
+                    "GovTreasurerOpt", "SP2DNumber", "WithholdingDate"]
+
+
+def synthetic_id(n, digits=16):
+    """A made-up 16-digit tax number (never a real NPWP/NIK): 9 then zeros then n."""
+    return "9" + str(n).rjust(digits - 1, "0")
+
+
+def scenario_coretax(api):
+    """Coretax export (module coretax, contract 0029): the e-Faktur keluaran XML of one tax period and the BPPU XML of the
+    PPh 23 the firm withheld, shaped like DJP's import samples, refused while a document cannot be imported."""
+    import xml.etree.ElementTree as ET
+    from decimal import Decimal, ROUND_HALF_UP
+    if not installed(api, "tax_period"):
+        fail("coretax", "tax_period not installed on this site")
+        return
+    D = lambda v: Decimal(str(v))
+    r2 = lambda v: v.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    seller, tin_a, tin_d, tin_v, nik_b, nik_w = (synthetic_id(i) for i in (1, 2, 4, 5, 3, 6))
+    svc = services(api)[0]
+
+    # tax identity rules on customers and vendors
+    for label, body in (("a NITKU that does not start with the NPWP", {"npwp": tin_a, "nitku": tin_d + "000000"}),
+                        ("a NITKU of 21 digits", {"npwp": tin_a, "nitku": tin_a + "00000"}),
+                        ("a NIK of 15 digits", {"nik": nik_b[:15]}), ("a country code in lower case", {"country": "idn"})):
+        st, resp = api.create("customer", dict({"customer_name": "PT Ditolak Contoh", "address": "Jl. Contoh"}, **body))
+        check(f"customer refuses {label}", st == 422, (st, resp))
+    st, resp = api.create("vendor", {"vendor_name": "CV Ditolak Contoh", "npwp": tin_v, "pph23_object_code": "24-1040-1"})
+    check("vendor refuses a malformed PPh 23 object code", st == 422, (st, resp))
+    st, ca = api.create("customer", {"customer_name": "PT Pembeli <Contoh> & Rekan", "city": "Bandung", "address": "Jl. Contoh No. 1",
+                                      "email": "pajak@contoh.test", "npwp": tin_a, "nitku": tin_a + "000001"})
+    check("customer with NPWP and a branch NITKU", st == 201, (st, ca))
+    st, cb = api.create("customer", {"customer_name": "Ibu Contoh Pribadi", "address": "Jl. Contoh No. 2", "nik": nik_b})
+    check("customer with NIK only", st == 201, (st, cb))
+    st, cc = api.create("customer", {"customer_name": "Pembeli Tanpa Identitas", "address": "Jl. Contoh No. 3"})
+    check("customer without NPWP/NIK", st == 201, (st, cc))
+    st, cd = api.create("customer", {"customer_name": "Dinas Contoh", "address": "Jl. Contoh No. 4", "npwp": tin_d, "vat_collector": "government"})
+    check("customer that collects PPN (government)", st == 201, (st, cd))
+    if not all(isinstance(x, dict) and x.get("name") for x in (ca, cb, cc, cd)):
+        return
+    ca, cb, cc, cd = ca["name"], cb["name"], cc["name"], cd["name"]
+    uom = svc.get("sales_uom") or svc.get("stock_uom")
+    if uom:
+        st, resp = api.patch("uom", uom, {"coretax_unit": "UM-0030"})
+        check("uom refuses a malformed Coretax unit", st == 422, (st, resp))
+        st, resp = api.patch("uom", uom, {"coretax_unit": "UM.0030"})
+        check("uom: Coretax unit UM.0030 (Kegiatan)", st == 200, (st, resp))
+
+    def inv(customer, day, lines, submit=True, **extra):
+        st, d = api.create("sales_invoice", dict({"customer": customer, "posting_date": day, "due_date": day,
+                                                 "items": [{"item": svc["name"], "qty": q, "rate": r, **x} for q, r, x in lines]}, **extra))
+        check(f"coretax: invoice {customer} {day} {extra}", st == 201, (st, d))
+        if st != 201 or not submit:
+            return d.get("name", "")
+        st, resp = api.verb("sales_invoice", d["name"], "submit", {"force": True})
+        check(f"coretax: submit {d['name']}", st == 200, (st, resp))
+        return resp.get("name", d["name"]) if isinstance(resp, dict) else d["name"]
+
+    may = "2031-05-"
+    i1 = inv(ca, may + "05", [(1, 10_000_000, {}), (2, 2_500_000, {"discount": 10})], discount_amount=500_000)
+    i2 = inv(cb, may + "06", [(1, 3_000_000, {})])
+    i3 = inv(cd, may + "07", [(1, 4_000_000, {})])
+    i4 = inv(ca, may + "08", [(1, 1_000_000, {})])
+    st, resp = api.verb("sales_invoice", i4, "cancel")
+    check("coretax: a cancelled invoice", st == 200, (st, resp))
+    i5 = inv(ca, may + "09", [(1, 1_000_000, {})], tax_rate=0)
+    dp = inv(ca, may + "10", [(1, 5_000_000, {})], kind="down_payment")
+    fin = inv(ca, may + "20", [(1, 20_000_000, {})], dp_invoice=dp, down_payment=5_000_000)
+    inv(ca, "2031-04-30", [(1, 7_000_000, {})])
+    inv(ca, "2031-06-01", [(1, 7_000_000, {})])
+    got = {n: api.get("sales_invoice", n) for n in (i1, i2, i3, dp, fin)}
+    eq("e-Faktur codes: 04 (DPP nilai lain), 04, 02 (government collector)", [got[n].get("efaktur_code") for n in (i1, i2, i3)], ["04", "04", "02"])
+    eq("buyer identity frozen on the invoice: NIK buyer", (got[i2].get("buyer_id_type"), got[i2].get("buyer_tin"), got[i2].get("buyer_doc_no"), got[i2].get("buyer_idtku")),
+       ("National ID", "0" * 16, nik_b, "000000"))
+
+    # the tax period: identity rules, one per month
+    st, resp = api.create("tax_period", {"year": "2031", "month": "05", "seller_tin": seller, "seller_nitku": tin_a + "000000"})
+    check("tax period refuses a NITKU of another NPWP", st == 422, (st, resp))
+    st, tp = api.create("tax_period", {"year": "2031", "month": "05", "seller_tin": seller, "seller_nitku": seller + "000000"})
+    check("tax period May 2031", st == 201, (st, tp))
+    if st != 201:
+        return
+    st, resp = api.create("tax_period", {"year": "2031", "month": "05", "seller_tin": seller, "seller_nitku": seller + "000000"})
+    check("a second tax period for the same month is refused", st in (409, 422), (st, resp))
+    url = f"/api/v1/r/tax_period/{Api.q(tp['name'])}/print?format="
+
+    # an invoice that cannot be imported stops the download, with the document named
+    bad = inv(cc, may + "11", [(1, 2_000_000, {})])
+    st, resp = api.call("GET", url + "coretax_faktur")
+    probs = (resp or {}).get("error", {}).get("problems", []) if isinstance(resp, dict) else []
+    check("download refused while an invoice has no buyer identity (422 export_invalid naming it)",
+          st == 422 and resp["error"]["code"] == "export_invalid" and [p["name"] for p in probs] == [bad] and "NPWP" in probs[0]["message"], (st, resp))
+    api.verb("sales_invoice", bad, "cancel")
+    apr = inv(ca, "2031-04-15", [(1, 6_000_000, {})])
+    api.verb("sales_invoice", apr, "cancel")
+    st, am = api.verb("sales_invoice", apr, "amend")
+    if check("amend an April invoice", st in (200, 201), (st, am)):
+        api.patch("sales_invoice", am["name"], {"posting_date": may + "12", "due_date": may + "12"})
+        st, resp = api.verb("sales_invoice", am["name"], "submit", {"force": True})
+        repl = resp.get("name", am["name"]) if isinstance(resp, dict) else am["name"]
+        st, resp = api.call("GET", url + "coretax_faktur")
+        check("a replacement of an earlier period's invoice is refused (Faktur Pengganti is made in Coretax)",
+              st == 422 and any(p["name"] == repl and "Pengganti" in p["message"] for p in resp["error"]["problems"]), (st, resp))
+        api.verb("sales_invoice", repl, "cancel")
+        # audit 7 Nov #1: a second amend (C replaces B replaces the April invoice A) is still a replacement of A
+        st, am2 = api.verb("sales_invoice", repl, "amend")
+        if check("amend the replacement again", st in (200, 201), (st, am2)):
+            st, resp = api.verb("sales_invoice", am2["name"], "submit", {"force": True})
+            repl2 = resp.get("name", am2["name"]) if isinstance(resp, dict) else am2["name"]
+            eq("the chain keeps the first invoice's date", api.get("sales_invoice", repl2).get("origin_posting_date"), "2031-04-15")
+            st, resp = api.call("GET", url + "coretax_faktur")
+            check("a two-step replacement of an earlier period's invoice is refused too",
+                  st == 422 and any(p["name"] == repl2 and "Pengganti" in p["message"] for p in resp["error"]["problems"]), (st, resp))
+            api.verb("sales_invoice", repl2, "cancel")
+    # audit 7 Nov #2: Coretax takes at most 2 decimals of quantity
+    q3 = inv(ca, may + "13", [(1.004, 1_000_000, {})])
+    st, resp = api.call("GET", url + "coretax_faktur")
+    check("a line quantity with 3 decimals is refused before export",
+          st == 422 and any(p["name"] == q3 and "2 desimal" in p["message"] for p in resp["error"]["problems"]), (st, resp))
+    api.verb("sales_invoice", q3, "cancel")
+    # audit 7 Nov #9: a passport buyer needs a foreign country code
+    st, cp = api.create("customer", {"customer_name": "Mr Contoh Asing", "address": "Jl. Contoh No. 5", "passport_no": "X1234567"})
+    if check("customer with a passport only", st == 201, (st, cp)):
+        pp = inv(cp["name"], may + "14", [(1, 1_000_000, {})])
+        st, resp = api.call("GET", url + "coretax_faktur")
+        check("a passport buyer with country IDN is refused", st == 422 and any(p["name"] == pp for p in resp["error"]["problems"]), (st, resp))
+        api.verb("sales_invoice", pp, "cancel")
+
+    st, body, ct = api.html(url + "coretax_faktur")
+    check("faktur XML downloads", st == 200 and ct.startswith("application/xml"), (st, ct, body[:300]))
+    if st != 200:
+        return
+    root = ET.fromstring(body.encode())
+    eq("root TaxInvoiceBulk with the seller NPWP", (root.tag, root.findtext("TIN")), ("TaxInvoiceBulk", seller))
+    tis = root.findall("ListOfTaxInvoice/TaxInvoice")
+    by_ref = {t.findtext("RefDesc").split(";")[0]: t for t in tis}
+    eq("the period's PPN invoices, no cancelled, no 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin]))
+    for t in tis:
+        ref = t.findtext("RefDesc").split(";")[0]
+        eq(f"{ref}: elements in the DJP sample order", [c.tag for c in t], CORETAX_INVOICE_TAGS)
+        doc = got[ref]
+        tb, vat = Decimal(0), Decimal(0)
+        for g in t.findall("ListOfGoodService/GoodService"):
+            eq(f"{ref}: line elements in the DJP sample order", [c.tag for c in g], CORETAX_LINE_TAGS)
+            v = {c.tag: c.text or "" for c in g}
+            check(f"{ref}: TotalDiscount = Price x Qty - TaxBase", r2(D(v["Price"]) * D(v["Qty"])) - D(v["TaxBase"]) == D(v["TotalDiscount"]), v)
+            check(f"{ref}: OtherTaxBase = TaxBase x 11/12", r2(D(v["TaxBase"]) * 11 / 12) == D(v["OtherTaxBase"]), v)
+            check(f"{ref}: VAT = OtherTaxBase x 12%", r2(D(v["OtherTaxBase"]) * D(v["VATRate"]) / 100) == D(v["VAT"]) and v["VATRate"] == "12", v)
+            eq(f"{ref}: service line Opt B, code 000000, unit UM.0030", (v["Opt"], v["Code"], v["Unit"]), ("B", "000000", "UM.0030" if uom else "UM.0033"))
+            tb += D(v["TaxBase"]); vat += D(v["VAT"])
+        eq(f"{ref}: lines add up to the invoice DPP", tb, D(doc["dpp"]))
+        check(f"{ref}: line PPN within Rp1 of the booked PPN", abs(vat - D(doc["ppn"])) <= 1, (vat, doc["ppn"]))
+        eq(f"{ref}: date, Normal, seller NITKU", (t.findtext("TaxInvoiceDate"), t.findtext("TaxInvoiceOpt"), t.findtext("SellerIDTKU")),
+           (doc["posting_date"][:10], "Normal", seller + "000000"))
+    a = by_ref.get(i1)
+    if a is not None:
+        eq("NPWP buyer: TIN, branch NITKU, empty document number, name escaped and read back",
+           (a.findtext("BuyerTin"), a.findtext("BuyerDocument"), a.findtext("BuyerIDTKU"), a.findtext("BuyerDocumentNumber") or "", a.findtext("BuyerName"),
+            a.findtext("BuyerAdress"), a.findtext("BuyerCountry")),
+           (tin_a, "TIN", tin_a + "000001", "", "PT Pembeli <Contoh> & Rekan", "Jl. Contoh No. 1, Bandung", "IDN"))
+        lines = [{c.tag: c.text for c in g} for g in a.findall("ListOfGoodService/GoodService")]
+        # 10.000.000 + 2 x 2.500.000 less 10% = 14.500.000; header discount 500.000 spread by share, rest on the last line
+        eq("header discount spread over the lines (TaxBase 9655172.41 + 4344827.59)", [l["TaxBase"] for l in lines], ["9655172.41", "4344827.59"])
+    b = by_ref.get(i2)
+    if b is not None:
+        eq("NIK buyer: National ID, 16 zeros as TIN, NIK as document number, ID TKU 000000",
+           (b.findtext("BuyerDocument"), b.findtext("BuyerTin"), b.findtext("BuyerDocumentNumber"), b.findtext("BuyerIDTKU")), ("National ID", "0" * 16, nik_b, "000000"))
+    f = by_ref.get(fin)
+    if f is not None:
+        eq("settlement invoice: DPP net of the down payment, the DP named in RefDesc", (f.findtext("RefDesc"), sum(D(x.text) for x in f.iter("TaxBase"))),
+           (f"{fin}; uang muka {dp}", D(15_000_000)))
+
+    # BPPU: the PPh 23 the firm withheld from vendor bills of the period
+    st, va = api.create("vendor", {"vendor_name": "CV Tenaga Contoh", "npwp": tin_v, "pph23_object_code": "24-104-17"})
+    check("vendor with NPWP and PPh 23 object", st == 201, (st, va))
+    st, vw = api.create("vendor", {"vendor_name": "Bapak Teknisi Contoh", "nik": nik_w, "pph23_object_code": "24-104-29"})
+    check("vendor with NIK only", st == 201, (st, vw))
+    if not (isinstance(va, dict) and isinstance(vw, dict) and va.get("name") and vw.get("name")):
+        return
+
+    def bill(vendor, no, day, rate, pph, **extra):
+        st, b = api.create("vendor_bill", dict({"vendor": vendor, "bill_no": no, "bill_date": day, "items": [{"item": svc["name"], "qty": 1, "rate": rate}],
+                                                "pph23_amount": pph}, **extra))
+        check(f"coretax: bill {no}", st == 201, (st, b))
+        st, resp = api.verb("vendor_bill", b.get("name", ""), "submit", {"force": True})
+        check(f"coretax: submit bill {no}", st == 200, (st, resp))
+        return resp.get("name", b.get("name")) if isinstance(resp, dict) else b.get("name")
+
+    b1 = bill(va["name"], "TAG/CT/001", may + "10", 10_000_000, 200_000)
+    b2 = bill(vw["name"], "TAG/CT/002", may + "11", 3_000_000, 50_000, pph23_dpp=2_500_000)
+    bill(va["name"], "TAG/CT/003", "2031-06-02", 1_000_000, 20_000)
+    st, resp = api.create("vendor_bill", {"vendor": va["name"], "bill_no": "TAG/CT/NEG", "bill_date": may + "10", "items": [{"item": svc["name"], "qty": 1, "rate": 1_000_000}],
+                                          "pph23_amount": 20_000, "pph23_dpp": -5})
+    check("vendor_bill refuses a negative PPh 23 base", st == 422, (st, resp))
+    # audit 7 Nov #3: a bill amended from an earlier period (its slip already reported there) is not a new slip
+    feb = bill(va["name"], "TAG/CT/APR", "2031-04-10", 1_000_000, 20_000)
+    api.verb("vendor_bill", feb, "cancel")
+    st, amb = api.verb("vendor_bill", feb, "amend")
+    if check("amend an April bill", st in (200, 201), (st, amb)):
+        api.patch("vendor_bill", amb["name"], {"bill_date": may + "15", "due_date": may + "15"})
+        st, resp = api.verb("vendor_bill", amb["name"], "submit", {"force": True})
+        fb2 = resp.get("name", amb["name"]) if isinstance(resp, dict) else amb["name"]
+        st, resp = api.call("GET", url + "coretax_bupot")
+        check("BPPU refuses a bill replacing an earlier period's bill (pembetulan in Coretax)",
+              st == 422 and any(p["name"] == fb2 and "pembetulan" in p["message"] for p in resp["error"]["problems"]), (st, resp))
+        api.verb("vendor_bill", fb2, "cancel")
+    wrong = bill(va["name"], "TAG/CT/004", may + "12", 1_000_000, 15_000)
+    st, resp = api.call("GET", url + "coretax_bupot")
+    check("BPPU refused while a bill's PPh 23 is not base x rate", st == 422 and [p["name"] for p in resp["error"]["problems"]] == [wrong], (st, resp))
+    api.verb("vendor_bill", wrong, "cancel")
+    st, body, ct = api.html(url + "coretax_bupot")
+    check("BPPU XML downloads", st == 200 and ct.startswith("application/xml"), (st, body[:300]))
+    if st == 200:
+        root = ET.fromstring(body.encode())
+        bpus = root.findall("ListOfBpu/Bpu")
+        eq("BpuBulk with the withholder NPWP and two slips", (root.tag, root.findtext("TIN"), len(bpus)), ("BpuBulk", seller, 2))
+        rows = {x.findtext("DocumentNumber"): {c.tag: c.text for c in x} for x in bpus}
+        for x in bpus:
+            eq("BPPU elements in the DJP template order", [c.tag for c in x], CORETAX_BPU_TAGS)
+        eq("slip 1: May 2031, NPWP + NITKU, 24-104-17, base 10.000.000 at 2%", {k: rows["TAG/CT/001"][k] for k in
+           ("TaxPeriodMonth", "TaxPeriodYear", "CounterpartTin", "IDPlaceOfBusinessActivityOfIncomeRecipient", "TaxCertificate", "TaxObjectCode", "TaxBase", "Rate", "Document", "DocumentDate", "IDPlaceOfBusinessActivity", "WithholdingDate")},
+           {"TaxPeriodMonth": "5", "TaxPeriodYear": "2031", "CounterpartTin": tin_v, "IDPlaceOfBusinessActivityOfIncomeRecipient": tin_v + "000000", "TaxCertificate": "N/A",
+            "TaxObjectCode": "24-104-17", "TaxBase": "10000000", "Rate": "2", "Document": "CommercialInvoice", "DocumentDate": may + "10",
+            "IDPlaceOfBusinessActivity": seller + "000000", "WithholdingDate": may + "10"})
+        eq("slip 2: NIK recipient, its own PPh 23 base", (rows["TAG/CT/002"]["CounterpartTin"], rows["TAG/CT/002"]["IDPlaceOfBusinessActivityOfIncomeRecipient"], rows["TAG/CT/002"]["TaxBase"]),
+           (nik_w, nik_w + "000000", "2500000"))
+
+    # who may download: finance and head office; the download is audited
+    sm, fm = CTX.get("sm"), CTX.get("fm")
+    if sm:
+        st, _, _ = sm.html(url + "coretax_faktur")
+        check("sales_manager cannot download the tax file", st in (403, 404), st)
+    if fm:
+        st, _, _ = fm.html(url + "coretax_faktur")
+        check("finance_manager downloads the faktur file", st == 200, st)
+        st, _, _ = fm.html(url + "coretax_bupot")
+        check("finance_manager downloads the BPPU file", st == 200, st)
+    check("each download is audited as record.print (xml)", any(a.get("data", {}).get("as") == "xml" for a in api.audit("record.print")), "no xml audit")
 
 
 def scenario_prints_jasa(api):
@@ -5080,7 +5330,7 @@ day_one_payroll.bind(sys.modules[__name__])
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction, scenario_xendit_callbacks],
+                  scenario_prints_jasa, scenario_coretax, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction, scenario_xendit_callbacks],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods, scenario_bank_account_delete],
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
