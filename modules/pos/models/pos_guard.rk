@@ -10,6 +10,7 @@ title_field: reason
 permissions:
   - {role: head_office, create: true}
   - {role: cashier, create: true}
+  - {role: outlet_staff, create: true}   # flow pos_daily_form_guard, inside a daily form's submit
 fields:
   - name: reason
     type: select
@@ -23,6 +24,8 @@ fields:
       - {value: void_other_day, label: {id: Batal di hari lain}}
       - {value: void_shift_closed, label: {id: Batal setelah sesi ditutup}}
       - {value: void_not_own, label: {id: Batal struk sesi kasir lain}}
+      - {value: daily_sales_same_day, label: {id: Outlet sudah punya penjualan harian di tanggal itu}}
+      - {value: cashier_same_day, label: {id: Outlet sudah memakai kasir di tanggal itu}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: shift_already_open
@@ -53,3 +56,11 @@ rules:
     on: save
     check: reason != 'void_not_own'
     message: {id: 'Struk ini dari sesi kasir orang lain; minta kasirnya atau kantor pusat yang membatalkan'}
+  - name: daily_sales_same_day
+    on: save
+    check: reason != 'daily_sales_same_day'
+    message: {id: 'Outlet ini sudah punya penjualan harian (formulir, Moka atau file POS) untuk tanggal ini; satu outlet satu sumber penjualan per hari'}
+  - name: cashier_same_day
+    on: save
+    check: reason != 'cashier_same_day'
+    message: {id: 'Outlet ini sudah mencatat penjualan lewat kasir Juragan di tanggal ini; penjualan harian tanggal itu tidak bisa diajukan'}

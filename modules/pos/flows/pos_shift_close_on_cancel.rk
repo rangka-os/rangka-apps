@@ -6,6 +6,17 @@ label: {id: 'Tutup sesi dibatalkan: sesi kasir dibuka lagi'}
 on: pos_shift_close.cancelled
 steps:
   - {find: pos_shift, where: name == event.shift, as: s}
+  # one open shift per cashier per outlet: a shift opened since cannot be joined by the reopened one (audit kasir L6)
+  - find_all: pos_shift
+    if: s != null
+    where: outlet == s.outlet && cashier == s.cashier && state == 'open' && name != s.name
+    limit: 1
+    as: open
+  - if: s != null && open.size() > 0
+    create: pos_guard
+    set:
+      reason: "'shift_already_open'"
+      document: open[0].name
   - update: s
     if: s != null && s.closed_by == event.name
     set:

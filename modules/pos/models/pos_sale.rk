@@ -20,6 +20,8 @@ on_cancel: [stock.reverse_moves]
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: cashier, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, print: true}
+  # flow pos_daily_form_guard reads the receipts of the outlet a daily sales record is submitted for
+  - {role: outlet_staff, read: true}
 fields:
   - name: shift
     type: link
@@ -120,6 +122,16 @@ fields:
     type: currency
     label: {id: 'PPh final 0,5%'}
     compute: round((grand_total - ppn_in_sales) * 5 / 1000)
+# Cashier controls (audit kasir M5): a receipt whose discounts exceed 20% of its price waits for head office
+# (contract 0007; the owner may always approve). A void is not held: an approved verb runs again as a requester
+# without their outlets, so the flow's own-shift check cannot run (kernel card t_7782ebb1 follow-up); voids stay
+# same day, open shift, own shift, and are counted on the shift and the dashboard.
+approvals:
+  - name: big_discount
+    on: submit
+    when: "discount_total * 100 > gross_total * 20 && !('head_office' in user.roles) && !('owner' in user.roles)"
+    approvers: [head_office]
+    label: {id: Persetujuan kantor pusat untuk diskon di atas 20%, en: Head office approves a discount above 20%}
 stock:
   date: date
   moves:

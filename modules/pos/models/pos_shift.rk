@@ -45,15 +45,15 @@ fields:
       - {value: open, label: {id: Buka}}
       - {value: closed, label: {id: Tutup}}
   - {name: sales_count, type: int, label: {id: Jumlah transaksi}, read_only: true, in_list: true}
-  - {name: gross_total, type: currency, label: {id: Penjualan kotor}, read_only: true}
-  - {name: discount_total, type: currency, label: {id: Diskon}, read_only: true}
-  - {name: net_total, type: currency, label: {id: Penjualan bersih}, read_only: true, in_list: true}
+  - {name: gross_total, type: currency, label: {id: Penjualan kotor}, read_only: true, hidden_for: [cashier]}
+  - {name: discount_total, type: currency, label: {id: Diskon}, read_only: true, hidden_for: [cashier]}
+  - {name: net_total, type: currency, label: {id: Penjualan bersih}, read_only: true, in_list: true, hidden_for: [cashier]}
   # blind count (contract 0027 hidden_for): the cashier counts the drawer without seeing what should be in it
   - {name: cash_total, type: currency, label: {id: Tunai masuk}, help: {id: 'Dibayar tunai setelah kembalian, dikurangi tunai transaksi yang dibatalkan'}, read_only: true, hidden_for: [cashier]}
-  - {name: qris_total, type: currency, label: {id: QRIS masuk}, read_only: true}
+  - {name: qris_total, type: currency, label: {id: QRIS masuk}, read_only: true, hidden_for: [cashier]}
   - {name: void_count, type: int, label: {id: Transaksi dibatalkan}, read_only: true}
-  - {name: void_total, type: currency, label: {id: Nilai dibatalkan}, read_only: true}
-  - {name: cogs_total, type: currency, label: {id: Harga pokok}, read_only: true}
+  - {name: void_total, type: currency, label: {id: Nilai dibatalkan}, read_only: true, hidden_for: [cashier]}
+  - {name: cogs_total, type: currency, label: {id: Harga pokok}, read_only: true, hidden_for: [cashier]}
   - name: expected_cash
     type: currency
     label: {id: Tunai seharusnya}
@@ -69,6 +69,10 @@ rules:
     on: save
     check: outlet.code != ''
     message: {id: 'Outlet ini belum punya Kode; isi Kode outlet dulu (dipakai di nomor struk)'}
+  - name: float_of_outlet
+    on: save
+    check: outlet.cash_float == 0 || opening_cash == outlet.cash_float
+    message: {id: 'Modal kas outlet ini sudah ditetapkan kantor pusat; isi sesuai Modal kas kasir di data outlet'}
   - name: float_not_negative
     on: save
     check: opening_cash >= 0

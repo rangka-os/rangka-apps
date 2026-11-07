@@ -21,10 +21,10 @@ fields:
   - {name: close_date, type: date, label: {id: Tanggal tutup}, default: today(), read_only: true, in_list: true}
   - {name: opening_cash, type: currency, label: {id: Modal kas}, compute: shift.opening_cash}
   - {name: sales_count, type: int, label: {id: Jumlah transaksi}, compute: shift.sales_count}
-  - {name: net_total, type: currency, label: {id: Penjualan bersih}, compute: shift.net_total, in_list: true}
+  - {name: net_total, type: currency, label: {id: Penjualan bersih}, compute: shift.net_total, in_list: true, hidden_for: [cashier]}
   # blind count (contract 0027): what should be in the drawer and the difference are hidden from the cashier
   - {name: cash_total, type: currency, label: {id: Tunai masuk}, compute: shift.cash_total, hidden_for: [cashier]}
-  - {name: qris_total, type: currency, label: {id: QRIS masuk}, compute: shift.qris_total}
+  - {name: qris_total, type: currency, label: {id: QRIS masuk}, compute: shift.qris_total, hidden_for: [cashier]}
   - {name: void_count, type: int, label: {id: Transaksi dibatalkan}, compute: shift.void_count}
   - name: expected_cash
     type: currency

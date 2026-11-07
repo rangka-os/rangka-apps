@@ -146,8 +146,14 @@ POSTINGS = {
                ("'11400'", "0 - event.cogs_total")]),
     "pos_shift_close": dict(
         label="Jurnal tutup sesi kasir", date="event.close_date", outlet="event.outlet",
-        # The drawer counted at closing against the cash it should hold: more cash is a gain, less a loss (Selisih kas).
-        lines=[("'11150'", "event.cash_difference"), ("'61300'", "0 - event.cash_difference")]),
+        # Closing the shift settles what its receipts held in Kas outlet belum disetor: the cash counted (less the float,
+        # which stays in the drawer) goes to Kas, the QRIS to Bank (settled by the provider; a QRIS MDR is not taken
+        # here), and the counted difference is Selisih kas (more cash a gain, less a loss). Outlets on the cashier take
+        # no outlet_takings (rule there), so the difference is booked once (audit kasir H1).
+        lines=[("'11100'", "event.counted_cash - event.opening_cash"),
+               ("'11200'", "event.qris_total"),
+               ("'11150'", "0 - (event.cash_total + event.qris_total)"),
+               ("'61300'", "0 - event.cash_difference")]),
     "outlet_takings": dict(
         label="Jurnal setoran outlet", date="event.date", outlet="event.outlet",
         # Cash and non-cash received, the payment fees, against the takings held; the difference is selisih kas.

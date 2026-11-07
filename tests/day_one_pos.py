@@ -29,11 +29,11 @@ _ALL = {"read", "create", "write", "delete", "submit", "cancel", "amend", "expor
 MATRIX = {
     "pos_shift": {"head_office": {"read", "create", "write", "export", "print"}, "cashier": {"read", "create", "write", "print"}},
     "pos_shift_close": {"head_office": _ALL - {"amend"}, "cashier": {"read", "create", "write", "delete", "submit", "print"}},
-    "pos_sale": {"head_office": _ALL, "cashier": _ALL - {"export"}},
-    "pos_guard": {"head_office": {"create"}, "cashier": {"create"}},   # never stored (a flow's refusal)
+    "pos_sale": {"head_office": _ALL, "cashier": _ALL - {"export"}, "outlet_staff": _R},
+    "pos_guard": {"head_office": {"create"}, "cashier": {"create"}, "outlet_staff": {"create"}},   # never stored (a flow's refusal)
 }
 # what the cashier reads besides its own models (role scope: its outlets only)
-CASHIER_READS = ("item", "uom", "uom_conversion", "outlet", "stock_balance", "gl_entry", "period_close")
+CASHIER_READS = ("item", "uom", "uom_conversion", "outlet", "stock_balance", "gl_entry", "period_close", "outlet_sales")
 MEMBERS = [("dika", "cashier", "dika.dago@contohwarung.test", "Dika Contoh", DGO),
            ("sari", "cashier", "sari.riau@contohwarung.test", "Sari Contoh", RIU),
            ("bayu", "cashier", "bayu.dago@contohwarung.test", "Bayu Contoh", DGO),
@@ -42,7 +42,7 @@ MEMBERS = [("dika", "cashier", "dika.dago@contohwarung.test", "Dika Contoh", DGO
 
 def bind(m):
     for k in ("ok", "fail", "check", "eq", "CTX", "Api", "denied", "dashboard", "num", "chart_map", "secrets", "messages",
-              "kernel_today", "page_text"):
+              "kernel_today", "page_text", "decide", "approvals_of"):
         H[k] = getattr(m, k)
     globals().update(H)
     m.SITE_ORGS["demo-kasir"] = [("warung_contoh", "demo-kasir")]
@@ -117,6 +117,15 @@ def sale(cl, shift, lines, label, submit=True, **extra):
         return st, s
     st, r = cl.verb("pos_sale", s["name"], "submit")
     return st, (rec(r) if st == 200 else r)
+
+
+def void(cl, name, approve=True):
+    """A cashier's void waits for head office (approval void, contract 0007): ask, then let Rina decide. Returns the
+    (status, body) of the cancel as it finally ran, or of the request when approve is False."""
+    st, r = cl.verb("pos_sale", name, "cancel")
+    if st != 202 or not approve:
+        return st, r
+    return H["decide"](CTX["hq"], r["approval"]["id"])
 
 
 def shift_of(api, name):
@@ -221,11 +230,17 @@ def scenario_pos_retail_sale(api):
         CTX["sale_split"] = sp
         eq("split: 16.000 QRIS, 50.000 cash handed over, 20.000 kept, change 30.000",
            (sp["method"], sp["qris_amount"], sp["cash_received"], sp["cash_amount"], sp["change_amount"]), ("split", 16_000, 50_000, 20_000, 30_000))
+    st, big = dika.create("pos_sale", {"shift": shift, "items": [{"item": GULA, "qty": 1, "discount_pct": 50}]})
+    st, resp = dika.verb("pos_sale", rec(big)["name"], "submit") if st == 201 else (st, big)
+    if check("a 50% discount waits for head office -> 202", st == 202 and resp.get("approval", {}).get("approvers") == ["head_office"], (st, resp)):
+        st, resp = decide(CTX["hq"], resp["approval"]["id"])
+        check("Rina approves the discount: the receipt is paid", st == 200, (st, resp))
+        CTX["sale_big"] = rec(resp).get("record", rec(resp))
     st, sv = sale(dika, shift, [{"item": PULSA, "qty": 1}], "")
     if check("a service sale (no stock) -> 200", st == 200, (st, sv)):
         eq("a service moves no stock", api.find("stock_move", f"voucher == '{sv['name']}'"), [])
     s = shift_of(api, shift)
-    eq("shift after four receipts", (s["sales_count"], s["cash_total"], s["qris_total"]), (4, total + 20_000 + 3_000, 12_000 + 16_000))
+    eq("shift after five receipts", (s["sales_count"], s["cash_total"], s["qris_total"]), (5, total + 20_000 + 9_000 + 3_000, 12_000 + 16_000))
 
 
 def scenario_pos_fnb_sale(api):
@@ -278,19 +293,29 @@ def scenario_pos_guards(api):
     check("Dika lists only Toko Dago receipts", st == 200 and outlets == {DGO}, (st, outlets, (resp or {}).get("data", [])[:2], resp if st != 200 else ""))
     st, resp = sari.call("GET", "/api/v1/r/stock_balance?limit=200")
     check("Sari reads the stock of Kedai Riau only", st == 200 and {r["outlet"] for r in resp.get("data", [])} == {RIU}, (st, resp))
-    for model in ("outlet_sales", "stock_move", "financial_report", "stock_count"):
+    for model in ("outlet_takings", "stock_move", "financial_report", "stock_count"):
         st, resp = dika.call("GET", f"/api/v1/r/{model}?limit=1")
         check(f"a cashier cannot list {model} -> 403", denied(st, resp), (st, resp))
     st, resp = dika.call("GET", "/api/v1/dashboards/kasir_ringkas")
     check("a cashier does not open the owner's dashboard", st in (403, 404), (st, resp))
     st, resp = dika.call("GET", "/api/v1/r/gl_entry?limit=200")
-    check("a cashier reads only the journal lines of its own receipts and shifts",
-          st == 200 and {r["voucher_type"] for r in resp.get("data", [])} <= {"pos_sale", "pos_shift"} and {r.get("outlet") for r in resp.get("data", [])} <= {DGO}, (st, resp))
+    check("a cashier reads only the journal lines of its own outlet's receipts (not a close's cash difference)",
+          st == 200 and {r["voucher_type"] for r in resp.get("data", [])} == {"pos_sale"} and {r.get("outlet") for r in resp.get("data", [])} <= {DGO}, (st, resp))
     st, resp = dika.patch("item", AIR, {"rate": 1})
     check("a cashier cannot change a price on the item -> 403", denied(st, resp), (st, resp))
-    # Jalur A and Jalur B: one sales source per outlet
-    st, resp = hq.create("outlet_sales", {"outlet": DGO, "date": kernel_today().isoformat(), "lines": [{"item": AIR, "qty": 1}]})
+    # Jalur A and Jalur B: one sales source per outlet, and never both on one outlet and day
+    today = kernel_today().isoformat()
+    st, resp = hq.create("outlet_sales", {"outlet": DGO, "date": today, "lines": [{"item": AIR, "qty": 1}]})
     check("a daily form for a cashier outlet -> 422 source_matches_outlet", st == 422 and "source_matches_outlet" in rules(resp), (st, resp))
+    st, resp = hq.create("outlet_takings", {"outlet": DGO, "date": today, "lines": [{"method": "cash", "expected": 1_000, "received": 1_000}]})
+    check("a setoran for a cashier outlet -> 422 not_a_cashier_outlet (Tutup sesi settles it)", st == 422 and "not_a_cashier_outlet" in rules(resp), (st, resp))
+    hq.patch("outlet", DGO, {"sales_source": "form"})
+    st, f = hq.create("outlet_sales", {"outlet": DGO, "date": today, "lines": [{"item": AIR, "qty": 1, "gross": 4_000}]})
+    if check("head office switches Toko Dago to the daily form and drafts one for today", st == 201, (st, f)):
+        st, resp = hq.verb("outlet_sales", rec(f)["name"], "submit")
+        check("a daily form for a day the outlet already rang up in the cashier -> 422 cashier_same_day", st == 422 and "cashier_same_day" in rules(resp), (st, resp))
+        hq.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(rec(f)['name'])}")
+    hq.patch("outlet", DGO, {"sales_source": "kasir"})
     st, sh = hq.create("pos_shift", {"outlet": CMH, "opening_cash": 0})
     if check("head office opens a shift at Cimahi (still on the daily form)", st == 201, (st, sh)):
         st, resp = sale(hq, rec(sh)["name"], [{"item": AIR, "qty": 1}], "", submit=False)
@@ -308,6 +333,15 @@ def scenario_pos_daily_form_next_door(api):
         st, r = hq.verb("outlet_sales", rec(f)["name"], "submit")
         check("Cimahi's daily form submitted", st == 200, (st, r))
         CTX["form_cmh"] = rec(r)
+    # Cimahi switched to the cashier the same day: its receipts for today are refused (the form already counted it)
+    sh = CTX.get("shift_cmh")
+    if sh and CTX.get("form_cmh"):
+        hq.patch("outlet", CMH, {"sales_source": "kasir"})
+        st, resp = sale(hq, sh, [{"item": GULA, "qty": 1}], "")
+        check("a receipt on a day the outlet already has a daily form -> 422 daily_sales_same_day", st == 422 and "daily_sales_same_day" in rules(resp), (st, resp))
+        if isinstance(resp, dict) and resp.get("errors") is None and st != 200:
+            pass
+        hq.patch("outlet", CMH, {"sales_source": "form"})
 
 
 def scenario_pos_void_and_return(api):
@@ -319,11 +353,11 @@ def scenario_pos_void_and_return(api):
         return
     bayu = CTX.get("bayu")
     if bayu:
-        st, resp = bayu.verb("pos_sale", q["name"], "cancel")
+        st, resp = void(bayu, q["name"])
         check("Bayu (same outlet, other drawer) cannot void Dika's receipt -> 422 void_not_own", st == 422 and "void_not_own" in rules(resp), (st, resp))
     before = shift_of(api, shift)
     air_before = bal(api, DGO, AIR)
-    st, resp = dika.verb("pos_sale", q["name"], "cancel")
+    st, resp = void(dika, q["name"])
     check("Dika voids the QRIS receipt -> 200", st == 200, (st, resp))
     eq("its three bottles are back", bal(api, DGO, AIR), air_before + 3)
     after = shift_of(api, shift)
@@ -332,7 +366,7 @@ def scenario_pos_void_and_return(api):
        (before["sales_count"] - 1, before["qris_total"] - 12_000, 1, 12_000))
     eq("the void's journal is reversed line by line", gl(api, "pos_sale", q["name"], "reverse"), {k: -v for k, v in gl(api, "pos_sale", q["name"]).items()})
     # the buyer of receipt 1 brings the sugar back: void, then amend without it
-    st, resp = dika.verb("pos_sale", s1["name"], "cancel")
+    st, resp = void(dika, s1["name"])
     if not check("Dika voids receipt 1 for a return -> 200", st == 200, (st, resp)):
         return
     st, am = dika.verb("pos_sale", s1["name"], "amend")
@@ -401,8 +435,12 @@ def scenario_pos_close(api):
     if not (dika and hq and shift):
         return
     mine = dika.get("pos_shift", shift) or {}
-    eq("blind count: the cashier does not see the expected cash, the cash taken or the difference",
-       sorted(k for k in ("expected_cash", "cash_total", "cash_difference") if k in mine), [])
+    eq("blind count: the cashier sees no money total of the shift",
+       sorted(k for k in ("expected_cash", "cash_total", "cash_difference", "net_total", "gross_total", "qris_total", "void_total", "cogs_total") if k in mine), [])
+    # the float is head office's to set per outlet
+    hq.patch("outlet", DGO, {"cash_float": 200_000})
+    st, resp = dika.create("pos_shift", {"outlet": DGO, "opening_cash": 900_000})
+    check("a float other than the outlet's -> 422 float_of_outlet", st == 422 and "float_of_outlet" in rules(resp), (st, resp))
     st, late = sale(dika, shift, [{"item": AIR, "qty": 1}], "", submit=False)   # a draft left open on the shift
     s = shift_of(api, shift)
     st, c = close(dika, shift, s["expected_cash"] - 2_000, "Hitung akhir hari")
@@ -416,14 +454,18 @@ def scenario_pos_close(api):
        (s["net_total"], s["expected_cash"], -2_000))
     s = shift_of(api, shift)
     eq("the shift is closed with the counted cash", (s["state"], s["closed_by"], s["cash_difference"]), ("closed", c["name"], -2_000))
-    eq("journal of the close: Kas outlet -2.000 against Selisih kas", gl(api, "pos_shift_close", c["name"]), {"11150": -2_000, "61300": 2_000})
+    eq("journal of the close: cash counted less float to Kas, QRIS to Bank, Kas outlet cleared, Selisih kas 2.000",
+       gl(api, "pos_shift_close", c["name"]),
+       {"11100": closed["counted_cash"] - closed["opening_cash"], "11200": closed["qris_total"], "11150": -(closed["cash_total"] + closed["qris_total"]), "61300": 2_000})
+    left = sum(r["amount"] for r in api.find("gl_entry", f"account == '11150' && outlet == '{DGO}'"))
+    eq("Kas outlet belum disetor of Toko Dago is 0 once its only shift closed", left, 0)
     if late.get("name"):
         st, resp = dika.verb("pos_sale", late["name"], "submit")
         check("a draft paid after its shift closed -> 422 shift_open", st == 422 and "shift_open" in rules(resp), (st, resp))
         dika.call("DELETE", f"/api/v1/r/pos_sale/{Api.q(late['name'])}")
     sp = CTX.get("sale_split")
     if sp:
-        st, resp = dika.verb("pos_sale", sp["name"], "cancel")
+        st, resp = void(dika, sp["name"])
         check("a receipt of a closed shift cannot be voided -> 422 void_shift_closed", st == 422 and "void_shift_closed" in rules(resp), (st, resp))
     st, resp = close(dika, shift, 0)
     check("a closed shift cannot be closed again -> 422 shift_open", st == 422 and "shift_open" in rules(resp), (st, resp))
@@ -434,7 +476,7 @@ def scenario_pos_close(api):
         return
     s = shift_of(api, shift)
     eq("the shift is open again, counted figures cleared", (s["state"], s["closed_by"], s["cash_difference"]), ("open", "", 0))
-    eq("the close's journal is reversed", gl(api, "pos_shift_close", c["name"], "reverse"), {"11150": 2_000, "61300": -2_000})
+    eq("the close's journal is reversed", gl(api, "pos_shift_close", c["name"], "reverse"), {k: -v for k, v in gl(api, "pos_shift_close", c["name"]).items()})
     # Dika saves a new close with the right count, then sells once more before submitting: the close reads the shift
     # again at submit, so the 4.000 of that sale is short in the drawer count
     st, c2 = dika.create("pos_shift_close", {"shift": shift, "counted_cash": s["expected_cash"]})

@@ -60,6 +60,12 @@ fields:
       # module pos: the outlet sells through Juragan's own cashier, so no daily form or POS file is taken for it
       - {value: kasir, label: {id: Kasir Juragan}}
 
+  # module pos: the float a cashier shift opens with at this outlet, set by head office; 0 = the cashier types it
+  - name: cash_float
+    type: currency
+    label: {id: Modal kas kasir}
+    help: {id: 'Uang kembalian di laci tiap sesi kasir dibuka. Kosongkan kalau kasir yang mengisi'}
+    depends_on: app_installed('pos')
 rules:
   # The code is part of document numbers (cashier receipts STRK-<code>-..., kernel contract 0009 §2a), which take it
   # as it is: capital letters and digits, parts joined by "-".

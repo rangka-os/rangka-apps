@@ -10,15 +10,39 @@ steps:
     limit: 1
     as: locks
   - create: gl_entry
-    if: "(event.cash_difference) != 0"
+    if: "(event.counted_cash - event.opening_cash) != 0"
     set:
       posting_date: "event.close_date"
-      account: "'11150'"
-      amount: "event.cash_difference"
+      account: "'11100'"
+      amount: "event.counted_cash - event.opening_cash"
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
       line: "'1'"
+      outlet: "event.outlet"
+      lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
+  - create: gl_entry
+    if: "(event.qris_total) != 0"
+    set:
+      posting_date: "event.close_date"
+      account: "'11200'"
+      amount: "event.qris_total"
+      voucher_type: event.model
+      voucher: event.name
+      entry: "'post'"
+      line: "'2'"
+      outlet: "event.outlet"
+      lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
+  - create: gl_entry
+    if: "(0 - (event.cash_total + event.qris_total)) != 0"
+    set:
+      posting_date: "event.close_date"
+      account: "'11150'"
+      amount: "0 - (event.cash_total + event.qris_total)"
+      voucher_type: event.model
+      voucher: event.name
+      entry: "'post'"
+      line: "'3'"
       outlet: "event.outlet"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
@@ -30,6 +54,6 @@ steps:
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
-      line: "'2'"
+      line: "'4'"
       outlet: "event.outlet"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"

@@ -152,16 +152,19 @@ receipts of their own outlets only, and reads the items, units, prices, outlets 
 shift must be the cashier's own (rule `own_shift`, by sign-in email); head office and the owner may ring up on any.
 The totals and state of a shift are written by the flows of whoever pays, voids or closes (read_only fields), so the
 cashier writes pos_shift; the float and outlet are fixed once open (flow `pos_shift_on_update`). Reopening a closed
-shift (cancelling its Tutup sesi) is head office's. The journal flows run as the cashier, who therefore creates and
-reads the gl_entry lines of `pos_sale` and `pos_shift_close` only, and reads period_close. `MATRIX` rows live in
-`tests/day_one_pos.py`.
+shift (cancelling its Tutup sesi) is head office's. The journal flows run as the cashier, who therefore creates the
+gl_entry lines of `pos_sale` and `pos_shift_close`, reads only those of `pos_sale` (the close's lines show the cash
+difference; the count is blind, every money total of a shift is `hidden_for: [cashier]`), and reads period_close. A
+sale reads the outlet's daily sales records (`outlet_sales`, read for the cashier) and a daily sales record reads the
+outlet's receipts (`pos_sale`, read for outlet staff), so one outlet and day never has both. A discount above 20% of
+a receipt waits for head office (approval `big_discount`). `MATRIX` rows live in `tests/day_one_pos.py`.
 
 | Model | cashier | head_office |
 | --- | --- | --- |
 | pos_shift (not submittable: numbered when it opens; totals and state written by flows) | r c w p (own outlet) | r c w e p |
-| pos_sale (void = cancel, same day, shift open; partial return = cancel + amend) | all but e (own outlet) | all |
+| pos_sale (void = cancel, same day, shift open, own shift; partial return = cancel + amend; outlet_staff: r) | all but e (own outlet) | all |
 | pos_shift_close (cancel = reopen the shift) | r c w d s p (own outlet) | all but a |
-| pos_guard (never stored; a flow's refusal) | c | c |
-| item, uom, uom_conversion, outlet, stock_balance, period_close | r | (as above) |
-| gl_entry | r (lines of `pos_sale`, `pos_shift_close`; created by the posting flows) | (as above) |
+| pos_guard (never stored; a flow's refusal; outlet_staff: c) | c | c |
+| item, uom, uom_conversion, outlet, stock_balance, period_close, outlet_sales | r | (as above) |
+| gl_entry | r (lines of `pos_sale`; `pos_shift_close` lines created, not read) | (as above) |
 

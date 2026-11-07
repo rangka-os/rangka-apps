@@ -8,6 +8,18 @@ label: {id: 'Transaksi kasir dibayar: tambah ke sesi kasir'}
 on: pos_sale.submitted
 steps:
   - {find: pos_shift, where: name == event.shift && state == 'open', as: s}
+  # Jalur A and B never on the same outlet and day: a daily sales record (form, Moka, POS file) of this outlet and day
+  # refuses the receipt (and flow pos_daily_form_guard refuses the record after a receipt), whatever sales_source says
+  - find_all: outlet_sales
+    if: app_installed('outlet_sales')
+    where: outlet == event.outlet && date == event.date && docstatus == 1
+    limit: 1
+    as: forms
+  - if: forms != null && forms.size() > 0
+    create: pos_guard
+    set:
+      reason: "'daily_sales_same_day'"
+      document: forms[0].name
   - if: s == null
     create: pos_guard
     set: {reason: "'shift_closed'", document: event.name}
