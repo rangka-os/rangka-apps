@@ -1,0 +1,53 @@
+{{define "style"}}
+.meta { width: 100%; margin: 8px 0 12px; border-collapse: collapse; font-size: 0.92em; }
+.meta td { padding: 2px 6px 2px 0; vertical-align: top; }
+.cols { display: flex; gap: 16px; }
+.cols > div { flex: 1; }
+.items { width: 100%; border-collapse: collapse; font-size: 0.92em; }
+.items th, .items td { padding: 4px 6px; text-align: left; border-bottom: 1px solid #e7e5e4; }
+.items th { font-weight: 600; }
+.items tr.total td { border-top: 2px solid #1c1917; border-bottom: 0; font-weight: 700; }
+.num { text-align: right !important; font-variant-numeric: tabular-nums; }
+.net { margin-top: 14px; padding: 10px 12px; background: #f5f5f4; display: flex; justify-content: space-between; font-size: 1.1em; font-weight: 700; }
+.note { margin-top: 10px; font-size: 0.82em; color: #57534e; }
+{{end}}
+{{template "letterhead" .}}
+<h1>Slip gaji</h1>
+<table class="meta">
+  <tr><td>Nama</td><td>: {{.Links.worker.worker_name}}</td><td>No. slip</td><td>: {{.Doc.name}}</td></tr>
+  <tr><td>No. pegawai</td><td>: {{.Links.worker.employee_no}}</td><td>Masa pajak</td><td>: {{.Doc.tax_month}}/{{.Doc.tax_year}}</td></tr>
+  <tr><td>Jabatan</td><td>: {{.Links.worker.role_title}}</td><td>Periode</td><td>: {{date .Links.payroll_run.period_from}} s.d. {{date .Links.payroll_run.period_to}}</td></tr>
+  <tr><td>Hari hadir</td><td>: {{.Doc.days}}</td><td>Lembur</td><td>: {{.Doc.overtime_hours}} jam</td></tr>
+</table>
+<div class="cols">
+<div>
+<table class="items">
+  <thead><tr><th>Penghasilan</th><th class="num">Rp</th></tr></thead>
+  <tbody>
+  <tr><td>Gaji pokok</td><td class="num">{{rupiah .Doc.base_pay}}</td></tr>
+  {{if .Doc.allowance_pay}}<tr><td>Tunjangan</td><td class="num">{{rupiah .Doc.allowance_pay}}</td></tr>{{end}}
+  {{if .Doc.overtime_pay}}<tr><td>Lembur</td><td class="num">{{rupiah .Doc.overtime_pay}}</td></tr>{{end}}
+  {{if .Doc.thr_pay}}<tr><td>THR</td><td class="num">{{rupiah .Doc.thr_pay}}</td></tr>{{end}}
+  {{if .Doc.other_income}}<tr><td>Insentif</td><td class="num">{{rupiah .Doc.other_income}}</td></tr>{{end}}
+  <tr class="total"><td>Jumlah penghasilan</td><td class="num">{{rupiah .Doc.cash_gross}}</td></tr>
+  </tbody>
+</table>
+</div>
+<div>
+<table class="items">
+  <thead><tr><th>Potongan</th><th class="num">Rp</th></tr></thead>
+  <tbody>
+  <tr><td>JHT 2%</td><td class="num">{{rupiah .Doc.jht_employee}}</td></tr>
+  {{if .Doc.jp_employee}}<tr><td>Jaminan Pensiun 1%</td><td class="num">{{rupiah .Doc.jp_employee}}</td></tr>{{end}}
+  {{if .Doc.kes_employee}}<tr><td>BPJS Kesehatan 1%</td><td class="num">{{rupiah .Doc.kes_employee}}</td></tr>{{end}}
+  <tr><td>PPh 21{{if .Doc.last_month}} (hitung tahunan){{end}}</td><td class="num">{{rupiah .Doc.pph21}}</td></tr>
+  {{if .Doc.other_deduction}}<tr><td>Potongan lain</td><td class="num">{{rupiah .Doc.other_deduction}}</td></tr>{{end}}
+  <tr class="total"><td>Jumlah potongan</td><td class="num">{{rupiah (sub .Doc.cash_gross .Doc.net_pay)}}</td></tr>
+  </tbody>
+</table>
+</div>
+</div>
+<div class="net"><span>Gaji bersih diterima</span><span>{{rupiah .Doc.net_pay}}</span></div>
+<p class="note">Ditanggung perusahaan, tidak dipotong dari gaji: JKK {{rupiah .Doc.jkk}}, JKM {{rupiah .Doc.jkm}}, JHT 3,7% {{rupiah .Doc.jht_employer}}, JP 2% {{rupiah .Doc.jp_employer}}, BPJS Kesehatan 4% {{rupiah .Doc.kes_employer}}.
+Dasar upah BPJS {{rupiah .Doc.bpjs_base}}. PPh 21 kategori TER {{.Doc.ter_category}}, bruto {{rupiah .Doc.gross_taxable}}.</p>
+{{if .Links.profile.bank_account}}<p class="note">Ditransfer ke {{.Links.profile.bank_name}} {{.Links.profile.bank_account}}.</p>{{end}}
