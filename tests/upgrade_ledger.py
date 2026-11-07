@@ -22,7 +22,7 @@ def after(api, s, d1):
             "source_name": s["invoice"], "sales_invoice": s["invoice"], "amount": -10_000_000}
     for extra in ({}, {"entry": "reverse"}, {"entry": "post"}):
         st, resp = api.create("project_ledger", dict(base, **extra))
-        d1.check(f"a hand-written -10.000.000 row for the old cancelled invoice {extra or ''} -> 422", st == 422, (st, resp))
+        d1.check(f"a hand-written -10.000.000 row for the old cancelled invoice {extra or ''} -> 409 append_only", st == 409, (st, resp))
     d1.eq("margin still 0", sum(r["amount"] for r in rows()), 0)
     # a post row's date is its document's date: a hand-written row for an old submitted invoice on another date is refused
     st, inv = api.create("sales_invoice", {"customer": "CUST-0001", "project": s["project"], "items": [{"item": s["ndt"], "qty": 1, "rate": 1_000}]})
@@ -34,4 +34,4 @@ def after(api, s, d1):
     d1.eq("its post row carries the invoice's date", [x["posting_date"] for x in post], [api.get("sales_invoice", name)["posting_date"]])
     st, resp = api.create("project_ledger", {"project": s["project"], "posting_date": "2020-01-01", "kind": "revenue", "entry": "post", "source_model": "sales_invoice",
                                              "source_name": s["old_open"], "sales_invoice": s["old_open"], "amount": 7_000_000})
-    d1.check("a hand-written post row for an old open invoice on another date -> 422", st == 422, (st, resp))
+    d1.check("a hand-written post row for an old open invoice on another date -> 409 append_only", st == 409, (st, resp))
