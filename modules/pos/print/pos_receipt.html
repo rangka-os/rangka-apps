@@ -37,8 +37,9 @@ body { font-size: 8.5pt; }
 <div class="row"><span>Diskon nota</span><span class="num">-{{rupiah .Doc.discount_amount}}</span></div>{{end}}
 <div class="row big"><span>Total</span><span class="num">{{rupiah .Doc.grand_total}}</span></div>
 {{if .Doc.ppn_in_sales}}<div class="row muted"><span>Termasuk PPN</span><span class="num">{{rupiah .Doc.ppn_in_sales}}</span></div>{{end}}
-{{if .Doc.cash_amount}}<div class="row"><span>Tunai</span><span class="num">{{rupiah (or .Doc.cash_received .Doc.cash_amount)}}</span></div>{{end}}
-{{if .Doc.qris_amount}}<div class="row"><span>QRIS{{with .Doc.qris_ref}} {{.}}{{end}}</span><span class="num">{{rupiah .Doc.qris_amount}}</span></div>{{end}}
+{{range $p := .Doc.payments}}<div class="row"><span>{{if eq (printf "%v" $p.method) "qris"}}QRIS{{with $p.ref}} {{.}}{{end}}{{else}}Tunai{{end}}</span><span class="num">{{rupiah $p.amount}}</span></div>
+{{else}}<div class="row"><span>Tunai</span><span class="num">{{rupiah $.Doc.grand_total}}</span></div>
+{{end}}
 {{if .Doc.change_amount}}<div class="row"><span>Kembalian</span><span class="num">{{rupiah .Doc.change_amount}}</span></div>{{end}}
 <div class="c status">
   {{- if eq $ds "0"}}DRAF, BELUM DIBAYAR

@@ -176,7 +176,7 @@ def scenario_pos_retail_sale(api):
         return
     lines = [{"item": AIR, "qty": 2}, {"item": AIR, "qty": 1, "packing": DUS_AIR}, {"item": MI, "qty": 1, "packing": PAK_MI},
              {"item": MI, "qty": 1, "packing": DUS_MI}, {"item": GULA, "qty": 1, "discount_pct": 10}]
-    st, draft = sale(dika, shift, lines, "", submit=False, discount_amount=1_000, cash_received=500_000)
+    st, draft = sale(dika, shift, lines, "", submit=False, discount_amount=1_000, payments=[{"method": "cash", "amount": 500_000}])
     if not check("Dika drafts a sale -> 201", st == 201, (st, draft)):
         return
     gross = 8_000 + 84_000 + 16_500 + 140_000 + 18_000    # dus of noodles: no own price, 40 x 3.500
@@ -210,14 +210,15 @@ def scenario_pos_retail_sale(api):
     eq("the shift counts the receipt (count, net, cash)", (s["sales_count"], s["net_total"], s["cash_total"], s["qris_total"], s["expected_cash"]),
        (1, total, total, 0, 200_000 + total))
     # QRIS, then split
-    st, q = sale(dika, shift, [{"item": AIR, "qty": 3}], "", method="qris", qris_ref="QR-0001")
+    st, q = sale(dika, shift, [{"item": AIR, "qty": 3}], "", payments=[{"method": "qris", "amount": 12_000, "ref": "QR-0001"}])
     if check("QRIS sale -> 200, numbered 00002", st == 200 and q.get("name") == f"STRK-DGO-{yymm()}-00002", (st, q)):
         CTX["sale_qris"] = q
-        eq("QRIS: no cash, no change", (q["cash_amount"], q["qris_amount"], q["change_amount"]), (0, 12_000, 0))
-    st, sp = sale(dika, shift, [{"item": GULA, "qty": 2}], "", method="split", split_cash=20_000, cash_received=50_000)
+        eq("QRIS: no cash, no change", (q["method"], q["cash_amount"], q["qris_amount"], q["change_amount"]), ("qris", 0, 12_000, 0))
+    st, sp = sale(dika, shift, [{"item": GULA, "qty": 2}], "", payments=[{"method": "qris", "amount": 16_000, "ref": "QR-0002"}, {"method": "cash", "amount": 50_000}])
     if check("split sale -> 200, numbered 00003", st == 200 and sp.get("name") == f"STRK-DGO-{yymm()}-00003", (st, sp)):
         CTX["sale_split"] = sp
-        eq("split: 20.000 cash (change 30.000), 16.000 QRIS", (sp["cash_amount"], sp["qris_amount"], sp["change_amount"]), (20_000, 16_000, 30_000))
+        eq("split: 16.000 QRIS, 50.000 cash handed over, 20.000 kept, change 30.000",
+           (sp["method"], sp["qris_amount"], sp["cash_received"], sp["cash_amount"], sp["change_amount"]), ("split", 16_000, 50_000, 20_000, 30_000))
     st, sv = sale(dika, shift, [{"item": PULSA, "qty": 1}], "")
     if check("a service sale (no stock) -> 200", st == 200, (st, sv)):
         eq("a service moves no stock", api.find("stock_move", f"voucher == '{sv['name']}'"), [])
@@ -231,7 +232,8 @@ def scenario_pos_fnb_sale(api):
     sari, shift = CTX.get("sari"), CTX.get("shift_riu")
     if not (sari and shift):
         return
-    st, r = sale(sari, shift, [{"item": KSA, "qty": 2}, {"item": KHT, "qty": 1}, {"item": ROTI, "qty": 1}], "", buyer="Meja 4", cash_received=100_000)
+    st, r = sale(sari, shift, [{"item": KSA, "qty": 2, "note": "kurang manis"}, {"item": KHT, "qty": 1}, {"item": ROTI, "qty": 1}], "", buyer="Meja 4",
+                 payments=[{"method": "cash", "amount": 100_000}])
     if not check("Sari sells two kopi susu aren, a kopi hitam and a roti -> 200", st == 200, (st, r)):
         return
     CTX["sale_riu"] = r
@@ -262,8 +264,9 @@ def scenario_pos_guards(api):
             ("line discount 120%", {"items": [{"item": AIR, "qty": 1, "discount_pct": 120}]}, "line_discount_range"),
             ("receipt discount above the subtotal", {"items": [{"item": AIR, "qty": 1}], "discount_amount": 5_000}, "receipt_discount_range"),
             ("a unit of another item", {"items": [{"item": GULA, "qty": 1, "packing": DUS_AIR}]}, "unit_of_item"),
-            ("split without a cash part", {"items": [{"item": AIR, "qty": 1}], "method": "split"}, "split_parts"),
-            ("cash handed over below the total", {"items": [{"item": GULA, "qty": 1}], "cash_received": 10_000}, "cash_enough"),
+            ("QRIS above the total (change only from cash)", {"items": [{"item": AIR, "qty": 1}], "payments": [{"method": "qris", "amount": 5_000}]}, "qris_not_over"),
+            ("cash handed over below the total", {"items": [{"item": GULA, "qty": 1}], "payments": [{"method": "cash", "amount": 10_000}]}, "paid_enough"),
+            ("a payment of 0", {"items": [{"item": AIR, "qty": 1}], "payments": [{"method": "cash", "amount": 0}, {"method": "cash", "amount": 4_000}]}, "payment_positive"),
             ("an item without a price", {"items": [{"item": KOPI, "qty": 1}]}, "priced")):
         st, resp = dika.create("pos_sale", dict({"shift": shift}, **body))
         check(f"refused: {label} -> 422 {rule}", st == 422 and rule in rules(resp), (st, resp))
@@ -331,7 +334,7 @@ def scenario_pos_void_and_return(api):
     if not check("Dika amends it -> a new draft", st in (200, 201) and am.get("docstatus") == 0, (st, am)):
         return
     keep = [{"item": l["item"], "qty": l["qty"], "packing": l.get("packing") or "", "discount_pct": l["discount_pct"]} for l in s1["items"] if l["item"] != GULA]
-    st, resp = dika.patch("pos_sale", am["name"], {"items": keep, "cash_received": 0})
+    st, resp = dika.patch("pos_sale", am["name"], {"items": keep, "payments": []})
     check("the amended draft keeps everything but the sugar", st == 200, (st, resp))
     gula = bal(api, DGO, GULA)
     st, r = dika.verb("pos_sale", am["name"], "submit")
@@ -385,34 +388,29 @@ def close(cl, shift, counted, note=""):
 
 
 def scenario_pos_close(api):
-    """Closing (Tutup sesi): a difference needs a note and is journalled as selisih kas; the shift closes and takes no
-    sale and no void after; a close whose figures went stale is refused; head office reopens by cancelling a close."""
+    """Closing (Tutup sesi), blind: the cashier counts without seeing what should be there; the difference is
+    journalled as selisih kas and shown to head office. The shift closes and takes no sale and no void after; a close
+    reads the shift again at submit; head office reopens by cancelling a close."""
     dika, hq, shift = CTX.get("dika"), CTX.get("hq"), CTX.get("shift_dgo")
     if not (dika and hq and shift):
         return
-    s = shift_of(api, shift)
-    st, resp = close(dika, shift, s["expected_cash"] - 2_000)
-    check("a difference without a note -> 422 difference_explained", st == 422 and "difference_explained" in rules(resp), (st, resp))
-    # a close saved, then a sale paid: submitting reads the shift again (the figures are computed), so the old count is
-    # now off by the new sale and needs a note
-    st, c = dika.create("pos_shift_close", {"shift": shift, "counted_cash": s["expected_cash"]})
-    st2, r = sale(dika, shift, [{"item": AIR, "qty": 1}], "")
-    if check("a close drafted, then one more sale", st == 201 and st2 == 200, (st, c, st2, r)):
-        st, resp = dika.verb("pos_shift_close", rec(c)["name"], "submit")
-        check("the close reads the new sale at submit: off by 4.000 without a note -> 422", st == 422 and "difference_explained" in rules(resp), (st, resp))
-        dika.call("DELETE", f"/api/v1/r/pos_shift_close/{Api.q(rec(c)['name'])}")
+    mine = dika.get("pos_shift", shift) or {}
+    eq("blind count: the cashier does not see the expected cash, the cash taken or the difference",
+       sorted(k for k in ("expected_cash", "cash_total", "cash_difference") if k in mine), [])
     st, late = sale(dika, shift, [{"item": AIR, "qty": 1}], "", submit=False)   # a draft left open on the shift
     s = shift_of(api, shift)
-    st, closed = close(dika, shift, s["expected_cash"] - 2_000, "Kurang 2.000, kembalian salah hitung")
-    closed = rec(closed)
-    if not check("Dika closes the shift -> 200", st == 200 and closed.get("docstatus") == 1, (st, closed)):
+    st, c = close(dika, shift, s["expected_cash"] - 2_000, "Hitung akhir hari")
+    c = rec(c)
+    if not check("Dika closes the shift -> 200", st == 200 and c.get("docstatus") == 1, (st, c)):
         return
-    CTX["close_dgo"] = closed["name"]
-    eq("the close is numbered per outlet", closed["name"], f"TUTUP-DGO-{yymm()}-0001")
-    eq("the close carries the shift's figures and a difference of -2.000", (closed["net_total"], closed["cash_difference"]), (s["net_total"], -2_000))
+    eq("the close is numbered per outlet", c["name"], f"TUTUP-DGO-{yymm()}-0001")
+    eq("the close's answer to the cashier has no expected cash or difference", sorted(k for k in ("expected_cash", "cash_difference") if k in c), [])
+    closed = api.get("pos_shift_close", c["name"])
+    eq("head office sees the shift's figures and a difference of -2.000", (closed["net_total"], closed["expected_cash"], closed["cash_difference"]),
+       (s["net_total"], s["expected_cash"], -2_000))
     s = shift_of(api, shift)
-    eq("the shift is closed with the counted cash", (s["state"], s["closed_by"], s["cash_difference"]), ("closed", closed["name"], -2_000))
-    eq("journal of the close: Kas outlet -2.000 against Selisih kas", gl(api, "pos_shift_close", closed["name"]), {"11150": -2_000, "61300": 2_000})
+    eq("the shift is closed with the counted cash", (s["state"], s["closed_by"], s["cash_difference"]), ("closed", c["name"], -2_000))
+    eq("journal of the close: Kas outlet -2.000 against Selisih kas", gl(api, "pos_shift_close", c["name"]), {"11150": -2_000, "61300": 2_000})
     if late.get("name"):
         st, resp = dika.verb("pos_sale", late["name"], "submit")
         check("a draft paid after its shift closed -> 422 shift_open", st == 422 and "shift_open" in rules(resp), (st, resp))
@@ -423,19 +421,24 @@ def scenario_pos_close(api):
         check("a receipt of a closed shift cannot be voided -> 422 void_shift_closed", st == 422 and "void_shift_closed" in rules(resp), (st, resp))
     st, resp = close(dika, shift, 0)
     check("a closed shift cannot be closed again -> 422 shift_open", st == 422 and "shift_open" in rules(resp), (st, resp))
-    st, resp = dika.verb("pos_shift_close", closed["name"], "cancel")
+    st, resp = dika.verb("pos_shift_close", c["name"], "cancel")
     check("a cashier cannot reopen a shift (cancel its close) -> 403", denied(st, resp), (st, resp))
-    # head office reopens (miscount), Dika closes again with the right count
-    st, resp = hq.verb("pos_shift_close", closed["name"], "cancel")
-    if check("head office cancels the close -> 200", st == 200, (st, resp)):
-        s = shift_of(api, shift)
-        eq("the shift is open again, counted figures cleared", (s["state"], s["closed_by"], s["cash_difference"]), ("open", "", 0))
-        eq("the close's journal is reversed", gl(api, "pos_shift_close", closed["name"], "reverse"), {"11150": 2_000, "61300": -2_000})
-        st, again = close(dika, shift, s["expected_cash"] - 1_000, "Kurang 1.000 setelah dihitung ulang")
-        again = rec(again)
-        if check("Dika closes it again -> 200", st == 200, (st, again)):
-            CTX["close_dgo"] = again["name"]
-            eq("second close numbered 0002, difference -1.000", (again["name"], again["cash_difference"]), (f"TUTUP-DGO-{yymm()}-0002", -1_000))
+    st, resp = hq.verb("pos_shift_close", c["name"], "cancel")
+    if not check("head office cancels the close (a miscount) -> 200", st == 200, (st, resp)):
+        return
+    s = shift_of(api, shift)
+    eq("the shift is open again, counted figures cleared", (s["state"], s["closed_by"], s["cash_difference"]), ("open", "", 0))
+    eq("the close's journal is reversed", gl(api, "pos_shift_close", c["name"], "reverse"), {"11150": 2_000, "61300": -2_000})
+    # Dika saves a new close with the right count, then sells once more before submitting: the close reads the shift
+    # again at submit, so the 4.000 of that sale is short in the drawer count
+    st, c2 = dika.create("pos_shift_close", {"shift": shift, "counted_cash": s["expected_cash"]})
+    st2, r = sale(dika, shift, [{"item": AIR, "qty": 1}], "")
+    if check("a close drafted, then one more sale", st == 201 and st2 == 200, (st, c2, st2, r)):
+        st, resp = dika.verb("pos_shift_close", rec(c2)["name"], "submit")
+        if check("the close submits -> 200", st == 200, (st, resp)):
+            again = api.get("pos_shift_close", rec(resp)["name"])
+            eq("it counted the last sale: numbered 0002, expected up by 4.000, difference -4.000",
+               (again["name"], again["expected_cash"], again["cash_difference"]), (f"TUTUP-DGO-{yymm()}-0002", s["expected_cash"] + 4_000, -4_000))
     # the next shift of the same cashier
     s2 = open_shift(dika, DGO, 200_000, "Dika's next shift")
     if s2:
@@ -477,13 +480,13 @@ def scenario_pos_close_race(api):
     eq("after the race the shift's totals are its live receipts", (s["sales_count"], s["net_total"], s["cash_total"]),
        (len(sales), sum(x["grand_total"] for x in sales), sum(x["cash_amount"] for x in sales)))
     if codes[3] == 200:
-        cl = rec(res[3][1])
+        cl = api.get("pos_shift_close", rec(res[3][1])["name"])
         eq("the close took the shift's figures at the moment it closed", (s["state"], cl["expected_cash"], cl["net_total"]),
            ("closed", s["opening_cash"] + s["cash_total"], s["net_total"]))
         late = [r for r in res[:3] if r and r[0] == 422]
         check("a sale that lost the race to the close was refused as closed", all({"shift_open", "shift_closed"} & set(rules(r[1])) for r in late), late)
     else:
-        check("the close lost only to a sale (close_stale), never silently", "close_stale" in rules(res[3][1]) or "difference_explained" in rules(res[3][1]), res[3])
+        check("the close lost only to a sale (close_stale), never silently", "close_stale" in rules(res[3][1]), res[3])
 
 
 def scenario_pos_print(api):
@@ -495,7 +498,7 @@ def scenario_pos_print(api):
     if not check("struk: print answers 200 text/html", st == 200 and ctype.startswith("text/html"), (st, ctype, raw[:200])):
         return
     text = page_text(raw)
-    for needle in (r["name"], "CV Contoh Warung Rasa", "Kedai Contoh Riau", "Meja 4", "Kopi susu aren", "Kembalian", "LUNAS", "Termasuk PPN"):
+    for needle in (r["name"], "CV Contoh Warung Rasa", "Kedai Contoh Riau", "Meja 4", "Kopi susu aren", "Tunai", "Kembalian", "LUNAS", "Termasuk PPN"):
         check(f"struk shows {needle!r}", needle in text, text[:600])
     q = CTX.get("sale_qris")
     if q:

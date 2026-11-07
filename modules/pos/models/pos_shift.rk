@@ -48,7 +48,8 @@ fields:
   - {name: gross_total, type: currency, label: {id: Penjualan kotor}, read_only: true}
   - {name: discount_total, type: currency, label: {id: Diskon}, read_only: true}
   - {name: net_total, type: currency, label: {id: Penjualan bersih}, read_only: true, in_list: true}
-  - {name: cash_total, type: currency, label: {id: Tunai masuk}, help: {id: 'Dibayar tunai setelah kembalian, dikurangi tunai transaksi yang dibatalkan'}, read_only: true}
+  # blind count (contract 0027 hidden_for): the cashier counts the drawer without seeing what should be in it
+  - {name: cash_total, type: currency, label: {id: Tunai masuk}, help: {id: 'Dibayar tunai setelah kembalian, dikurangi tunai transaksi yang dibatalkan'}, read_only: true, hidden_for: [cashier]}
   - {name: qris_total, type: currency, label: {id: QRIS masuk}, read_only: true}
   - {name: void_count, type: int, label: {id: Transaksi dibatalkan}, read_only: true}
   - {name: void_total, type: currency, label: {id: Nilai dibatalkan}, read_only: true}
@@ -58,10 +59,11 @@ fields:
     label: {id: Tunai seharusnya}
     help: {id: 'Modal kas ditambah tunai masuk'}
     compute: opening_cash + cash_total
+    hidden_for: [cashier]
   # copied from the Tutup sesi that closed the shift
   - {name: closed_by, type: link, to: pos_shift_close, label: {id: Ditutup dengan}, read_only: true}
   - {name: counted_cash, type: currency, label: {id: Hitung fisik}, read_only: true}
-  - {name: cash_difference, type: currency, label: {id: Selisih kas}, read_only: true, in_list: true}
+  - {name: cash_difference, type: currency, label: {id: Selisih kas}, read_only: true, in_list: true, hidden_for: [cashier]}
 rules:
   - name: outlet_has_code
     on: save
