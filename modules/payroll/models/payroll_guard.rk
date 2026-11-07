@@ -26,6 +26,8 @@ fields:
       - {value: later_slip, label: {id: Slip bulan sesudahnya sudah diajukan}}
       - {value: overlap, label: {id: Periode tumpang tindih}}
       - {value: invoice_tag, label: {id: Catatan faktur tenaga kerja}}
+      - {value: invoice_twice, label: {id: Faktur kedua periode gaji}}
+      - {value: pay_overlap, label: {id: Hari kerja dibayar dua kali}}
   - name: document
     type: data
     label: {id: Dokumen}
@@ -62,3 +64,11 @@ rules:
     on: save
     check: reason != 'invoice_tag'
     message: {id: 'Catatan faktur tagihan tenaga kerja tidak bisa diubah (penanda periode gaji)'}
+  - name: invoice_twice
+    on: save
+    check: reason != 'invoice_twice'
+    message: {id: 'Faktur ini bukan faktur tutup periode gaji yang berlaku, atau periode itu sudah punya faktur diajukan'}
+  - name: pay_overlap
+    on: save
+    check: reason != 'pay_overlap'
+    message: {id: 'Pekerja ini sudah dibayar untuk sebagian hari periode ini di periode gaji lain'}

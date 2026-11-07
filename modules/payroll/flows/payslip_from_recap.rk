@@ -20,7 +20,7 @@ steps:
     as: run
   - if: prof != null && run != null
     find: payslip
-    where: profile == prof.name && tax_year == run.tax_year && tax_month == run.tax_month && docstatus != 2
+    where: worker == event.worker && tax_year == run.tax_year && tax_month == run.tax_month && docstatus != 2
     as: other
   - if: prof != null && run != null && other != null
     create: payroll_guard
@@ -29,7 +29,7 @@ steps:
       document: other.name
   - if: prof != null && run != null
     find_all: payslip
-    where: profile == prof.name && tax_year == run.tax_year && tax_month < run.tax_month && docstatus == 1
+    where: worker == event.worker && tax_year == run.tax_year && tax_month < run.tax_month && docstatus == 1
     as: prev
   - if: prof != null && run != null
     create: payslip

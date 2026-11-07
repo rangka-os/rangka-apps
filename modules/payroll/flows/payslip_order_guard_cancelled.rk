@@ -6,7 +6,7 @@ label: {id: Slip gaji dibatalkan urut bulan pajak}
 on: payslip.cancelled
 steps:
   - find: payslip
-    where: profile == event.profile && tax_year == event.tax_year && tax_month > event.tax_month && docstatus == 1
+    where: worker == event.worker && tax_year == event.tax_year && tax_month > event.tax_month && docstatus == 1
     as: later
   - if: later != null
     create: payroll_guard

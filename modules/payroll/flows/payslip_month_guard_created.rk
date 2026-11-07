@@ -7,7 +7,7 @@ label: {id: Satu slip gaji per pekerja per bulan pajak}
 on: payslip.created
 steps:
   - find: payslip
-    where: profile == event.profile && tax_year == event.tax_year && tax_month == event.tax_month && docstatus != 2 && name != event.name
+    where: worker == event.worker && tax_year == event.tax_year && tax_month == event.tax_month && docstatus != 2 && name != event.name
     as: other
   - if: other != null
     create: payroll_guard

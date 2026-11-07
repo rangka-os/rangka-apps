@@ -122,6 +122,17 @@ fields:
   # (closed_by). Cleared when the last slip is cancelled or the close is cancelled.
   - {name: lock_slip, type: link, to: payslip, label: {id: Slip pengunci}, hidden: true, read_only: true}
   - {name: closed_by, type: link, to: payroll_close, label: {id: Ditutup oleh}, read_only: true}
+  # Tax month as text (YYYY-MM) and the month before, for the period rule.
+  - name: tax_ym
+    type: data
+    label: {id: Masa pajak}
+    hidden: true
+    compute: "truncate(tax_year, 4) + '-' + (tax_month < 10 ? '0' : '') + truncate(tax_month, 2)"
+  - name: tax_prev_ym
+    type: data
+    label: {id: Masa pajak sebelumnya}
+    hidden: true
+    compute: "tax_month == 1 ? truncate(tax_year - 1, 4) + '-12' : truncate(tax_year, 4) + '-' + (tax_month < 11 ? '0' : '') + truncate(tax_month - 1, 2)"
   # One run per project and start of period.
   - name: run_key
     type: data
@@ -163,6 +174,12 @@ rules:
     on: save
     check: umk > 0 && jkk_rate >= 0.24 && jkk_rate <= 1.74 && jp_wage_cap > 0 && kes_wage_cap > 0 && (workdays_per_week == 5 || workdays_per_week == 6) && fee_percent >= 0 && fee_per_worker >= 0
     message: {id: 'Isi UMK; JKK 0,24 sampai 1,74 persen; batas upah lebih dari 0; hari kerja 5 atau 6; fee tidak negatif'}
+  # Pay of a period is paid (and taxed) in the month it ends or the month after: the tax month follows the period, so the
+  # same days cannot be put into two tax months.
+  - name: tax_month_follows_period
+    on: save
+    check: period_to.startsWith(tax_ym) || period_to.startsWith(tax_prev_ym)
+    message: {id: 'Bulan pajak harus bulan akhir periode atau bulan sesudahnya'}
   - name: locked_by_slips
     on: save
     check: >-

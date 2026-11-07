@@ -195,6 +195,30 @@ def scenario_payroll_month(api):
     eq("the payroll row is reversed on the run's date", sorted(x["amount"] for x in rows), sorted([-(tot["employer_cost"] - sum(s["timesheet_cost"] for s in by_no.values())), tot["employer_cost"] - sum(s["timesheet_cost"] for s in by_no.values())]))
 
 
+def scenario_payroll_invoice_once(api):
+    """Close again after cancelling: a new draft invoice; an amended copy of the cancelled invoice (carrying the old
+    close's number) cannot be submitted, so the run is billed once."""
+    fm = CTX.get("fm")
+    p = CTX.get("payroll_project")
+    if not (fm and p):
+        fail("payroll invoice once: setup", "no project")
+        return
+    runs = fm.find("payroll_run", f"project == '{p}' && period_from == '2026-09-21'")
+    olds = fm.find("sales_invoice", f"project == '{p}' && docstatus == 2")
+    if not check("setup: the October run and its cancelled invoice", len(runs) == 1 and len(olds) == 1, (runs, olds)):
+        return
+    R = runs[0]["name"]
+    st, resp, C = close_run(fm, R)
+    check("the October run closes again", st == 200, (st, resp))
+    st, am = fm.verb("sales_invoice", olds[0]["name"], "amend")
+    am = (am or {}).get("record", am) or {}
+    st2, resp2 = fm.verb("sales_invoice", am.get("name", "x"), "submit")
+    check("an amended copy of the cancelled payroll invoice cannot be submitted", st in (200, 201) and st2 >= 400 and "faktur" in str(resp2).lower(), (st, am.get("name"), st2, resp2))
+    new = [x for x in fm.find("sales_invoice", f"project == '{p}' && docstatus == 0") if f"({C})" in (fm.get("sales_invoice", x["name"]).get("notes") or "")]
+    st, resp = fm.verb("sales_invoice", new[0]["name"] if new else "x", "submit")
+    check("the new close's invoice submits", st == 200, (st, resp))
+
+
 def scenario_payroll_rules(api):
     """Refusals: a second slip for a worker in a run, a slip into a submitted run, an empty run, a run without items."""
     fm, pa = CTX.get("fm"), CTX.get("pa")
@@ -223,6 +247,12 @@ def scenario_payroll_rules(api):
     check("a second run for the same project and period is refused", st >= 400, (st, dup))
     st, other = pa.create("project", {"project_name": "Kontrak lain", "customer": gen().CLIENT, "state": "running", "billing_model": "time_material"})
     run2 = new_run(fm, other["name"], period_from="2026-10-21", period_to="2026-11-20", tax_month=11)
+    st, bad_tax = fm.create("payroll_run", dict(gen().RUN, project=other["name"], period_from="2026-08-21", period_to="2026-09-20", tax_month=11))
+    check("a tax month two months after the period is refused", st == 422 and "bulan pajak" in str(bad_tax).lower(), (st, bad_tax))
+    run3 = new_run(fm, other["name"], period_from="2026-09-21", period_to="2026-10-20", tax_month=11)
+    st, s5 = fm.create("payslip", {"payroll_run": (run3 or {}).get("name", ""), "profile": "PGJ-0002", "days": 10})
+    st2, resp2 = fm.verb("payslip", (s5 or {}).get("name", "x"), "submit")
+    check("the same days cannot be paid twice on another contract (MP-002, 21 Sep - 20 Oct)", st == 201 and st2 >= 400 and "dibayar" in str(resp2).lower(), (st, s5, st2, resp2))
     st, s3 = fm.create("payslip", {"payroll_run": (run2 or {}).get("name", ""), "profile": "PGJ-0018"})
     check("one live slip per worker per tax month, also on another contract (TER is on the month's whole gross)", st >= 400, (st, s3))
     sub1 = fm.find("payslip", f"payroll_run == '{run['name']}' && docstatus == 1")
@@ -387,4 +417,4 @@ def scenario_payroll_refund_and_stale(api):
     check("December pays back the TER withheld in October and November (PKP under PTKP)", want["pph21"] == -ytd["pph21"] and d.get("pph21") == -ytd["pph21"] and ytd["pph21"] > 0, (d.get("pph21"), ytd))
 
 
-SCENARIOS = [scenario_payroll_month, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale]
+SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale]

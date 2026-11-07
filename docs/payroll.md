@@ -38,7 +38,11 @@ of the client contract and the client invoice. Installed with `jasa_proyek`; dem
 - Year to date = every submitted slip of the worker in earlier tax months of the year. A slip whose year to date no
   longer matches is refused at submit (`payslip_ytd_guard`): delete the draft and make it again. Slips are submitted
   and cancelled in month order (`payslip_order_guard_*`), so a December recomputation never misses a month.
-- Runs of one project never overlap (`payroll_run_overlap_guard_*`).
+- Runs of one project never overlap (`payroll_run_overlap_guard_*`); a worker is never paid twice for the same days
+  on two runs of any projects (`payslip_pay_overlap_guard`); the tax month is the month the period ends or the next.
+- The slip guards check the worker, not the profile (a profile's worker can be changed).
+- An invoice carrying a run's tag is submitted only while the run is closed by the close it names, and once
+  (`invoice_payroll_once`): an amended copy of a cancelled invoice cannot bill the run again.
 - A recap used by a submitted slip cannot be cancelled (`recap_cancel_guard`); `timesheet_cost` is computed from it.
 - A run with submitted slips keeps its project, period, tax month and rates (`locked_by_slips`, copies on the first
   slip); a closed run keeps what its close froze (`locked_by_close`); runs are never deleted; one run per project and
