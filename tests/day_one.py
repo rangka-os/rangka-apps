@@ -2443,15 +2443,23 @@ def scenario_project_margin(api):
         st, resp = pm.verb("vendor_bill", sb, "cancel")
         check("D2: a bill linked by a live expense cannot be cancelled (it could come back with the project) -> 422", st == 422, (st, resp))
     nbn = submit_doc(pm, "vendor_bill", nb["name"], "submit the small bill without project") if nb.get("name") else ""
-    st, e2 = pa.create("project_expense", {"project": p, "description": "Ke tagihan kecil", "amount": 9_000_000, "vendor_bill": nbn or ""})
-    submit_doc(pa, "project_expense", e2["name"], "expense of 9.000.000 linked to a 1.000.000 bill without project") if st == 201 else None
-    eq("both expenses lower the margin by their full amount (17.000.000)", before_m - margin(), 17_000_000)
+    # with the accounting module an expense moves its bill's cost into the project, so together the live expenses on
+    # one bill cannot exceed it (gl_entry rule bill_cost_left): 9.000.000 on a 1.000.000 bill is refused, 1.000.000 fits
+    st, big = pa.create("project_expense", {"project": p, "description": "Ke tagihan kecil", "amount": 9_000_000, "vendor_bill": nbn or ""})
+    if st == 201 and installed(api, "gl_entry"):
+        st2, resp = pa.verb("project_expense", big["name"], "submit")
+        check("accounting: an expense above its bill's cost is refused", st2 == 422 and "melebihi" in str(resp), (st2, str(resp)[:300]))
+        pa.call("DELETE", f"/api/v1/r/project_expense/{Api.q(big['name'])}")
+    small = 1_000_000 if installed(api, "gl_entry") else 9_000_000
+    st, e2 = pa.create("project_expense", {"project": p, "description": "Ke tagihan kecil", "amount": small, "vendor_bill": nbn or ""})
+    submit_doc(pa, "project_expense", e2["name"], f"expense of {small:,} linked to a 1.000.000 bill without project") if st == 201 else None
+    eq(f"both expenses lower the margin by their full amount ({8_000_000 + small:,})", before_m - margin(), 8_000_000 + small)
     st, vbp = pm.create("vendor_bill", {"vendor": "VND-0001", "project": p, "bill_no": "PRJ-BILL", "bill_date": "2026-11-20", "items": [{"item": "BRG-0004", "qty": 1, "rate": 1_000_000}]})
     st, resp = pa.create("project_expense", {"project": p, "description": "x", "amount": 1_000_000, "vendor_bill": vbp.get("name", "")})
     check("an expense linking a bill of this project (counted on its own) -> 422", st == 422, (st, resp))
     if e1n:
         pa.verb("project_expense", e1n, "cancel")
-        eq("cancelling the 8.000.000 expense gives it back", before_m - margin(), 9_000_000)
+        eq("cancelling the 8.000.000 expense gives it back", before_m - margin(), small)
         if sb:
             st, resp = pm.verb("vendor_bill", sb, "cancel")
             check("once the expense is cancelled, its bill can be cancelled", st == 200, (st, resp))
@@ -2479,7 +2487,9 @@ def scenario_project_margin(api):
        sorted(r["source_name"] for r in revs), sorted({r["source_name"] for r in revs}))
     eq("four reversals: the subcontract bill, the DPP 0 invoice, the 500.000 expense and the 8.000.000 expense", len(revs), 4)
     ws = dashboard(api, "project_margin", 365)
-    eq("project_margin margin_by_project shows the project's margin (35.000.000 - the 9.000.000 expense = 26.000.000)", chart_map(ws.get("margin_by_project", {})).get(p), 26_000_000)
+    # the remaining expense on the small bill: 9.000.000, or 1.000.000 where accounting refuses more than the bill
+    left = 1_000_000 if installed(api, "gl_entry") else 9_000_000
+    eq(f"project_margin margin_by_project shows the project's margin (35.000.000 - the {left:,} expense)", chart_map(ws.get("margin_by_project", {})).get(p), 35_000_000 - left)
 
 
 def scenario_manpower_recap(api):

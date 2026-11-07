@@ -71,13 +71,13 @@ BILL_PPN = "tax.pkp ? '11500' : ((" + BILL_KIND + ") == 'stock' ? '51100' : (" +
 # Potong retur: the credit note covers the return value plus its PPN; only the value is retur penjualan, the PPN
 # reduces PPN keluaran, in the proportion of what this payment credits.
 RETURN_VALUE = "round(event.amount * 1.0 * ret.return_value / ret.return_total)"
-# A project expense on a vendor bill moves the bill's cost (its debit line 1, plus line 2 when that is the same
-# account: PPN of a business that is not PKP) into the project, at most what is left of it after the expenses that
-# already moved some (their credit lines carry `against` = the bill; a cancelled one's reversal gives its part back).
+# A project expense on a vendor bill moves that bill's cost (its debit line 1, plus line 2 when that is the same
+# account: PPN of a business that is not PKP) into the project, always at its full amount; the live expenses on one
+# bill may not move more than the bill's cost (gl_entry rule bill_cost_left on BILL_LEFT, computed from the lines of the
+# other expenses on the bill, whose reversals give their part back), so the result never depends on their order.
 BILL_COST = "bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)"
-LEFT = "(" + BILL_COST + ") + prior.map(r, r.amount).sum()"
-MOVED = ("event.vendor_bill != '' && bl != null ? ((" + LEFT + ") <= 0 ? 0 : (event.amount < (" + LEFT + ")"
-         " ? event.amount : (" + LEFT + "))) : 0")
+BILL_LEFT = "(" + BILL_COST + ") + prior.map(r, r.amount).sum() - event.amount"
+MOVED = "event.vendor_bill != '' && bl != null ? event.amount : 0"
 SALES_RETURN = "event.direction == 'receive' && event.method == 'sales_return' && ret != null && ret.return_total > 0"
 CASH_TAKEN = "event.lines.filter(l, l.method == 'cash').map(l, l.received).sum()"
 
@@ -147,8 +147,8 @@ POSTINGS = {
         label="Jurnal biaya proyek", date="event.expense_date", project="event.project", party="event.vendor",
         # Paid from cash. When it points at a vendor bill (always one without a project), the project_ledger counts the
         # expense at its full amount, so the cost moves into the project: out of the account the bill debited (without a
-        # project tag), at most what is left of the bill's cost (BILL_COST, LEFT); anything above was paid in cash. A bill
-        # from before the accounting module has no journal: the whole expense counts as paid in cash.
+        # project tag), never more than what is left of the bill's cost (BILL_LEFT, refused above it). A bill from before
+        # the accounting module has no journal: the whole expense counts as paid in cash.
         extra=["  - find: gl_entry", "    if: event.vendor_bill != ''",
                "    where: voucher_type == 'vendor_bill' && voucher == event.vendor_bill && entry == 'post' && line == '1'",
                "    as: bl",
@@ -159,7 +159,7 @@ POSTINGS = {
                "    where: against == event.vendor_bill && voucher_type == 'project_expense'",
                "    as: prior"],
         lines=[("'51400'", "event.amount"),
-               ("bl != null ? bl.account : '61900'", "0 - (" + MOVED + ")", {"project": "''", "against": "event.vendor_bill"}),
+               ("bl != null ? bl.account : '61900'", "0 - (" + MOVED + ")", {"project": "''", "against": "event.vendor_bill", "bill_left": BILL_LEFT}),
                ("'11100'", "0 - (event.amount - (" + MOVED + "))")]),
     "delivery_note": dict(
         label="Jurnal surat jalan", date="event.delivery_date", outlet="event.outlet", party="event.customer",
@@ -242,7 +242,7 @@ def post_flow(model, p):
                 "      voucher: event.name",
                 "      entry: \"'post'\"",
                 f"      line: \"'{i}'\""]
-        for f in ("outlet", "project", "party", "against"):
+        for f in ("outlet", "project", "party", "against", "bill_left"):
             v = own.get(f, p.get(f))
             if v:
                 out.append(f"      {f}: {q(v)}")

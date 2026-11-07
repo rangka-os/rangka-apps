@@ -116,6 +116,7 @@ fields:
   - {name: party, type: data, label: {id: Pihak}}
   # a project expense's credit line: the vendor bill whose cost it moved into the project
   - {name: against, type: data, label: {id: Tagihan asal}, hidden: true}
+  - {name: bill_left, type: currency, label: {id: Sisa biaya tagihan}, hidden: true}
   - {name: lock_date, type: date, label: {id: Buku ditutup sampai}, hidden: true}
   - name: account_class
     type: select
@@ -137,6 +138,10 @@ rules:
     on: save
     check: lock_date == null || posting_date > lock_date
     message: {id: 'Buku sudah ditutup sampai tanggal ini. Batalkan Tutup buku dulu kalau dokumen ini memang perlu diubah.'}
+  - name: bill_cost_left
+    on: save
+    check: against == '' || entry == 'reverse' || bill_left >= 0
+    message: {id: 'Biaya proyek atas tagihan ini melebihi sisa nilai tagihannya. Kurangi nilainya, atau catat tanpa tagihan.'}
   - name: reverse_matches_post
     on: save
     check: >-

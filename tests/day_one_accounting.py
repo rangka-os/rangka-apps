@@ -104,12 +104,11 @@ def expected_pl(api, d0, d1):
             e["project_costs"] += x["amount"]
             if x.get("vendor_bill"):
                 on_bill[x["vendor_bill"]] += x["amount"]
-    # expenses on a bill take that bill's cost into the project, together never more than the bill cost (DPP, plus PPN
-    # where the business is not PKP); what is above it was paid in cash
+    # expenses on a bill take that bill's cost into the project (never more than it: refused above)
     for bn, total in on_bill.items():
         b = bills.get(bn)
         if b and bill_kind(b, stock) == "expense":
-            e["operating_expenses"] -= min(total, b["dpp"] + (0 if pkp_org else b["ppn"]))
+            e["operating_expenses"] -= total
     for b in docs(api, "vendor_bill"):
         if not inm(b["bill_date"]):
             continue
@@ -246,6 +245,17 @@ def scenario_accounting(api):
     print(f"accounting {CTX.get('site')} {d0[:7]}: pendapatan {rep.get('net_revenue'):,} HPP {rep.get('cogs'):,} laba bersih {rep.get('net_profit'):,} "
           f"aset {rep.get('total_assets'):,} liabilitas {rep.get('total_liabilities'):,} ekuitas {rep.get('total_equity'):,}")
 
+    # every other month with journal lines (e.g. payroll periods closed in later months): profit and loss and balances
+    months = sorted({r["posting_date"][:7] for r in gl} - {d0[:7]})
+    for ym in months[-4:]:
+        y, m = int(ym[:4]), int(ym[5:7])
+        m0, m1 = f"{ym}-01", f"{ym}-{calendar.monthrange(y, m)[1]:02d}"
+        st, rm = report(api, m0, m1)
+        em, bm = expected_pl(api, m0, m1), expected_balances(api, m1)
+        eq(f"accounting: {ym}: net profit, labour and receivables = documents",
+           (rm.get("net_profit"), rm.get("direct_labour"), rm.get("receivables"), rm.get("balanced")),
+           (em["net_profit"], em["direct_labour"], bm["receivables"], True))
+
     # profit and loss of one outlet: its outlet sales only
     sales = [s for s in docs(api, "outlet_sales") if d0 <= s["date"] <= d1]
     if sales:
@@ -318,21 +328,37 @@ def scenario_expenses_on_one_bill(api):
         cost = bill["dpp"] + (0 if pkp else bill["ppn"])
         eq(f"accounting {org}: the bill's expense = DPP{'' if pkp else ' + PPN (not PKP)'}",
            sum(l["amount"] for l in rows(cl, "gl_entry", f"voucher == '{bill['name']}' && account == '61400'")), cost)
-        names = []
-        for amt in (cost, 1_000_000):                  # the second expense finds nothing left on the bill
+        def expense(amt, submit=True):
             st, x = cl.create("project_expense", {"project": prj["name"], "expense_date": "2026-11-06", "description": "Atas tagihan",
                                                   "vendor_bill": bill["name"], "amount": amt})
-            st, sx = cl.verb("project_expense", rec(x).get("name", "x"), "submit")
-            check(f"accounting {org}: expense {amt:,} on the bill submitted", st == 200, (st, str(sx)[:300]))
-            names.append(rec(sx).get("name"))
-        a614 = sum(l["amount"] for l in rows(cl, "gl_entry", "account == '61400'") if l["voucher"] in [bill["name"]] + names)
-        eq(f"accounting {org}: two expenses on one bill move the bill's cost once (Beban sewa nets to 0)", a614, 0)
-        cash = sum(l["amount"] for l in rows(cl, "gl_entry", "account == '11100'") if l["voucher"] in names)
-        eq(f"accounting {org}: what is above the bill's cost is cash", cash, -1_000_000)
-        cl.verb("project_expense", names[0], "cancel")
-        left = sum(l["amount"] for l in rows(cl, "gl_entry", "account == '61400'") if l["voucher"] in [bill["name"]] + names)
-        eq(f"accounting {org}: cancelling the first expense gives the bill's cost back to Beban sewa", left, cost)
-        cl.verb("project_expense", names[1], "cancel")
+            x = rec(x)
+            if not submit:
+                return x.get("name"), None, None
+            st, sx = cl.verb("project_expense", x.get("name", "x"), "submit")
+            return rec(sx).get("name", x.get("name")), st, sx
+        beban = lambda names: sum(l["amount"] for l in rows(cl, "gl_entry", "account == '61400'") if l["voucher"] in [bill["name"]] + names)
+        cash = lambda names: sum(l["amount"] for l in rows(cl, "gl_entry", "account == '11100'") if l["voucher"] in names)
+        a, st, sa = expense(cost)                                     # A: the whole bill, by mistake
+        check(f"accounting {org}: expense A = the bill's cost submitted", st == 200, (st, str(sa)[:300]))
+        b, st, sb = expense(400_000)                                  # B: nothing left on the bill
+        check(f"accounting {org}: expense B above what is left of the bill is refused", st == 422 and "melebihi" in str(sb), (st, str(sb)[:300]))
+        st, c = cl.verb("project_expense", a, "cancel")              # correct A: cancel ...
+        check(f"accounting {org}: cancel A", st == 200, (st, str(c)[:300]))
+        st, sb = cl.verb("project_expense", b, "submit")              # ... B now fits ...
+        check(f"accounting {org}: expense B fits after A is cancelled", st == 200, (st, str(sb)[:300]))
+        b = rec(sb).get("name", b)
+        st, am = cl.verb("project_expense", a, "amend")               # ... and A comes back smaller
+        am = rec(am)
+        st, _ = cl.patch("project_expense", am.get("name", "x"), {"amount": cost - 400_000})
+        st, sa2 = cl.verb("project_expense", am.get("name", "x"), "submit")
+        check(f"accounting {org}: amended A of the rest submitted", st == 200, (st, str(sa2)[:300]))
+        a2 = rec(sa2).get("name", "")
+        names = [a, b, a2]
+        eq(f"accounting {org}: cancel and amend in any order move the bill's cost once (Beban sewa nets to 0)", beban(names), 0)
+        eq(f"accounting {org}: no cash moves for expenses on a bill", cash(names), 0)
+        for n in (b, a2):
+            cl.verb("project_expense", n, "cancel")
+        eq(f"accounting {org}: cancelling them gives the bill's cost back to Beban sewa", beban(names), cost)
 
 
 def scenario_non_pkp(api):

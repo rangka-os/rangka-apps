@@ -35,11 +35,11 @@ steps:
       party: "event.vendor"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
-    if: "(0 - (event.vendor_bill != '' && bl != null ? (((bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum()) <= 0 ? 0 : (event.amount < ((bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum()) ? event.amount : ((bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum()))) : 0)) != 0"
+    if: "(0 - (event.vendor_bill != '' && bl != null ? event.amount : 0)) != 0"
     set:
       posting_date: "event.expense_date"
       account: "bl != null ? bl.account : '61900'"
-      amount: "0 - (event.vendor_bill != '' && bl != null ? (((bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum()) <= 0 ? 0 : (event.amount < ((bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum()) ? event.amount : ((bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum()))) : 0)"
+      amount: "0 - (event.vendor_bill != '' && bl != null ? event.amount : 0)"
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
@@ -47,13 +47,14 @@ steps:
       project: "''"
       party: "event.vendor"
       against: "event.vendor_bill"
+      bill_left: "(bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum() - event.amount"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
-    if: "(0 - (event.amount - (event.vendor_bill != '' && bl != null ? (((bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum()) <= 0 ? 0 : (event.amount < ((bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum()) ? event.amount : ((bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum()))) : 0))) != 0"
+    if: "(0 - (event.amount - (event.vendor_bill != '' && bl != null ? event.amount : 0))) != 0"
     set:
       posting_date: "event.expense_date"
       account: "'11100'"
-      amount: "0 - (event.amount - (event.vendor_bill != '' && bl != null ? (((bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum()) <= 0 ? 0 : (event.amount < ((bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum()) ? event.amount : ((bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)) + prior.map(r, r.amount).sum()))) : 0))"
+      amount: "0 - (event.amount - (event.vendor_bill != '' && bl != null ? event.amount : 0))"
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
