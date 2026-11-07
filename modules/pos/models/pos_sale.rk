@@ -126,6 +126,12 @@ stock:
     - {lines: items, out: outlet, explode: recipe, reason: sale, cogs: cogs}
   cogs_total: cogs_total
 rules:
+  # the receipt number carries the outlet code (STRK-<code>-...); head office could have emptied it since the shift
+  # opened: say so when saving, not only at payment (kernel 409 numbering)
+  - name: outlet_has_code
+    on: save
+    check: outlet.code != ''
+    message: {id: 'Outlet ini belum punya Kode; minta kantor pusat mengisi Kode outlet (dipakai di nomor struk)'}
   - name: outlet_of_shift
     on: save
     check: outlet == shift.outlet

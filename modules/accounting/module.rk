@@ -7,5 +7,5 @@ title: {id: Akuntansi, en: Accounting}
 # scripts/gen_accounting_flows.py from one table of postings. A cancel writes the opposite lines on the original
 # date. Laporan keuangan (financial_report) sums the lines into a profit and loss, a balance sheet and a cash
 # summary (SAK EMKM). Tutup buku (period_close) locks every date up to closed_until.
-requires: {rangka: '>=0.5', users: ^1.0}
+requires: {rangka: '>=0.5', users: ^1.2}
 optional: {contacts: ^1.0, outlets: ^1.0, invoicing: ^1.0, payments: ^1.0, procurement: ^1.0, stock: ^1.0, outlet_sales: ^1.0, projects: ^1.0, delivery: ^1.0, production: ^1.0, consignment: ^1.0, rental: ^1.0, pos: ^1.0}

@@ -160,6 +160,8 @@ def scenario_pos_shift(api):
        tuple(shift_of(api, s["name"]).get(f) for f in ("sales_count", "net_total", "state")), (0, 0, "open"))
     r = open_shift(sari, RIU, 150_000, "Sari at Kedai Riau")
     CTX["shift_riu"] = r.get("name")
+    st, resp = api.create("outlet", {"outlet_name": "Pop-up Salah", "code": "Pop up"})
+    check("an outlet code takes capitals, digits and '-' only -> 422 code_shape", st == 422 and "code_shape" in rules(resp), (st, resp))
     # an outlet without a code cannot number receipts
     st, o = api.create("outlet", {"outlet_name": "Pop-up Contoh", "sales_source": "kasir"})
     if check("owner adds an outlet without a code", st == 201, (st, o)):

@@ -3989,7 +3989,8 @@ def eqf(name, got, want):
 
 
 def new_outlet(api, label):
-    st, o = api.create("outlet", {"outlet_name": label, "code": label.upper().replace(" ", "-")[:16]})
+    code = re.sub(r"[^A-Z0-9]+", "-", label.upper())[:16].strip("-")   # outlet code_shape: A-Z 0-9 and "-"
+    st, o = api.create("outlet", {"outlet_name": label, "code": code})
     check(f"create outlet {label}", st == 201, o)
     return o["name"]
 

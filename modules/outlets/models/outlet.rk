@@ -59,3 +59,11 @@ fields:
       - {value: loyverse, label: {id: Loyverse}}
       # module pos: the outlet sells through Juragan's own cashier, so no daily form or POS file is taken for it
       - {value: kasir, label: {id: Kasir Juragan}}
+
+rules:
+  # The code is part of document numbers (cashier receipts STRK-<code>-..., kernel contract 0009 §2a), which take it
+  # as it is: capital letters and digits, parts joined by "-".
+  - name: code_shape
+    on: save
+    check: "code == '' || code.matches('^[A-Z0-9]+(-[A-Z0-9]+)*$')"
+    message: {id: 'Kode outlet hanya huruf besar dan angka, boleh dipisah tanda -, misalnya DGO atau BDG-1'}
