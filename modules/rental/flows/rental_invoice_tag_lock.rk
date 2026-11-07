@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: rental_invoice_tag_lock
+label: {id: Catatan faktur sewa dikunci}
+# The guards of this module find a rental invoice by the document number in its notes. Nobody edits those notes by
+# hand, or a submitted rent invoice would no longer hold back the booking's cancel (finding 2, the payroll pattern).
+on: sales_invoice.updated
+if: event.before != null && (event.before.notes.contains('SWA-') || event.before.notes.contains('KBL-')) && event.notes != event.before.notes
+steps:
+  - create: rental_guard
+    set:
+      reason: "'invoice_tag'"
+      document: event.name

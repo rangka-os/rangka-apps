@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: pajak
+version: 1.0.0
+title: {id: Pajak, en: Tax}
+label: {id: Rangka Pajak, en: Rangka Tax}
+summary:
+  id: Masa pajak dengan unduhan Coretax (faktur PPN keluaran, bukti potong PPh 23) dari faktur dan tagihan yang ada.
+rangka: '>=0.5'
+# A piece (riset/desain/11-susunan-kepingan.md) for a PKP business: it reads invoices and supplier bills, so it needs
+# faktur_piutang and pembelian_pemasok (coretax requires invoicing, procurement and payments).
+modules:
+  users: ^1.0
+  contacts: ^1.0
+  catalogue: ^1.0
+  invoicing: ^1.0
+  payments: ^1.0
+  procurement: ^1.0
+  tax_id: ^1.0
+  coretax: ^1.0
+roles: [head_office, finance_manager]
+menu:
+  - group: {id: Pajak}
+    items: [tax_period, tax_code]

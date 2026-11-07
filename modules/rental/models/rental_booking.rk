@@ -1,0 +1,123 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: rental_booking
+label: {id: Pesanan sewa, en: Rental booking}
+icon: calendar
+is_submittable: true
+naming: SWA-{YYYY}-{#####}
+title_field: customer
+# One rental item, a number of units and a range of dates [start_date, end_date): the end date is the planned return
+# day, free for the next booking. Submitting it books the units (flow rental_booking_on_submit refuses a booking that
+# needs more units than the item has on its busiest day, under the read lock of contract 0025, so two bookings sent at
+# the same moment never both pass), records the deposit received and drafts the rent invoice. Cancelling is allowed
+# only while the equipment has not gone out (rental_booking_on_cancel); the deposit journal is reversed (paid back).
+# The person types the number of days; the return date is computed (the rule language has no date difference).
+permissions:
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true, cancel: true, export: true, print: true}
+  - {role: head_office, read: true, export: true, print: true}
+fields:
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    required: true
+    in_list: true
+  - name: rental_item
+    type: link
+    to: rental_item
+    label: {id: Alat}
+    required: true
+    in_list: true
+  - name: qty
+    type: int
+    label: {id: Jumlah unit}
+    required: true
+    default: '1'
+    in_list: true
+  - name: booking_date
+    type: date
+    label: {id: Tanggal pesan}
+    required: true
+    default: today()
+  - name: start_date
+    type: date
+    label: {id: Mulai sewa}
+    required: true
+    in_list: true
+  - name: days
+    type: int
+    label: {id: Lama sewa (hari)}
+    required: true
+    default: '1'
+    in_list: true
+  - name: end_date
+    type: date
+    label: {id: Tanggal kembali}
+    help: {id: Mulai sewa ditambah lama sewa. Di hari itu alat sudah bisa disewa orang lain}
+    compute: start_date + duration(days)
+    in_list: true
+  - name: daily_rate
+    type: currency
+    label: {id: Tarif per unit per hari}
+    default: rental_item.daily_rate
+  - name: rent_amount
+    type: currency
+    label: {id: Biaya sewa}
+    compute: qty * daily_rate * days
+    in_list: true
+  - name: deposit
+    type: currency
+    label: {id: Deposit diterima}
+    default: rental_item.deposit_per_unit * qty
+  - name: deposit_method
+    type: select
+    label: {id: Deposit dibayar lewat}
+    default: "'cash'"
+    options:
+      - {value: cash, label: {id: Tunai}}
+      - {value: transfer, label: {id: Transfer bank}}
+  - name: late_fee_per_day
+    type: currency
+    label: {id: Denda telat per unit per hari}
+    default: rental_item.late_fee_per_day
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: qty_positive
+    on: save
+    check: qty > 0
+    message: {id: Jumlah unit minimal 1}
+  - name: days_range
+    on: save
+    check: days >= 1 && days <= 366
+    message: {id: Lama sewa 1 sampai 366 hari}
+  - name: within_units
+    on: save
+    check: qty <= rental_item.units
+    message: {id: Jumlah unit melebihi unit alat yang dimiliki}
+  - name: item_active
+    on: save
+    check: rental_item.active
+    message: {id: Alat ini sudah tidak disewakan}
+  - name: money_not_negative
+    on: save
+    check: daily_rate >= 0 && deposit >= 0 && late_fee_per_day >= 0
+    message: {id: 'Tarif, deposit, dan denda tidak boleh minus'}
+views:
+  list:
+    columns: [name, customer, rental_item, qty, start_date, end_date, rent_amount, status]
+    filters: [customer, rental_item]
+    sort: -start_date
+  form:
+    layout:
+      - section: {id: Pesanan}
+        columns:
+          - [customer, rental_item, qty]
+          - [booking_date, start_date, days, end_date]
+      - section: {id: Biaya dan deposit}
+        columns:
+          - [daily_rate, rent_amount, late_fee_per_day]
+          - [deposit, deposit_method]
+      - section: {id: Catatan}
+        fields: [notes]

@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: faktur_piutang
+version: 1.0.0
+title: {id: Faktur dan piutang, en: Invoices and receivables}
+label: {id: Rangka Faktur & Piutang, en: Rangka Invoices & Receivables}
+summary:
+  id: Faktur ke pelanggan, pembayaran masuk, pengingat tagihan, potongan PPh dan umur piutang.
+rangka: '>=0.5'
+# A piece (riset/desain/11-susunan-kepingan.md), shared by the service, wholesale and production compositions. payments
+# requires procurement, so its modules come along; their entries live in pembelian_pemasok's menu, not here.
+modules:
+  users: ^1.0
+  contacts: ^1.0
+  catalogue: ^1.0
+  invoicing: ^1.0
+  payments: ^1.0
+  procurement: ^1.0
+dashboards: [piutang_ringkas]
+roles: [head_office, finance_manager, sales_manager]
+home: {dashboard: piutang_ringkas}
+menu:
+  - group: {id: Faktur dan piutang}
+    items: [sales_invoice, payment, invoice_reminder, withholding]
+  - group: {id: Pelanggan}
+    items: [customer, item, uom, bank_account]
+onboarding:
+  - ask: {id: 'Apakah usaha kamu PKP (memungut PPN)?'}
+    options: ['true', 'false']
+    sets: tax.pkp

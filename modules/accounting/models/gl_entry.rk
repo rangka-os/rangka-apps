@@ -17,7 +17,7 @@ permissions:
   # The flows run as the person submitting or cancelling, so each role that submits or cancels a posting document
   # creates its lines and reads them back (the reverse flow finds the post lines). They read only the lines of those
   # documents: wages (timesheet) and margins stay with finance and project admins.
-  - {role: sales_manager, read: true, create: true, if: "voucher_type in ['sales_invoice', 'payment', 'delivery_note', 'sales_return']"}
+  - {role: sales_manager, read: true, create: true, if: "voucher_type in ['sales_invoice', 'payment', 'delivery_note', 'sales_return', 'rental_booking', 'rental_return']"}
   - {role: purchasing_manager, read: true, create: true, if: "voucher_type in ['vendor_bill', 'goods_receipt']"}
   # project admins also read the debit line of vendor bills: a project expense on a bill moves its cost out of that line
   - {role: project_admin, read: true, create: true, if: "voucher_type in ['timesheet', 'project_expense'] || (voucher_type == 'vendor_bill' && line in ['1', '2'])"}
@@ -65,6 +65,7 @@ fields:
       - {value: '41100', label: {id: '4-1100 Pendapatan usaha'}}
       - {value: '41200', label: {id: '4-1200 Retur penjualan'}}
       - {value: '49100', label: {id: '4-9100 Pendapatan lain-lain'}}
+      - {value: '49200', label: {id: '4-9200 Pendapatan denda dan ganti rugi sewa'}}
       - {value: '51100', label: {id: '5-1100 Harga pokok penjualan'}}
       - {value: '51200', label: {id: '5-1200 Selisih dan susut persediaan'}}
       - {value: '51300', label: {id: '5-1300 Upah langsung'}}
