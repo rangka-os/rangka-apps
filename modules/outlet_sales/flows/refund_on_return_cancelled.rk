@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Keeps the Retur di kasir current on outlet_return.cancelled: the returned qty of each item comes off its first row
+# (its stock moves are reversed by stock.reverse_moves).
+name: refund_on_return_cancelled
+label: {id: Perbarui retur di kasir}
+on: outlet_return.cancelled
+steps:
+  - {find: pos_refund, where: name == event.refund, as: f}
+  - update: f
+    if: f != null
+    set: {outlet: f.outlet}
+  - update: f
+    if: f != null
+    set:
+      items: "f.items.map(b, {'name': b.name, 'item': b.item, 'refunded_qty': b.refunded_qty, 'returned_qty': b.returned_qty - (f.items.filter(x, x.item == b.item)[0].name == b.name ? event.items.map(l, l.item == b.item ? l.qty : 0).sum() : 0)})"

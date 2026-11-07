@@ -38,11 +38,12 @@ widgets:
   - name: cogs_period
     type: number
     label: {id: Harga pokok terjual}
-    model: outlet_sales
+    description: {id: 'Dikurangi barang yang kembali ke stok lewat Retur ke stok'}
+    model: stock_move
     aggregate: sum
-    field: cogs_total
-    filter: docstatus == 1
-    period: date
+    field: sold_cost
+    filter: "voucher_type == 'outlet_sales' || voucher_type == 'outlet_return'"
+    period: posting_date
     compact: true
     span: 3
   - name: best_sellers_qty
@@ -117,12 +118,12 @@ widgets:
     type: chart
     chart: bar
     label: {id: Titipan terjual}
-    description: {id: 'Penjualan batal sudah dikurangi, retur pelanggan belum'}
+    description: {id: 'Penjualan batal dan barang yang kembali ke stok lewat Retur ke stok sudah dikurangi'}
     model: stock_move
     group_by: item
     aggregate: sum
     field: sold_qty
-    filter: voucher_type == 'outlet_sales' && item.consignor != ''
+    filter: "(voucher_type == 'outlet_sales' || voucher_type == 'outlet_return') && item.consignor != ''"
     period: posting_date
     sort: -value
     span: 6

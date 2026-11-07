@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
 name: fnb_cabang
-version: 1.0.0
+version: 1.1.0
 title: {id: F&B multi cabang, en: Multi-branch F&B}
 label: {id: Rangka F&B Cabang, en: Rangka Multi-branch F&B}
 summary:
@@ -23,15 +23,15 @@ home: {dashboard: fnb_overview}
 # invoicing is only here because payments requires it; sales_invoice has no menu entry.
 menu:
   - group: {id: Penjualan outlet}
-    items: [outlet_sales]
+    items: [outlet_sales, pos_refund, outlet_return]
   - group: {id: Stok}
     items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment, recipe]
   - group: {id: Pembelian}
-    items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment]
+    items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment, vendor]
   - group: {id: Pembukuan}
     items: [financial_report, gl_entry, opening_balance, period_close]
-  - group: {id: Data induk}
-    items: [outlet, item, uom, uom_conversion, vendor]
+  - group: {id: Pengaturan}
+    items: [outlet, item, uom, uom_conversion]
 onboarding:
   - ask: {id: 'Berapa outlet kamu?'}
     sets: seed.outlets

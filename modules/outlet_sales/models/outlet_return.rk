@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Retur ke stok: refunded goods that go back into the outlet's stock. It names the Retur di kasir (pos_refund) it
+# comes from; no more of an item than was refunded and not yet returned can come back. Each line goes back through
+# the item's active recipe (contract 0022): an item sold as is (retail) comes back as itself, a menu item of a
+# cancelled order that was never cooked brings back its materials; every unit at the cost the sale took it out
+# (cost source: the outlet_sales of the refund), or at the outlet average when that sale took none of it (a refund of
+# an earlier day's receipt). A refund that is thrown away gets no return.
+name: outlet_return
+label: {id: Retur ke stok, en: Return to stock}
+icon: stock
+is_submittable: true
+naming: RTS-{YYYY}-{#####}
+title_field: refund
+on_submit: [stock.post_moves]
+on_cancel: [stock.reverse_moves]
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: outlet_staff, read: true, create: true, write: true, delete: true, submit: true, print: true}
+fields:
+  - {name: refund, type: link, to: pos_refund, label: {id: Retur di kasir}, required: true, in_list: true, peek: [date, outlet, open_qty]}
+  - {name: sales, type: link, to: outlet_sales, label: {id: Penjualan}, default: refund.sales, read_only: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Masuk ke outlet}, default: refund.outlet, read_only: true, in_list: true}
+  - {name: return_date, type: date, label: {id: Tanggal kembali ke stok}, default: today(), required: true, in_list: true}
+  - {name: items, type: table, of: outlet_return_item, label: {id: Barang}, min_rows: 1}
+  - {name: qty_total, type: float, label: {id: Total qty}, compute: "items.map(l, l.qty).sum()", in_list: true}
+  - {name: notes, type: text, label: {id: Catatan}}
+stock:
+  date: return_date
+  moves:
+    - {lines: items, in: outlet, explode: recipe, reason: return_in, cost: {source: sales}}
+rules:
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: refund_matches
+    on: save
+    check: sales == refund.sales && outlet == refund.outlet && sales.docstatus == 1
+    message: {id: 'Retur ke stok hanya dari penjualan yang sudah diajukan; kalau penjualannya dibatalkan, returnya tidak bisa kembali ke stok'}
+  - name: date_in_range
+    on: save
+    check: return_date >= sales.date && return_date <= today()
+    message: {id: 'Tanggal kembali ke stok tidak boleh sebelum tanggal penjualan atau setelah hari ini'}
+  - name: items_on_refund
+    on: save
+    check: "items.map(l, refund.items.map(r, r.item == l.item ? 1 : 0).sum() > 0 ? 0 : 1).sum() == 0"
+    message: {id: Ada barang yang tidak diretur di kasir pada penjualan ini}
+  - name: within_refund
+    on: save
+    check: "items.map(l, items.map(x, x.item == l.item ? x.qty : 0).sum() <= refund.items.map(r, r.item == l.item ? r.refunded_qty - r.returned_qty : 0).sum() + 0.0005 ? 0 : 1).sum() == 0"
+    message: {id: Jumlah melebihi barang yang diretur di kasir dan belum kembali ke stok}
+views:
+  list:
+    columns: [name, return_date, outlet, refund, qty_total, status]
+    filters: [outlet]
+    sort: -return_date
+  form:
+    layout:
+      - section: {id: Retur ke stok}
+        columns:
+          - [refund, sales, outlet]
+          - [return_date, qty_total]
+      - section: {id: Barang}
+        fields: [items]
+      - section: {id: Catatan}
+        fields: [notes]

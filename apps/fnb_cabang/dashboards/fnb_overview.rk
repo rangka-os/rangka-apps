@@ -4,6 +4,28 @@ label: {id: Ringkasan outlet, en: Outlet overview}
 default_period: 30
 cache: 5m
 widgets:
+  # riset desain K-A2: "perlu_" lists open the home as "Perlu diurus" rows (display only)
+  - name: perlu_belum_diajukan
+    type: list
+    label: {id: Penjualan belum diajukan}
+    model: outlet_sales
+    filter: docstatus == 0
+    sort: date
+    limit: 10
+    columns: [outlet, date, net_total]
+    span: 12
+  # The negative-stock exception for head office: a sale may push a balance below zero, it is never refused.
+  - name: perlu_stok_minus
+    type: list
+    label: {id: Stok minus}
+    description: {id: 'Saldo stok di bawah nol, perlu dicek kantor pusat'}
+    model: stock_balance
+    filter: negative == true
+    sort: qty
+    limit: 20
+    columns: [item, outlet, qty]
+    span: 12
+  # Then the numbers, today first (P7: the owner checks today on the phone).
   - name: net_today
     type: number
     label: {id: Penjualan bersih hari ini}
@@ -26,13 +48,26 @@ widgets:
     span: 3
   - name: margin_period
     type: number
-    label: {id: Margin}
-    description: {id: Penjualan bersih dikurangi harga pokok bahan}
+    label: {id: Laba kotor}
+    description: {id: 'Penjualan bersih dikurangi harga pokok bahan saat terjual; bahan yang kembali ke stok ada di HPP kembali dari retur'}
     model: outlet_sales
     aggregate: sum
     field: margin
     filter: docstatus == 1
     period: date
+    compact: true
+    span: 3
+  # Goods back in stock with a Retur ke stok (contract 0022): their cost left HPP after the sale's margin was booked. A
+  # widget reads one model, so the margin above is per sale and this is what it rose by since (audit stock-returns H1).
+  - name: returned_cost
+    type: number
+    label: {id: HPP kembali dari retur}
+    description: {id: 'Harga pokok barang yang kembali ke stok lewat Retur ke stok; tambahkan ke Laba kotor'}
+    model: stock_move
+    aggregate: sum
+    field: value
+    filter: voucher_type == 'outlet_return'
+    period: posting_date
     compact: true
     span: 3
   - name: negative_count
@@ -57,7 +92,7 @@ widgets:
     span: 6
   - name: net_by_day
     type: chart
-    chart: line
+    chart: bar
     label: {id: Penjualan bersih per hari}
     model: outlet_sales
     group_by: date
@@ -67,14 +102,3 @@ widgets:
     filter: docstatus == 1
     period: date
     span: 6
-  # The negative-stock exception for head office: a sale may push a balance below zero, it is never refused.
-  - name: negative_stock
-    type: list
-    label: {id: Stok minus}
-    description: {id: 'Saldo stok di bawah nol, perlu dicek kantor pusat'}
-    model: stock_balance
-    filter: negative == true
-    sort: qty
-    limit: 20
-    columns: [outlet, item, qty, value, avg_cost]
-    span: 12

@@ -168,6 +168,12 @@ POSTINGS = {
     "sales_return": dict(
         label="Jurnal retur penjualan (stok)", date=MOVE_DATE, outlet="event.outlet", party="event.customer", extra=MOVES,
         lines=[("'11400'", NET), ("'51100'", "0 - " + NET)]),
+    "outlet_return": dict(
+        label="Jurnal retur ke stok", date=MOVE_DATE, outlet="event.outlet", extra=MOVES,
+        # Goods a cashier refund put back on the shelf (contract 0022): the cost the sale's journal took out of stock
+        # into HPP comes back, at the value of the return's stock moves (the sale's cost), so the books keep Persediaan
+        # equal to the stock value and HPP counts a unit sold again only once (audit stock-returns r2 F1).
+        lines=[("'11400'", NET), ("'51100'", "0 - " + NET)]),
     "stock_adjustment": dict(
         label="Jurnal penyesuaian stok", date=MOVE_DATE, outlet="event.outlet", extra=MOVES,
         lines=[("'11400'", NET), ("event.reason == 'consignment_return' ? '21150' : '51200'", "0 - " + NET)]),

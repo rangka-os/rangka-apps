@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One refund line of the sale. Two refund lines of one item are two rows; the return flows add to the first row of
+# the item, and every check sums all rows of the item.
+name: pos_refund_item
+is_child: true
+fields:
+  - {name: item, type: link, to: item, label: {id: Barang}, read_only: true}
+  - {name: refunded_qty, type: float, label: {id: Qty diretur}, read_only: true}
+  - {name: returned_qty, type: float, label: {id: Sudah kembali ke stok}, read_only: true}

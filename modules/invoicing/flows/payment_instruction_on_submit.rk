@@ -14,6 +14,7 @@ steps:
       sales_invoice: event.name
       bank_account: acct.name
       reference: event.name
+      salesman: event.salesman
       amount: event.amount_due
       bank: acct.bank
       account_no: acct.account_no

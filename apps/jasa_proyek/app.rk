@@ -37,7 +37,7 @@ menu:
   - group: {id: Penggajian}
     items: [payroll_run, payslip, payroll_close, payroll_profile]
   - group: {id: Keuangan}
-    items: [payment, bank_transaction, invoice_reminder, withholding, vendor_bill]
+    items: [payment, bank_transaction, invoice_reminder, withholding, vendor_bill, bank_account]
   - group: {id: Pembelian}
     items: [purchase_request, purchase_order]
   - group: {id: Pembukuan}
