@@ -26,6 +26,8 @@ fields:
       - {value: void_not_own, label: {id: Batal struk sesi kasir lain}}
       - {value: daily_sales_same_day, label: {id: Outlet sudah punya penjualan harian di tanggal itu}}
       - {value: cashier_same_day, label: {id: Outlet sudah memakai kasir di tanggal itu}}
+      - {value: cashier_takings, label: {id: Setoran hari kasir}}
+      - {value: float_of_outlet, label: {id: Modal kas beda dengan outlet}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: shift_already_open
@@ -64,3 +66,11 @@ rules:
     on: save
     check: reason != 'cashier_same_day'
     message: {id: 'Outlet ini sudah mencatat penjualan lewat kasir Juragan di tanggal ini; penjualan harian tanggal itu tidak bisa diajukan'}
+  - name: cashier_takings
+    on: save
+    check: reason != 'cashier_takings'
+    message: {id: 'Outlet ini memakai kasir Juragan di tanggal itu: setorannya sudah dibukukan saat Tutup sesi kasir'}
+  - name: float_of_outlet
+    on: save
+    check: reason != 'float_of_outlet'
+    message: {id: 'Modal kas outlet ini sudah ditetapkan kantor pusat; isi sesuai Modal kas kasir di data outlet'}

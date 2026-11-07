@@ -64,15 +64,10 @@ fields:
   - {name: closed_by, type: link, to: pos_shift_close, label: {id: Ditutup dengan}, read_only: true}
   - {name: counted_cash, type: currency, label: {id: Hitung fisik}, read_only: true}
   - {name: cash_difference, type: currency, label: {id: Selisih kas}, read_only: true, in_list: true, hidden_for: [cashier]}
+# The outlet's float is checked when the shift opens (flow pos_shift_on_create), not as a save rule: a save rule runs
+# on every update the sales' flows make, so head office changing the outlet would stop an open shift. An outlet
+# without a code cannot open one (its number, SESI-<code>-..., is refused: 409 numbering).
 rules:
-  - name: outlet_has_code
-    on: save
-    check: outlet.code != ''
-    message: {id: 'Outlet ini belum punya Kode; isi Kode outlet dulu (dipakai di nomor struk)'}
-  - name: float_of_outlet
-    on: save
-    check: outlet.cash_float == 0 || opening_cash == outlet.cash_float
-    message: {id: 'Modal kas outlet ini sudah ditetapkan kantor pusat; isi sesuai Modal kas kasir di data outlet'}
   - name: float_not_negative
     on: save
     check: opening_cash >= 0

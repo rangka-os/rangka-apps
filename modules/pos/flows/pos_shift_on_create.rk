@@ -1,10 +1,15 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
-# One open shift per cashier per outlet: a second one would split the drawer's cash over two counts. The read lock of
+# When head office set one, the shift opens with the outlet's float (an outlet without a code cannot open a shift:
+# the kernel refuses its number, 409 numbering). One open shift per cashier per outlet: a second one would split the drawer's cash over two counts. The read lock of
 # contract 0025 serializes two opens at the same moment, so the later one sees the first.
 name: pos_shift_on_create
 label: {id: 'Sesi kasir dibuka: hanya satu sesi terbuka per kasir per outlet'}
 on: pos_shift.created
 steps:
+  - {find: outlet, where: name == event.outlet, as: o}
+  - if: o != null && o.cash_float > 0 && event.opening_cash != o.cash_float
+    create: pos_guard
+    set: {reason: "'float_of_outlet'", document: event.name}
   - find_all: pos_shift
     where: outlet == event.outlet && cashier == event.cashier && state == 'open' && name != event.name
     limit: 1

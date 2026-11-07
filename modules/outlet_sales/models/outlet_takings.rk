@@ -60,12 +60,6 @@ fields:
     type: text
     label: {id: Catatan}
 rules:
-  # An outlet on Juragan's cashier (module pos) settles its takings when each shift closes (Tutup sesi: cash to Kas,
-  # QRIS to Bank, the difference to Selisih kas); a setoran here would book them a second time.
-  - name: not_a_cashier_outlet
-    on: save
-    check: outlet.sales_source != 'kasir'
-    message: {id: 'Outlet ini memakai kasir Juragan: setorannya dibukukan saat Tutup sesi kasir, bukan di Setoran harian'}
   - name: amounts_not_negative
     on: save
     check: "lines.map(l, l.expected < 0 || l.received < 0 || l.fee < 0 ? 1 : 0).sum() == 0"

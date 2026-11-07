@@ -175,7 +175,7 @@ def scenario_pos_shift(api):
     st, o = api.create("outlet", {"outlet_name": "Pop-up Contoh", "sales_source": "kasir"})
     if check("owner adds an outlet without a code", st == 201, (st, o)):
         st, resp = api.create("pos_shift", {"outlet": rec(o)["name"], "opening_cash": 0})
-        check("a shift at an outlet without a code -> 422 outlet_has_code", st == 422 and "outlet_has_code" in rules(resp), (st, resp))
+        check("a shift at an outlet without a code -> 409 numbering (its number carries the code)", st == 409 and (resp or {}).get("error", {}).get("code") == "numbering", (st, resp))
         api.patch("outlet", rec(o)["name"], {"active": False})
 
 
@@ -307,9 +307,11 @@ def scenario_pos_guards(api):
     today = kernel_today().isoformat()
     st, resp = hq.create("outlet_sales", {"outlet": DGO, "date": today, "lines": [{"item": AIR, "qty": 1}]})
     check("a daily form for a cashier outlet -> 422 source_matches_outlet", st == 422 and "source_matches_outlet" in rules(resp), (st, resp))
-    st, resp = hq.create("outlet_takings", {"outlet": DGO, "date": today, "lines": [{"method": "cash", "expected": 1_000, "received": 1_000}]})
-    check("a setoran for a cashier outlet -> 422 not_a_cashier_outlet (Tutup sesi settles it)", st == 422 and "not_a_cashier_outlet" in rules(resp), (st, resp))
     hq.patch("outlet", DGO, {"sales_source": "form"})
+    st, tk = hq.create("outlet_takings", {"outlet": DGO, "date": today, "lines": [{"method": "cash", "expected": 1_000, "received": 1_000}]})
+    st, resp = hq.verb("outlet_takings", rec(tk)["name"], "submit") if st == 201 else (st, tk)
+    check("a setoran for a day the outlet rang up in the cashier (even after switching its source) -> 422 cashier_takings",
+          st == 422 and "cashier_takings" in rules(resp), (st, resp))
     st, f = hq.create("outlet_sales", {"outlet": DGO, "date": today, "lines": [{"item": AIR, "qty": 1, "gross": 4_000}]})
     if check("head office switches Toko Dago to the daily form and drafts one for today", st == 201, (st, f)):
         st, resp = hq.verb("outlet_sales", rec(f)["name"], "submit")
@@ -437,10 +439,13 @@ def scenario_pos_close(api):
     mine = dika.get("pos_shift", shift) or {}
     eq("blind count: the cashier sees no money total of the shift",
        sorted(k for k in ("expected_cash", "cash_total", "cash_difference", "net_total", "gross_total", "qris_total", "void_total", "cogs_total") if k in mine), [])
-    # the float is head office's to set per outlet
+    # the float is head office's to set per outlet; setting it does not stop a shift that is open
+    hq.patch("outlet", DGO, {"cash_float": 150_000})
+    st, r = sale(dika, shift, [{"item": AIR, "qty": 1}], "")
+    check("a float set on the outlet while the shift is open: the shift sells on", st == 200, (st, r))
+    st, resp = bayu.create("pos_shift", {"outlet": DGO, "opening_cash": 900_000}) if (bayu := CTX.get("bayu")) else (0, {})
+    check("a new shift with a float other than the outlet's -> 422 float_of_outlet", st == 422 and "float_of_outlet" in rules(resp), (st, resp))
     hq.patch("outlet", DGO, {"cash_float": 200_000})
-    st, resp = dika.create("pos_shift", {"outlet": DGO, "opening_cash": 900_000})
-    check("a float other than the outlet's -> 422 float_of_outlet", st == 422 and "float_of_outlet" in rules(resp), (st, resp))
     st, late = sale(dika, shift, [{"item": AIR, "qty": 1}], "", submit=False)   # a draft left open on the shift
     s = shift_of(api, shift)
     st, c = close(dika, shift, s["expected_cash"] - 2_000, "Hitung akhir hari")
