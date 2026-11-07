@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: invoice_course_tag_lock
+label: {id: Catatan faktur kursus dikunci}
+# The invoice of a course charge is found by the charge's number in its notes. Nobody edits those notes by hand; the
+# charge's own flow rewrites them (a flow's writes start no flows, so this does not refuse it).
+on: sales_invoice.updated
+if: event.before != null && event.before.notes.contains('[TGK-') && event.notes != event.before.notes
+steps:
+  - create: course_guard
+    set:
+      reason: "'invoice_tag'"
+      document: event.name

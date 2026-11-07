@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: kursus_ringkas
+label: {id: Ringkasan kelas, en: Classes overview}
+description: {id: 'Peserta aktif, kelas minggu ini dan tagihan yang belum dibayar'}
+default_period: 30
+roles: [course_admin, finance_manager]
+cache: 5m
+# Tunggakan: course invoices (their notes carry a charge number) not paid by their due date.
+widgets:
+  - name: active_students
+    type: number
+    label: {id: Peserta aktif}
+    model: enrollment
+    aggregate: count
+    filter: status == 'active' || status == 'registered'
+    span: 3
+  - name: running_batches
+    type: number
+    label: {id: Angkatan berjalan}
+    model: course_batch
+    aggregate: count
+    filter: start_date <= today() && (end_date == '' || end_date >= today())
+    span: 3
+  - name: sessions_this_week
+    type: number
+    label: {id: Kelas minggu ini}
+    model: course_session
+    aggregate: count
+    filter: session_date >= today() && session_date < today() + duration(7)
+    span: 3
+  - name: overdue_total
+    type: number
+    label: {id: Tunggakan}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && due_date < today() && notes.contains('[TGK-')
+    good_when: down
+    compact: true
+    span: 3
+  - name: week_sessions
+    type: list
+    label: {id: Jadwal kelas 7 hari ke depan}
+    model: course_session
+    filter: session_date >= today() && session_date < today() + duration(7)
+    sort: session_date
+    limit: 20
+    columns: [session_date, start_time, batch, session_no, topic]
+    span: 12
+  - name: seats
+    type: list
+    label: {id: Kursi per angkatan}
+    model: course_batch
+    filter: end_date == '' || end_date >= today()
+    sort: start_date
+    limit: 20
+    columns: [batch_name, start_date, teacher_name, quota, seats_taken]
+    span: 12
+  - name: overdue_invoices
+    type: list
+    label: {id: Tagihan kursus lewat jatuh tempo}
+    model: sales_invoice
+    filter: docstatus == 1 && outstanding > 0 && due_date < today() && notes.contains('[TGK-')
+    sort: due_date
+    limit: 20
+    columns: [name, customer, due_date, outstanding]
+    span: 12

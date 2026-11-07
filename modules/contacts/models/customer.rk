@@ -14,6 +14,8 @@ permissions:
   - {role: sales_rep, read: true, create: true, write: true}
   # a salesman sees his own customers (role scope salesman) and cannot change their credit
   - {role: field_sales, read: true}
+  # course schools: the payer of a student (student_billing_on_create makes one for a person on their own)
+  - {role: course_admin, read: true, create: true, write: true}
 fields:
   - name: customer_name
     type: data

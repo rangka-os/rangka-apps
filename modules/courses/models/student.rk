@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: student
+label: {id: Peserta, en: Student}
+icon: user
+naming: PST-{####}
+title_field: student_name
+# A person who learns: on their own, or an employee sent by a client company. bill_to is who receives the invoices (a
+# customer): the company for an employee; for a person on their own the flow student_billing_on_create makes a customer
+# with their name when none is chosen.
+permissions:
+  - {role: course_admin, read: true, create: true, write: true, export: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
+  - {role: instructor, read: true}
+fields:
+  - name: student_name
+    type: data
+    label: {id: Nama peserta}
+    required: true
+    in_list: true
+  - name: kind
+    type: select
+    label: {id: Daftar sebagai}
+    required: true
+    default: "'individual'"
+    in_list: true
+    chip: true
+    options:
+      - {value: individual, label: {id: Perorangan}}
+      - {value: employee, label: {id: Karyawan perusahaan klien}}
+  - name: company
+    type: link
+    to: customer
+    label: {id: Perusahaan}
+    depends_on: kind == 'employee'
+    in_list: true
+  - {name: phone, type: phone, label: {id: Nomor WhatsApp}}
+  - {name: email, type: data, label: {id: Email}}
+  - name: guardian_name
+    type: data
+    label: {id: Nama orang tua atau wali}
+    depends_on: kind == 'individual'
+  - name: bill_to
+    type: link
+    to: customer
+    label: {id: Tagihan dikirim ke}
+    hidden_for: [instructor]
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: employee_needs_company
+    on: save
+    check: kind != 'employee' || company != ''
+    message: {id: 'Pilih perusahaan tempat peserta ini bekerja'}
+views:
+  list:
+    columns: [name, student_name, kind, company, phone]
+    sort: student_name
+  form:
+    layout:
+      - section: {id: Peserta}
+        columns:
+          - [student_name, kind, company]
+          - [phone, email, guardian_name]
+      - section: {id: Tagihan}
+        fields: [bill_to]
+      - section: {id: Catatan}
+        fields: [notes]

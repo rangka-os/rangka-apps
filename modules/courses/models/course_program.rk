@@ -1,0 +1,99 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: course_program
+label: {id: Program kursus, en: Course program}
+icon: book
+naming: PRG-{###}
+title_field: program_name
+# What is sold: a class or training with its price, how many meetings it has and how it is paid by default. An enrollment
+# copies the price and payment terms when it is made, so changing a program later does not change what a student owes.
+permissions:
+  - {role: course_admin, read: true, create: true, write: true, export: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
+  - {role: instructor, read: true}
+fields:
+  - name: program_name
+    type: data
+    label: {id: Nama program}
+    required: true
+    in_list: true
+  - name: delivery
+    type: select
+    label: {id: Cara belajar}
+    required: true
+    default: "'offline'"
+    in_list: true
+    chip: true
+    options:
+      - {value: offline, label: {id: Tatap muka}}
+      - {value: online, label: {id: Online}}
+      - {value: hybrid, label: {id: Campuran}}
+  - name: sessions_count
+    type: int
+    label: {id: Jumlah pertemuan}
+    required: true
+    in_list: true
+  - name: price
+    type: currency
+    label: {id: Harga satu program}
+    required: true
+    in_list: true
+  - name: billing_plan
+    type: select
+    label: {id: Cara bayar biasanya}
+    required: true
+    default: "'full'"
+    options:
+      - {value: full, label: {id: Bayar penuh}}
+      - {value: installment, label: {id: Cicilan}}
+      - {value: monthly, label: {id: Per bulan (SPP)}}
+  - name: installments
+    type: int
+    label: {id: Berapa kali cicilan}
+    default: '1'
+    depends_on: billing_plan == 'installment'
+  - name: monthly_fee
+    type: currency
+    label: {id: Biaya per bulan}
+    default: '0'
+    depends_on: billing_plan == 'monthly'
+  - name: item
+    type: link
+    to: item
+    label: {id: Nama jasa di faktur}
+    required: true
+  # PP 49/2022: education services are VAT-exempt; company training that is not one may carry PPN (when the firm is PKP).
+  - name: vat_exempt
+    type: check
+    label: {id: Bebas PPN (jasa pendidikan)}
+    default: 'true'
+  - {name: active, type: check, label: {id: Masih dibuka}, default: 'true', in_list: true}
+  - {name: description, type: text, label: {id: Keterangan}}
+rules:
+  - name: amounts_valid
+    on: save
+    check: sessions_count >= 1 && price >= 0 && monthly_fee >= 0
+    message: {id: 'Jumlah pertemuan minimal 1; harga dan biaya per bulan tidak boleh minus'}
+  - name: installments_range
+    on: save
+    check: billing_plan != 'installment' || (installments >= 2 && installments <= 12)
+    message: {id: 'Cicilan 2 sampai 12 kali'}
+  - name: monthly_needs_fee
+    on: save
+    check: billing_plan != 'monthly' || monthly_fee > 0
+    message: {id: 'Isi biaya per bulan untuk program yang dibayar per bulan'}
+views:
+  list:
+    columns: [name, program_name, delivery, sessions_count, price, active]
+    sort: program_name
+  form:
+    layout:
+      - section: {id: Program}
+        columns:
+          - [program_name, delivery, sessions_count, active]
+          - [item, vat_exempt]
+      - section: {id: Harga dan cara bayar}
+        columns:
+          - [price, billing_plan]
+          - [installments, monthly_fee]
+      - section: {id: Keterangan}
+        fields: [description]

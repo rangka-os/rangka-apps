@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: course_guard
+label: {id: Penjaga kursus, en: Course guard}
+icon: check
+naming: KGD-{######}
+title_field: reason
+# Never stored (the pattern of payroll.payroll_guard): a flow that must refuse the action it runs in creates one, and
+# the rule of its reason fails with that message, which rolls the whole action back.
+permissions:
+  - {role: course_admin, create: true}
+  - {role: finance_manager, create: true}
+  - {role: sales_manager, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: batch_change, label: {id: Pindah angkatan}}
+      - {value: invoice_twice, label: {id: Faktur kedua tagihan kursus}}
+      - {value: invoice_tag, label: {id: Catatan faktur kursus}}
+      - {value: charge_invoiced, label: {id: Faktur tagihan sudah diajukan}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: batch_change
+    on: save
+    check: reason != 'batch_change'
+    message: {id: 'Angkatan pendaftaran tidak bisa diganti; ubah status jadi Keluar lalu daftarkan ke angkatan baru'}
+  - name: invoice_twice
+    on: save
+    check: reason != 'invoice_twice'
+    message: {id: 'Faktur ini bukan untuk tagihan kursus yang berlaku, jumlahnya beda dengan tagihan, atau tagihan itu sudah punya faktur diajukan'}
+  - name: invoice_tag
+    on: save
+    check: reason != 'invoice_tag'
+    message: {id: 'Catatan faktur kursus tidak bisa diubah (penanda tagihan kursus)'}
+  - name: charge_invoiced
+    on: save
+    check: reason != 'charge_invoiced'
+    message: {id: 'Faktur tagihan ini sudah diajukan; batalkan fakturnya dulu'}

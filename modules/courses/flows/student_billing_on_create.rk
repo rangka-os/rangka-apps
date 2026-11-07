@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: student_billing_on_create
+label: {id: Peserta baru siap ditagih}
+# An employee is billed to their company; a person on their own, when no payer was chosen, gets a customer with their
+# own name, phone and email so their invoices have somewhere to go.
+on: student.created
+if: event.bill_to == ''
+steps:
+  - {find: student, where: name == event.name, as: me}
+  - if: event.kind == 'employee'
+    update: me
+    set:
+      bill_to: event.company
+  - if: event.kind == 'individual'
+    create: customer
+    set:
+      customer_name: event.student_name
+      phone: event.phone
+      email: event.email
+      payment_days: '7'
+    as: payer
+  - if: event.kind == 'individual'
+    update: me
+    set:
+      bill_to: payer.name

@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: course_attendance
+is_child: true
+fields:
+  - name: enrollment
+    type: link
+    to: enrollment
+    label: {id: Pendaftaran}
+    required: true
+  - {name: student, type: link, to: student, label: {id: Peserta}, compute: enrollment.student}
+  - {name: batch, type: link, to: course_batch, label: {id: Angkatan}, compute: enrollment.batch}
+  - name: status
+    type: select
+    label: {id: Kehadiran}
+    required: true
+    default: "'present'"
+    options:
+      - {value: present, label: {id: Hadir}}
+      - {value: excused, label: {id: Izin}}
+      - {value: sick, label: {id: Sakit}}
+      - {value: absent, label: {id: Tidak hadir}}
+  - {name: note, type: data, label: {id: Catatan}}

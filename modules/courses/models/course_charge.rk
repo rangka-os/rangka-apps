@@ -1,0 +1,124 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: course_charge
+label: {id: Tagihan kursus, en: Course charge}
+icon: invoice
+is_submittable: true
+naming: TGK-{YYYY}-{#####}
+title_field: student
+# One amount a student owes: the whole program, one instalment, or one month (SPP). Submitting it makes a draft sales
+# invoice to the enrollment's payer (flow charge_invoice_on_submit), found by this charge's number in [] in its notes;
+# that invoice can be submitted only while this charge is submitted and no other submitted invoice carries the number
+# (flow invoice_course_once), for exactly this amount. One live charge per enrollment and period: period_key is unique,
+# and an amended copy carries amended_from, so a cancelled charge can be amended but a period can never be billed twice.
+# Instalment k of N is round(total / N), the last one total - (N - 1) x round(total / N): the N instalments add up to
+# the total. No delete for anyone but the owner: deleting a cancelled charge would free its key while its amended copy
+# is live.
+permissions:
+  - {role: course_admin, read: true, create: true, write: true, export: true, print: true}
+  # submitting makes the draft invoice, so it is finance's (or the owner's)
+  - {role: finance_manager, read: true, create: true, write: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  # the invoice flows read charges as whoever submits the invoice
+  - {role: sales_manager, read: true}
+fields:
+  - name: enrollment
+    type: link
+    to: enrollment
+    label: {id: Pendaftaran}
+    required: true
+    in_list: true
+  - {name: student, type: link, to: student, label: {id: Peserta}, compute: enrollment.student, in_list: true}
+  - {name: batch, type: link, to: course_batch, label: {id: Angkatan}, compute: enrollment.batch}
+  - {name: program, type: link, to: course_program, label: {id: Program}, compute: enrollment.program}
+  - {name: customer, type: link, to: customer, label: {id: Tagihan dikirim ke}, compute: enrollment.bill_to}
+  - name: kind
+    type: data
+    label: {id: Cara bayar}
+    compute: enrollment.billing_plan
+    in_list: true
+  - name: installment_no
+    type: int
+    label: {id: Cicilan ke}
+    default: '1'
+    depends_on: kind == 'installment'
+  - name: month
+    type: data
+    label: {id: Bulan}
+    help: {id: 'Format TTTT-BB, misalnya 2026-11'}
+    depends_on: kind == 'monthly'
+  - name: period
+    type: data
+    label: {id: Periode}
+    compute: "kind == 'full' ? 'penuh' : (kind == 'installment' ? 'cicilan ' + truncate(installment_no, 2) : month)"
+    in_list: true
+  - name: amount
+    type: currency
+    label: {id: Jumlah}
+    compute: "kind == 'full' ? enrollment.total : (kind == 'installment' ? (installment_no == enrollment.installments ? enrollment.total - (enrollment.installments - 1) * round(enrollment.total / enrollment.installments) : round(enrollment.total / enrollment.installments)) : enrollment.monthly_fee)"
+    in_list: true
+  - {name: item, type: link, to: item, label: {id: Nama jasa di faktur}, compute: enrollment.program.item}
+  - {name: vat_exempt, type: check, label: {id: Bebas PPN}, compute: enrollment.program.vat_exempt}
+  - name: description
+    type: data
+    label: {id: Keterangan di faktur}
+    compute: >-
+      enrollment.program.program_name + (kind == 'full' ? '' : (kind == 'installment' ? ', cicilan ' + truncate(installment_no, 2)
+        + ' dari ' + truncate(enrollment.installments, 2) : ', bulan ' + month)) + ' (' + enrollment.student.student_name + ')'
+  - name: invoice_date
+    type: date
+    label: {id: Tanggal faktur}
+    default: today()
+    required: true
+  - name: period_key
+    type: data
+    label: {id: Kunci periode}
+    hidden: true
+    unique: true
+    compute: "enrollment + '|' + period + (amended_from == '' ? '' : '|' + amended_from)"
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: installment_range
+    on: save
+    check: kind != 'installment' || (installment_no >= 1 && installment_no <= enrollment.installments)
+    message: {id: 'Cicilan ke harus di antara 1 dan jumlah cicilan pendaftaran'}
+  - name: month_format
+    on: save
+    check: "kind != 'monthly' || month.matches('^20[0-9]{2}-(0[1-9]|1[0-2])$')"
+    message: {id: 'Bulan ditulis TTTT-BB, misalnya 2026-11'}
+  - name: month_in_batch
+    on: save
+    check: kind != 'monthly' || (month + '-31' >= batch.start_date && (batch.end_date == '' || month + '-01' <= batch.end_date))
+    message: {id: 'Bulan tagihan harus di antara bulan mulai dan bulan selesai angkatan'}
+  - name: month_before_leaving
+    on: save
+    check: kind != 'monthly' || enrollment.status != 'withdrawn' || month + '-01' <= enrollment.left_on
+    message: {id: 'Peserta sudah keluar sebelum bulan ini'}
+  - name: amount_positive
+    on: save
+    check: amount > 0
+    message: {id: 'Jumlah tagihan harus lebih dari 0'}
+  - name: has_payer
+    on: submit
+    check: customer != '' && item != ''
+    message: {id: 'Isi "Tagihan dikirim ke" di pendaftaran dan nama jasa di program dulu'}
+  # The amount was computed when the charge was saved: an enrollment changed since then would bill a stale amount.
+  - name: amount_current
+    on: submit
+    check: "kind == enrollment.billing_plan && amount == (kind == 'full' ? enrollment.total : (kind == 'installment' ? (installment_no == enrollment.installments ? enrollment.total - (enrollment.installments - 1) * round(enrollment.total / enrollment.installments) : round(enrollment.total / enrollment.installments)) : enrollment.monthly_fee))"
+    message: {id: 'Biaya pendaftaran berubah sejak tagihan ini disimpan; simpan ulang lalu ajukan'}
+views:
+  list:
+    columns: [name, student, period, amount, status]
+    filters: [enrollment, student]
+    sort: -invoice_date
+  form:
+    layout:
+      - section: {id: Tagihan}
+        columns:
+          - [enrollment, student, batch, customer]
+          - [kind, installment_no, month, period]
+      - section: {id: Faktur}
+        columns:
+          - [amount, invoice_date, item, vat_exempt]
+          - [description]
+      - section: {id: Catatan}
+        fields: [notes]

@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: charge_cancel_guard
+label: {id: Tagihan kursus dibatalkan}
+# Refused while its invoice is submitted (cancel the invoice first). Otherwise the enrollment's count of submitted
+# charges drops; at zero its price and payment terms can be changed again. A draft invoice it left cannot be submitted
+# (invoice_course_once) and is taken over by the charge's amended copy.
+on: course_charge.cancelled
+steps:
+  - find: sales_invoice
+    where: docstatus == 1 && notes.contains('[' + event.name + ']')
+    as: inv
+  - if: inv != null
+    create: course_guard
+    set:
+      reason: "'charge_invoiced'"
+      document: inv.name
+  - find_all: course_charge
+    where: enrollment == event.enrollment && docstatus == 1
+    as: billed
+  - {find: enrollment, where: name == event.enrollment, as: enr}
+  - update: enr
+    set:
+      billed_count: size(billed)

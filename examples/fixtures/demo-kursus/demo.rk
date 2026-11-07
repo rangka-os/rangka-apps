@@ -1,0 +1,144 @@
+# Synthetic demo data for Lembaga Kursus Contoh Cerdas, a fictional course school. No real people, businesses or brands.
+uom:
+  - {name: UOM-001, uom_name: Paket}
+  - {name: UOM-002, uom_name: Bulan}
+customer:
+  - {name: CUST-0001, customer_name: PT Contoh Logistik Nusantara, city: Bandung, payment_days: 14, credit_limit: 100000000}
+  - {name: CUST-0002, customer_name: Ani Contoh, city: Bandung, payment_days: 7}
+  - {name: CUST-0003, customer_name: Budi Contoh, city: Bandung, payment_days: 7}
+  - {name: CUST-0004, customer_name: Citra Contoh, city: Cimahi, payment_days: 7}
+  - {name: CUST-0005, customer_name: Ibu Dewi Contoh (orang tua Raka), city: Bandung, payment_days: 7}
+  - {name: CUST-0006, customer_name: Bapak Eko Contoh (orang tua Sari), city: Bandung, payment_days: 7}
+  - {name: CUST-0007, customer_name: Fajar Contoh, city: Garut, payment_days: 7}
+vendor:
+  - {name: VND-0001, vendor_name: CV Contoh Cetak Modul, city: Bandung, pkp: false, payment_days: 14}
+  - {name: VND-0002, vendor_name: Toko Contoh Alat Tulis, city: Bandung, pkp: false, payment_days: 7}
+item:
+  - {name: BRG-0001, item_name: Kursus Bahasa Inggris, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: KRS-ING, rate: 1800000}
+  - {name: BRG-0002, item_name: Bimbel Matematika SMP (SPP), kind: service, stock_uom: UOM-002, sales_uom: UOM-002, sku: BMB-MTK, rate: 450000}
+  - {name: BRG-0003, item_name: Pelatihan Excel untuk karyawan, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: PLT-XLS, rate: 2500000}
+  - {name: BRG-0004, item_name: Kursus online desain grafis, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: KRS-DSN, rate: 1200000}
+user:
+  - {name: USR-001, full_name: Lina Contoh, role: course_admin, email: lina@kursuscontoh.test}
+  - {name: USR-002, full_name: Maya Contoh, role: instructor, email: maya@kursuscontoh.test}
+  - {name: USR-003, full_name: Nanda Contoh, role: instructor, email: nanda@kursuscontoh.test}
+  - {name: USR-004, full_name: Oki Contoh, role: finance_manager, email: oki@kursuscontoh.test}
+course_program:
+  - {name: PRG-001, program_name: Bahasa Inggris Dasar, delivery: offline, sessions_count: 12, price: 1800000, billing_plan: installment, installments: 3, monthly_fee: 0, item: BRG-0001, vat_exempt: true, active: true}
+  - {name: PRG-002, program_name: Bimbel Matematika SMP kelas 8, delivery: offline, sessions_count: 16, price: 1800000, billing_plan: monthly, installments: 1, monthly_fee: 450000, item: BRG-0002, vat_exempt: true, active: true}
+  - {name: PRG-003, program_name: Pelatihan Excel untuk karyawan, delivery: hybrid, sessions_count: 4, price: 2500000, billing_plan: full, installments: 1, monthly_fee: 0, item: BRG-0003, vat_exempt: false, active: true}
+  - {name: PRG-004, program_name: Kursus online desain grafis, delivery: online, sessions_count: 8, price: 1200000, billing_plan: full, installments: 1, monthly_fee: 0, item: BRG-0004, vat_exempt: true, active: true}
+course_batch:
+  - name: ANG-2026-001
+    batch_name: Inggris Dasar angkatan November
+    program: PRG-001
+    start_date: 2026-11-02
+    end_date: 2027-01-29
+    quota: 10
+    seats_taken: 3
+    teacher_name: Maya Contoh
+    instructor: USR-002
+    delivery: offline
+    location: Ruang 1
+    schedule:
+      - {weekday: mon, start_time: '19:00', end_time: '20:30'}
+      - {weekday: thu, start_time: '19:00', end_time: '20:30'}
+  - name: ANG-2026-002
+    batch_name: Matematika kelas 8 semester ganjil
+    program: PRG-002
+    start_date: 2026-10-05
+    end_date: 2027-01-30
+    quota: 6
+    seats_taken: 2
+    teacher_name: Nanda Contoh
+    instructor: USR-003
+    delivery: offline
+    location: Ruang 2
+    schedule:
+      - {weekday: tue, start_time: '16:00', end_time: '17:30'}
+      - {weekday: fri, start_time: '16:00', end_time: '17:30'}
+  - name: ANG-2026-003
+    batch_name: Excel PT Contoh Logistik
+    program: PRG-003
+    start_date: 2026-11-16
+    end_date: 2026-11-27
+    quota: 4
+    seats_taken: 3
+    teacher_name: Maya Contoh
+    instructor: USR-002
+    delivery: hybrid
+    location: Kantor klien
+    class_link: https://meet.kursuscontoh.test/excel
+    schedule:
+      - {weekday: mon, start_time: '09:00', end_time: '12:00'}
+      - {weekday: wed, start_time: '09:00', end_time: '12:00'}
+  - name: ANG-2026-004
+    batch_name: Desain grafis online angkatan 3
+    program: PRG-004
+    start_date: 2026-11-03
+    end_date: 2026-12-22
+    quota: 20
+    seats_taken: 1
+    teacher_name: Nanda Contoh
+    instructor: USR-003
+    delivery: online
+    class_link: https://meet.kursuscontoh.test/desain
+    schedule:
+      - {weekday: tue, start_time: '19:30', end_time: '21:00'}
+student:
+  - {name: PST-0001, student_name: Ani Contoh, kind: individual, phone: '+620000000101', bill_to: CUST-0002}
+  - {name: PST-0002, student_name: Budi Contoh, kind: individual, phone: '+620000000102', bill_to: CUST-0003}
+  - {name: PST-0003, student_name: Citra Contoh, kind: individual, phone: '+620000000103', bill_to: CUST-0004}
+  - {name: PST-0004, student_name: Raka Contoh, kind: individual, guardian_name: Dewi Contoh, phone: '+620000000104', bill_to: CUST-0005}
+  - {name: PST-0005, student_name: Sari Contoh, kind: individual, guardian_name: Eko Contoh, phone: '+620000000105', bill_to: CUST-0006}
+  - {name: PST-0006, student_name: Gilang Contoh, kind: employee, company: CUST-0001, bill_to: CUST-0001}
+  - {name: PST-0007, student_name: Hesti Contoh, kind: employee, company: CUST-0001, bill_to: CUST-0001}
+  - {name: PST-0008, student_name: Indra Contoh, kind: employee, company: CUST-0001, bill_to: CUST-0001}
+  - {name: PST-0009, student_name: Joni Contoh, kind: employee, company: CUST-0001, bill_to: CUST-0001}
+  - {name: PST-0010, student_name: Fajar Contoh, kind: individual, phone: '+620000000110', bill_to: CUST-0007}
+enrollment:
+  - {name: DFT-2026-00001, student: PST-0001, batch: ANG-2026-001, enrolled_on: 2026-10-20, status: active, bill_to: CUST-0002, billing_plan: installment, price: 1800000, discount: 0, installments: 3, monthly_fee: 0}
+  - {name: DFT-2026-00002, student: PST-0002, batch: ANG-2026-001, enrolled_on: 2026-10-22, status: active, bill_to: CUST-0003, billing_plan: installment, price: 1800000, discount: 100000, installments: 3, monthly_fee: 0}
+  - {name: DFT-2026-00003, student: PST-0003, batch: ANG-2026-001, enrolled_on: 2026-10-28, status: registered, bill_to: CUST-0004, billing_plan: full, price: 1800000, discount: 0, installments: 1, monthly_fee: 0}
+  - {name: DFT-2026-00004, student: PST-0004, batch: ANG-2026-002, enrolled_on: 2026-09-28, status: active, bill_to: CUST-0005, billing_plan: monthly, price: 1800000, discount: 0, installments: 1, monthly_fee: 450000}
+  - {name: DFT-2026-00005, student: PST-0005, batch: ANG-2026-002, enrolled_on: 2026-09-30, status: active, bill_to: CUST-0006, billing_plan: monthly, price: 1800000, discount: 0, installments: 1, monthly_fee: 450000}
+  - {name: DFT-2026-00006, student: PST-0006, batch: ANG-2026-003, enrolled_on: 2026-11-02, status: registered, bill_to: CUST-0001, billing_plan: full, price: 2500000, discount: 0, installments: 1, monthly_fee: 0}
+  - {name: DFT-2026-00007, student: PST-0007, batch: ANG-2026-003, enrolled_on: 2026-11-02, status: registered, bill_to: CUST-0001, billing_plan: full, price: 2500000, discount: 0, installments: 1, monthly_fee: 0}
+  - {name: DFT-2026-00008, student: PST-0008, batch: ANG-2026-003, enrolled_on: 2026-11-02, status: registered, bill_to: CUST-0001, billing_plan: full, price: 2500000, discount: 0, installments: 1, monthly_fee: 0}
+  - {name: DFT-2026-00009, student: PST-0010, batch: ANG-2026-004, enrolled_on: 2026-11-01, status: active, bill_to: CUST-0007, billing_plan: full, price: 1200000, discount: 0, installments: 1, monthly_fee: 0}
+course_session:
+  - name: PTM-2026-00001
+    batch: ANG-2026-001
+    session_no: 1
+    session_date: 2026-11-02
+    start_time: '19:00'
+    end_time: '20:30'
+    delivery: offline
+    topic: Perkenalan dan salam
+    attendance:
+      - {enrollment: DFT-2026-00001, status: present}
+      - {enrollment: DFT-2026-00002, status: present}
+      - {enrollment: DFT-2026-00003, status: excused}
+  - name: PTM-2026-00002
+    batch: ANG-2026-001
+    session_no: 2
+    session_date: 2026-11-05
+    start_time: '19:00'
+    end_time: '20:30'
+    delivery: offline
+    topic: Angka dan waktu
+    attendance:
+      - {enrollment: DFT-2026-00001, status: present}
+      - {enrollment: DFT-2026-00002, status: absent}
+      - {enrollment: DFT-2026-00003, status: present}
+  - name: PTM-2026-00003
+    batch: ANG-2026-002
+    session_no: 1
+    session_date: 2026-10-06
+    start_time: '16:00'
+    end_time: '17:30'
+    delivery: offline
+    topic: Bilangan bulat
+    attendance:
+      - {enrollment: DFT-2026-00004, status: present}
+      - {enrollment: DFT-2026-00005, status: sick}
