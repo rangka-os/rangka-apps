@@ -50,7 +50,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | stock_transfer_receipt | | | | | all | r c w s x | |
 | stock_count, stock_adjustment | | | | | all | r c w s | |
 | stock_adjustment_value (`append_only`, contract 0026: rows written by flows only, nobody edits or deletes one; old adjustments by the schedule of flow `adjustment_value_backfill`) | | | | | r c e | r c | |
-| gl_entry (journal lines written by the accounting flows of whoever submits or cancels; append_only, so no one creates, edits or deletes one by hand; sales: invoice, payment, delivery and return lines; purchasing: bill and receipt lines; project admin: timesheet and project expense lines, and line 1 of vendor bills (the account a project expense on that bill moves its cost out of); outlet staff: outlet sales, takings, receipt and stock document lines) | r c | r c e | r c | r c | r c e | r c | |
+| gl_entry (journal lines written by the accounting flows of whoever submits or cancels; append_only, so no one creates, edits or deletes one by hand; sales: invoice, payment, delivery and return lines; purchasing: bill and receipt lines; project admin: timesheet and project expense lines, and lines 1-2 of vendor bills (the cost a project expense on that bill moves out of); outlet staff: outlet sales, takings, receipt and stock document lines) | r c | r c e | r c | r c | r c e | r c | |
 | period_close (Tutup buku; the posting flows read the lock as whoever submits) | r | all | r | r | all | r | |
 | opening_balance (Saldo awal) | | all + i | | | all + i | | |
 | financial_report (Laporan keuangan; numbers filled by flow) | | r c w d e p | | | r c w d e p | | |

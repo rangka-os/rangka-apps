@@ -71,8 +71,13 @@ BILL_PPN = "tax.pkp ? '11500' : ((" + BILL_KIND + ") == 'stock' ? '51100' : (" +
 # Potong retur: the credit note covers the return value plus its PPN; only the value is retur penjualan, the PPN
 # reduces PPN keluaran, in the proportion of what this payment credits.
 RETURN_VALUE = "round(event.amount * 1.0 * ret.return_value / ret.return_total)"
-# The part of a project expense that moves out of its vendor bill's account (0 without a bill journal).
-MOVED = "event.vendor_bill != '' && bl != null ? (event.amount < bl.amount ? event.amount : bl.amount) : 0"
+# A project expense on a vendor bill moves the bill's cost (its debit line 1, plus line 2 when that is the same
+# account: PPN of a business that is not PKP) into the project, at most what is left of it after the expenses that
+# already moved some (their credit lines carry `against` = the bill; a cancelled one's reversal gives its part back).
+BILL_COST = "bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)"
+LEFT = "(" + BILL_COST + ") + prior.map(r, r.amount).sum()"
+MOVED = ("event.vendor_bill != '' && bl != null ? ((" + LEFT + ") <= 0 ? 0 : (event.amount < (" + LEFT + ")"
+         " ? event.amount : (" + LEFT + "))) : 0")
 SALES_RETURN = "event.direction == 'receive' && event.method == 'sales_return' && ret != null && ret.return_total > 0"
 CASH_TAKEN = "event.lines.filter(l, l.method == 'cash').map(l, l.received).sum()"
 
@@ -141,13 +146,20 @@ POSTINGS = {
     "project_expense": dict(
         label="Jurnal biaya proyek", date="event.expense_date", project="event.project", party="event.vendor",
         # Paid from cash. When it points at a vendor bill (always one without a project), the project_ledger counts the
-        # expense at its full amount, so the cost moves into the project: out of the account the bill debited (its
-        # post line 1, without a project tag), at most the bill's own amount; anything above was paid in cash.
+        # expense at its full amount, so the cost moves into the project: out of the account the bill debited (without a
+        # project tag), at most what is left of the bill's cost (BILL_COST, LEFT); anything above was paid in cash. A bill
+        # from before the accounting module has no journal: the whole expense counts as paid in cash.
         extra=["  - find: gl_entry", "    if: event.vendor_bill != ''",
                "    where: voucher_type == 'vendor_bill' && voucher == event.vendor_bill && entry == 'post' && line == '1'",
-               "    as: bl"],
+               "    as: bl",
+               "  - find: gl_entry", "    if: event.vendor_bill != ''",
+               "    where: voucher_type == 'vendor_bill' && voucher == event.vendor_bill && entry == 'post' && line == '2'",
+               "    as: bl2",
+               "  - find_all: gl_entry", "    if: event.vendor_bill != ''",
+               "    where: against == event.vendor_bill && voucher_type == 'project_expense'",
+               "    as: prior"],
         lines=[("'51400'", "event.amount"),
-               ("bl != null ? bl.account : '61900'", "0 - (" + MOVED + ")", {"project": "''"}),
+               ("bl != null ? bl.account : '61900'", "0 - (" + MOVED + ")", {"project": "''", "against": "event.vendor_bill"}),
                ("'11100'", "0 - (event.amount - (" + MOVED + "))")]),
     "delivery_note": dict(
         label="Jurnal surat jalan", date="event.delivery_date", outlet="event.outlet", party="event.customer",
@@ -216,7 +228,7 @@ def post_flow(model, p):
                 "      voucher: event.name",
                 "      entry: \"'post'\"",
                 f"      line: \"'{i}'\""]
-        for f in ("outlet", "project", "party"):
+        for f in ("outlet", "project", "party", "against"):
             v = own.get(f, p.get(f))
             if v:
                 out.append(f"      {f}: {q(v)}")
@@ -255,6 +267,7 @@ def reverse_flow(model, p):
                 f"      outlet: {r}.outlet",
                 f"      project: {r}.project",
                 f"      party: {r}.party",
+                f"      against: {r}.against",
                 f"      lock_date: {q(LOCK_DATE)}"]
     return "\n".join(out) + "\n"
 

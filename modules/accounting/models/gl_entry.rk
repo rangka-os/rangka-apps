@@ -20,7 +20,7 @@ permissions:
   - {role: sales_manager, read: true, create: true, if: "voucher_type in ['sales_invoice', 'payment', 'delivery_note', 'sales_return']"}
   - {role: purchasing_manager, read: true, create: true, if: "voucher_type in ['vendor_bill', 'goods_receipt']"}
   # project admins also read the debit line of vendor bills: a project expense on a bill moves its cost out of that line
-  - {role: project_admin, read: true, create: true, if: "voucher_type in ['timesheet', 'project_expense'] || (voucher_type == 'vendor_bill' && line == '1')"}
+  - {role: project_admin, read: true, create: true, if: "voucher_type in ['timesheet', 'project_expense'] || (voucher_type == 'vendor_bill' && line in ['1', '2'])"}
   - {role: outlet_staff, read: true, create: true, if: "voucher_type in ['outlet_sales', 'outlet_takings', 'goods_receipt', 'stock_adjustment', 'stock_count', 'stock_transfer_receipt', 'production_batch']"}
 fields:
   - name: posting_date
@@ -113,6 +113,8 @@ fields:
   - {name: outlet, type: link, to: outlet, label: {id: Cabang}, in_list: true}
   - {name: project, type: data, label: {id: Proyek}}
   - {name: party, type: data, label: {id: Pihak}}
+  # a project expense's credit line: the vendor bill whose cost it moved into the project
+  - {name: against, type: data, label: {id: Tagihan asal}, hidden: true}
   - {name: lock_date, type: date, label: {id: Buku ditutup sampai}, hidden: true}
   - name: account_class
     type: select

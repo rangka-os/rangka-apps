@@ -94,19 +94,24 @@ def expected_pl(api, d0, d1):
         if inm(b["production_date"]):
             e["direct_labour"] += b["labour_cost"] or 0
     bills = {b["name"]: b for b in docs(api, "vendor_bill")}
+    pkp_org, stock = org_pkp(api), has(api, "stock_move")
+    on_bill = defaultdict(int)
     for x in docs(api, "project_expense"):
         if inm(x["expense_date"]):
             e["project_costs"] += x["amount"]
-            b = bills.get(x.get("vendor_bill") or "")
-            # an expense on a bill moves the cost out of the bill's account, at most the bill's DPP (the rest was cash)
-            if b and bill_kind(b, has(api, "stock_move")) == "expense":
-                e["operating_expenses"] -= min(x["amount"], b["dpp"])
-    pkp, stock = org_pkp(api), has(api, "stock_move")
+            if x.get("vendor_bill"):
+                on_bill[x["vendor_bill"]] += x["amount"]
+    # expenses on a bill take that bill's cost into the project, together never more than the bill cost (DPP, plus PPN
+    # where the business is not PKP); what is above it was paid in cash
+    for bn, total in on_bill.items():
+        b = bills.get(bn)
+        if b and bill_kind(b, stock) == "expense":
+            e["operating_expenses"] -= min(total, b["dpp"] + (0 if pkp_org else b["ppn"]))
     for b in docs(api, "vendor_bill"):
         if not inm(b["bill_date"]):
             continue
         kind = bill_kind(b, stock)
-        ppn = 0 if pkp else b["ppn"]          # not PKP: input PPN cannot be credited, it is a cost
+        ppn = 0 if pkp_org else b["ppn"]      # not PKP: input PPN cannot be credited, it is a cost
         if kind == "project":
             e["project_costs"] += b["dpp"] + ppn
         elif kind == "expense":
@@ -274,7 +279,52 @@ def scenario_accounting(api):
     eq("accounting: a journal line cannot be deleted", st, 409)
 
     scenario_non_pkp(api)
+    scenario_expenses_on_one_bill(api)
     scenario_period_close_and_opening(api, gl)
+
+
+def scenario_expenses_on_one_bill(api):
+    """Project expenses on a vendor bill without a project (audit N1-N3): together they move at most the bill's cost
+    (DPP, plus PPN in a business that is not PKP) out of its expense account into the project; the rest is cash."""
+    if CTX.get("site") != "demo-jasa":
+        return
+    k = CTX["kernel"]
+    for org, pkp in (("pt_contoh_inspeksi", True), ("cv_contoh_pelatihan", False)):
+        cl = Api.login(k.base, k.owner_email, k.owner_pw, org=org)
+        if not check(f"accounting {org}: owner signs in", cl is not None, "login refused"):
+            continue
+        rec = lambda x: (x or {}).get("record", x) or {}
+        cust = rows(cl, "customer")[0]["name"]
+        st, prj = cl.create("project", {"project_name": "Proyek uji biaya atas tagihan", "customer": cust})
+        prj = rec(prj)
+        if prj.get("docstatus") == 0:
+            prj = rec(cl.verb("project", prj["name"], "submit")[1]) or prj
+        st, v = cl.create("vendor", {"vendor_name": "Pemasok PKP uji akuntansi", "pkp": True})
+        v, item = rec(v), rows(cl, "item")[0]["name"]
+        st, b = cl.create("vendor_bill", {"vendor": v.get("name"), "bill_date": "2026-11-06", "bill_no": "ACC-ONE-BILL", "posting": "expense",
+                                          "expense_account": "61400", "items": [{"item": item, "qty": 1, "rate": 1_000_000}]})
+        st, sb = cl.verb("vendor_bill", rec(b).get("name", "x"), "submit")
+        bill = rec(sb)
+        if not check(f"accounting {org}: bill of 1.000.000 to Beban sewa submitted", st == 200, (st, str(sb)[:300])):
+            continue
+        cost = bill["dpp"] + (0 if pkp else bill["ppn"])
+        eq(f"accounting {org}: the bill's expense = DPP{'' if pkp else ' + PPN (not PKP)'}",
+           sum(l["amount"] for l in rows(cl, "gl_entry", f"voucher == '{bill['name']}' && account == '61400'")), cost)
+        names = []
+        for amt in (cost, 1_000_000):                  # the second expense finds nothing left on the bill
+            st, x = cl.create("project_expense", {"project": prj["name"], "expense_date": "2026-11-06", "description": "Atas tagihan",
+                                                  "vendor_bill": bill["name"], "amount": amt})
+            st, sx = cl.verb("project_expense", rec(x).get("name", "x"), "submit")
+            check(f"accounting {org}: expense {amt:,} on the bill submitted", st == 200, (st, str(sx)[:300]))
+            names.append(rec(sx).get("name"))
+        a614 = sum(l["amount"] for l in rows(cl, "gl_entry", "account == '61400'") if l["voucher"] in [bill["name"]] + names)
+        eq(f"accounting {org}: two expenses on one bill move the bill's cost once (Beban sewa nets to 0)", a614, 0)
+        cash = sum(l["amount"] for l in rows(cl, "gl_entry", "account == '11100'") if l["voucher"] in names)
+        eq(f"accounting {org}: what is above the bill's cost is cash", cash, -1_000_000)
+        cl.verb("project_expense", names[0], "cancel")
+        left = sum(l["amount"] for l in rows(cl, "gl_entry", "account == '61400'") if l["voucher"] in [bill["name"]] + names)
+        eq(f"accounting {org}: cancelling the first expense gives the bill's cost back to Beban sewa", left, cost)
+        cl.verb("project_expense", names[1], "cancel")
 
 
 def scenario_non_pkp(api):
