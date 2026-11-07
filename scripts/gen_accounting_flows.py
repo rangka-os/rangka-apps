@@ -22,7 +22,7 @@ MODEL = os.path.join(ROOT, "modules", "accounting", "models", "gl_entry.rk")
 # liabilitas, 3 ekuitas, 4 pendapatan, 5 beban pokok, 61 beban operasional, 69 beban pajak.
 ACCOUNTS = [
     ("1-1100", "Kas"), ("1-1150", "Kas outlet belum disetor"), ("1-1200", "Bank"),
-    ("1-1300", "Piutang usaha"), ("1-1320", "Piutang retensi"), ("1-1330", "Piutang karyawan"),
+    ("1-1300", "Piutang usaha"), ("1-1320", "Piutang retensi"), ("1-1330", "Piutang karyawan"), ("1-1340", "Piutang dana gaji klien"),
     ("1-1400", "Persediaan"), ("1-1410", "Persediaan dalam perjalanan"), ("1-1420", "Barang dalam proses"),
     ("1-1500", "PPN masukan"), ("1-1510", "PPh 23 dibayar dimuka"),
     ("1-2100", "Aset tetap"), ("1-2900", "Akumulasi penyusutan"),
@@ -185,6 +185,20 @@ POSTINGS = {
         # came out. Piece-rate wages are labour owed.
         lines=[("'11400'", NET), ("'51200'", "0 - " + NET),
                ("'51300'", "event.labour_cost"), ("'21500'", "0 - event.labour_cost")]),
+    "payroll_close": dict(
+        label="Jurnal gaji periode", date="event.period_to", project="event.project", party="event.customer",
+        # The attendance (timesheet) already booked its cost to Upah langsung against Utang upah. Closing the payroll
+        # adds the rest of the employer's cost (extra_cost: BPJS of the employer, allowances, THR; negative in fee_only,
+        # where the client funds the wages and the attendance cost leaves the project), turns the accrued wages into
+        # net pay owed, and books PPh 21, BPJS of both sides and deductions (kasbon) repaid. In fee_only the client owes
+        # the whole employer cost. Balances because employer cost = cash gross + employer BPJS and net pay = cash gross -
+        # employee BPJS - PPh 21 - other deductions (plans/akuntansi-dasar.md, payroll session 7 Nov).
+        lines=[("'51300'", "event.extra_cost"),
+               ("'21500'", "event.total_timesheet_cost - event.total_net_pay"),
+               ("'21320'", "0 - event.total_pph21"),
+               ("'21600'", "0 - (event.total_employer_bpjs + event.total_employee_bpjs)"),
+               ("'11330'", "0 - event.total_other_deduction"),
+               ("'11340'", "event.billing_mode == 'fee_only' ? event.total_employer_cost : 0")]),
     "opening_balance": dict(
         label="Jurnal saldo awal", date="event.opening_date",
         lines=[("'11100'", "event.cash"), ("'11200'", "event.bank"), ("'11300'", "event.receivable"),
@@ -276,7 +290,19 @@ def account_options():
     return "\n".join(f"      - {{value: '{c.replace('-', '')}', label: {{id: '{c} {n}'}}}}" for c, n in ACCOUNTS)
 
 
+def check_accounts():
+    """Every account code written in this file is in ACCOUNTS (a typo such as 15400 for 5-1400 would post to a code
+    gl_entry refuses only at submit time)."""
+    import re
+    known = {c.replace("-", "") for c, _ in ACCOUNTS}
+    used = set(re.findall(r"'(\d{5})'", open(__file__).read()))
+    unknown = sorted(used - known)
+    if unknown:
+        raise SystemExit(f"unknown account codes: {unknown}")
+
+
 def main():
+    check_accounts()
     os.makedirs(FLOWS, exist_ok=True)
     for f in os.listdir(FLOWS):
         if f.startswith("gl_") and f.endswith(".rk"):

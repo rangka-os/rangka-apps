@@ -93,6 +93,9 @@ def expected_pl(api, d0, d1):
     for b in docs(api, "production_batch"):
         if inm(b["production_date"]):
             e["direct_labour"] += b["labour_cost"] or 0
+    for c in docs(api, "payroll_close"):                 # employer cost above the attendance already booked
+        if inm(c["period_to"]):
+            e["direct_labour"] += c["extra_cost"]
     bills = {b["name"]: b for b in docs(api, "vendor_bill")}
     pkp_org, stock = org_pkp(api), has(api, "stock_move")
     on_bill = defaultdict(int)
@@ -174,6 +177,11 @@ def expected_balances(api, d1):
     for b in docs(api, "vendor_bill"):
         if upto(b["bill_date"]):
             pay += b["amount_due"] - (b["dpp"] if bill_kind(b, stock) == "stock" else 0)
+    for c in docs(api, "payroll_close"):                 # kasbon repaid from wages; fee_only: the client funds the wages
+        if upto(c["period_to"]):
+            recv -= c["total_other_deduction"]
+            if c["billing_mode"] == "fee_only":
+                recv += c["total_employer_cost"]
     for p in docs(api, "payment"):
         if not upto(p["payment_date"]):
             continue
