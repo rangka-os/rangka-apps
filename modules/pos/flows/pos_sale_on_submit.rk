@@ -20,6 +20,17 @@ steps:
     set:
       reason: "'daily_sales_same_day'"
       document: forms[0].name
+  # a Setoran harian of this outlet and day was booked outside the cashier: the shift's close would book the cash again
+  - find_all: outlet_takings
+    if: app_installed('outlet_sales')
+    where: outlet == event.outlet && date == event.date && docstatus == 1
+    limit: 1
+    as: takings
+  - if: takings != null && takings.size() > 0
+    create: pos_guard
+    set:
+      reason: "'daily_sales_same_day'"
+      document: takings[0].name
   - if: s == null
     create: pos_guard
     set: {reason: "'shift_closed'", document: event.name}

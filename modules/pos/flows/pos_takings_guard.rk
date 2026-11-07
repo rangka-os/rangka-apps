@@ -1,12 +1,22 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # A day an outlet rang up in Juragan's cashier is settled when each shift closes (Tutup sesi: cash to Kas, QRIS to
 # Bank, the difference to Selisih kas); a Setoran harian for that outlet and day would book them a second time (audit
-# kasir H1, R2-1). Checked per outlet and day, not by the outlet's sales_source today, so switching the source does
-# not open the way, and a day of the daily form can still take its setoran after the outlet moved to the cashier.
+# kasir H1, R2-1, R3-1). Refused when the outlet and day have a paid receipt, whatever the outlet's sales_source says
+# now; and refused for an outlet on the cashier unless that day has a daily sales record (a day of the daily form
+# before the outlet moved to the cashier can still take its setoran). pos_sale_on_submit refuses a receipt on a day
+# that already has a setoran, so neither order books the cash twice.
 name: pos_takings_guard
 label: {id: 'Setoran harian diajukan: tolak kalau hari itu outlet memakai kasir'}
 on: outlet_takings.submitted
 steps:
+  - {find: outlet, where: name == event.outlet, as: o}
+  - find_all: outlet_sales
+    where: outlet == event.outlet && date == event.date && docstatus == 1
+    limit: 1
+    as: forms
+  - if: o != null && o.sales_source == 'kasir' && forms.size() == 0
+    create: pos_guard
+    set: {reason: "'cashier_takings'", document: event.name}
   - find_all: pos_sale
     where: outlet == event.outlet && date == event.date && docstatus == 1
     limit: 1

@@ -61,7 +61,7 @@ rules:
   - name: daily_sales_same_day
     on: save
     check: reason != 'daily_sales_same_day'
-    message: {id: 'Outlet ini sudah punya penjualan harian (formulir, Moka atau file POS) untuk tanggal ini; satu outlet satu sumber penjualan per hari'}
+    message: {id: 'Outlet ini sudah punya penjualan atau setoran harian di tanggal ini; satu outlet satu sumber penjualan per hari'}
   - name: cashier_same_day
     on: save
     check: reason != 'cashier_same_day'
@@ -69,7 +69,7 @@ rules:
   - name: cashier_takings
     on: save
     check: reason != 'cashier_takings'
-    message: {id: 'Outlet ini memakai kasir Juragan di tanggal itu: setorannya sudah dibukukan saat Tutup sesi kasir'}
+    message: {id: 'Outlet ini memakai kasir Juragan: setorannya dibukukan saat Tutup sesi kasir, bukan di Setoran harian'}
   - name: float_of_outlet
     on: save
     check: reason != 'float_of_outlet'

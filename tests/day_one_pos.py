@@ -33,7 +33,7 @@ MATRIX = {
     "pos_guard": {"head_office": {"create"}, "cashier": {"create"}, "outlet_staff": {"create"}},   # never stored (a flow's refusal)
 }
 # what the cashier reads besides its own models (role scope: its outlets only)
-CASHIER_READS = ("item", "uom", "uom_conversion", "outlet", "stock_balance", "gl_entry", "period_close", "outlet_sales")
+CASHIER_READS = ("item", "uom", "uom_conversion", "outlet", "stock_balance", "gl_entry", "period_close", "outlet_sales", "outlet_takings")
 MEMBERS = [("dika", "cashier", "dika.dago@contohwarung.test", "Dika Contoh", DGO),
            ("sari", "cashier", "sari.riau@contohwarung.test", "Sari Contoh", RIU),
            ("bayu", "cashier", "bayu.dago@contohwarung.test", "Bayu Contoh", DGO),
@@ -293,7 +293,7 @@ def scenario_pos_guards(api):
     check("Dika lists only Toko Dago receipts", st == 200 and outlets == {DGO}, (st, outlets, (resp or {}).get("data", [])[:2], resp if st != 200 else ""))
     st, resp = sari.call("GET", "/api/v1/r/stock_balance?limit=200")
     check("Sari reads the stock of Kedai Riau only", st == 200 and {r["outlet"] for r in resp.get("data", [])} == {RIU}, (st, resp))
-    for model in ("outlet_takings", "stock_move", "financial_report", "stock_count"):
+    for model in ("stock_move", "financial_report", "stock_count"):
         st, resp = dika.call("GET", f"/api/v1/r/{model}?limit=1")
         check(f"a cashier cannot list {model} -> 403", denied(st, resp), (st, resp))
     st, resp = dika.call("GET", "/api/v1/dashboards/kasir_ringkas")
@@ -318,6 +318,25 @@ def scenario_pos_guards(api):
         check("a daily form for a day the outlet already rang up in the cashier -> 422 cashier_same_day", st == 422 and "cashier_same_day" in rules(resp), (st, resp))
         hq.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(rec(f)['name'])}")
     hq.patch("outlet", DGO, {"sales_source": "kasir"})
+    # a cashier outlet that has not rung up yet today: a setoran first, then the receipts, would book the cash twice
+    st, o = hq.create("outlet", {"outlet_name": "Kios Contoh Pagi", "code": "PGI", "sales_source": "kasir"})
+    if check("a new cashier outlet (Kios Pagi)", st == 201, (st, o)):
+        st, tk = hq.create("outlet_takings", {"outlet": rec(o)["name"], "date": today, "lines": [{"method": "cash", "expected": 5_000, "received": 5_000}]})
+        st, resp = hq.verb("outlet_takings", rec(tk)["name"], "submit") if st == 201 else (st, tk)
+        check("a setoran for a cashier outlet with no daily sales that day -> 422 cashier_takings (even before its first receipt)",
+              st == 422 and "cashier_takings" in rules(resp), (st, resp))
+        # the other order: a setoran booked while the outlet was on the daily form, then the cashier the same day
+        pgi = rec(o)["name"]
+        hq.patch("outlet", pgi, {"sales_source": "form"})
+        st, tk = hq.create("outlet_takings", {"outlet": pgi, "date": today, "lines": [{"method": "cash", "expected": 5_000, "received": 5_000}]})
+        st, resp = hq.verb("outlet_takings", rec(tk)["name"], "submit") if st == 201 else (st, tk)
+        check("Kios Pagi on the daily form takes a setoran", st == 200, (st, resp))
+        hq.patch("outlet", pgi, {"sales_source": "kasir"})
+        st, sh = hq.create("pos_shift", {"outlet": pgi, "opening_cash": 0})
+        if check("head office opens a shift at Kios Pagi", st == 201, (st, sh)):
+            st, resp = sale(hq, rec(sh)["name"], [{"item": AIR, "qty": 1}], "")
+            check("a receipt on a day that already has a setoran -> 422 daily_sales_same_day", st == 422 and "daily_sales_same_day" in rules(resp), (st, resp))
+            CTX["shift_pgi"] = rec(sh)["name"]
     st, sh = hq.create("pos_shift", {"outlet": CMH, "opening_cash": 0})
     if check("head office opens a shift at Cimahi (still on the daily form)", st == 201, (st, sh)):
         st, resp = sale(hq, rec(sh)["name"], [{"item": AIR, "qty": 1}], "", submit=False)
@@ -609,6 +628,10 @@ def scenario_pos_head_office(api):
     check("Kantor pusat lists receipts of both outlets", st == 200 and {r["outlet"] for r in resp.get("data", [])} >= {DGO, RIU}, (st, resp))
     st, resp = hq.call("GET", "/api/v1/dashboards/kasir_ringkas")
     check("Kantor pusat opens kasir_ringkas -> 200", st == 200, (st, resp))
+    pgi = CTX.get("shift_pgi")
+    if pgi:
+        st, resp = close(hq, pgi, 0)
+        check("head office closes the empty Kios Pagi shift", st == 200, (st, resp))
     cmh = CTX.get("shift_cmh")
     if cmh:
         st, resp = close(hq, cmh, 0)
