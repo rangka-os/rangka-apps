@@ -1,19 +1,33 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 name: charge_invoice_on_submit
 label: {id: Tagihan kursus jadi draf faktur}
+# Runs in the submitter's transaction; its reads take the flow read locks of contract 0025 (enrollment, then
+# course_charge, in that order everywhere), so the checks below see every charge submitted before and every change of
+# the enrollment committed before.
+# 0. Refused when the enrollment already has a submitted charge for this period (an amended copy moved to another
+#    period, or a plan changed after its charges were cancelled), a submitted charge of another payment plan, or when
+#    the enrollment's terms changed since this charge was saved (rules run before the lock; audit 2026-11-07 H1, M3).
 # 1. The enrollment's billing terms are locked: billed_count and the locked_* copies (rule terms_locked).
-# 2. A draft invoice to the payer, one line, this charge's number in [] in its notes (a flow cannot submit; finance
-#    checks and submits it). Education services are VAT-exempt (PP 49/2022): tax rate 0 unless the program says
-#    otherwise. An amended charge takes over the draft invoice its cancelled original left, instead of making another.
+# 2. A new draft invoice to the payer, one line, this charge's number in [] in its notes (a flow cannot submit; finance
+#    checks and submits it), so its tax rate and due date are this charge's. Education services are VAT-exempt
+#    (PP 49/2022): tax rate 0 unless the program says otherwise. A draft a cancelled original left keeps that
+#    original's number (so invoice_course_once refuses it) and is marked as replaced; finance deletes it.
 on: course_charge.submitted
 steps:
   - {find: enrollment, where: name == event.enrollment, as: enr}
   - find_all: course_charge
-    where: enrollment == event.enrollment && docstatus == 1
-    as: billed
+    where: enrollment == event.enrollment && docstatus == 1 && name != event.name
+    as: others
+  - if: >-
+      enr == null || others.map(c, c.period == event.period || c.kind != event.kind ? 1 : 0).sum() > 0
+        || event.kind != enr.billing_plan || event.amount != (event.kind == 'full' ? enr.total : (event.kind == 'installment' ? (event.installment_no == enr.installments ? enr.total - (enr.installments - 1) * round(enr.total / enr.installments) : round(enr.total / enr.installments)) : enr.monthly_fee))
+    create: course_guard
+    set:
+      reason: "'charge_period'"
+      document: event.name
   - update: enr
     set:
-      billed_count: size(billed)
+      billed_count: size(others) + 1
       locked_plan: enr.billing_plan
       locked_total: enr.total
       locked_installments: enr.installments
@@ -24,11 +38,8 @@ steps:
   - if: old != null
     update: old
     set:
-      customer: event.customer
-      posting_date: event.invoice_date
-      notes: "'Biaya kursus ' + event.description + ' [' + event.name + ']'"
-      items: "[{'item': event.item, 'description': event.description, 'qty': 1, 'rate': event.amount}]"
-  - if: old == null && event.vat_exempt
+      notes: "old.notes + ' (diganti tagihan ' + event.name + ', hapus draf ini)'"
+  - if: event.vat_exempt
     create: sales_invoice
     set:
       customer: event.customer
@@ -36,7 +47,7 @@ steps:
       tax_rate: '0'
       notes: "'Biaya kursus ' + event.description + ' [' + event.name + ']'"
       items: "[{'item': event.item, 'description': event.description, 'qty': 1, 'rate': event.amount}]"
-  - if: old == null && !event.vat_exempt
+  - if: "!event.vat_exempt"
     create: sales_invoice
     set:
       customer: event.customer

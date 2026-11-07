@@ -307,6 +307,10 @@ def scenario_courses_attendance(api):
     check("the instructor cannot open a session of another teacher's batch -> refused", st in (403, 404, 422), (st, resp))
     enr = ins.get("enrollment", "DFT-2026-00001") or {}
     check("the instructor reads her students' enrollments without the money fields", enr.get("student") == "PST-0001" and "total" not in enr and "price" not in enr, enr)
+    stu, prg = ins.get("student", "PST-0004") or {}, ins.get("course_program", "PRG-002") or {}
+    check("the instructor reads student names without their phone, email or guardian (audit L2)",
+          stu.get("student_name") == "Raka Contoh" and not ({"phone", "email", "guardian_name", "bill_to"} & set(stu)), stu)
+    check("the instructor reads programs without their price (audit L2)", prg.get("program_name") and not ({"price", "monthly_fee"} & set(prg)), prg)
     for model in ("course_charge", "sales_invoice"):
         st, resp = ins.call("GET", f"/api/v1/r/{model}?limit=1")
         check(f"the instructor may not list {model} -> 403", denied(st, resp), (st, resp))
@@ -329,7 +333,7 @@ def scenario_courses_dashboard(api):
     import datetime
     week = [s for s in rows_all(api, "course_session") if today <= datetime.date.fromisoformat(s["session_date"][:10]) < today + datetime.timedelta(days=7)]
     eq("dashboard: classes this week = sessions in the next 7 days", num(ws.get("sessions_this_week", {})), len(week))
-    over = sum(i["outstanding"] for i in rows_all(api, "sales_invoice", "docstatus == 1 && outstanding > 0 && notes.contains('[TGK-')")
+    over = sum(i["outstanding"] for i in rows_all(api, "sales_invoice", "docstatus == 1 && outstanding > 0")
                if datetime.date.fromisoformat(i["due_date"][:10]) < today)
     eq("dashboard: arrears = course invoices past due", num(ws.get("overdue_total", {})), round(over))
     for key in ("ins",):
@@ -339,5 +343,99 @@ def scenario_courses_dashboard(api):
             check("the instructor does not open the money dashboard -> 403", st == 403, (st, resp))
 
 
+def submit(cl, model, name):
+    st, resp = cl.verb(model, name, "submit")
+    return st, resp, submitted_name(resp, name) if st == 200 else name
+
+
+def amend(cl, name):
+    st, am = cl.verb("course_charge", name, "amend")
+    return ((am or {}).get("record") or am or {}).get("name") if st in (200, 201) else None
+
+
+def scenario_courses_audit(api):
+    """Audit 2026-11-07: an amended copy cannot bill a billed period (H1), a plan change after cancelling cannot bill
+    twice (H1), a fee change racing a charge submit cannot break the instalments (M3), one invoice names one charge (L1)."""
+    ca, fm = CTX.get("ca"), CTX.get("fm")
+    if ca is None or fm is None:
+        return
+    # S1: SPP of Sari: November billed; December cancelled, amended and moved to November -> refused
+    sari = "DFT-2026-00005"
+    nov, _ = bill(fm, api, sari, "S1 SPP 2026-11", month="2026-11")
+    dec, dec_inv = bill(fm, api, sari, "S1 SPP 2026-12", month="2026-12")
+    if not (nov and dec and dec_inv):
+        return
+    st, resp = fm.verb("course_charge", dec, "cancel")
+    check("S1: December's charge cancels (its invoice is a draft)", st == 200, (st, resp))
+    am = amend(fm, dec)
+    if not check("S1: finance amends it", am, dec):
+        return
+    st, resp = fm.patch("course_charge", am, {"month": "2026-11"})
+    st, resp, _ = submit(fm, "course_charge", am) if st == 200 else (st, resp, am)
+    check("S1: the amended copy moved to November -> refused 'sudah ditagih'", refused(st, resp, "sudah ditagih"), (st, resp))
+    fm.patch("course_charge", am, {"month": "2026-12"})
+    st, resp, am_name = submit(fm, "course_charge", am)
+    if check("S1: back on December it submits", st == 200, (st, resp)):
+        new_inv = invoice_of(api, am_name, 0)
+        old = api.get("sales_invoice", dec_inv["name"]) or {}
+        check("S1: a new draft invoice for the copy; the old draft says it was replaced", new_inv is not None and "diganti" in old.get("notes", ""), (new_inv, old.get("notes")))
+        st, resp = fm.verb("sales_invoice", dec_inv["name"], "submit")
+        check("S1: the replaced draft cannot be submitted", refused(st, resp, "bukan untuk tagihan"), (st, resp))
+    eq("S1: Sari has one submitted charge per month (11, 12)", sorted(c["period"] for c in rows_all(api, "course_charge", f"enrollment == '{sari}' && docstatus == 1")), ["2026-11", "2026-12"])
+    # S2: Ani's instalments 1 and 2 cancelled, plan switched to full: only one full charge can be submitted
+    ani = "DFT-2026-00001"
+    c1, _ = bill(fm, api, ani, "S2 instalment 1", installment_no=1)
+    c2, _ = bill(fm, api, ani, "S2 instalment 2", installment_no=2)
+    if not (c1 and c2):
+        return
+    for c in (c1, c2):
+        fm.verb("course_charge", c, "cancel")
+    st, resp = ca.patch("enrollment", ani, {"billing_plan": "full"})
+    check("S2: with both instalments cancelled the plan can change to full (200)", st == 200, (st, resp))
+    a1, a2 = amend(fm, c1), amend(fm, c2)
+    st1, r1, _ = submit(fm, "course_charge", a1)
+    st2, r2, _ = submit(fm, "course_charge", a2)
+    check("S2: the first amended copy bills the full price", st1 == 200, (st1, r1))
+    check("S2: the second amended copy, now also full -> refused", refused(st2, r2, "sudah ditagih"), (st2, r2))
+    st, c3 = charge(ca, ani)
+    if st == 201:
+        st, resp, _ = submit(fm, "course_charge", c3["name"])
+        check("S2: a new full charge -> refused", refused(st, resp, "sudah ditagih"), (st, resp))
+    live = rows_all(api, "course_charge", f"enrollment == '{ani}' && docstatus == 1")
+    eq("S2: Ani is billed once, 1.800.000", [c["amount"] for c in live], [1_800_000])
+    # L1: one invoice naming two charges
+    st, inv = fm.create("sales_invoice", {"customer": "CUST-0006", "notes": f"Gabungan [{nov}] [{am_name}]", "tax_rate": 0, "items": [{"item": "BRG-0002", "qty": 1, "rate": 450_000}]})
+    if check("L1: an invoice naming two charges is drafted (201)", st == 201, (st, inv)):
+        st, resp = fm.verb("sales_invoice", inv["name"], "submit")
+        check("L1: submitting it -> refused", refused(st, resp, "bukan untuk tagihan"), (st, resp))
+    # M3: a discount racing the submit of instalment 1, five times
+    for rnd in range(5):
+        st, stu = ca.create("student", {"student_name": f"Balapan {rnd + 1}", "kind": "employee", "company": "CUST-0001"})
+        st, en = ca.create("enrollment", {"student": stu["name"], "batch": INS_OWN})
+        st, ch = charge(ca, en["name"], installment_no=1)
+        if st != 201:
+            fail(f"M3 race {rnd + 1}: setup", (st, ch))
+            return
+        out = [None, None]
+        gate = threading.Barrier(2)
+
+        def go(i):
+            gate.wait()
+            out[i] = fm.verb("course_charge", ch["name"], "submit") if i == 0 else ca.patch("enrollment", en["name"], {"discount": 300_000})
+
+        ts = [threading.Thread(target=go, args=(i,)) for i in range(2)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        e = api.get("enrollment", en["name"])
+        live = rows_all(api, "course_charge", f"enrollment == '{en['name']}' && docstatus == 1")
+        want = round(e["total"] / 3)
+        good = not live or (len(live) == 1 and live[0]["amount"] == want and e["locked_total"] == e["total"])
+        check(f"M3 race {rnd + 1}: submit {out[0][0]} / discount {out[1][0]}: instalment 1 = total / 3 of the enrollment as it stands", good,
+              (out, e["total"], e.get("locked_total"), [c["amount"] for c in live]))
+        ca.patch("enrollment", en["name"], {"status": "withdrawn", "left_on": "2026-11-07"})   # out of the attendance scenario's batch list
+
+
 SCENARIOS = [setup_demo_kursus, scenario_courses_fixtures, scenario_courses_quota, scenario_courses_race, scenario_courses_billing,
-             scenario_courses_attendance, scenario_courses_dashboard]
+             scenario_courses_audit, scenario_courses_attendance, scenario_courses_dashboard]

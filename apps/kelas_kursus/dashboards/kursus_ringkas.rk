@@ -5,7 +5,7 @@ description: {id: 'Peserta aktif, kelas minggu ini dan tagihan yang belum dibaya
 default_period: 30
 roles: [course_admin, finance_manager]
 cache: 5m
-# Tunggakan: course invoices (their notes carry a charge number) not paid by their due date.
+# Tunggakan: invoices not paid by their due date (on a course site these are the course charges' invoices).
 widgets:
   - name: active_students
     type: number
@@ -34,7 +34,7 @@ widgets:
     model: sales_invoice
     aggregate: sum
     field: outstanding
-    filter: docstatus == 1 && outstanding > 0 && due_date < today() && notes.contains('[TGK-')
+    filter: docstatus == 1 && outstanding > 0 && due_date < today()
     good_when: down
     compact: true
     span: 3
@@ -58,9 +58,9 @@ widgets:
     span: 12
   - name: overdue_invoices
     type: list
-    label: {id: Tagihan kursus lewat jatuh tempo}
+    label: {id: Tagihan lewat jatuh tempo}
     model: sales_invoice
-    filter: docstatus == 1 && outstanding > 0 && due_date < today() && notes.contains('[TGK-')
+    filter: docstatus == 1 && outstanding > 0 && due_date < today()
     sort: due_date
     limit: 20
     columns: [name, customer, due_date, outstanding]

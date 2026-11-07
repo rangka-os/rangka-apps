@@ -19,3 +19,17 @@ steps:
     if: b != null && b.seats_taken != size(taken)
     set:
       seats_taken: size(taken)
+  # The price and payment terms are locked once a charge is submitted. The rule terms_locked runs before the flow read
+  # lock (contract 0025 §5), so a change racing a charge submit is checked again here, after enrollment's lock and
+  # with course_charge read under its own (audit 2026-11-07 M3).
+  - find: course_charge
+    where: >-
+      event.before != null && (event.billing_plan != event.before.billing_plan || event.total != event.before.total
+        || event.installments != event.before.installments || event.monthly_fee != event.before.monthly_fee)
+        && enrollment == event.name && docstatus == 1
+    as: billed
+  - if: billed != null
+    create: course_guard
+    set:
+      reason: "'terms_locked'"
+      document: event.name

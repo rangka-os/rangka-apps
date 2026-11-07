@@ -36,6 +36,7 @@ fields:
     type: currency
     label: {id: Harga satu program}
     required: true
+    hidden_for: [instructor]
     in_list: true
   - name: billing_plan
     type: select
@@ -55,6 +56,7 @@ fields:
     type: currency
     label: {id: Biaya per bulan}
     default: '0'
+    hidden_for: [instructor]
     depends_on: billing_plan == 'monthly'
   - name: item
     type: link

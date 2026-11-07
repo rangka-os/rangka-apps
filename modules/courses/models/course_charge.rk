@@ -5,14 +5,15 @@ icon: invoice
 is_submittable: true
 naming: TGK-{YYYY}-{#####}
 title_field: student
-# One amount a student owes: the whole program, one instalment, or one month (SPP). Submitting it makes a draft sales
-# invoice to the enrollment's payer (flow charge_invoice_on_submit), found by this charge's number in [] in its notes;
-# that invoice can be submitted only while this charge is submitted and no other submitted invoice carries the number
-# (flow invoice_course_once), for exactly this amount. One live charge per enrollment and period: period_key is unique,
-# and an amended copy carries amended_from, so a cancelled charge can be amended but a period can never be billed twice.
-# Instalment k of N is round(total / N), the last one total - (N - 1) x round(total / N): the N instalments add up to
-# the total. No delete for anyone but the owner: deleting a cancelled charge would free its key while its amended copy
-# is live.
+# One amount a student owes: the whole program, one instalment, or one month (SPP). Submitting it makes a new draft
+# sales invoice to the enrollment's payer (flow charge_invoice_on_submit), found by this charge's number in [] in its
+# notes; that invoice can be submitted only while this charge is submitted, to its payer, for exactly this amount, when
+# it names no other charge and no other submitted invoice carries the number (flow invoice_course_once). One charge per
+# enrollment and period: period_key is unique among drafts and charges (an amended copy carries amended_from), and the
+# submit flow refuses a second submitted charge of the same period or another payment plan, so an amended copy moved to
+# a billed period, or a plan changed after cancelling, cannot bill twice (audit 2026-11-07 H1). Instalment k of N is
+# round(total / N), the last one total - (N - 1) x round(total / N): the N instalments add up to the total; the flow
+# checks the amount again against the enrollment under its lock (M3). No delete for anyone but the owner.
 permissions:
   - {role: course_admin, read: true, create: true, write: true, export: true, print: true}
   # submitting makes the draft invoice, so it is finance's (or the owner's)

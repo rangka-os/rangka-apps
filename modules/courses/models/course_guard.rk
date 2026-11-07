@@ -20,6 +20,8 @@ fields:
       - {value: invoice_twice, label: {id: Faktur kedua tagihan kursus}}
       - {value: invoice_tag, label: {id: Catatan faktur kursus}}
       - {value: charge_invoiced, label: {id: Faktur tagihan sudah diajukan}}
+      - {value: charge_period, label: {id: Periode sudah ditagih}}
+      - {value: terms_locked, label: {id: Biaya pendaftaran terkunci}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: batch_change
@@ -38,3 +40,11 @@ rules:
     on: save
     check: reason != 'charge_invoiced'
     message: {id: 'Faktur tagihan ini sudah diajukan; batalkan fakturnya dulu'}
+  - name: charge_period
+    on: save
+    check: reason != 'charge_period'
+    message: {id: 'Periode ini sudah ditagih, cara bayarnya beda, atau biaya pendaftaran berubah; cek lalu simpan ulang'}
+  - name: terms_locked
+    on: save
+    check: reason != 'terms_locked'
+    message: {id: 'Sudah ada tagihan yang diajukan: harga, potongan dan cara bayar tidak bisa diubah lagi'}

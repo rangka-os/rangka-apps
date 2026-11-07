@@ -33,18 +33,20 @@ fields:
     label: {id: Perusahaan}
     depends_on: kind == 'employee'
     in_list: true
-  - {name: phone, type: phone, label: {id: Nomor WhatsApp}}
-  - {name: email, type: data, label: {id: Email}}
+  # contact details stay with the admin: an instructor reads every student (no row scope on this model)
+  - {name: phone, type: phone, label: {id: Nomor WhatsApp}, hidden_for: [instructor]}
+  - {name: email, type: data, label: {id: Email}, hidden_for: [instructor]}
   - name: guardian_name
     type: data
     label: {id: Nama orang tua atau wali}
     depends_on: kind == 'individual'
+    hidden_for: [instructor]
   - name: bill_to
     type: link
     to: customer
     label: {id: Tagihan dikirim ke}
     hidden_for: [instructor]
-  - {name: notes, type: text, label: {id: Catatan}}
+  - {name: notes, type: text, label: {id: Catatan}, hidden_for: [instructor]}
 rules:
   - name: employee_needs_company
     on: save
