@@ -4,7 +4,7 @@
 # No cashier, receipt or shift here. Built on the fnb_cabang modules without recipes: an item without a recipe takes
 # itself out of stock on a sale.
 name: ritel_cabang
-version: 1.0.0
+version: 1.1.0
 title: {id: Ritel multi cabang, en: Multi-branch retail}
 label: {id: Rangka Ritel Cabang, en: Rangka Multi-branch Retail}
 summary:
@@ -30,7 +30,7 @@ home: {dashboard: ritel_overview}
 # stock but has no menu entry: a shop sells goods as they are.
 menu:
   - group: {id: Penjualan toko}
-    items: [outlet_sales, outlet_takings]
+    items: [outlet_sales, outlet_takings, pos_refund, outlet_return]
   - group: {id: Stok}
     items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
   - group: {id: Pembelian}
