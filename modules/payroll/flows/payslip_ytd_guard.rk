@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payslip_ytd_guard
+label: {id: Slip gaji dengan penghasilan sebelumnya yang basi tidak bisa diajukan}
+# Inside the submit: when the earlier submitted months of this worker and year no longer match the slip's year-to-date
+# fields (an earlier slip was submitted or cancelled after this one was made), the submit is refused: delete the draft and make it
+# again. The December recomputation never runs on stale sums.
+on: payslip.submitted
+steps:
+  - find_all: payslip
+    where: worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1
+    as: prev
+  - if: size(prev) != event.ytd_months || prev.map(p, p.gross_taxable).sum() != event.ytd_gross || prev.map(p, p.pph21).sum() != event.ytd_pph21 || prev.map(p, p.jht_employee + p.jp_employee).sum() != event.ytd_pension
+    create: payroll_guard
+    set:
+      reason: "'ytd_stale'"
+      document: event.name

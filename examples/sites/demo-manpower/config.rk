@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for an outsourcing firm (pilot A shape): twenty operators placed at one client factory, paid monthly from
+# the attendance recap, billed to the client as wages + BPJS + a 10% fee. Data: examples/fixtures/demo-manpower
+# (synthetic, made by its generate.py; NIK and names are fake).
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: PT Contoh Tenaga Mandiri}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: true}
+orgs:
+  tenaga_contoh:
+    name: PT Contoh Tenaga Mandiri
+    code: CTM
+    config:
+      org: {legal_name: PT Contoh Tenaga Mandiri}
+      tax: {pkp: true}
+      numbering:
+        invoice: {pattern: "INV/{ORG}/{YY}/{####}", reset: yearly}
+apps: [jasa_proyek]
+plan: tumbuh
+sso: {domains: [contohtenaga.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, finance_manager]}

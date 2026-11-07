@@ -75,3 +75,6 @@ jobs:
       - name: day_one demo-produksi
         working-directory: rangka-apps
         run: python tests/day_one.py --site demo-produksi
+      - name: day_one demo-manpower
+        working-directory: rangka-apps
+        run: python tests/day_one.py --site demo-manpower

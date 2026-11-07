@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payslip_from_recap
+label: {id: Slip gaji dari rekap absensi}
+# A submitted monthly attendance recap (timesheet with period_to) of a worker who has an active payroll profile becomes
+# a draft payslip of the open payroll run of that project whose period holds the recap's start. No run open, or no
+# profile: nothing happens (the recap still books its labour cost on the project). A flow's writes start no flows, so
+# the second-slip guard and the year to date of payslip_month_guard_created and payslip_ytd_on_create are done here.
+# Runs as the person submitting the
+# recap (project admin), who may create but not submit a slip. A second recap of the same worker in the same run is
+# refused by the slip's key (one live slip per worker per tax month), which rolls the recap's submit back.
+on: timesheet.submitted
+if: event.period_to != '' && event.rate_basis == 'day'
+steps:
+  - find: payroll_profile
+    where: worker == event.worker && active
+    as: prof
+  - if: prof != null
+    find: payroll_run
+    where: project == event.project && !closed && period_from <= event.work_date && period_to >= event.work_date
+    as: run
+  - if: prof != null && run != null
+    find: payslip
+    where: worker == event.worker && tax_year == run.tax_year && tax_month == run.tax_month && docstatus != 2
+    as: other
+  - if: prof != null && run != null && other != null
+    create: payroll_guard
+    set:
+      reason: "'second_slip'"
+      document: other.name
+  - if: prof != null && run != null
+    find_all: payslip
+    where: worker == event.worker && tax_year == run.tax_year && tax_month < run.tax_month && docstatus == 1
+    as: prev
+  - if: prof != null && run != null
+    create: payslip
+    set:
+      payroll_run: run.name
+      profile: prof.name
+      timesheet: event.name
+      days: event.days
+      overtime_hours: event.overtime_hours
+      day_rate: event.cost_rate
+      overtime_rate: event.overtime_cost_rate
+      ytd_gross: "prev.map(p, p.gross_taxable).sum()"
+      ytd_pph21: "prev.map(p, p.pph21).sum()"
+      ytd_pension: "prev.map(p, p.jht_employee + p.jp_employee).sum()"
+      ytd_months: "size(prev)"
