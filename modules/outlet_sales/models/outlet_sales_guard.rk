@@ -18,6 +18,7 @@ fields:
     options:
       - {value: sales_returned, label: {id: Penjualan sudah dikembalikan ke stok}}
       - {value: over_returned, label: {id: Retur melebihi yang diretur di kasir}}
+      - {value: sales_cancelled, label: {id: Penjualan sudah dibatalkan}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: sales_returned
@@ -28,3 +29,7 @@ rules:
     on: save
     check: reason != 'over_returned'
     message: {id: 'Jumlah kembali ke stok melebihi barang yang diretur di kasir (ada retur lain yang baru diajukan); cek Retur di kasir'}
+  - name: sales_cancelled
+    on: save
+    check: reason != 'sales_cancelled'
+    message: {id: 'Penjualan ini baru saja dibatalkan; retur ke stok dari penjualan yang batal tidak bisa diajukan'}

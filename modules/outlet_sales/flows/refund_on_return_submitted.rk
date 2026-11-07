@@ -7,6 +7,12 @@ label: {id: Perbarui retur di kasir}
 on: outlet_return.submitted
 steps:
   - {find: pos_refund, where: name == event.refund, as: f}
+  # read after that lock: a cancel of the sale that committed meanwhile is seen here (sales_cancel_guard takes the
+  # same lock), and the return is refused instead of bringing back goods of a cancelled sale (audit stock-returns M1)
+  - {find: outlet_sales, where: name == event.sales && docstatus == 1, as: sale}
+  - if: sale == null
+    create: outlet_sales_guard
+    set: {reason: "'sales_cancelled'", document: event.name}
   # a find returns the record without its table rows: an update that changes nothing returns it whole
   - update: f
     if: f != null

@@ -12,7 +12,7 @@ EPS = 0.0005
 
 def bind(m):
     """Take the helpers of tests/day_one.py."""
-    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "messages", "balance", "moves_of", "rows_all"):
+    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "messages", "balance", "moves_of", "rows_all", "dashboard", "num", "kernel_today"):
         H[k] = getattr(m, k)
     globals().update(H)
 
@@ -64,7 +64,16 @@ def scenario_ritel_returns(api):
     if cbr:
         st, resp = staff.create("outlet_return", {"refund": cbr["name"], "items": [{"item": api.get("pos_refund", cbr["name"])["items"][0]["item"], "qty": 1}]})
         check("Cileunyi staff returning a Cibiru refund -> refused (403 or 404, outlet scope)", st in (403, 404), (st, resp))
+    # a return dated before its sale, or in the future -> refused (audit L1)
+    import datetime
+    for d, label in ((rf["date"][:10], None), ("2099-12-31", "in the future")):
+        if label is None:
+            d = (datetime.date.fromisoformat(d) - datetime.timedelta(days=1)).isoformat()
+            label = "before the sale"
+        st, resp = staff.create("outlet_return", {"refund": rf["name"], "return_date": d, "items": [{"item": item, "qty": 1}]})
+        check(f"a return dated {label} -> 422", refused(st, resp, "Tanggal kembali ke stok"), (st, resp))
     # one unit back on the shelf, by the outlet's own staff, at the cost the sale took it out
+    cogs_before = num(dashboard(api, "ritel_stock", 90).get("cogs_period", {}))
     before = qty_of(balance(api, CLY, item))
     st, ret = staff.create("outlet_return", {"refund": rf["name"], "items": [{"item": item, "qty": 1}]})
     if not check("Cileunyi staff makes a Retur ke stok (201; outlet and sale from the refund)", st == 201 and ret.get("outlet") == CLY and ret.get("sales") == rf["sales"], (st, ret)):
@@ -81,6 +90,12 @@ def scenario_ritel_returns(api):
     eqv = qty_of(balance(api, CLY, item))
     check("Cileunyi stock of the item +1", abs(eqv - before - 1) < EPS, (before, eqv))
     eq("Retur di kasir: 1 returned", returned(api, rf["name"], item)[0], 1)
+    # HPP drops by the value that came back, and the unit is no longer counted as sold (audit H1, M2)
+    if mv:
+        back = mv[0]["value"]
+        eq("ritel_stock HPP terjual (90 days) lower by the returned value", num(dashboard(api, "ritel_stock", 90).get("cogs_period", {})), cogs_before - back)
+        eq("ritel_overview HPP kembali dari retur = the return's value", num(dashboard(api, "ritel_overview", 90).get("returned_cost", {})), back)
+        eq("the return's move counts -1 sold (sold_qty)", api.get("stock_move", mv[0]["name"]).get("sold_qty"), -1)
     # the rest, then one more: the second is refused at submit and moves nothing
     rest = refunded - 1
     if rest > EPS:
@@ -106,6 +121,40 @@ def scenario_ritel_returns(api):
     check("head office cancels the return", st == 200, (st, resp))
     check("Cileunyi stock back to before the return", abs(qty_of(balance(api, CLY, item)) - before) < EPS, (before, balance(api, CLY, item)))
     eq("Retur di kasir: nothing returned again", returned(api, rf["name"], item)[0], 0)
+    race_cancel_vs_return(api, hq, staff, CLY, item)
+
+
+def race_cancel_vs_return(api, hq, staff, outlet, item, rounds=6):
+    """Audit M1: a sale holding only a refund line (a receipt of an earlier day) is cancelled while its return is
+    submitted. Never both: either the cancel is refused (live return) or the return is (sale cancelled)."""
+    import threading
+    both, done = [], 0
+    for i in range(rounds):
+        st, s = hq.create("outlet_sales", {"outlet": outlet, "date": kernel_today().isoformat(), "source": "file",
+                                           "lines": [{"item": item, "qty": -1, "gross": 0, "refund": 10_000}]})
+        if st != 201:
+            fail("race: a refund-only sale from a POS file", (st, s))
+            return
+        st, r = hq.verb("outlet_sales", s["name"], "submit")
+        if st != 200:
+            fail("race: submit the refund-only sale", (st, r))
+            return
+        sale = r.get("name", s["name"])
+        rf = next(iter(rows_all(api, "pos_refund", f"sales == '{sale}'")), None)
+        st, ret = staff.create("outlet_return", {"refund": rf["name"], "items": [{"item": item, "qty": 1}]})
+        if st != 201:
+            fail("race: draft return", (st, ret))
+            return
+        res = {}
+        t1 = threading.Thread(target=lambda: res.__setitem__("cancel", hq.verb("outlet_sales", sale, "cancel")[0]))
+        t2 = threading.Thread(target=lambda: res.__setitem__("submit", staff.verb("outlet_return", ret["name"], "submit")[0]))
+        t1.start(); t2.start(); t1.join(); t2.join()
+        if res.get("cancel") == 200 and res.get("submit") == 200:
+            both.append((sale, ret["name"]))
+        done += 1
+        if res.get("submit") == 200:   # leave the sale cancellable for the next round's stock
+            hq.verb("outlet_return", ret["name"], "cancel")
+    check(f"race cancel sale vs submit return, {done} rounds: never both committed", done == rounds and not both, both)
 
 
 def scenario_fnb_returns(api):

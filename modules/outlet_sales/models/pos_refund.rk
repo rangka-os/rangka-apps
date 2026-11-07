@@ -20,6 +20,12 @@ fields:
   - {name: items, type: table, of: pos_refund_item, label: {id: Barang diretur}, read_only: true}
   - {name: refunded_qty, type: float, label: {id: Qty diretur}, compute: "items.map(i, i.refunded_qty).sum()", in_list: true}
   - {name: open_qty, type: float, label: {id: Belum kembali ke stok}, compute: "items.map(i, i.refunded_qty - i.returned_qty).sum()", in_list: true}
+rules:
+  # every field is read_only, so a record typed by a person has no sale: only the flow makes one (QA N1)
+  - name: has_sales
+    on: save
+    check: sales != ''
+    message: {id: 'Retur di kasir dibuat otomatis dari penjualan yang punya baris retur'}
 views:
   list:
     columns: [name, date, outlet, sales, refunded_qty, open_qty]

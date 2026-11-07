@@ -37,6 +37,10 @@ rules:
     on: save
     check: sales == refund.sales && outlet == refund.outlet && sales.docstatus == 1
     message: {id: 'Retur ke stok hanya dari penjualan yang sudah diajukan; kalau penjualannya dibatalkan, returnya tidak bisa kembali ke stok'}
+  - name: date_in_range
+    on: save
+    check: return_date >= sales.date && return_date <= today()
+    message: {id: 'Tanggal kembali ke stok tidak boleh sebelum tanggal penjualan atau setelah hari ini'}
   - name: items_on_refund
     on: save
     check: "items.map(l, refund.items.map(r, r.item == l.item ? 1 : 0).sum() > 0 ? 0 : 1).sum() == 0"

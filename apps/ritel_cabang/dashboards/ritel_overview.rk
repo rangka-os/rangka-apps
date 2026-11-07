@@ -29,12 +29,25 @@ widgets:
   - name: margin_period
     type: number
     label: {id: Laba kotor}
-    description: {id: Penjualan bersih dikurangi harga pokok barang terjual}
+    description: {id: 'Penjualan bersih dikurangi harga pokok saat terjual; barang yang kembali ke stok ada di HPP kembali dari retur'}
     model: outlet_sales
     aggregate: sum
     field: margin
     filter: docstatus == 1
     period: date
+    compact: true
+    span: 3
+  # Goods back in stock with a Retur ke stok (contract 0022): their cost left HPP after the sale's margin was booked. A
+  # widget reads one model, so the margin above is per sale and this is what it rose by since (audit stock-returns H1).
+  - name: returned_cost
+    type: number
+    label: {id: HPP kembali dari retur}
+    description: {id: 'Harga pokok barang yang kembali ke stok lewat Retur ke stok; tambahkan ke Laba kotor'}
+    model: stock_move
+    aggregate: sum
+    field: value
+    filter: voucher_type == 'outlet_return'
+    period: posting_date
     compact: true
     span: 3
   - name: takings_short
@@ -85,13 +98,12 @@ widgets:
     filter: docstatus == 1
     period: date
     span: 6
-  # Returned goods are not put back in stock yet (kernel): the returned value per day tells the owner how much
-  # stock to correct at the next count.
+  # Refunds per day at the cashier; goods put back on the shelf come back with a Retur ke stok (menu Retur di kasir).
   - name: refund_by_day
     type: chart
     chart: bar
     label: {id: Retur per hari}
-    description: {id: 'Barang retur belum kembali ke stok otomatis, koreksi saat opname'}
+    description: {id: 'Nilai retur di kasir; barang yang dijual lagi dikembalikan ke stok lewat Retur ke stok'}
     model: outlet_sales
     group_by: date
     grain: day
