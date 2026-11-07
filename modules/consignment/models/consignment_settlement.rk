@@ -63,8 +63,15 @@ rules:
     message: {id: 'Bulan ditulis TTTT-BB, misalnya 2026-10'}
   - name: qty_not_negative
     on: save
-    check: "items.map(i, i.qty_received < 0 || i.qty_sold < 0 || i.qty_returned < 0 ? 1 : 0).sum() == 0"
-    message: {id: Jumlah barang tidak boleh negatif}
+    check: "items.map(i, i.qty_received < 0 || i.qty_returned < 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah diterima dan dikembalikan tidak boleh negatif}
+  # Terjual may be negative: a sale of an earlier, already settled month came back to the shelf with a Retur ke stok
+  # (contract 0022), so this month pays the consignor that much less and a unit sold again is paid once (audit
+  # stock-returns r2 F2). The settlement as a whole never asks the consignor for money: carry what is left over.
+  - name: total_not_negative
+    on: save
+    check: total >= 0
+    message: {id: 'Total setoran tidak boleh minus: isi Terjual sebatas penjualan bulan ini, sisa koreksi retur dibawa ke setoran bulan berikutnya'}
   - name: rate_for_sold_items
     on: save
     check: "items.map(i, i.qty_sold > 0 && i.rate <= 0 ? 1 : 0).sum() == 0"

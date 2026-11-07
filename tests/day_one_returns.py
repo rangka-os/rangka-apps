@@ -96,6 +96,10 @@ def scenario_ritel_returns(api):
         eq("ritel_stock HPP terjual (90 days) lower by the returned value", num(dashboard(api, "ritel_stock", 90).get("cogs_period", {})), cogs_before - back)
         eq("ritel_overview HPP kembali dari retur = the return's value", num(dashboard(api, "ritel_overview", 90).get("returned_cost", {})), back)
         eq("the return's move counts -1 sold (sold_qty)", api.get("stock_move", mv[0]["name"]).get("sold_qty"), -1)
+        # the books follow the stock (audit r2 F1): Dr Persediaan / Cr HPP at the value that came back
+        gl = rows_all(api, "gl_entry", f"voucher_type == 'outlet_return' && voucher == '{ret['name']}'")
+        eq("jurnal retur ke stok: Dr Persediaan 11400 / Cr HPP 51100 = the return's value",
+           sorted((g["account"], round(g["amount"])) for g in gl), sorted([("11400", round(back)), ("51100", -round(back))]))
     # the rest, then one more: the second is refused at submit and moves nothing
     rest = refunded - 1
     if rest > EPS:
@@ -120,8 +124,31 @@ def scenario_ritel_returns(api):
     st, resp = hq.verb("outlet_return", ret["name"], "cancel")
     check("head office cancels the return", st == 200, (st, resp))
     check("Cileunyi stock back to before the return", abs(qty_of(balance(api, CLY, item)) - before) < EPS, (before, balance(api, CLY, item)))
+    gl = rows_all(api, "gl_entry", f"voucher_type == 'outlet_return' && voucher == '{ret['name']}'")
+    net = {}
+    for g in gl:
+        net[g["account"]] = net.get(g["account"], 0) + g["amount"]
+    check("cancelling the return reverses its journal (Persediaan and HPP net 0)", gl and all(abs(v) < 1 for v in net.values()), net)
+    consignment_correction(api)   # the owner: head office may not delete a settlement
     eq("Retur di kasir: nothing returned again", returned(api, rf["name"], item)[0], 0)
     race_cancel_vs_return(api, hq, staff, CLY, item)
+
+
+def consignment_correction(hq):
+    """Audit r2 F2: consigned goods sold and settled in one month, back on the shelf the next. Terjual may be negative
+    (the correction), the settlement as a whole may not: what is left is carried to the next month."""
+    items = [i for i in rows_all(hq, "item", "consignor != ''")][:2]
+    if not check("two consigned items to settle", len(items) == 2, len(items)):
+        return
+    v = items[0]["consignor"]
+    items = [i for i in items if i["consignor"] == v] or items[:1]
+    line = lambda i, sold: {"item": i["name"], "qty_sold": sold, "rate": 10_000}
+    st, bad = hq.create("consignment_settlement", {"consignor": v, "month": "2099-01", "items": [line(items[0], -1)]})
+    check("a settlement whose total would be minus -> 422 (carry the correction to next month)", refused(st, bad, "tidak boleh minus"), (st, bad))
+    lines = [line(items[0], -1), dict(line(items[0], 3), qty_received=3)]
+    st, ok_ = hq.create("consignment_settlement", {"consignor": v, "month": "2099-02", "items": lines})
+    if check("a correction line -1 next to 3 sold is accepted (pays 2)", st == 201 and ok_.get("total") == 20_000, (st, ok_)):
+        hq.call("DELETE", f"/api/v1/r/consignment_settlement/{Api.q(ok_['name'])}")
 
 
 def race_cancel_vs_return(api, hq, staff, outlet, item, rounds=6):
