@@ -31,7 +31,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | project_expense (sales only `reimbursable` rows, billed on to the client; purchasing only rows linking a `vendor_bill`, for its cancel guard) | r | all but d | r | all | | | |
 | project_guard (never stored; a flow's refusal) | | c | c | | | | |
 | project_ledger (`append_only`, contract 0026: rows written by flows only, nobody edits or deletes one; create is what those flows need; sales only `kind == 'revenue'`, purchasing only `kind == 'vendor'`) | r c | r c e | r c | r c e | | | |
-| sales_invoice | all | all | | r | | | r |
+| sales_invoice (head office: the Coretax faktur file) | all | all | | r | r e p | | r |
 | credit_guard (never stored; a flow's refusal when a submit at the same moment used the customer's credit limit) | c | c | | c | c | | |
 | withholding | r p | all | | | | | |
 | invoice_reminder | r c w d e | r c w d e | | | | | r c |
@@ -43,7 +43,8 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | bank_transaction_claim (written by the bank_statement flows) | r c w e | r c w e | | | r c w | | |
 | purchase_request | | | all | r c w s | all | r c w s | |
 | purchase_order | | r p | all | | all | | |
-| vendor_bill | | r s p | all | | all | | |
+| vendor_bill (finance exports it for the Coretax BPPU file) | | r s e p | all | | all | | |
+| tax_period (Coretax downloads: an export of the period's invoices and bills) | | r c w d e p | | | r c w d e p | | |
 | goods_receipt | | | all | | all + i (`opening_stock` import) | r c w s | |
 | stock_move, stock_balance (written by hooks only; sales_manager reads the moves of delivery notes and sales returns, for the accounting flow of a return) | r (stock_move only) | | | | r e | r | |
 | stock_transfer | | | | | all | r | |

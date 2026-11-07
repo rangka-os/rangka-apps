@@ -9,7 +9,8 @@ on_submit: [procurement.post_payable]
 on_cancel: [procurement.reverse_payable]
 permissions:
   - {role: purchasing_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
-  - {role: finance_manager, read: true, submit: true, print: true}
+  # finance downloads the Coretax withholding file (module coretax), an export of these bills
+  - {role: finance_manager, read: true, submit: true, print: true, export: true}
   - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
 fields:
   - name: vendor
@@ -88,6 +89,55 @@ fields:
     label: {id: PPh 23 yang kami potong}
     help: {id: 'Dipotong dari pembayaran ke pemasok jasa; bukti potong kami terbitkan'}
     default: '0'
+  # The withholding slip (BPPU) of this bill in the Coretax file (module coretax): the tax object, the base (empty =
+  # the bill's DPP) and the rate. pph23_amount stays what was withheld; the export refuses a bill whose amount is
+  # not base x rate. The recipient's identity is computed from the vendor while the bill is a draft.
+  - name: pph23_object_code
+    type: data
+    label: {id: Kode objek PPh 23}
+    default: vendor.pph23_object_code
+    depends_on: app_installed('coretax') && pph23_amount > 0
+  - name: pph23_dpp
+    type: currency
+    label: {id: DPP PPh 23}
+    help: {id: 'Kosongkan bila sama dengan DPP tagihan'}
+    default: '0'
+    depends_on: app_installed('coretax') && pph23_amount > 0
+  - name: pph23_rate
+    type: percent
+    label: {id: Tarif PPh 23}
+    default: '2'
+    depends_on: app_installed('coretax') && pph23_amount > 0
+  - name: pph23_base
+    type: currency
+    label: {id: Dasar PPh 23}
+    hidden: true
+    compute: "pph23_dpp > 0 ? pph23_dpp : dpp"
+  - name: recipient_tin
+    type: data
+    label: {id: NPWP/NIK penerima penghasilan}
+    hidden: true
+    depends_on: app_installed('coretax')
+    compute: "vendor.npwp != '' ? vendor.npwp : vendor.nik"
+  - name: recipient_idtku
+    type: data
+    label: {id: NITKU penerima penghasilan}
+    hidden: true
+    depends_on: app_installed('coretax')
+    compute: "vendor.nitku != '' ? vendor.nitku : (vendor.npwp != '' ? vendor.npwp + '000000' : (vendor.nik != '' ? vendor.nik + '000000' : ''))"
+  # The first bill of the amend chain and its date (frozen at submit): a bill whose chain started in an earlier period
+  # had its withholding slip reported there; the correction is a pembetulan in Coretax, not a new slip.
+  - name: replaces
+    type: link
+    to: vendor_bill
+    label: {id: Mengganti tagihan}
+    hidden: true
+    compute: amended_from
+  - name: origin_bill_date
+    type: data
+    label: {id: Tanggal tagihan asal}
+    hidden: true
+    compute: "replaces == '' ? bill_date : (replaces.origin_bill_date != '' ? replaces.origin_bill_date : replaces.bill_date)"
   - name: amount_due
     type: currency
     label: {id: Tagihan bersih}
@@ -146,6 +196,18 @@ rules:
     on: save
     check: (posting != 'project' || project != '') && (project == '' || posting == 'project' || posting == null)
     message: {id: 'Tagihan dengan proyek dicatat sebagai biaya proyek, dan biaya proyek perlu proyeknya'}
+  - name: pph23_rate_range
+    on: save
+    check: pph23_rate >= 0 && pph23_rate <= 100
+    message: {id: Tarif PPh 23 antara 0 dan 100 persen}
+  - name: pph23_dpp_range
+    on: save
+    check: pph23_dpp >= 0 && pph23_dpp <= dpp
+    message: {id: DPP PPh 23 antara 0 dan DPP tagihan}
+  - name: pph23_object_code_format
+    on: save
+    check: "pph23_object_code == '' || pph23_object_code.matches('^24-10[0-6]-[0-9]{2}$')"
+    message: {id: 'Kode objek PPh 23 berbentuk 24-1xx-xx (lihat daftar objek pajak Coretax)'}
   - name: project_open
     on: save
     check: project == '' || project.state != 'closed'
@@ -201,7 +263,7 @@ views:
       - section: {id: Pajak & potongan}
         columns:
           - [subtotal, dpp, tax_rate, dpp_num, dpp_den, ppn, grand_total]
-          - [pph23_amount, amount_due, paid_amount, outstanding]
+          - [pph23_amount, pph23_object_code, pph23_dpp, pph23_rate, amount_due, paid_amount, outstanding]
       - section: {id: Catatan}
         fields: [notes]
       - section: {id: Mata uang asing}

@@ -19,6 +19,7 @@ modules:
   stock: ^1.0
   orders: ^1.0
   invoicing: ^1.0
+  coretax: ^1.0
   payments: ^1.0
   procurement: ^1.0
   distribution: ^1.0
@@ -38,6 +39,8 @@ menu:
     items: [purchase_order, goods_receipt, vendor_bill]
   - group: {id: Pembukuan}
     items: [financial_report, gl_entry, opening_balance, period_close]
+  - group: {id: Pajak}
+    items: [tax_period]
   - group: {id: Data induk}
     items: [customer, item, item_category, price_list, outlet, uom, vendor, user]
 onboarding:

@@ -21,6 +21,7 @@ modules:
   procurement: ^1.0
   payments: ^1.0
   invoicing: ^1.0
+  coretax: ^1.0
 dashboards: [produksi_overview, produksi_upah]
 roles: [head_office, outlet_staff]
 home: {dashboard: produksi_overview}
@@ -36,6 +37,8 @@ menu:
     items: [purchase_order, goods_receipt, vendor_bill, payment]
   - group: {id: Pembukuan}
     items: [financial_report, gl_entry, opening_balance, period_close]
+  - group: {id: Pajak}
+    items: [tax_period]
   - group: {id: Data induk}
     items: [item, item_category, outlet, uom, vendor]
 onboarding:

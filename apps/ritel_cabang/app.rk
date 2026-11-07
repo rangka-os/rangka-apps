@@ -21,6 +21,7 @@ modules:
   procurement: ^1.0
   payments: ^1.0
   invoicing: ^1.0
+  coretax: ^1.0
   consignment: ^1.0
 dashboards: [ritel_overview, ritel_stock, ritel_tax]
 roles: [head_office, outlet_staff]
@@ -38,6 +39,8 @@ menu:
     items: [consignment_settlement]
   - group: {id: Pembukuan}
     items: [financial_report, gl_entry, opening_balance, period_close]
+  - group: {id: Pajak}
+    items: [tax_period]
   - group: {id: Data induk}
     items: [item, item_category, outlet, uom, uom_conversion, vendor]
 onboarding:

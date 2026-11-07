@@ -19,3 +19,15 @@ fields:
     required: true
     in_list: true
     unique: true
+  # e-Faktur (module coretax): the Coretax unit code (UM.0018 Unit, UM.0026 Hari, UM.0030 Kegiatan, ...); empty = UM.0033 Lainnya.
+  - name: coretax_unit
+    type: data
+    label: {id: Kode satuan Coretax}
+    help: {id: 'Misalnya UM.0018 Unit, UM.0003 Kilogram, UM.0026 Hari, UM.0027 Jam, UM.0024 Bulan, UM.0030 Kegiatan. Kosongkan = UM.0033 Lainnya'}
+    in_list: true
+    depends_on: app_installed('coretax')
+rules:
+  - name: coretax_unit_format
+    on: save
+    check: "coretax_unit == '' || coretax_unit.matches('^UM[.][0-9]{4}$')"
+    message: {id: 'Kode satuan Coretax berbentuk UM.0000'}
