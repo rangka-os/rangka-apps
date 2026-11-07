@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payroll_close_on_submit
+label: {id: 'Tutup periode gaji, biaya ke untung proyek dan faktur klien'}
+# 0. The run is closed: no slip can be submitted into it or cancelled out of it.
+# 1. The project ledger gets the employer cost the recaps did not book (allowances, THR, employer BPJS), so the margin
+#    is revenue minus the full cost of the workers.
+# 2. The client invoice is made as a draft (a flow cannot submit): wages on their own line, outside the PPh 23 base
+#    (PMK 141/2015), the employer BPJS and the fee inside it; PPN comes from the invoice on the whole amount
+#    (docs/payroll.md). Fee only: one fee line. The notes carry this document's number in (), which
+#    payroll_close_on_cancel looks for, and the run's in []: closing the run again after a cancel refreshes the
+#    run's draft invoice instead of making a second one.
+on: payroll_close.submitted
+steps:
+  - find: payroll_run
+    where: name == event.payroll_run
+    as: run
+  - update: run
+    set: {closed: 'true', closed_by: event.name}
+  - if: event.extra_cost != 0
+    create: project_ledger
+    set:
+      project: event.project
+      posting_date: event.period_to
+      entry: "'post'"
+      kind: "'payroll'"
+      source_model: event.model
+      source_name: event.name
+      payroll_close: event.name
+      amount: "0 - event.extra_cost"
+  - if: event.billing_mode != 'none'
+    find: sales_invoice
+    where: project == event.project && docstatus == 0 && notes.contains('[' + event.payroll_run + ']')
+    as: old
+  - if: event.billing_mode != 'none' && old != null
+    update: old
+    set:
+      posting_date: "event.invoice_date != '' ? event.invoice_date : today()"
+      pph23_applies: event.pph23_applies
+      notes: "event.billing_mode == 'fee_only' ? 'Management fee tenaga kerja periode ' + event.period_from + ' s.d. ' + event.period_to + ' (' + event.name + ') [' + event.payroll_run + ']' : 'Tagihan tenaga kerja periode ' + event.period_from + ' s.d. ' + event.period_to + ' (' + event.name + ') [' + event.payroll_run + ']'"
+      items: >-
+        event.billing_mode == 'fee_only' ? [{'item': event.fee_item, 'description': 'Management fee', 'qty': 1, 'rate': event.fee_amount, 'pph23_exclude': false}] : [{'item': event.wage_item, 'description': 'Gaji, tunjangan, lembur dan THR tenaga kerja', 'qty': 1, 'rate': event.total_cash_gross, 'pph23_exclude': true},
+         {'item': event.bpjs_item, 'description': 'Iuran BPJS Ketenagakerjaan dan Kesehatan bagian perusahaan', 'qty': 1, 'rate': event.total_employer_bpjs, 'pph23_exclude': false},
+         {'item': event.fee_item, 'description': 'Management fee', 'qty': 1, 'rate': event.fee_amount, 'pph23_exclude': false}]
+  - if: event.billing_mode == 'wages_plus_fee' && old == null
+    create: sales_invoice
+    set:
+      customer: event.customer
+      project: event.project
+      posting_date: "event.invoice_date != '' ? event.invoice_date : today()"
+      pph23_applies: event.pph23_applies
+      pph23_rate: '2'
+      notes: "'Tagihan tenaga kerja periode ' + event.period_from + ' s.d. ' + event.period_to + ' (' + event.name + ') [' + event.payroll_run + ']'"
+      items: >-
+        [{'item': event.wage_item, 'description': 'Gaji, tunjangan, lembur dan THR tenaga kerja', 'qty': 1, 'rate': event.total_cash_gross, 'pph23_exclude': true},
+         {'item': event.bpjs_item, 'description': 'Iuran BPJS Ketenagakerjaan dan Kesehatan bagian perusahaan', 'qty': 1, 'rate': event.total_employer_bpjs, 'pph23_exclude': false},
+         {'item': event.fee_item, 'description': 'Management fee', 'qty': 1, 'rate': event.fee_amount, 'pph23_exclude': false}]
+  - if: event.billing_mode == 'fee_only' && old == null
+    create: sales_invoice
+    set:
+      customer: event.customer
+      project: event.project
+      posting_date: "event.invoice_date != '' ? event.invoice_date : today()"
+      pph23_applies: event.pph23_applies
+      pph23_rate: '2'
+      notes: "'Management fee tenaga kerja periode ' + event.period_from + ' s.d. ' + event.period_to + ' (' + event.name + ') [' + event.payroll_run + ']'"
+      items: "[{'item': event.fee_item, 'description': 'Management fee', 'qty': 1, 'rate': event.fee_amount, 'pph23_exclude': false}]"

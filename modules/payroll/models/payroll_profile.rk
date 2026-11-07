@@ -1,0 +1,136 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: payroll_profile
+label: {id: Data gaji pekerja, en: Payroll profile}
+icon: user
+naming: PGJ-{####}
+title_field: worker
+# One per worker: what payroll needs beyond the worker card (identity for PPh 21 and BPJS, PTKP status, how the person
+# is paid, fixed and daily allowances, which BPJS programmes apply). Kept apart from workforce.worker so only finance
+# writes it; the project admin reads it because the payslip of a recap is made inside the recap's submit, as that person.
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, export: true, import: true, print: true}
+  - {role: project_admin, read: true}
+fields:
+  - name: worker
+    type: link
+    to: worker
+    label: {id: Tenaga kerja}
+    required: true
+    unique: true
+    in_list: true
+  # Synthetic in the demo; a real NIK never goes into a repository.
+  - name: nik
+    type: data
+    label: {id: NIK}
+  - name: npwp
+    type: data
+    label: {id: NPWP (kosongkan bila NIK dipakai sebagai NPWP)}
+  # PMK 168/2023: without a valid tax number (NIK or NPWP) PPh 21 is 20% higher.
+  - name: has_tax_id
+    type: check
+    label: {id: Punya NIK/NPWP valid}
+    default: 'true'
+  - name: ptkp_status
+    type: select
+    label: {id: Status PTKP}
+    required: true
+    default: "'tk0'"
+    in_list: true
+    options:
+      - {value: tk0, label: {id: TK/0}}
+      - {value: tk1, label: {id: TK/1}}
+      - {value: tk2, label: {id: TK/2}}
+      - {value: tk3, label: {id: TK/3}}
+      - {value: k0, label: {id: K/0}}
+      - {value: k1, label: {id: K/1}}
+      - {value: k2, label: {id: K/2}}
+      - {value: k3, label: {id: K/3}}
+  - name: ter_category
+    type: data
+    label: {id: Kategori TER}
+    compute: "ptkp_status == 'k3' ? 'C' : (ptkp_status in ['tk2', 'tk3', 'k1', 'k2'] ? 'B' : 'A')"
+    in_list: true
+  # daily: upah harian (worker.cost_day_rate, or the assignment's) x days present in the recap; monthly: a fixed salary.
+  - name: pay_basis
+    type: select
+    label: {id: Dasar gaji}
+    required: true
+    default: "'daily'"
+    in_list: true
+    options:
+      - {value: daily, label: {id: Harian (upah x hari hadir)}}
+      - {value: monthly, label: {id: Bulanan (gaji pokok tetap)}}
+  - name: monthly_salary
+    type: currency
+    label: {id: Gaji pokok per bulan}
+    default: '0'
+    depends_on: pay_basis == 'monthly'
+  # Paid every month whatever the days present; part of the BPJS wage and of the hourly overtime wage.
+  - name: fixed_allowance
+    type: currency
+    label: {id: Tunjangan tetap per bulan}
+    default: '0'
+  # Per day present (meal, transport): not part of the BPJS wage.
+  - name: daily_allowance
+    type: currency
+    label: {id: Tunjangan per hari hadir}
+    default: '0'
+  - name: bpjs_tk
+    type: check
+    label: {id: 'Ikut BPJS Ketenagakerjaan (JKK, JKM, JHT)'}
+    default: 'true'
+  # JP stops at the pension age (57 in 2019, rising every three years); untick then.
+  - name: bpjs_jp
+    type: check
+    label: {id: Ikut Jaminan Pensiun}
+    default: 'true'
+  - name: bpjs_kes
+    type: check
+    label: {id: Ikut BPJS Kesehatan}
+    default: 'true'
+  - name: bpjs_tk_no
+    type: data
+    label: {id: No. BPJS Ketenagakerjaan}
+  - name: bpjs_kes_no
+    type: data
+    label: {id: No. BPJS Kesehatan}
+  - name: bank_name
+    type: data
+    label: {id: Bank}
+  - name: bank_account
+    type: data
+    label: {id: No. rekening}
+  - name: active
+    type: check
+    label: {id: Aktif}
+    default: 'true'
+rules:
+  - name: pay_not_negative
+    on: save
+    check: monthly_salary >= 0 && fixed_allowance >= 0 && daily_allowance >= 0
+    message: {id: 'Gaji dan tunjangan tidak boleh negatif'}
+  - name: monthly_needs_salary
+    on: save
+    check: pay_basis != 'monthly' || monthly_salary > 0
+    message: {id: 'Pekerja bulanan butuh gaji pokok per bulan'}
+  - name: nik_digits
+    on: save
+    check: nik == '' || nik.matches('^[0-9]{16}$')
+    message: {id: 'NIK harus 16 angka'}
+views:
+  list:
+    columns: [name, worker, ptkp_status, ter_category, pay_basis, active]
+  form:
+    layout:
+      - section: {id: Pekerja dan pajak}
+        columns:
+          - [worker, nik, npwp, has_tax_id]
+          - [ptkp_status, ter_category, active]
+      - section: {id: Gaji}
+        columns:
+          - [pay_basis, monthly_salary]
+          - [fixed_allowance, daily_allowance]
+      - section: {id: BPJS dan rekening}
+        columns:
+          - [bpjs_tk, bpjs_jp, bpjs_kes, bpjs_tk_no, bpjs_kes_no]
+          - [bank_name, bank_account]

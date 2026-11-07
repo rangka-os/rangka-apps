@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: invoice_payroll_tag_lock
+label: {id: Catatan faktur tenaga kerja dikunci}
+# The client invoice of a payroll close is found by the close's and the run's numbers in its notes (an invoice cannot
+# link the payroll module). Nobody edits those notes by hand; the close's own flow rewrites them (a flow's writes start
+# no flows, so this does not refuse it).
+on: sales_invoice.updated
+if: event.before != null && event.before.notes.contains('[PAY-') && event.notes != event.before.notes
+steps:
+  - create: payroll_guard
+    set:
+      reason: "'invoice_tag'"
+      document: event.name
