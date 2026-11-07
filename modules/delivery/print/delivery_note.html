@@ -1,0 +1,96 @@
+{{define "style"}}
+/* Arah E: netral, satu tanda merek (logo atau inisial usaha), tanpa harga, tiga tanda tangan. */
+.lh { display: flex; gap: 4mm; align-items: flex-start; padding-bottom: 4mm; margin-bottom: 5mm; border-bottom: 1px solid #1C1917; }
+.lh .logo { max-height: 16mm; max-width: 40mm; }
+.lh .mono { width: 12mm; height: 12mm; border-radius: 2.5mm; background: #1C1917; color: #fff; font-weight: 700; font-size: 16pt; line-height: 12mm; text-align: center; flex: none; }
+.lh .legal-name { font-size: 1.3em; font-weight: 600; }
+.lh .address { white-space: pre-line; }
+.lh .contacts span+span::before { content: " · "; }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 6mm; }
+.head h1 { font-size: 1.6em; margin: 0; letter-spacing: 0.02em; }
+.head .no { font-size: 1.1em; font-weight: 600; margin-top: 1mm; }
+.status { display: inline-block; margin-top: 2mm; padding: 0.6mm 2.4mm; border: 1px solid #1C1917; border-radius: 99px; font-size: 0.9em; font-weight: 600; }
+.box { min-width: 62mm; padding: 3mm 4mm; border: 1px solid #D6D3D1; border-radius: 2mm; background: #F5F5F4; }
+.box .k, .meta .k { color: #57534E; }
+.box .v { font-size: 1.15em; font-weight: 600; }
+.meta { display: flex; gap: 8mm; margin: 5mm 0 2mm; }
+.meta > div { flex: 1; }
+.meta table td { border: 0; padding: 0.6mm 0; }
+.meta table td:first-child { color: #57534E; width: 32mm; }
+.addr { white-space: pre-line; }
+.items { margin-top: 4mm; }
+.items th { border-bottom: 1px solid #1C1917; color: #57534E; font-weight: 600; font-size: 0.9em; }
+.items tbody { counter-reset: row; }
+.items tbody tr { counter-increment: row; }
+.items td.no { width: 8mm; color: #57534E; }
+.items td.no::before { content: counter(row); }
+.items td.qty { font-size: 1.1em; font-weight: 600; }
+.items td.check { width: 22mm; }
+.num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.note { margin-top: 3mm; font-size: 0.9em; }
+.sign { display: flex; gap: 6mm; margin-top: 10mm; break-inside: avoid; }
+.sign > div { flex: 1; text-align: center; }
+.sign .space { height: 20mm; border-bottom: 1px solid #1C1917; margin-bottom: 1.5mm; }
+{{end}}
+{{define "letterhead"}}{{with .Letterhead}}<header class="lh">
+{{if .logo_src}}<img class="logo" src="{{.logo_src}}" alt="">{{else if .legal_name}}<div class="mono" aria-hidden="true">{{upper (slice .legal_name 0 1)}}</div>{{end}}
+<div>
+<div class="legal-name">{{.legal_name}}</div>
+{{with .tagline}}<div class="muted">{{.}}</div>{{end}}
+{{with .address}}<div class="address">{{.}}</div>{{end}}
+{{if or .phone .email .website}}<div class="contacts">{{with .phone}}<span>{{.}}</span>{{end}}{{with .email}}<span>{{.}}</span>{{end}}{{with .website}}<span>{{.}}</span>{{end}}</div>{{end}}
+</div></header>{{end}}{{end}}
+{{template "letterhead" .}}
+{{- $ds := printf "%v" .Doc.docstatus -}}
+{{- $n := len .Doc.items -}}
+<div class="head">
+  <div>
+    <h1>Surat jalan</h1>
+    <div class="no">{{.Doc.name}}</div>
+    <div class="status">{{if eq $ds "0"}}Draf, barang belum keluar{{else if eq $ds "2"}}Batal{{else}}Barang dikirim{{end}}</div>
+  </div>
+  <div class="box">
+    <div class="k">Tanggal kirim</div>
+    <div class="v">{{date .Doc.delivery_date "long"}}</div>
+    <div class="k">{{$n}} jenis barang</div>
+  </div>
+</div>
+<div class="meta">
+  <div>
+    <div class="k">Kirim ke</div>
+    <div><strong>{{.Links.customer.customer_name}}</strong></div>
+    {{if .Doc.ship_to}}<div class="addr">{{.Doc.ship_to}}</div>{{else}}{{with .Links.customer.address}}<div class="addr">{{.}}</div>{{end}}{{end}}
+    {{with .Links.customer.phone}}<div>{{.}}</div>{{end}}
+  </div>
+  <div>
+    <table>
+      <tr><td>Dikirim dari</td><td>{{with .Links.outlet.outlet_name}}{{.}}{{else}}{{.Doc.outlet}}{{end}}</td></tr>
+      <tr><td>No. pesanan</td><td>{{.Doc.customer_order}}{{with .Links.customer_order.po_number}} (PO {{.}}){{end}}</td></tr>
+      {{with .Links.salesman.full_name}}<tr><td>Salesman</td><td>{{.}}</td></tr>{{end}}
+      <tr><td>Sopir</td><td>{{.Doc.driver}}</td></tr>
+      <tr><td>No. kendaraan</td><td>{{.Doc.vehicle_no}}</td></tr>
+    </table>
+  </div>
+</div>
+<table class="items">
+  <thead><tr><th>No</th><th>Barang</th><th class="num">Qty</th><th>Satuan</th><th>Cek terima</th></tr></thead>
+  <tbody>
+  {{range $row := .Doc.items}}
+  {{- $u := or $row.uom_name $row.uom -}}
+  <tr>
+    <td class="no"></td>
+    <td>{{if $row.description}}{{$row.description}}{{else}}{{$row.item}}{{end}}</td>
+    <td class="num qty">{{number $row.qty}}</td>
+    <td>{{$u}}</td>
+    <td class="check"></td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+<p class="note muted">Mohon periksa jumlah dan keadaan barang saat diterima. Barang kurang atau rusak ditulis di catatan sebelum tanda tangan.</p>
+{{if .Doc.notes}}<p class="note"><span class="muted">Catatan:</span> {{.Doc.notes}}</p>{{end}}
+<div class="sign">
+  <div><div>Gudang</div><div class="space"></div><div class="muted">Nama dan tanda tangan</div></div>
+  <div><div>Sopir</div><div class="space"></div><div>{{.Doc.driver}}</div></div>
+  <div><div>Penerima</div><div class="space"></div><div>{{if .Doc.received_by}}{{.Doc.received_by}}{{else}}<span class="muted">Nama, tanggal, cap</span>{{end}}</div></div>
+</div>

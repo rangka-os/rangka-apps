@@ -4,6 +4,10 @@ is_child: true
 fields:
   - {name: worker, type: link, to: worker, label: {id: Pekerja}, read_only: true}
   - {name: stage, type: link, to: production_stage, label: {id: Tahap}, read_only: true}
+  # names for the printed wage sheet (a print reads only top-level links): copied from the worker and stage on save
+  - {name: worker_name, type: data, label: {id: Nama pekerja}, hidden: true, compute: worker.worker_name}
+  - {name: stage_name, type: data, label: {id: Nama tahap}, hidden: true, compute: stage.stage_name}
+  - {name: unit, type: data, label: {id: Satuan kerja}, hidden: true, compute: stage.unit}
   - {name: qty, type: float, label: {id: Qty}, read_only: true}
   - {name: rate, type: currency, label: {id: Tarif}, read_only: true}
   - {name: amount, type: currency, label: {id: Upah}, read_only: true}

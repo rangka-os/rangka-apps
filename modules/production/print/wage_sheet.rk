@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Lembar upah borongan of one batch: who did which stage, how much, the wage, and a column to sign on receipt
+# when the wage is paid in cash. Names come from the line (worker_name, stage_name, unit).
+name: wage_sheet
+model: wage_sheet
+label: {id: Lembar upah, en: Wage sheet}
+paper: A4
+template: wage_sheet.html
+default: true

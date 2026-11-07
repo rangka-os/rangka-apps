@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Surat jalan for the driver and the customer: what goes out, from where, to whom, with three signatures. No prices
+# (the invoice carries them) and no total qty across lines, since the lines can be in different units.
+name: delivery_note
+model: delivery_note
+label: {id: Surat jalan, en: Delivery note}
+paper: A4
+template: delivery_note.html
+default: true

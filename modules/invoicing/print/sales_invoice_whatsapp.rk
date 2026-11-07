@@ -6,3 +6,10 @@ model: sales_invoice
 label: {id: Pesan tagihan WA, en: WhatsApp reminder}
 paper: A5
 template: sales_invoice_whatsapp.html
+# "Cara bayar" copied when the invoice was submitted (payment_instruction); empty for an older invoice or one
+# submitted without a default account, which then shows the letterhead's bank accounts.
+related:
+  cara_bayar:
+    model: payment_instruction
+    match: {sales_invoice: name}
+    limit: 1

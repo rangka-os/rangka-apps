@@ -5,7 +5,7 @@
 # it. order_fulfilment keeps per order what was ordered, delivered, returned and invoiced, because a submitted order
 # cannot be written (K-p, contract 0022, will move this into the kernel's conversions).
 name: delivery
-version: 1.0.0
+version: 1.1.0
 title: {id: Pengiriman dan retur, en: Delivery and returns}
 requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, outlets: ^1.0, stock: ^1.0, orders: ^1.0, invoicing: ^1.0, payments: ^1.0}
 hooks: [stock.reverse_moves]
