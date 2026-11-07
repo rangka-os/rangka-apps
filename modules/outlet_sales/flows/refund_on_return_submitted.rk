@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Keeps the Retur di kasir current on outlet_return.submitted: the returned qty of each item goes on its first row.
+# The update locks the record, so two returns submitted at once are counted one after the other; one that would bring
+# back more than was refunded is refused (outlet_sales_guard over_returned) and rolls back with its stock moves.
+name: refund_on_return_submitted
+label: {id: Perbarui retur di kasir}
+on: outlet_return.submitted
+steps:
+  - {find: pos_refund, where: name == event.refund, as: f}
+  # read after that lock: a cancel of the sale that committed meanwhile is seen here (sales_cancel_guard takes the
+  # same lock), and the return is refused instead of bringing back goods of a cancelled sale (audit stock-returns M1)
+  - {find: outlet_sales, where: name == event.sales && docstatus == 1, as: sale}
+  - if: sale == null
+    create: outlet_sales_guard
+    set: {reason: "'sales_cancelled'", document: event.name}
+  # a find returns the record without its table rows: an update that changes nothing returns it whole
+  - update: f
+    if: f != null
+    set: {outlet: f.outlet}
+  - update: f
+    if: f != null
+    set:
+      items: "f.items.map(b, {'name': b.name, 'item': b.item, 'refunded_qty': b.refunded_qty, 'returned_qty': b.returned_qty + (f.items.filter(x, x.item == b.item)[0].name == b.name ? event.items.map(l, l.item == b.item ? l.qty : 0).sum() : 0)})"
+  - if: "f != null && f.items.map(b, f.items.map(x, x.item == b.item ? x.returned_qty - x.refunded_qty : 0).sum() > 0.0005 ? 1 : 0).sum() > 0"
+    create: outlet_sales_guard
+    set: {reason: "'over_returned'", document: event.name}

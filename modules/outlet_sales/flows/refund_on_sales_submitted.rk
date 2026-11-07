@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A submitted sale with refund lines (qty < 0, from a POS file, Moka or Loyverse) gets its Retur di kasir: one row per
+# refund line, nothing returned yet. Its goods stay out of stock until a Retur ke stok brings them back.
+name: refund_on_sales_submitted
+label: {id: Catat retur di kasir}
+on: outlet_sales.submitted
+if: "event.lines.map(l, l.qty < 0 ? 1 : 0).sum() > 0"
+steps:
+  - create: pos_refund
+    set:
+      sales: event.name
+      outlet: event.outlet
+      date: event.date
+      items: "event.lines.filter(l, l.qty < 0).map(l, {'item': l.item, 'refunded_qty': 0 - l.qty, 'returned_qty': 0})"

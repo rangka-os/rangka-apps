@@ -14,7 +14,7 @@ from collections import defaultdict
 H = {}
 
 STOCK_VOUCHERS = ("goods_receipt", "outlet_sales", "stock_adjustment", "stock_count", "stock_transfer",
-                  "stock_transfer_receipt", "delivery_note", "sales_return", "production_batch")
+                  "stock_transfer_receipt", "delivery_note", "sales_return", "outlet_return", "production_batch")
 
 
 def bind(m):
@@ -82,7 +82,8 @@ def expected_pl(api, d0, d1):
         key = (mv["voucher_type"], mv["voucher"])
         if key not in live or not inm(mv["posting_date"]):
             continue
-        if mv["voucher_type"] == "sales_return":
+        # goods back in stock (grosir sales_return, a cashier's Retur ke stok): their cost leaves HPP
+        if mv["voucher_type"] in ("sales_return", "outlet_return"):
             e["cogs"] -= mv["value"]
         elif mv["voucher_type"] in ("stock_count", "production_batch") or (
                 mv["voucher_type"] == "stock_adjustment" and adj_reason.get(mv["voucher"]) != "consignment_return"):
