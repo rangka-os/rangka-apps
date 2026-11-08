@@ -15,6 +15,9 @@ modules:
   outlets: ^1.0
   stock: ^1.0
   outlet_sales: ^1.0
+# the cashier's receipts (piece kasir) show next to the daily forms when that piece is installed too
+optional:
+  pos: ^1.0
 dashboards: [penjualan_ringkas]
 roles: [head_office, outlet_staff]
 home: {dashboard: penjualan_ringkas}

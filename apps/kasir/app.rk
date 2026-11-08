@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: kasir
+version: 1.0.0
+title: {id: Kasir, en: Cashier}
+label: {id: Rangka Kasir, en: Rangka Cashier}
+summary:
+  id: Kasir di browser untuk toko dan kedai, sesi kas per outlet, struk bernomor, tunai dan QRIS, stok dan resep terpotong otomatis.
+rangka: '>=0.5'
+# A piece (riset/desain/11-susunan-kepingan.md) for a shop or an F&B outlet that rings up its sales in Juragan
+# (Jalur B v0: online, no devices). The stock it takes out lives in stok_outlet's modules, so a site with this piece
+# can add stok_outlet for transfers and counts; pembukuan journals each receipt and each shift's cash difference.
+# A cashier (role cashier, scoped to the member's outlets) sees only the cashier screens of their own outlet.
+modules:
+  users: ^1.2
+  contacts: ^1.0
+  catalogue: ^1.3
+  outlets: ^1.2
+  stock: ^1.2
+  pos: ^1.0
+dashboards: [kasir_ringkas]
+roles: [cashier, head_office]
+home: {model: pos_sale}
+menu:
+  - group: {id: Kasir}
+    items: [pos_sale, pos_shift, pos_shift_close]
+  - group: {id: Barang dan harga}
+    items: [item, uom_conversion, recipe, outlet, stock_balance]
+onboarding:
+  - ask: {id: 'Outlet mana yang mau pakai kasir Juragan?'}
+    sets: outlet.sales_source
+  - ask: {id: 'Siapa saja kasirnya, dan di outlet mana?'}
+    sets: seed.users

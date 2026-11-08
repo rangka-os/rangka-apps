@@ -10,6 +10,7 @@ permissions:
   - {role: project_admin, read: true, create: true, write: true, print: true}
   - {role: head_office, read: true, create: true, write: true, print: true}
   - {role: outlet_staff, read: true}
+  - {role: cashier, read: true}
 fields:
   - name: item
     type: link
@@ -29,6 +30,13 @@ fields:
     help: {id: '1 satuan ini sama dengan berapa satuan stok'}
     required: true
     in_list: true
+  # module pos: the selling price of one of this unit (a dus can be cheaper than its bottles one by one). Empty (0):
+  # the item's price times the factor.
+  - name: rate
+    type: currency
+    label: {id: Harga jual per satuan ini}
+    help: {id: 'Kosongkan kalau harganya sama dengan harga satuan stok x faktor'}
+    depends_on: app_installed('pos')
 rules:
   - name: factor_positive
     on: save

@@ -8,7 +8,7 @@ All roles live in the `users` module, which every module requires, so a permissi
 An app lists the roles it uses in `roles:` (`crm`: sales_rep, sales_manager; `jasa_proyek`: sales_manager,
 finance_manager, purchasing_manager, project_admin; `fnb_cabang`, `ritel_cabang` and `produksi_pabrik`: head_office, outlet_staff;
 `grosir_distribusi`: sales_manager, finance_manager, head_office, field_sales; `kelas_kursus`: course_admin, instructor
-(its role file is in the `courses` module), finance_manager).
+(its role file is in the `courses` module), finance_manager; `kasir`: cashier, head_office).
 
 Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e export, p print, i import.
 **all** = r c w d s x a e p (no import unless written). `outlet_staff` has a row scope
@@ -143,3 +143,28 @@ company). Seats and billed counts are written by flows. `MATRIX` rows live in `t
 | course_session (attendance) | r c w d e p | r c w p (own) | r e | |
 | course_charge (no delete for anyone but the owner: a cancelled charge's key must stay) | r c w e p | | all but d | r (the invoice flows read it as the submitter) |
 | course_guard (never stored; a flow's refusal) | c | | c | c |
+
+### Cashier (module pos, piece kasir)
+
+One new role, `cashier` (Kasir, in the `users` module because catalogue, outlets, stock and accounting grant it reads),
+with the row scope `outlet` from `user.outlets` (contract 0010 §5): a cashier sees and writes the shifts, closes and
+receipts of their own outlets only, and reads the items, units, prices, outlets and the stock balance there. A sale's
+shift must be the cashier's own (rule `own_shift`, by sign-in email); head office and the owner may ring up on any.
+The totals and state of a shift are written by the flows of whoever pays, voids or closes (read_only fields), so the
+cashier writes pos_shift; the float and outlet are fixed once open (flow `pos_shift_on_update`). Reopening a closed
+shift (cancelling its Tutup sesi) is head office's. The journal flows run as the cashier, who therefore creates the
+gl_entry lines of `pos_sale` and `pos_shift_close`, reads only those of `pos_sale` (the close's lines show the cash
+difference; the count is blind, every money total of a shift is `hidden_for: [cashier]`), and reads period_close. A
+sale reads the outlet's daily sales records (`outlet_sales`, read for the cashier) and a daily sales record reads the
+outlet's receipts (`pos_sale`, read for outlet staff), so one outlet and day never has both. A discount above 20% of
+a receipt waits for head office (approval `big_discount`). `MATRIX` rows live in `tests/day_one_pos.py`.
+
+| Model | cashier | head_office |
+| --- | --- | --- |
+| pos_shift (not submittable: numbered when it opens; totals and state written by flows) | r c w p (own outlet) | r c w e p |
+| pos_sale (void = cancel, same day, shift open, own shift; partial return = cancel + amend; outlet_staff: r) | all but e (own outlet) | all |
+| pos_shift_close (cancel = reopen the shift) | r c w d s p (own outlet) | all but a |
+| pos_guard (never stored; a flow's refusal; outlet_staff: c) | c | c |
+| item, uom, uom_conversion, outlet, stock_balance, period_close, outlet_sales, outlet_takings | r | (as above) |
+| gl_entry | r (lines of `pos_sale`; `pos_shift_close` lines created, not read) | (as above) |
+

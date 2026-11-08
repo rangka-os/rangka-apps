@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for Juragan's own cashier (fictional): CV Contoh Warung Rasa has a shop (Toko Dago, retail: bottles,
+# dus, instant noodles) and a coffee kiosk (Kedai Riau, F&B: menu cut through recipes), both ringing up sales in the
+# kasir piece, plus an older outlet (Cimahi) that still sends a daily form (penjualan_harian, Jalur A). Stock lives in
+# stok_outlet, journals in pembukuan. PKP, so prices include PPN.
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: CV Contoh Warung Rasa}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: true}
+orgs:
+  warung_contoh:
+    name: CV Contoh Warung Rasa
+    code: CWR
+    config:
+      org: {legal_name: CV Contoh Warung Rasa}
+      tax: {pkp: true}
+apps: [kasir, penjualan_harian, stok_outlet, pembukuan]
+plan: tumbuh
+sso: {domains: [contohwarung.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, head_office]}

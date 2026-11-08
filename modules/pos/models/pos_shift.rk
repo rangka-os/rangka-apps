@@ -1,0 +1,92 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Sesi kasir: one cashier's drawer at one outlet, from opening to closing. Creating it opens the shift with the float
+# (opening_cash) and gives it its number at once (SESI-<outlet code>-<YYMM>-<n>): the sales link it by that name, so
+# it is not a submittable document (a draft's DRAFT- name would be renamed at submit and the links would point at
+# nothing). Closing is a document of its own, Tutup sesi (pos_shift_close). While the shift is open, every sale paid or
+# voided on it updates its totals (flows pos_sale_on_submit / pos_sale_on_cancel); state and the totals are read_only,
+# so only the flows write them. Those flows and the close read pos_shift under the flow read lock of contract 0025,
+# so the sales of a shift are counted one after the other, and a sale after the close is refused.
+name: pos_shift
+label: {id: Sesi kasir, en: Cashier shift}
+icon: wallet
+naming: SESI-{outlet.code}-{YY}{MM}-{####}
+title_field: outlet
+permissions:
+  - {role: head_office, read: true, create: true, write: true, export: true, print: true}
+  - {role: cashier, read: true, create: true, write: true, print: true}
+fields:
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, in_list: true}
+  - name: opening_date
+    type: date
+    label: {id: Tanggal buka}
+    default: today()
+    read_only: true
+    in_list: true
+  # the person who opened the shift (their sign-in email); set once, from the session
+  - name: cashier
+    type: data
+    label: {id: Kasir}
+    default: user.email
+    read_only: true
+    in_list: true
+  - name: opening_cash
+    type: currency
+    label: {id: Modal kas}
+    help: {id: 'Uang tunai di laci saat sesi dibuka (uang kembalian)'}
+    required: true
+  - name: state
+    type: select
+    label: {id: Status sesi}
+    default: "'open'"
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: open, label: {id: Buka}}
+      - {value: closed, label: {id: Tutup}}
+  - {name: sales_count, type: int, label: {id: Jumlah transaksi}, read_only: true, in_list: true}
+  - {name: gross_total, type: currency, label: {id: Penjualan kotor}, read_only: true, hidden_for: [cashier]}
+  - {name: discount_total, type: currency, label: {id: Diskon}, read_only: true, hidden_for: [cashier]}
+  - {name: net_total, type: currency, label: {id: Penjualan bersih}, read_only: true, in_list: true, hidden_for: [cashier]}
+  # blind count (contract 0027 hidden_for): the cashier counts the drawer without seeing what should be in it
+  - {name: cash_total, type: currency, label: {id: Tunai masuk}, help: {id: 'Dibayar tunai setelah kembalian, dikurangi tunai transaksi yang dibatalkan'}, read_only: true, hidden_for: [cashier]}
+  - {name: qris_total, type: currency, label: {id: QRIS masuk}, read_only: true, hidden_for: [cashier]}
+  - {name: void_count, type: int, label: {id: Transaksi dibatalkan}, read_only: true}
+  - {name: void_total, type: currency, label: {id: Nilai dibatalkan}, read_only: true, hidden_for: [cashier]}
+  - {name: cogs_total, type: currency, label: {id: Harga pokok}, read_only: true, hidden_for: [cashier]}
+  - name: expected_cash
+    type: currency
+    label: {id: Tunai seharusnya}
+    help: {id: 'Modal kas ditambah tunai masuk'}
+    compute: opening_cash + cash_total
+    hidden_for: [cashier]
+  # copied from the Tutup sesi that closed the shift
+  - {name: closed_by, type: link, to: pos_shift_close, label: {id: Ditutup dengan}, read_only: true}
+  - {name: counted_cash, type: currency, label: {id: Hitung fisik}, read_only: true}
+  - {name: cash_difference, type: currency, label: {id: Selisih kas}, read_only: true, in_list: true, hidden_for: [cashier]}
+# The outlet's float is checked when the shift opens (flow pos_shift_on_create), not as a save rule: a save rule runs
+# on every update the sales' flows make, so head office changing the outlet would stop an open shift. An outlet
+# without a code cannot open one (its number, SESI-<code>-..., is refused: 409 numbering).
+rules:
+  - name: float_not_negative
+    on: save
+    check: opening_cash >= 0
+    message: {id: Modal kas tidak boleh negatif}
+views:
+  list:
+    columns: [name, outlet, opening_date, state, net_total, cash_difference, cashier, sales_count]
+    filters: [outlet, state]
+    sort: -name
+  form:
+    layout:
+      - section: {id: Sesi}
+        columns:
+          - [outlet, opening_date, cashier]
+          - [opening_cash, state, closed_by]
+      - section: {id: Penjualan sesi ini}
+        columns:
+          - [sales_count, gross_total, discount_total, net_total]
+          - [cash_total, qris_total, void_count, void_total]
+      - section: {id: Laci}
+        columns:
+          - [expected_cash, counted_cash, cash_difference]

@@ -1,0 +1,50 @@
+{{define "style"}}
+/* Arah E untuk thermal, sama dengan nota faktur: hitam putih, nama usaha tebal, angka rata kanan. */
+body { font-size: 8.5pt; }
+.c { text-align: center; }
+.brand { font-size: 1.25em; font-weight: 700; }
+.rule { border-top: 1px dashed #1C1917; margin: 2mm 0; }
+.row { display: flex; justify-content: space-between; gap: 2mm; }
+.row .num { white-space: nowrap; }
+.line { margin: 1mm 0; }
+.line .sub { color: #57534E; }
+.big { font-size: 1.35em; font-weight: 700; }
+.status { font-weight: 700; }
+.muted { color: #57534E; }
+{{end}}
+{{define "letterhead"}}{{with .Letterhead}}<div class="c">
+<div class="brand">{{.legal_name}}</div>
+{{with .address}}<div style="white-space:pre-line">{{.}}</div>{{end}}
+{{with .phone}}<div>{{.}}</div>{{end}}
+{{with .npwp}}<div>NPWP {{.}}</div>{{end}}
+</div>{{end}}{{end}}
+{{template "letterhead" .}}
+{{- $ds := printf "%v" .Doc.docstatus -}}
+<div class="c">{{.Links.outlet.outlet_name}}</div>
+<div class="rule"></div>
+<div class="row"><span>Struk</span><span>{{.Doc.name}}</span></div>
+<div class="row"><span>Tanggal</span><span>{{date .Doc.date}}</span></div>
+{{with .Doc.buyer}}<div class="row"><span>Pembeli</span><span>{{.}}</span></div>{{end}}
+<div class="rule"></div>
+{{range $row := .Doc.items}}
+<div class="line">
+  <div>{{if $row.description}}{{$row.description}}{{else}}{{$row.item}}{{end}}</div>
+  <div class="row sub"><span>{{number $row.qty}} x {{rupiah $row.rate}}{{if $row.discount_pct}} (-{{number $row.discount_pct}}%){{end}}</span><span class="num">{{rupiah $row.amount}}</span></div>
+</div>
+{{end}}
+<div class="rule"></div>
+{{if .Doc.discount_amount}}<div class="row"><span>Subtotal</span><span class="num">{{rupiah .Doc.subtotal}}</span></div>
+<div class="row"><span>Diskon nota</span><span class="num">-{{rupiah .Doc.discount_amount}}</span></div>{{end}}
+<div class="row big"><span>Total</span><span class="num">{{rupiah .Doc.grand_total}}</span></div>
+{{if .Doc.ppn_in_sales}}<div class="row muted"><span>Termasuk PPN</span><span class="num">{{rupiah .Doc.ppn_in_sales}}</span></div>{{end}}
+{{range $p := .Doc.payments}}<div class="row"><span>{{if eq (printf "%v" $p.method) "qris"}}QRIS{{with $p.ref}} {{.}}{{end}}{{else}}Tunai{{end}}</span><span class="num">{{rupiah $p.amount}}</span></div>
+{{else}}<div class="row"><span>Tunai</span><span class="num">{{rupiah $.Doc.grand_total}}</span></div>
+{{end}}
+{{if .Doc.change_amount}}<div class="row"><span>Kembalian</span><span class="num">{{rupiah .Doc.change_amount}}</span></div>{{end}}
+<div class="c status">
+  {{- if eq $ds "0"}}DRAF, BELUM DIBAYAR
+  {{- else if eq $ds "2"}}BATAL
+  {{- else}}LUNAS{{end -}}
+</div>
+<div class="rule"></div>
+<div class="c muted">Terima kasih</div>

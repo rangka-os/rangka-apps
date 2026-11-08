@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Struk for an 80 mm receipt printer, printed from the browser (contract 0008) until rangka-edge drives the printer
+# itself (contract 0003). Same look as the invoice nota: lines, discounts, total, how it was paid, change.
+name: pos_receipt
+model: pos_sale
+label: {id: Struk (printer kasir 80 mm), en: Receipt (80 mm)}
+paper: 80mm
+default: true
+template: pos_receipt.html

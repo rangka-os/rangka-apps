@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+# Letterhead of the fictional CV Contoh Warung Rasa (cashier receipts).
+legal_name: CV Contoh Warung Rasa
+tagline: Toko dan kedai kopi
+address: |
+  Jl. Contoh Rasa No. 9
+  Bandung 40000
+phone: '+62 22 000 0009'
+email: halo@contohwarung.test
+website: contohwarung.test
+bank:
+  - {bank: Bank Contoh, account: '999 000 0009', holder: CV Contoh Warung Rasa, branch: Bandung}
+signatory: {name: Rina Contoh, title: Pemilik}
+footer: {id: Barang yang sudah dibeli bisa ditukar di hari yang sama dengan struk}
