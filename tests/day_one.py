@@ -5354,6 +5354,7 @@ import day_one_rental  # noqa: E402
 import day_one_courses  # noqa: E402
 import day_one_subscriptions  # noqa: E402
 import day_one_pos  # noqa: E402
+import day_one_kitchen  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5363,6 +5364,7 @@ day_one_rental.bind(sys.modules[__name__])   # also registers demo-sewa (orgs, m
 day_one_courses.bind(sys.modules[__name__])
 day_one_subscriptions.bind(sys.modules[__name__])
 day_one_pos.bind(sys.modules[__name__])      # also registers demo-kasir
+day_one_kitchen.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5378,7 +5380,7 @@ SCENARIOS = {
     "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],
     "demo-kursus": day_one_courses.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-langganan": day_one_subscriptions.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
-    "demo-kasir": day_one_pos.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
+    "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
 # accounting last: it checks the books against every document the scenarios above submitted
 for _site in ("demo-jasa", "demo-fnb", "demo-ritel", "demo-grosir", "demo-produksi", "demo-manpower", "demo-sewa"):
@@ -5426,6 +5428,7 @@ def main():
         day_one_rental.setup_demo_sewa(api, k)
     if a.site == "demo-kasir":
         day_one_pos.setup_demo_kasir(api, k)
+        day_one_kitchen.setup(api, k)
     for sc in SCENARIOS[a.site]:
         if a.only and a.only not in sc.__name__:
             continue

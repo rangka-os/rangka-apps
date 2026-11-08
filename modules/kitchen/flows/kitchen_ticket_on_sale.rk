@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Runs inside a receipt's payment (pos_sale submitted), as the cashier: one ticket per active station of the outlet
+# with the receipt's lines whose item category is routed to that station (kitchen_route). An outlet without stations
+# (a shop) and a receipt without kitchen lines make nothing. A receipt paid again after a void (amend) sends its lines
+# again as a revision. A failure here rolls the payment back, so a paid receipt never misses its tickets.
+name: kitchen_ticket_on_sale
+label: {id: 'Struk dibayar: kirim tiket ke stasiun dapur'}
+on: pos_sale.submitted
+steps:
+  - {find_all: kitchen_station, where: outlet == event.outlet && active, as: stations}
+  - if: stations.size() > 0
+    then:
+      - {find_all: kitchen_route, where: outlet == event.outlet, as: routes}
+      - find_all: item
+        where: name in event.items.map(l, l.item)
+        as: menu
+      - for_each: stations
+        as: st
+        do:
+          - if: "event.items.filter(l, menu.filter(m, m.name == l.item && routes.filter(r, r.station == st.name && r.category == m.category).size() > 0).size() > 0).size() > 0"
+            create: kitchen_ticket
+            set:
+              sale: event.name
+              outlet: event.outlet
+              station: st.name
+              date: event.date
+              buyer: event.buyer
+              revision_of: event.amended_from
+              items: "event.items.filter(l, menu.filter(m, m.name == l.item && routes.filter(r, r.station == st.name && r.category == m.category).size() > 0).size() > 0).map(l, {'item': l.item, 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note})"

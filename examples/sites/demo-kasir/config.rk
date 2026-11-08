@@ -15,7 +15,7 @@ orgs:
     config:
       org: {legal_name: CV Contoh Warung Rasa}
       tax: {pkp: true}
-apps: [kasir, penjualan_harian, stok_outlet, pembukuan]
+apps: [kasir, dapur, penjualan_harian, stok_outlet, pembukuan]
 plan: tumbuh
 sso: {domains: [contohwarung.test], required: false}
 ai: {enabled: true, auto_apply: never, approvers: [owner, head_office]}

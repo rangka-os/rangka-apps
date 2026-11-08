@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Never stored: flow kitchen_ticket_on_update creates one when a ticket's status change must be refused (the pattern of
+# pos_guard); the matching rule fails with the reason's message and rolls the write back.
+name: kitchen_guard
+label: {id: Penjaga tiket dapur, en: Kitchen ticket guard}
+icon: check
+naming: KGD-{######}
+title_field: reason
+permissions:
+  - {role: head_office, create: true}
+  - {role: cashier, create: true}
+  - {role: kitchen, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: ticket_void, label: {id: Tiket sudah batal}}
+      - {value: void_by_receipt, label: {id: Batal hanya dari struk}}
+      - {value: one_step, label: {id: Satu langkah}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: ticket_void
+    on: save
+    check: reason != 'ticket_void'
+    message: {id: 'Tiket ini sudah batal karena struknya dibatalkan; tidak bisa dilanjutkan'}
+  - name: void_by_receipt
+    on: save
+    check: reason != 'void_by_receipt'
+    message: {id: 'Tiket dapur batal hanya kalau struknya dibatalkan kasir'}
+  - name: one_step
+    on: save
+    check: reason != 'one_step'
+    message: {id: 'Status tiket maju atau mundur satu langkah saja (Baru, Dimasak, Siap, Diambil)'}

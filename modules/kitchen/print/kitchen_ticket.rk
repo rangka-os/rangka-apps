@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Tiket dapur for an 80 mm printer, printed from the browser (contract 0008) until rangka-edge sends it to the
+# station's printer itself (contract 0003, ESC/POS). Big type for a kitchen: station, table, time, qty x menu, note.
+name: kitchen_ticket
+model: kitchen_ticket
+label: {id: Tiket dapur (printer 80 mm), en: Kitchen ticket (80 mm)}
+paper: 80mm
+default: true
+template: kitchen_ticket.html

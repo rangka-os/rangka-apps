@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A line of a kitchen ticket: copied from the receipt line (no price).
+name: kitchen_ticket_item
+is_child: true
+fields:
+  - {name: item, type: link, to: item, label: {id: Menu}, required: true}
+  - {name: description, type: data, label: {id: Uraian}}
+  - {name: qty, type: float, label: {id: Qty}, required: true}
+  - {name: uom, type: link, to: uom, label: {id: Satuan}}
+  - {name: note, type: data, label: {id: Catatan}}
