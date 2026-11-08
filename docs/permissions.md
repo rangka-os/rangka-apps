@@ -132,7 +132,7 @@ lapangan) with scope `worker` from `[user.name]` (the member's worker record, `r
 `site_supervisor` (Pengawas lokasi, mandor or danru) with scope `work_site` from `user.outlets` (the kernel's one list of
 places per member holds work site codes, `--outlets LOK-001`). A worker clocks in and out on their own logs and submits
 them; a log outside the radius, without position, entered more than a day late or with overtime is held for the site
-supervisor (approvals `outside_site`, `late_entry`, `overtime`, contract 0007), who must be able to read the log, so only
+supervisor (approvals `outside_site`, `late_entry`, `overtime`, contract 0007); every log needs a clock-in photo, who must be able to read the log, so only
 the supervisor of that site (or the owner) decides it. Neither role reads worker records (pay); the log carries the
 worker's name, and the worker reads their site's point through their assignment, not the list of client sites. The rates
 of an assignment are `hidden_for: [field_worker, site_supervisor]`. The project admin closes a period (attendance_close),

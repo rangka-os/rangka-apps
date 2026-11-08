@@ -20,6 +20,8 @@ fields:
       - {value: period_closed, label: {id: Periode absen sudah direkap}}
       - {value: close_overlap, label: {id: Periode rekap tumpang tindih}}
       - {value: close_has_recap, label: {id: Rekap absen dipakai timesheet}}
+      - {value: two_assignments, label: {id: Dua penugasan dalam satu rekap}}
+      - {value: recap_overlap, label: {id: Timesheet lain di periode rekap}}
   - name: document
     type: data
     label: {id: Dokumen}
@@ -40,3 +42,11 @@ rules:
     on: save
     check: reason != 'close_has_recap'
     message: {id: 'Rekap ini sudah jadi timesheet; hapus draf atau batalkan timesheet-nya dulu'}
+  - name: two_assignments
+    on: save
+    check: reason != 'two_assignments'
+    message: {id: 'Ada absen di dua penugasan dalam periode ini; rekap sampai akhir penugasan pertama dulu'}
+  - name: recap_overlap
+    on: save
+    check: reason != 'recap_overlap'
+    message: {id: 'Tenaga kerja ini sudah punya timesheet lain di periode rekap absen; batalkan salah satunya'}

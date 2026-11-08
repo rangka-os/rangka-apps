@@ -37,6 +37,9 @@ def after(api, s, d1):
     st, lg = api.create("attendance_log", {"worker": s["worker"], "assignment": s["assignment"], "work_date": str(t), "clock_in": f"{t}T08:00:00+07:00",
                                            "in_lat": -6.2, "in_lng": 106.8, "clock_out": f"{t}T17:00:00+07:00", "out_lat": -6.2, "out_lng": 106.8})
     d1.check("a log at the site of the old assignment is inside", st == 201 and lg.get("outside_site") is False, (st, lg))
+    import secrets
+    st, att = api.upload(f"/api/v1/r/attendance_log/{d1.Api.q(lg.get('name', 'x'))}/attachments", {}, "selfie.jpg", b"\xff\xd8\xff\xe0" + secrets.token_bytes(32) + b"\xff\xd9")
+    api.call("PATCH", f"/api/v1/r/attendance_log/{d1.Api.q(lg.get('name', 'x'))}", {"in_photo": (att or {}).get("id", "")})
     st, r = api.verb("attendance_log", lg.get("name", "x"), "submit")
     d1.check("and submits at once", st == 200, (st, r))
     st, c = api.create("attendance_close", {"project": s["project"], "period_from": str(t), "period_to": str(t)})

@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: timesheet_attendance_overlap_guard
+label: {id: Timesheet lain tidak boleh menumpuk rekap absen lapangan}
+# The other direction of attendance_close_on_submit: a timesheet (daily, imported recap) of a worker whose days in that
+# span are already in a live recap made by a submitted field attendance close would book and bill them twice. Refused
+# at submit; the recap of the close itself passes.
+on: timesheet.submitted
+steps:
+  - find: attendance_close
+    where: >-
+      project == event.project && docstatus == 1 && name != event.attendance_close && period_from <= (event.period_to != '' ? event.period_to : event.work_date)
+      && period_to >= event.work_date
+    as: closed
+  - if: closed != null
+    find: timesheet
+    where: attendance_close == closed.name && worker == event.worker && docstatus != 2 && name != event.name
+    as: ts
+  - if: closed != null && ts != null
+    create: attendance_guard
+    set:
+      reason: "'recap_overlap'"
+      document: ts.name

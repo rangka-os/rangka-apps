@@ -11,7 +11,9 @@ title_field: project
 # the attendance_recap import makes. The project admin checks and submits those recaps; payroll then makes the slips
 # (payslip_from_recap) and the client invoice as before. While the close is submitted, logs of its period can be neither
 # submitted nor cancelled (attendance_log_guard_submitted, attendance_log_cancel_guard); to reopen, delete or cancel its
-# recaps, then cancel the close.
+# recaps, then cancel the close (and amend it, or make a new one). Logs still waiting for the supervisor when the close is
+# submitted are not counted and can no longer be approved into the period: decide them before closing (dashboard
+# rekap_absen, "Menunggu persetujuan").
 permissions:
   - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: finance_manager, read: true}
@@ -38,13 +40,8 @@ fields:
   - name: notes
     type: text
     label: {id: Catatan}
-  # One close per project and start of period (a second one would count the same days twice).
-  - name: close_key
-    type: data
-    label: {id: Kunci periode}
-    hidden: true
-    unique: true
-    compute: "project + ':' + period_from"
+  # No unique key on the period: a cancelled close must not block its amendment or a new close of the same days. Two live
+  # closes of overlapping days are refused by attendance_close_on_submit under the flow lock (contract 0025).
 rules:
   - name: period_valid
     on: save

@@ -2,17 +2,10 @@
 name: attendance_log_guard_submitted
 label: {id: Absen yang diajukan tidak dobel dan tidak masuk periode yang sudah direkap}
 # Runs again at submit (also the submit an approval runs as the worker): one counted log per worker and day, and no new
-# day inside a period whose close is submitted (its recap timesheets are already made).
+# day inside a period whose close is submitted (its recap timesheets are already made). Reads attendance_close before
+# attendance_log, the order of attendance_close_on_submit (contract 0025).
 on: attendance_log.submitted
 steps:
-  - find: attendance_log
-    where: day_key == event.day_key && name != event.name && docstatus != 2
-    as: other
-  - if: other != null
-    create: attendance_guard
-    set:
-      reason: "'second_log'"
-      document: other.name
   - find: attendance_close
     where: project == event.project && docstatus == 1 && period_from <= event.work_date && period_to >= event.work_date
     as: closed
@@ -21,3 +14,11 @@ steps:
     set:
       reason: "'period_closed'"
       document: closed.name
+  - find: attendance_log
+    where: day_key == event.day_key && name != event.name && docstatus != 2
+    as: other
+  - if: other != null
+    create: attendance_guard
+    set:
+      reason: "'second_log'"
+      document: other.name

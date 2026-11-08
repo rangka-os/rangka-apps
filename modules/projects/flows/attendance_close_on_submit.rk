@@ -1,11 +1,16 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 name: attendance_close_on_submit
 label: {id: Rekap absen lapangan jadi timesheet bulanan}
-# For each worker assigned to the project during the period: the submitted daily logs of the period become one draft
-# monthly recap timesheet (days present, overtime hours), with the rates of the assignment. Only submitted logs count:
-# drafts, logs waiting for the supervisor and rejected ones do not. A worker who already has a live recap of this project
-# starting the same day (an attendance_recap import, or a second assignment of the same person) gets no second one.
-# Reads in the order attendance_close, assignment, attendance_log, timesheet (contract 0025 locks).
+# For each assignment of the project during the period: the submitted daily logs of that assignment in the period become
+# one draft monthly recap timesheet (days present, overtime hours, per day) with the assignment's rates. Only submitted
+# logs count: drafts, logs waiting for the supervisor and rejected ones do not.
+# Refused (the whole close rolls back), so a day is never paid or booked twice and never at the wrong rate:
+# - another submitted close of the project overlaps the period;
+# - a worker has logs on two assignments of the project in the period (payroll pays one slip per worker per month at one
+#   rate): close the period at the end of the first assignment instead;
+# - a worker with logs already has a live timesheet of the project inside the period (a daily timesheet, an imported
+#   recap or a recap of another close).
+# Reads in the order attendance_close, assignment, attendance_log, timesheet (contract 0025 locks), like the log guards.
 on: attendance_close.submitted
 steps:
   - find: attendance_close
@@ -26,10 +31,23 @@ steps:
   - for_each: asgs
     as: a
     do:
-      - find: timesheet
-        where: project == event.project && worker == a.worker && work_date == event.period_from && period_to != '' && docstatus != 2
+      - if: "logs.map(l, l.assignment == a.name ? 1 : 0).sum() > 0 && logs.map(l, l.worker == a.worker && l.assignment != a.name ? 1 : 0).sum() > 0"
+        create: attendance_guard
+        set:
+          reason: "'two_assignments'"
+          document: a.name
+      - if: "logs.map(l, l.assignment == a.name ? 1 : 0).sum() > 0"
+        find: timesheet
+        where: >-
+          project == event.project && worker == a.worker && docstatus != 2 && work_date <= event.period_to
+          && (period_to == '' ? work_date >= event.period_from : period_to >= event.period_from)
         as: ts
-      - if: "ts == null && logs.map(l, l.worker == a.worker ? 1 : 0).sum() > 0"
+      - if: "logs.map(l, l.assignment == a.name ? 1 : 0).sum() > 0 && ts != null"
+        create: attendance_guard
+        set:
+          reason: "'recap_overlap'"
+          document: ts.name
+      - if: "logs.map(l, l.assignment == a.name ? 1 : 0).sum() > 0"
         create: timesheet
         set:
           project: event.project
@@ -37,7 +55,8 @@ steps:
           assignment: a.name
           work_date: event.period_from
           period_to: event.period_to
-          days: "logs.map(l, l.worker == a.worker ? 1 : 0).sum()"
-          overtime_hours: "logs.map(l, l.worker == a.worker ? l.overtime_hours : 0.0).sum()"
+          rate_basis: "'day'"
+          days: "logs.map(l, l.assignment == a.name ? 1 : 0).sum()"
+          overtime_hours: "logs.map(l, l.assignment == a.name ? l.overtime_hours : 0.0).sum()"
           description: "'Rekap absen lapangan ' + event.name"
           attendance_close: event.name

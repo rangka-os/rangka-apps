@@ -65,10 +65,13 @@ def clock_in(cl, worker, assignment, day, north=30.0, east=20.0, **extra):
     return cl.create("attendance_log", body)
 
 
-def clock_out(cl, name, day, north=10.0, east=-15.0, **extra):
+def clock_out(cl, name, day, north=10.0, east=-15.0, with_photo=True, **extra):
+    """Clock-out; with_photo also uploads the clock-in photo first (every log needs one to be submitted)."""
     lat, lng = near(SITE_POINT_OF[CTX["att_asg_of"][name]], north, east)
     body = {"clock_out": f"{day}T17:02:00+07:00", "out_lat": lat, "out_lng": lng, "out_accuracy_m": 9,
             "out_distance_m": round((north ** 2 + east ** 2) ** 0.5)}
+    if with_photo:
+        body["in_photo"] = photo(cl, name)
     body.update(extra)
     return cl.patch("attendance_log", name, body)
 
@@ -152,8 +155,8 @@ def scenario_attendance_clock(api):
         return
     L1 = log["name"]
     CTX["att_asg_of"][L1] = A["MP-101"]
-    check("the kernel puts the clock-in inside the 150 m radius and measures about 36 m",
-          log.get("in_inside") is True and log.get("outside_site") is False and 33 <= (log.get("in_site_m") or 0) <= 39
+    check("the kernel puts the clock-in inside the 150 m radius and measures 36 m",
+          log.get("in_inside") is True and log.get("outside_site") is False and log.get("in_site_m") == 36
           and log.get("project") == CTX["att_project"] and log.get("work_site") == SITE and log.get("worker_name") == "Yudi Contoh", log)
     st, resp = clock_in(w1, W["MP-101"], A["MP-101"], t)
     check("a second clock-in the same day is refused (one log per worker per day)", refused(st, resp, "sudah punya absen"), (st, resp))
@@ -161,8 +164,12 @@ def scenario_attendance_clock(api):
     check("a worker cannot clock in for another worker (403)", denied(st, resp), (st, resp))
     st, resp = w1.verb("attendance_log", L1, "submit")
     check("a log without clock-out cannot be submitted", refused(st, resp, "jam keluar"), (st, resp))
-    st, resp = clock_out(w1, L1, t)
+    st, resp = clock_out(w1, L1, t, with_photo=False)
     check("worker Yudi clocks out at the factory", st == 200 and rec(resp).get("out_inside") is True, (st, resp))
+    st, resp = w1.verb("attendance_log", L1, "submit")
+    check("a log inside the radius without a clock-in photo cannot be submitted (audit H2)", refused(st, resp, "foto"), (st, resp))
+    st, resp = w1.patch("attendance_log", L1, {"in_photo": photo(w1, L1)})
+    check("Yudi adds his clock-in photo", st == 200, (st, resp))
     st, resp = w1.verb("attendance_log", L1, "submit")
     check("inside the radius the log submits at once (no approval)", st == 200 and rec(resp).get("docstatus") == 1, (st, resp))
     CTX["att_L1"] = rec(resp).get("name", L1)
@@ -176,14 +183,14 @@ def scenario_attendance_clock(api):
         return
     L2 = log2["name"]
     CTX["att_asg_of"][L2] = A["MP-102"]
-    check("the kernel ignores the phone's 5 m: outside the radius, about 384-400 m",
-          log2.get("in_inside") is False and log2.get("outside_site") is True and 380 <= (log2.get("in_site_m") or 0) <= 420, log2)
+    check("the kernel ignores the phone's 5 m: outside the radius, 400 m",
+          log2.get("in_inside") is False and log2.get("outside_site") is True and log2.get("in_site_m") == 400, log2)
     eq("worker Yudi lists only his own logs", sorted({x["worker"] for x in w1.list("attendance_log")}), [W["MP-101"]])
     st, resp = w1.call("GET", f"/api/v1/r/attendance_log/{Api.q(L2)}")
     check("worker Yudi cannot open Zahra's log (403)", denied(st, resp), (st, resp))
     st, resp = w1.patch("attendance_log", L2, {"reason": "ubah orang lain"})
     check("worker Yudi cannot change Zahra's log (403)", denied(st, resp), (st, resp))
-    st, resp = clock_out(w2, L2, t)
+    st, resp = clock_out(w2, L2, t, with_photo=False)
     check("Zahra clocks out at the factory", st == 200, (st, resp))
     st, resp = w2.verb("attendance_log", L2, "submit")
     check("a log outside the radius needs a clock-in photo", refused(st, resp, "foto"), (st, resp))
@@ -336,4 +343,93 @@ def scenario_attendance_close(api):
     check("a worker cannot close attendance (403)", denied(st, resp), (st, resp))
 
 
-SCENARIOS = [scenario_attendance_clock, scenario_attendance_supervisor, scenario_attendance_close]
+def owner_log(api, worker, asg, day, ot=0):
+    """A log at the factory made and submitted by the owner (who approves its own late entry), with photo."""
+    lat, lng = near(SITE, 20, 10)
+    body = {"worker": worker, "assignment": asg, "work_date": str(day), "clock_in": f"{day}T08:00:00+07:00", "in_lat": lat, "in_lng": lng,
+            "clock_out": f"{day}T17:00:00+07:00", "out_lat": lat, "out_lng": lng}
+    if ot:
+        body.update(overtime_hours=ot, reason="Lembur stok opname")
+    st, lg = api.create("attendance_log", body)
+    if st != 201:
+        return st, lg
+    api.patch("attendance_log", lg["name"], {"in_photo": photo(api, lg["name"])})
+    return api.verb("attendance_log", lg["name"], "submit")
+
+
+def close(api, project, pf, pt):
+    st, c = api.create("attendance_close", {"project": project, "period_from": str(pf), "period_to": str(pt)})
+    if st != 201:
+        return st, c, ""
+    st, resp = api.verb("attendance_close", c["name"], "submit")
+    return st, resp, rec(resp).get("name", c["name"]) if st == 200 else c["name"]
+
+
+def scenario_attendance_close_edges(api):
+    """Audit 8 Nov: two assignments of one worker are never paid at one rate (refused, then closed per assignment); a
+    cancelled close can be amended; a recap never stacks on another timesheet of the same days (both directions); an
+    hourly assignment still gets a per-day recap."""
+    t = CTX.get("att_today") or kernel_today()
+    D = lambda n: t - datetime.timedelta(days=n)   # noqa: E731
+    ws = {}
+    for no, nm in (("MP-111", "Bima Contoh"), ("MP-112", "Citra Contoh"), ("MP-113", "Dewa Contoh")):
+        st, w = api.create("worker", {"worker_name": nm, "employee_no": no, "role_title": "Operator", "day_rate": 300_000, "cost_day_rate": 200_000,
+                                      "overtime_rate": 40_000, "overtime_cost_rate": 30_000, "hour_rate": 50_000, "cost_hour_rate": 30_000})
+        if not check(f"owner adds worker {no}", st == 201, (st, w)):
+            return
+        ws[no] = w["name"]
+    st, prj = api.create("project", {"project_name": "Proyek uji rekap absen", "customer": "CUST-0001", "state": "running"})
+    if not check("owner opens the project for the close edges", st == 201, (st, prj)):
+        return
+    P = prj["name"]
+    asg = {}
+    for key, no, start, end, extra in (("a1", "MP-111", D(10), D(6), {"day_rate": 300_000, "cost_rate": 200_000}),
+                                       ("a2", "MP-111", D(5), t + datetime.timedelta(days=30), {"day_rate": 400_000, "cost_rate": 260_000}),
+                                       ("c", "MP-112", D(10), t + datetime.timedelta(days=30), {}),
+                                       ("h", "MP-113", D(10), t + datetime.timedelta(days=30), {"rate_basis": "hour"})):
+        st, a = api.create("assignment", dict({"project": P, "worker": ws[no], "work_site": SITE, "start_date": str(start), "end_date": str(end)}, **extra))
+        if not check(f"assignment {key} of {no}", st == 201, (st, a)):
+            return
+        asg[key] = a["name"]
+    for w, a, d in ((ws["MP-111"], asg["a1"], D(7)), (ws["MP-111"], asg["a2"], D(4)), (ws["MP-111"], asg["a2"], D(3)), (ws["MP-113"], asg["h"], D(7))):
+        st, resp = owner_log(api, w, a, d)
+        check(f"owner logs {w} on {d}", st == 200, (st, resp))
+    st, resp, _ = close(api, P, D(8), D(1))
+    check("a close over two assignments of one worker is refused (one slip, one rate)", refused(st, resp, "dua penugasan"), (st, resp))
+    st, resp, C1 = close(api, P, D(8), D(6))
+    check("closing at the end of the first assignment works", st == 200, (st, resp))
+    st, resp, C2 = close(api, P, D(5), D(1))
+    check("the next close takes the second assignment", st == 200, (st, resp))
+    got = sorted((x["assignment"], x["days"], x["cost_amount"], x["amount"]) for x in api.find("timesheet", f"project == '{P}' && worker == '{ws['MP-111']}'"))
+    eq("each assignment is paid and billed at its own rate (1 x 200.000/300.000; 2 x 260.000/400.000)",
+       got, sorted([(asg["a1"], 1, 200_000, 300_000), (asg["a2"], 2, 520_000, 800_000)]))
+    h = api.find("timesheet", f"project == '{P}' && worker == '{ws['MP-113']}'")
+    eq("an hourly assignment still gets a per-day recap", [(x["rate_basis"], x["days"], x["attendance_close"]) for x in h], [("day", 1, C1)])
+    # Reopen the second close: delete its draft recap, cancel, amend, submit again.
+    for x in api.find("timesheet", f"attendance_close == '{C2}'"):
+        api.call("DELETE", f"/api/v1/r/timesheet/{Api.q(x['name'])}")
+    st, resp = api.verb("attendance_close", C2, "cancel")
+    check("with its recap deleted the close cancels", st == 200, (st, resp))
+    st, am = api.verb("attendance_close", C2, "amend")
+    amn = rec(am).get("name")
+    st2, resp2 = api.verb("attendance_close", amn, "submit") if st in (200, 201) and amn else (st, am)
+    check("the cancelled close is amended and submitted again (no unique key in the way)", st2 == 200, (st, am, st2, resp2))
+    C2b = rec(resp2).get("name", amn)
+    eq("the amended close made the recap again", [(x["days"], x["attendance_close"]) for x in api.find("timesheet", f"project == '{P}' && worker == '{ws['MP-111']}' && assignment == '{asg['a2']}'")], [(2, C2b)])
+    # A daily timesheet of a day already in a recap is refused.
+    st, ts = api.create("timesheet", {"project": P, "worker": ws["MP-111"], "assignment": asg["a2"], "work_date": str(D(3)), "days": 1, "description": "Shift dobel"})
+    st2, resp2 = api.verb("timesheet", ts.get("name", "x"), "submit") if st == 201 else (st, ts)
+    check("a daily timesheet on a day already in a field recap cannot be submitted", refused(st2, resp2, "timesheet lain"), (st2, resp2))
+    # The other way: a daily timesheet first, then a close over it.
+    st, ts = api.create("timesheet", {"project": P, "worker": ws["MP-112"], "assignment": asg["c"], "work_date": str(D(9)), "days": 1, "description": "Shift harian"})
+    st2, resp2 = api.verb("timesheet", ts.get("name", "x"), "submit") if st == 201 else (st, ts)
+    check("Citra has a submitted daily timesheet on day -9", st2 == 200, (st2, resp2))
+    st, resp = owner_log(api, ws["MP-112"], asg["c"], D(9))
+    check("and a log the same day", st == 200, (st, resp))
+    st, resp, _ = close(api, P, D(10), D(9))
+    check("a close over a day that already has a daily timesheet is refused", refused(st, resp, "timesheet lain"), (st, resp))
+    st, resp = api.verb("attendance_close", C1, "cancel")
+    check("a close whose recaps live cannot be cancelled", refused(st, resp, "timesheet"), (st, resp))
+
+
+SCENARIOS = [scenario_attendance_clock, scenario_attendance_supervisor, scenario_attendance_close, scenario_attendance_close_edges]
