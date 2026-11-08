@@ -107,7 +107,7 @@ fields:
     type: check
     label: {id: Tagihan berikutnya sisa periode}
     hidden: true
-    compute: "!next_is_prorata && billed_through != '' && last_period_start != '' && billed_through < boundary"
+    compute: "!next_is_prorata && billed_through != '' && last_period_start != '' && last_cycle_value > 0 && billed_through < boundary"
   - name: next_bill_date
     type: date
     label: {id: Tagihan berikutnya}
@@ -140,6 +140,7 @@ fields:
   # the last period billed as the cycle runs (before an end date cut it): what the rest of it is pro-rated against
   - {name: last_period_start, type: date, label: {id: Awal periode terakhir}, read_only: true, hidden: true}
   - {name: last_full_amount, type: currency, label: {id: Nilai penuh periode terakhir}, read_only: true, hidden: true}
+  - {name: last_cycle_value, type: currency, label: {id: Nilai satu siklus saat periode terakhir}, read_only: true, hidden: true}
   # facts written by the dunning flows only; the status is computed from them when they are saved
   - {name: unpaid_amount, type: currency, label: {id: Belum dibayar}, read_only: true, in_list: true}
   - name: deposit_waiting
@@ -187,7 +188,7 @@ rules:
     message: {id: 'Bayar di muka antara 1 dan 36 bulan'}
   - name: price_positive
     on: save
-    check: monthly_price > 0 && discount_percent >= 0 && discount_percent < 100
+    check: monthly_price > 0 && discount_percent >= 0 && discount_percent < 100 && monthly_net > 0
     message: {id: 'Harga per bulan harus lebih dari 0 dan potongan 0 sampai di bawah 100%'}
   - name: end_after_start
     on: save

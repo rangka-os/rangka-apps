@@ -312,6 +312,7 @@ def scenario_subs_end_dates(api):
     # the client stays after all (audit #12): the rest of the cut period is billed, pro-rated, then the cycle goes on
     bt = d(cases[0]["end_date"])
     boundary = add_months(s_start, 2)
+    fm.patch("subscription", made[0], {"monthly_price": 10000})   # the price falls before the rest is billed (audit #15)
     st, resp = fm.patch("subscription", made[0], {"end_date": None})
     check("finance takes the end date away (200)", st == 200 and not api.get("subscription", made[0]).get("end_date"), (st, resp))
     new = bill_all(api, "remainder")
@@ -319,13 +320,14 @@ def scenario_subs_end_dates(api):
     rb = [b for b in rb if b["subscription"] == made[0]]
     want = [("remainder", bt.isoformat(), (boundary - datetime.timedelta(days=1)).isoformat(), js_round(150000 * (boundary - bt).days / (boundary - add_months(s_start, 1)).days))]
     if boundary <= today:
-        want.append(("regular", boundary.isoformat(), (add_months(s_start, 3) - datetime.timedelta(days=1)).isoformat(), 150000))
+        want.append(("regular", boundary.isoformat(), (add_months(s_start, 3) - datetime.timedelta(days=1)).isoformat(), 10000))
     eq("the rest of that period is billed next, pro-rated against the full period", sorted((b["kind"], b["period_start"], b["period_end"], b["base_amount"]) for b in rb), sorted(want))
     allb = rows_all(api, "subscription_bill", f"subscription == '{made[0]}'")
-    month2 = [b for b in allb if add_months(s_start, 1).isoformat() <= b["period_start"] < boundary.isoformat()]
+    month2 = [b for b in allb if add_months(s_start, 1).isoformat() <= b["period_start"] < boundary.isoformat()]   # the price fell to 10.000 between its pieces
     eq("the extra every period: 100.000 on the full first month", [b["extras_total"] for b in allb if b["period_start"] == s_start.isoformat()], [100000])
     check("and the cut second month and its rest add up to one extra (audit #14)", abs(sum(b["extras_total"] for b in month2) - 100000) <= 1,
           [(b["kind"], b["period_start"], b["extras_total"]) for b in month2])
+    fm.patch("subscription", made[0], {"monthly_price": 150000})
     fm.patch("subscription", made[0], {"end_date": (boundary if boundary > today else add_months(s_start, 3)).isoformat()})
     CTX["ended"] = made
 

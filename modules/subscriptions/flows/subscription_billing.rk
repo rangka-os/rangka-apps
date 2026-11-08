@@ -8,7 +8,8 @@ label: {id: Tagihan langganan otomatis}
 # subscription, in the run's one transaction (contract 0031 for_each):
 # 1. the active extras overlapping the period (one-off ones not billed before); an extra every period is pro-rated on
 #    a bill shorter than a full cycle (pro-rated start, a period an end date cuts, the rest of a cut period) by the same
-#    share as the plan line (next_amount over a full cycle), so the pieces of one period add up to one extra;
+#    share as the plan line (next_amount over a full cycle at the price of that period: last_cycle_value for the rest of
+#    a cut period), so the pieces of one period add up to one extra;
 # 2. a subscription_bill (period_key unique: the same period is never billed twice);
 # 3. a draft sales invoice dated the period's first day, due due_days after it, one line for the plan and one per extra,
 #    notes with {langganan:<subscription>} and [<bill>] (a flow cannot submit: finance checks and submits it, then
@@ -43,7 +44,7 @@ steps:
           period_end: s.next_period_end
           months: "s.next_is_prorata || s.resume ? 0 : s.cycle_months"
           base_amount: s.next_amount
-          extras_total: "extras.map(x, (x.repeat == 'once' ? x.amount : round(x.amount * s.next_amount / (s.monthly_net * s.cycle_months)))).sum()"
+          extras_total: "extras.map(x, (x.repeat == 'once' ? x.amount : round(x.amount * s.next_amount / (s.resume ? s.last_cycle_value : s.monthly_net * s.cycle_months)))).sum()"
           due_date: s.next_bill_date + duration(s.due_days)
         as: bill
       - create: sales_invoice
@@ -55,7 +56,7 @@ steps:
           items: >-
             [{'item': s.item, 'description': s.plan_name + ' ' + bill.period_start + ' s.d. ' + bill.period_end
               + (s.next_is_prorata ? ' (prorata)' : ''), 'qty': 1, 'rate': bill.base_amount}]
-              + extras.map(x, {'item': x.item, 'description': x.description, 'qty': 1, 'rate': (x.repeat == 'once' ? x.amount : round(x.amount * s.next_amount / (s.monthly_net * s.cycle_months)))})
+              + extras.map(x, {'item': x.item, 'description': x.description, 'qty': 1, 'rate': (x.repeat == 'once' ? x.amount : round(x.amount * s.next_amount / (s.resume ? s.last_cycle_value : s.monthly_net * s.cycle_months)))})
         as: inv
       - for_each: extras
         as: x
@@ -70,6 +71,7 @@ steps:
           billed_months: "s.next_is_prorata || s.resume ? s.billed_months : s.billed_months + s.cycle_months"
           last_period_start: "s.resume ? s.last_period_start : s.next_bill_date"
           last_full_amount: "s.resume ? s.last_full_amount : s.cycle_amount"
+          last_cycle_value: "s.resume ? s.last_cycle_value : s.monthly_net * s.cycle_months"
           last_bill: bill.name
           locked_start: s.start_date
           locked_anchor: s.anchor
