@@ -5,7 +5,8 @@ icon: plus
 naming: TMB-{#####}
 title_field: description
 # A line added to a subscription's bills: once (an installation fee, an extra design job this month) or every period
-# (an add-on, a second access point) from a date until an optional date. The billing flow adds every active extra whose
+# (an add-on, a second access point) from a date until an optional date; the amount is per full cycle, pro-rated on a
+# shorter bill like the plan line. The billing flow adds every active extra whose
 # dates overlap the period it bills (from_date on or before the period's last day, until_date empty or on or after its
 # first day) as a line of the draft invoice; a one-off extra is marked with the bill that took it and is not billed
 # again. An extra cannot change after a bill took it (flow subscription_extra_locked); a recurring one that should end gets an

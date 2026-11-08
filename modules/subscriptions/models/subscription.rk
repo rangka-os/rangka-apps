@@ -107,7 +107,7 @@ fields:
     type: check
     label: {id: Tagihan berikutnya sisa periode}
     hidden: true
-    compute: "!next_is_prorata && billed_through != '' && billed_through < boundary"
+    compute: "!next_is_prorata && billed_through != '' && last_period_start != '' && billed_through < boundary"
   - name: next_bill_date
     type: date
     label: {id: Tagihan berikutnya}

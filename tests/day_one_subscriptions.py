@@ -297,6 +297,9 @@ def scenario_subs_end_dates(api):
         if not check(f"finance adds a subscription {body['start_date']} to {body['end_date']} (201)", st == 201, (st, x)):
             return
         made.append(x["name"])
+    st, x = fm.create("subscription_extra", {"subscription": made[0], "description": "IP statis", "item": "BRG-0004", "amount": 100000,
+                                             "repeat": "every_period", "from_date": s_start.isoformat()})
+    check("an extra of 100.000 every period on the first (201)", st == 201, (st, x))
     bill_all(api, "end dates")
     for n in made:
         s = api.get("subscription", n)
@@ -318,6 +321,11 @@ def scenario_subs_end_dates(api):
     if boundary <= today:
         want.append(("regular", boundary.isoformat(), (add_months(s_start, 3) - datetime.timedelta(days=1)).isoformat(), 150000))
     eq("the rest of that period is billed next, pro-rated against the full period", sorted((b["kind"], b["period_start"], b["period_end"], b["base_amount"]) for b in rb), sorted(want))
+    allb = rows_all(api, "subscription_bill", f"subscription == '{made[0]}'")
+    month2 = [b for b in allb if add_months(s_start, 1).isoformat() <= b["period_start"] < boundary.isoformat()]
+    eq("the extra every period: 100.000 on the full first month", [b["extras_total"] for b in allb if b["period_start"] == s_start.isoformat()], [100000])
+    check("and the cut second month and its rest add up to one extra (audit #14)", abs(sum(b["extras_total"] for b in month2) - 100000) <= 1,
+          [(b["kind"], b["period_start"], b["extras_total"]) for b in month2])
     fm.patch("subscription", made[0], {"end_date": (boundary if boundary > today else add_months(s_start, 3)).isoformat()})
     CTX["ended"] = made
 
