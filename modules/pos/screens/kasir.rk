@@ -22,6 +22,8 @@ counter:
     model: pos_sale
     lines: items
     line: {item: item, qty: qty, price: rate, note: note}
+    total: grand_total
+    change: change_amount
     set: {date: "today()"}
   payments: {table: payments, method: method, amount: amount, ref: ref, methods: [cash, qris]}
   session:
