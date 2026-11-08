@@ -1,0 +1,43 @@
+# Synthetic demo data for Contoh Net Nusantara, a fictional RT/RW net. No real people, businesses or brands.
+# Nothing is billed yet: flow subscription_billing makes the bills (one period per subscription per run) and
+# subscription_dunning the statuses. LGN-00007 left before Rangka: its four months were billed elsewhere (billed_months).
+uom:
+  - {name: UOM-001, uom_name: Bulan}
+  - {name: UOM-002, uom_name: Kali}
+customer:
+  - {name: CUST-0001, customer_name: Bapak Ade Contoh, city: Bogor, address: 'Blok A1 No. 3', phone: '+620000000201', payment_days: 7}
+  - {name: CUST-0002, customer_name: Ibu Bunga Contoh, city: Bogor, address: 'Blok A2 No. 8', phone: '+620000000202', payment_days: 7}
+  - {name: CUST-0003, customer_name: Bapak Cahyo Contoh, city: Bogor, address: 'RT 02 RW 05 No. 14', phone: '+620000000203', payment_days: 7}
+  - {name: CUST-0004, customer_name: Ibu Dian Contoh, city: Bogor, address: 'RT 03 RW 05 No. 2', phone: '+620000000204', payment_days: 7}
+  - {name: CUST-0005, customer_name: CV Contoh Grafika, city: Bogor, address: 'Ruko Contoh Blok C No. 1', phone: '+620000000205', payment_days: 14}
+  - {name: CUST-0006, customer_name: PT Contoh Klinik Sehat, city: Bogor, address: 'Jl. Contoh Raya No. 20', phone: '+620000000206', payment_days: 14}
+  - {name: CUST-0007, customer_name: Bapak Gani Contoh, city: Bogor, address: 'RT 01 RW 05 No. 9', phone: '+620000000207', payment_days: 7}
+item:
+  - {name: BRG-0001, item_name: Internet rumah 10 Mbps, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: NET-10, rate: 150000}
+  - {name: BRG-0002, item_name: Internet rumah 20 Mbps, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: NET-20, rate: 250000}
+  - {name: BRG-0003, item_name: Internet usaha 50 Mbps, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: NET-50B, rate: 1500000}
+  - {name: BRG-0004, item_name: IP publik statis, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: NET-IP, rate: 100000}
+  - {name: BRG-0005, item_name: Biaya pasang baru, kind: service, stock_uom: UOM-002, sales_uom: UOM-002, sku: NET-PSG, rate: 200000}
+user:
+  - {name: USR-001, full_name: Rani Contoh, role: finance_manager, email: rani@contohnet.test}
+  - {name: USR-002, full_name: Dodi Contoh, role: collector, email: dodi@contohnet.test}
+  - {name: USR-003, full_name: Eka Contoh, role: collector, email: eka@contohnet.test}
+subscription_plan:
+  - {name: PKT-001, plan_name: Rumah 10 Mbps, item: BRG-0001, monthly_price: 150000, default_cycle: monthly, default_prepaid_months: 6, due_days: 7, suspend_after_days: 10, stop_after_days: 0, active: true}
+  - {name: PKT-002, plan_name: Rumah 20 Mbps, item: BRG-0002, monthly_price: 250000, default_cycle: monthly, default_prepaid_months: 6, due_days: 7, suspend_after_days: 10, stop_after_days: 60, active: true}
+  - {name: PKT-003, plan_name: Usaha 50 Mbps, item: BRG-0003, monthly_price: 1500000, default_cycle: quarterly, default_prepaid_months: 6, due_days: 14, suspend_after_days: 30, stop_after_days: 0, active: true}
+service_area:
+  - {name: ARE-001, area_name: Perumahan Contoh Blok A, collector: USR-002}
+  - {name: ARE-002, area_name: Kampung Contoh RW 05, collector: USR-003}
+  - {name: ARE-003, area_name: Kawasan usaha (transfer), notes: Klien usaha bayar transfer; tanpa penagih}
+subscription:
+  - {name: LGN-00001, customer: CUST-0001, plan: PKT-001, service_id: ade.blok-a, area: ARE-001, cycle: monthly, prepaid_months: 6, monthly_price: 150000, discount_percent: 0, start_date: 2026-08-17, anchor: month_start, due_days: 7, suspend_after_days: 10, stop_after_days: 0}
+  - {name: LGN-00002, customer: CUST-0002, plan: PKT-002, service_id: bunga.blok-a, area: ARE-001, cycle: monthly, prepaid_months: 6, monthly_price: 250000, discount_percent: 0, start_date: 2026-09-01, anchor: month_start, due_days: 7, suspend_after_days: 10, stop_after_days: 60}
+  - {name: LGN-00003, customer: CUST-0003, plan: PKT-001, service_id: cahyo.rw05, area: ARE-002, cycle: monthly, prepaid_months: 6, monthly_price: 150000, discount_percent: 0, start_date: 2026-10-10, anchor: month_start, due_days: 7, suspend_after_days: 10, stop_after_days: 0}
+  - {name: LGN-00004, customer: CUST-0004, plan: PKT-002, service_id: dian.rw05, area: ARE-002, cycle: prepaid, prepaid_months: 6, monthly_price: 250000, discount_percent: 5, start_date: 2026-09-01, anchor: start, due_days: 7, suspend_after_days: 10, stop_after_days: 60}
+  - {name: LGN-00005, customer: CUST-0005, plan: PKT-003, service_id: grafika.ruko-c1, area: ARE-003, cycle: quarterly, prepaid_months: 6, monthly_price: 1500000, discount_percent: 0, start_date: 2026-09-15, anchor: start, due_days: 14, suspend_after_days: 30, stop_after_days: 0}
+  - {name: LGN-00006, customer: CUST-0006, plan: PKT-003, service_id: klinik.raya-20, area: ARE-003, cycle: yearly, prepaid_months: 6, monthly_price: 1500000, discount_percent: 10, start_date: 2026-10-31, anchor: start, due_days: 14, suspend_after_days: 30, stop_after_days: 0}
+  - {name: LGN-00007, customer: CUST-0007, plan: PKT-001, service_id: gani.rw05, area: ARE-002, cycle: monthly, prepaid_months: 6, monthly_price: 150000, discount_percent: 0, start_date: 2026-06-01, anchor: start, end_date: 2026-10-01, due_days: 7, suspend_after_days: 10, stop_after_days: 0, billed_months: 4, locked_start: 2026-06-01, locked_anchor: start}
+subscription_extra:
+  - {name: TMB-00001, subscription: LGN-00005, description: IP publik statis, item: BRG-0004, amount: 100000, repeat: every_period, from_date: 2026-09-15, active: true}
+  - {name: TMB-00002, subscription: LGN-00003, description: Biaya pasang baru, item: BRG-0005, amount: 200000, repeat: once, from_date: 2026-10-10, active: true}

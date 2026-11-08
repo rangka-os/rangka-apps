@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: field_collection
+label: {id: Uang tertagih penagih, en: Field collection}
+icon: wallet
+naming: UTP-{YYYY}-{#####}
+title_field: customer_name
+# Cash a collector took from a client in the field (Rangka has no cash until the collector deposits it). Recorded on a
+# subscription, not an invoice: a collector reads no invoices, and what the subscription still owes is on it
+# (unpaid_amount, refreshed by the flows). A collector deposit takes every collection of its collector not yet
+# deposited and turns each into a draft cash payment allocated to the subscription's oldest unpaid invoices (flow
+# collector_deposit_on_submit). Once deposited a collection cannot change or be deleted (flows field_collection_*).
+permissions:
+  - {role: collector, read: true, create: true, write: true, delete: true}
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true, print: true}
+  # the payment flows look for the collection of a payment as whoever edits it
+  - {role: sales_manager, read: true}
+fields:
+  - {name: collector, type: link, to: user, label: {id: Penagih}, default: user.name, required: true, in_list: true}
+  - {name: subscription, type: link, to: subscription, label: {id: Langganan}, required: true}
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, compute: subscription.customer}
+  - {name: customer_name, type: data, label: {id: Nama pelanggan}, compute: subscription.customer_name, in_list: true}
+  - {name: unpaid_amount, type: currency, label: {id: Belum dibayar saat dicatat}, compute: subscription.unpaid_amount}
+  - {name: amount, type: currency, label: {id: Uang diterima}, required: true, in_list: true}
+  - {name: collected_on, type: date, label: {id: Tanggal tagih}, default: today(), required: true, in_list: true}
+  - {name: deposit, type: link, to: collector_deposit, label: {id: Disetor di}, read_only: true, in_list: true}
+  - {name: payment, type: data, label: {id: Draf pembayaran}, read_only: true}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: amount_valid
+    on: save
+    check: amount > 0 && amount <= subscription.unpaid_amount
+    message: {id: 'Uang diterima harus lebih dari 0 dan tidak lebih dari yang belum dibayar langganan ini'}
+  - name: own_area
+    on: save
+    check: subscription.collector == collector
+    message: {id: 'Langganan ini bukan di area penagih ini'}
+  - name: not_future
+    on: save
+    check: collected_on <= today()
+    message: {id: 'Tanggal tagih tidak boleh sesudah hari ini'}
+views:
+  list:
+    columns: [name, collected_on, customer_name, amount, collector, deposit]
+    filters: [collector, deposit, subscription]
+    sort: -collected_on

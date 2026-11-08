@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: deposit_payment_kept
+label: {id: Pembayaran dari setoran tetap utuh}
+# A draft payment made by a collector deposit (a field collection names it) is cash already counted into Kas: its
+# amount, client, method, reference and notes do not change (its allocations may), so what finance submits is what was
+# deposited.
+on: payment.updated
+if: >-
+  event.before != null && event.before.direction == 'receive' && (event.amount != event.before.amount
+    || event.customer != event.before.customer || event.method != event.before.method || event.direction != event.before.direction
+    || event.reference != event.before.reference || event.notes != event.before.notes)
+steps:
+  - {find: field_collection, where: payment == event.name, as: c}
+  - if: c != null
+    create: subscription_guard
+    set:
+      reason: "'deposit_payment'"
+      document: event.name

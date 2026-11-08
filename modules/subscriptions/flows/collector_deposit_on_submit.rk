@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: collector_deposit_on_submit
+label: {id: Setoran penagih jadi draf pembayaran}
+# Runs in finance's submit. Reads take the flow read locks of contract 0025 (field_collection, sales_invoice, payment),
+# so two deposits of one collector run one after the other and a collection is deposited once.
+# 0. Refused when the collector has no collection on or before the deposit date left to deposit, or the cash counted is
+#    not exactly their total.
+# 1. Per collection (for_each, contract 0031): a draft cash payment of the client, dated the day it was collected,
+#    reference = the subscription, notes "Setoran <deposit>, <collection>". Allocated to the subscription's submitted
+#    unpaid invoices oldest first (due date, then number), after the draft payments already waiting for that
+#    subscription (they take the oldest first too): the collection covers the window [waiting, waiting + amount) of
+#    the invoices' outstanding laid end to end. What is left is unallocated, the client's credit.
+# 2. The collection is marked with the deposit and its draft payment. Finance submits the payments (Kas, invoices paid).
+on: collector_deposit.submitted
+steps:
+  - find_all: field_collection
+    where: collector == event.collector && deposit == '' && collected_on <= event.deposit_date
+    sort: collected_on
+    as: cols
+  - if: size(cols) == 0 || cols.map(c, c.amount).sum() != event.cash_counted
+    create: subscription_guard
+    set:
+      reason: "'deposit_mismatch'"
+      document: event.name
+  - for_each: cols
+    as: c
+    do:
+      - find_all: sales_invoice
+        where: docstatus == 1 && outstanding > 0 && notes.contains('{langganan:' + c.subscription + '}')
+        sort: due_date
+        as: invs
+      - find_all: payment
+        where: docstatus == 0 && direction == 'receive' && reference == c.subscription && notes.startsWith('Setoran ')
+        as: drafts
+      - create: payment
+        set:
+          direction: "'receive'"
+          customer: c.customer
+          payment_date: c.collected_on
+          amount: c.amount
+          method: "'cash'"
+          reference: c.subscription
+          notes: "'Setoran ' + event.name + ', ' + c.name + ' (' + c.customer_name + ')'"
+          allocations: >-
+            invs.filter(i, max(0, min(invs.filter(j, j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name)).map(j, j.outstanding).sum() + i.outstanding, drafts.map(p, p.amount).sum() + c.amount) - max(invs.filter(j, j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name)).map(j, j.outstanding).sum(), drafts.map(p, p.amount).sum())) > 0)
+              .map(i, {'sales_invoice': i.name, 'amount': max(0, min(invs.filter(j, j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name)).map(j, j.outstanding).sum() + i.outstanding, drafts.map(p, p.amount).sum() + c.amount) - max(invs.filter(j, j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name)).map(j, j.outstanding).sum(), drafts.map(p, p.amount).sum()))})
+        as: pay
+      - update: c
+        set:
+          deposit: event.name
+          payment: pay.name

@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: collector_deposit
+label: {id: Setoran penagih, en: Collector deposit}
+icon: cash
+is_submittable: true
+naming: STP-{YYYY}-{#####}
+title_field: collector
+# The cash a collector hands over, counted by finance. Submitting it (flow collector_deposit_on_submit) takes every
+# collection of that collector on or before the deposit date not yet deposited; refused when there is none or when the
+# cash counted is not exactly their total (a shortage is found before submitting, not booked). Each collection becomes
+# a draft cash payment of its client, allocated to the subscription's oldest unpaid invoices after the draft payments
+# already waiting for that subscription (the rest stays unallocated as the client's credit). Finance submits those
+# payments, which settles the invoices and puts the cash in Kas. A deposit is not cancelled: its draft payments cannot
+# be deleted, and their amount, client and method cannot change (flows deposit_payment_*).
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, submit: true, export: true, print: true}
+  - {role: collector, read: true}
+fields:
+  - {name: collector, type: link, to: user, label: {id: Penagih}, required: true, in_list: true}
+  - {name: deposit_date, type: date, label: {id: Tanggal setor}, default: today(), required: true, in_list: true}
+  - {name: cash_counted, type: currency, label: {id: Uang yang dihitung}, required: true, in_list: true}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: cash_positive
+    on: save
+    check: cash_counted > 0
+    message: {id: 'Uang yang dihitung harus lebih dari 0'}
+  - name: not_future
+    on: save
+    check: deposit_date <= today()
+    message: {id: 'Tanggal setor tidak boleh sesudah hari ini'}
+views:
+  list:
+    columns: [name, deposit_date, collector, cash_counted, status]
+    filters: [collector]
+    sort: -deposit_date

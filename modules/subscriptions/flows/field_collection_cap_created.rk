@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: field_collection_cap_created
+label: {id: Uang tertagih tidak melebihi tagihan}
+# Runs as the collector (who reads no invoices): the collections of a subscription not yet deposited, this one
+# included, stay within what the subscription still owes (unpaid_amount, refreshed by the subscription flows). The read
+# lock on field_collection (contract 0025) makes two collections saved at the same moment check one after the other.
+on: field_collection.created
+if: event.deposit == ''
+steps:
+  - {find: subscription, where: name == event.subscription, as: s}
+  - find_all: field_collection
+    where: subscription == event.subscription && deposit == '' && name != event.name
+    as: others
+  - if: s == null || others.map(c, c.amount).sum() + event.amount > s.unpaid_amount
+    create: subscription_guard
+    set:
+      reason: "'collection_over'"
+      document: event.name

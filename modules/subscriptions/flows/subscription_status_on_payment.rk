@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: subscription_status_on_payment
+label: {id: Status langganan diperbarui saat pembayaran diajukan}
+# A received payment of a client refreshes that client's subscriptions at once, with the same ladder as
+# subscription_dunning: a client who pays what was past due is active again (the suspension is lifted) without waiting
+# for the night run.
+on: payment.submitted
+if: event.direction == 'receive' && event.customer != ''
+steps:
+  - find_all: sales_invoice
+    where: docstatus == 1 && outstanding > 0 && customer == event.customer && notes.contains('{langganan:')
+    sort: due_date
+    as: allopen
+  - find_all: subscription
+    where: customer == event.customer && (status != 'stopped' || end_date == '' || end_date > today())
+    as: subs
+  - for_each: subs
+    as: s
+    do:
+      - update: s
+        set:
+          prev_status: s.status
+          unpaid_amount: "allopen.filter(i, i.notes.contains('{langganan:' + s.name + '}')).map(i, i.outstanding).sum()"
+          overdue_amount: "allopen.filter(i, i.notes.contains('{langganan:' + s.name + '}')).filter(i, i.due_date < today()).map(i, i.outstanding).sum()"
+          oldest_due: "size(allopen.filter(i, i.notes.contains('{langganan:' + s.name + '}'))) > 0 ? allopen.filter(i, i.notes.contains('{langganan:' + s.name + '}'))[0].due_date : ''"
+          checked_on: today()
+      - update: s
+        if: s.stop_due
+        set:
+          end_date: "today() >= add_months(s.anchor_date, s.billed_months) ? today() : add_months(s.anchor_date, s.billed_months)"
+      - create: subscription_status_log
+        if: s.status != s.prev_status
+        set:
+          subscription: s.name
+          changed_on: today()
+          from_status: s.prev_status
+          to_status: s.status
+          overdue_since: s.overdue_since
+          overdue_amount: s.overdue_amount
+      - notify: owner
+        if: s.status == 'suspended' && s.prev_status != 'suspended'
+        channel: email
+        template: {id: 'Layanan {s.customer_name} ({s.name} {s.service_id}) ditangguhkan: telat {s.late_days} hari, Rp {s.overdue_amount}. Isolir bila perlu.'}

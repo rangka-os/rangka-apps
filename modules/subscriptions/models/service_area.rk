@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: service_area
+label: {id: Area layanan, en: Service area}
+icon: map
+naming: ARE-{###}
+title_field: area_name
+# An area (a village, a cluster, a block of a housing estate) and the collector who visits it. The subscriptions of an
+# area follow its collector (flow service_area_collector).
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
+  - {role: collector, read: true}
+fields:
+  - {name: area_name, type: data, label: {id: Nama area}, required: true, in_list: true}
+  - {name: collector, type: link, to: user, label: {id: Penagih}, in_list: true}
+  - {name: notes, type: text, label: {id: Catatan}}
+views:
+  list:
+    columns: [area_name, collector]
+    sort: area_name

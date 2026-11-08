@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: subscriptions
+version: 1.0.0
+title: {id: Langganan, en: Subscriptions}
+# Businesses that bill the same client every period: a digital agency's retainers, an RT/RW net, a reseller of a POS
+# app. Plans with a monthly price; one subscription per client with its own cycle (monthly, 3 months, yearly or N
+# months paid in advance), start date and anchor (every start date, or the 1st with the first period pro-rated);
+# extra lines per period; bills made every day by a scheduled flow, each a draft sales invoice, so payment, reminders,
+# aging, tax and bank matching are the money rail's; the service status (active, late, suspended, stopped) moved by a
+# dunning ladder; areas and collectors, the cash they collect in the field and their deposits into the till; a monthly
+# recap for the collection rate. Kernel: contract 0031 (add_months, days_between, for_each). Research and plan:
+# rangka reports/Peta kebutuhan lima bisnis UMKM.md (langganan), lima-bisnis-plan.md §2.5, plans/layar-kerja.md A3.
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, invoicing: ^1.0, payments: ^1.0, procurement: ^1.0}
