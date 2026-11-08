@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A row of the return checklist: one unit back from the customer, its condition when it went out (from the unit) and
+# now, and what the damage or loss of this unit costs. The fees of all rows are the checklist damage of the return
+# (rental_return.unit_damage), kept from the deposit like the late fee.
+name: rental_return_unit
+is_child: true
+fields:
+  - {name: unit, type: link, to: rental_unit, label: {id: Unit}, required: true, peek: [serial_no, condition]}
+  - {name: unit_code, type: data, label: {id: Kode unit}, compute: unit.code}
+  - {name: serial_no, type: data, label: {id: Nomor seri}, compute: unit.serial_no}
+  - {name: unit_item, type: data, label: {id: Alat unit}, hidden: true, compute: unit.rental_item}
+  # the unit's condition at checkout; the unit keeps it while it is out (computed when the row is saved)
+  - {name: out_condition, type: data, label: {id: Kondisi saat keluar}, compute: "unit.state == 'out' ? unit.out_condition : ''"}
+  - name: condition
+    type: select
+    label: {id: Kondisi kembali}
+    required: true
+    default: "'lengkap'"
+    options:
+      - {value: lengkap, label: {id: 'Lengkap, baik'}}
+      - {value: lecet, label: {id: Lecet}}
+      - {value: rusak, label: {id: Rusak}}
+      - {value: hilang, label: {id: Hilang}}
+  - name: fee
+    type: currency
+    label: {id: Biaya kerusakan atau hilang}
+    help: {id: 'Biaya perbaikan atau ganti unit ini. Dipotong dari deposit bersama denda telat'}
+    default: '0'
+  - {name: notes, type: data, label: {id: Catatan}, help: {id: 'Misalnya lensa tergores, charger tidak kembali'}}

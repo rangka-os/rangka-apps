@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: rental_staff
+label: {id: Staf gudang sewa}
+description: {id: 'Menyiapkan alat, mencatat serah terima keluar dan kembali per unit (checklist, foto, tanda tangan), dan mencetak berita acara'}
+# No row scope: one warehouse per rental business. Money stays with the admin: this role submits checkouts (no money
+# moves) and fills returns, but the return's submit (which pays the deposit back) is sales_manager's. Amounts stay
+# visible: in a small rental shop the person at the counter is told the deposit and the fees anyway.

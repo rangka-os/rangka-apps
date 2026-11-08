@@ -2,6 +2,7 @@
 name: rental_checkout_on_cancel
 label: {id: Alat keluar dibatalkan}
 # A checkout entered by mistake: the schedule goes back to booked, refused once the equipment is recorded as returned.
+# Its units go back to the warehouse (refused for a unit that another document has moved since).
 on: rental_checkout.cancelled
 steps:
   - {find: rental_schedule, where: booking == event.booking, as: s}
@@ -11,3 +12,13 @@ steps:
   - update: s
     if: s != null
     set: {state: "'booked'", out_date: "null", checkout: "''"}
+  - for_each: event.units
+    as: row
+    do:
+      - {find: rental_unit, where: name == row.unit, as: u}
+      - create: rental_guard
+        if: "u == null || u.state != 'out' || u.booking != event.booking || u.last_checkout != event.name"
+        set: {reason: "'unit_moved'", document: event.name}
+      - update: u
+        if: u != null
+        set: {state: "'in'", booking: "''", last_checkout: "''"}

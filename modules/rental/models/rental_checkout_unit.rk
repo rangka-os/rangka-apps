@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A row of the checkout checklist: one unit handed to the customer and its condition as both sides saw it. A unit
+# that is broken or missing cannot go out (rules of rental_checkout); scratches are noted and go out.
+name: rental_checkout_unit
+is_child: true
+fields:
+  - {name: unit, type: link, to: rental_unit, label: {id: Unit}, required: true, peek: [serial_no, condition]}
+  - {name: unit_code, type: data, label: {id: Kode unit}, compute: unit.code}
+  - {name: serial_no, type: data, label: {id: Nomor seri}, compute: unit.serial_no}
+  # the rental item of the unit picked (rule units_of_item: a unit of this checkout's item)
+  - {name: unit_item, type: data, label: {id: Alat unit}, hidden: true, compute: unit.rental_item}
+  - name: condition
+    type: select
+    label: {id: Kondisi}
+    required: true
+    default: "'lengkap'"
+    options:
+      - {value: lengkap, label: {id: 'Lengkap, baik'}}
+      - {value: lecet, label: {id: Lecet}}
+      - {value: rusak, label: {id: Rusak}}
+      - {value: hilang, label: {id: Hilang}}
+  - {name: notes, type: data, label: {id: Catatan}, help: {id: 'Misalnya baterai 2, tas, strap; lecet di sisi kiri'}}

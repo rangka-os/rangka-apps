@@ -11,14 +11,26 @@ title_field: booking
 # deposit does not cover (extra_due) becomes a draft invoice to the customer. Submitting it moves the schedule from
 # out to returned (flow rental_return_on_submit); cancelling it moves it back, refused once the extra invoice is
 # submitted. The late fee counts at most 60 days; a loss beyond that is charged as damage (Biaya kerusakan atau hilang).
+# Handover: the checklist lists each unit back, its condition and what its damage or loss costs (fee per row). The
+# fees of the rows (unit_damage) plus any other damage typed in damage_fee are the damage (total_damage) kept from the
+# deposit after the late fee. An item with track_units must bring back exactly the units that went out (the lost ones
+# as rows marked hilang; flow rental_return_on_submit), and the customer signs. Photo and signature are attachments,
+# as on the checkout. The BAST prints from rental_bast_in. Warehouse staff fill the checklist; the admin submits,
+# since the submit pays the deposit back.
 permissions:
   - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, export: true, print: true}
+  - {role: rental_staff, read: true, create: true, write: true, delete: true, export: true, print: true}
   - {role: finance_manager, read: true, cancel: true, amend: true, export: true, print: true}
   - {role: head_office, read: true, export: true, print: true}
 fields:
   - {name: booking, type: link, to: rental_booking, label: {id: Pesanan sewa}, required: true, in_list: true}
   - {name: customer, type: data, label: {id: Pelanggan}, compute: booking.customer, in_list: true}
   - {name: rental_item, type: data, label: {id: Alat}, compute: booking.rental_item}
+  - {name: track_units, type: check, label: {id: Serah terima per unit}, compute: booking.rental_item.track_units}
+  - {name: qty, type: int, label: {id: Jumlah unit}, compute: booking.qty}
+  # names for the BAST (prints only resolve top-level links)
+  - {name: customer_name, type: data, label: {id: Nama pelanggan}, hidden: true, compute: booking.customer.customer_name}
+  - {name: item_title, type: data, label: {id: Nama alat}, hidden: true, compute: booking.rental_item.title}
   - {name: return_date, type: date, label: {id: Tanggal kembali aktual}, required: true, default: today(), in_list: true}
   - {name: planned_end, type: date, label: {id: Seharusnya kembali}, compute: booking.end_date}
   - name: late_days
@@ -29,15 +41,18 @@ fields:
       (booking.end_date + duration(1) <= return_date ? 1 : 0) + (booking.end_date + duration(2) <= return_date ? 1 : 0) + (booking.end_date + duration(3) <= return_date ? 1 : 0) + (booking.end_date + duration(4) <= return_date ? 1 : 0) + (booking.end_date + duration(5) <= return_date ? 1 : 0) + (booking.end_date + duration(6) <= return_date ? 1 : 0) + (booking.end_date + duration(7) <= return_date ? 1 : 0) + (booking.end_date + duration(8) <= return_date ? 1 : 0) + (booking.end_date + duration(9) <= return_date ? 1 : 0) + (booking.end_date + duration(10) <= return_date ? 1 : 0) + (booking.end_date + duration(11) <= return_date ? 1 : 0) + (booking.end_date + duration(12) <= return_date ? 1 : 0) + (booking.end_date + duration(13) <= return_date ? 1 : 0) + (booking.end_date + duration(14) <= return_date ? 1 : 0) + (booking.end_date + duration(15) <= return_date ? 1 : 0) + (booking.end_date + duration(16) <= return_date ? 1 : 0) + (booking.end_date + duration(17) <= return_date ? 1 : 0) + (booking.end_date + duration(18) <= return_date ? 1 : 0) + (booking.end_date + duration(19) <= return_date ? 1 : 0) + (booking.end_date + duration(20) <= return_date ? 1 : 0) + (booking.end_date + duration(21) <= return_date ? 1 : 0) + (booking.end_date + duration(22) <= return_date ? 1 : 0) + (booking.end_date + duration(23) <= return_date ? 1 : 0) + (booking.end_date + duration(24) <= return_date ? 1 : 0) + (booking.end_date + duration(25) <= return_date ? 1 : 0) + (booking.end_date + duration(26) <= return_date ? 1 : 0) + (booking.end_date + duration(27) <= return_date ? 1 : 0) + (booking.end_date + duration(28) <= return_date ? 1 : 0) + (booking.end_date + duration(29) <= return_date ? 1 : 0) + (booking.end_date + duration(30) <= return_date ? 1 : 0) + (booking.end_date + duration(31) <= return_date ? 1 : 0) + (booking.end_date + duration(32) <= return_date ? 1 : 0) + (booking.end_date + duration(33) <= return_date ? 1 : 0) + (booking.end_date + duration(34) <= return_date ? 1 : 0) + (booking.end_date + duration(35) <= return_date ? 1 : 0) + (booking.end_date + duration(36) <= return_date ? 1 : 0) + (booking.end_date + duration(37) <= return_date ? 1 : 0) + (booking.end_date + duration(38) <= return_date ? 1 : 0) + (booking.end_date + duration(39) <= return_date ? 1 : 0) + (booking.end_date + duration(40) <= return_date ? 1 : 0) + (booking.end_date + duration(41) <= return_date ? 1 : 0) + (booking.end_date + duration(42) <= return_date ? 1 : 0) + (booking.end_date + duration(43) <= return_date ? 1 : 0) + (booking.end_date + duration(44) <= return_date ? 1 : 0) + (booking.end_date + duration(45) <= return_date ? 1 : 0) + (booking.end_date + duration(46) <= return_date ? 1 : 0) + (booking.end_date + duration(47) <= return_date ? 1 : 0) + (booking.end_date + duration(48) <= return_date ? 1 : 0) + (booking.end_date + duration(49) <= return_date ? 1 : 0) + (booking.end_date + duration(50) <= return_date ? 1 : 0) + (booking.end_date + duration(51) <= return_date ? 1 : 0) + (booking.end_date + duration(52) <= return_date ? 1 : 0) + (booking.end_date + duration(53) <= return_date ? 1 : 0) + (booking.end_date + duration(54) <= return_date ? 1 : 0) + (booking.end_date + duration(55) <= return_date ? 1 : 0) + (booking.end_date + duration(56) <= return_date ? 1 : 0) + (booking.end_date + duration(57) <= return_date ? 1 : 0) + (booking.end_date + duration(58) <= return_date ? 1 : 0) + (booking.end_date + duration(59) <= return_date ? 1 : 0) + (booking.end_date + duration(60) <= return_date ? 1 : 0)
     in_list: true
   - {name: late_fee, type: currency, label: {id: Denda telat}, compute: late_days * booking.qty * booking.late_fee_per_day}
-  - {name: damage_fee, type: currency, label: {id: Biaya kerusakan atau hilang}, default: '0'}
+  - {name: units, type: table, of: rental_return_unit, label: {id: Checklist unit}}
+  - {name: unit_damage, type: currency, label: {id: Kerusakan dari checklist}, compute: "units.map(r, r.fee).sum()"}
+  - {name: damage_fee, type: currency, label: {id: Biaya kerusakan atau hilang lain}, help: {id: 'Di luar checklist unit, misalnya kerugian telat lebih dari 60 hari'}, default: '0'}
+  - {name: total_damage, type: currency, label: {id: Total kerusakan atau hilang}, compute: unit_damage + damage_fee}
   - {name: damage_notes, type: text, label: {id: Catatan kerusakan}}
   - {name: deposit, type: currency, label: {id: Deposit diterima}, compute: booking.deposit}
   # A PKP business charges PPN on the fee: nothing is kept from the deposit, the whole fee goes on the invoice (finding 3).
   - {name: deposit_kept, type: check, label: {id: Denda dipotong dari deposit}, compute: '!tax.pkp'}
   - {name: covered_late, type: currency, label: {id: Denda telat dipotong dari deposit}, compute: "!deposit_kept ? 0 : (late_fee < deposit ? late_fee : deposit)"}
-  - {name: covered_damage, type: currency, label: {id: Kerusakan dipotong dari deposit}, compute: "!deposit_kept ? 0 : (damage_fee < deposit - covered_late ? damage_fee : deposit - covered_late)"}
+  - {name: covered_damage, type: currency, label: {id: Kerusakan dipotong dari deposit}, compute: "!deposit_kept ? 0 : (total_damage < deposit - covered_late ? total_damage : deposit - covered_late)"}
   - {name: deposit_refund, type: currency, label: {id: Deposit dikembalikan}, compute: deposit - covered_late - covered_damage, in_list: true}
-  - {name: extra_due, type: currency, label: {id: Kekurangan ditagih}, compute: late_fee + damage_fee - covered_late - covered_damage, in_list: true}
+  - {name: extra_due, type: currency, label: {id: Kekurangan ditagih}, compute: late_fee + total_damage - covered_late - covered_damage, in_list: true}
   - name: refund_method
     type: select
     label: {id: Deposit dikembalikan lewat}
@@ -45,6 +60,10 @@ fields:
     options:
       - {value: cash, label: {id: Tunai}}
       - {value: transfer, label: {id: Transfer bank}}
+  - {name: signed_by, type: data, label: {id: Diserahkan kembali oleh (nama penyewa)}, in_list: true}
+  - {name: received_by, type: data, label: {id: Diterima oleh (petugas)}}
+  - {name: photo, type: image, label: {id: Foto alat saat kembali}, help: {id: 'Id lampiran foto (att_...). Foto kerusakan lain cukup dilampirkan ke catatan ini'}}
+  - {name: signature, type: signature, label: {id: Tanda tangan penyewa}, help: {id: 'Id lampiran gambar tanda tangan (att_...)'}}
 rules:
   - name: booking_submitted
     on: save
@@ -61,23 +80,66 @@ rules:
     message: {id: 'Telat lebih dari 60 hari: denda telat dihitung 60 hari saja. Masukkan sisa kerugian di biaya kerusakan atau hilang.'}
   - name: damage_not_negative
     on: save
-    check: damage_fee >= 0
+    check: "damage_fee >= 0 && units.map(r, r.fee < 0 ? 1 : 0).sum() == 0"
     message: {id: Biaya kerusakan tidak boleh minus}
+  - name: units_required
+    on: save
+    check: "!track_units || units.size() > 0"
+    message: {id: 'Alat ini diterima per unit: isi checklist unit yang kembali, termasuk yang hilang'}
+  - name: units_match_qty
+    on: save
+    check: units.size() == 0 || units.size() == qty
+    message: {id: 'Jumlah unit di checklist harus sama dengan jumlah unit pesanan (unit hilang tetap dicatat, kondisi Hilang)'}
+  - name: units_of_item
+    on: save
+    check: "units.map(r, r.unit_item == rental_item ? 0 : 1).sum() == 0"
+    message: {id: Ada unit dari alat lain di checklist}
+  - name: units_unique
+    on: save
+    check: "units.map(r, units.map(x, x.unit == r.unit ? 1 : 0).sum()).sum() == units.size()"
+    message: {id: Unit yang sama tercatat dua kali di checklist}
+  - name: damage_without_fee
+    on: save
+    level: warn
+    check: "units.map(r, (r.condition == 'rusak' || r.condition == 'hilang') && r.fee == 0 ? 1 : 0).sum() == 0"
+    message: {id: 'Ada unit rusak atau hilang tanpa biaya. Isi biayanya kalau ditagihkan ke penyewa.'}
+  - name: signed_by_required
+    on: submit
+    check: "!track_units || signed_by != ''"
+    message: {id: Isi nama penyewa yang mengembalikan alat (tanda tangan berita acara)}
+  - name: signature_needs_name
+    on: save
+    check: signature == '' || signed_by != ''
+    message: {id: Tanda tangan perlu nama penyewa yang menandatangani}
+  - name: photo_is_attachment
+    on: save
+    check: "photo == '' || photo.startsWith('att_')"
+    message: {id: 'Foto harus berupa lampiran catatan ini (id att_...)'}
+  - name: signature_is_attachment
+    on: save
+    check: "signature == '' || signature.startsWith('att_')"
+    message: {id: 'Tanda tangan harus berupa lampiran catatan ini (id att_...)'}
 views:
   list:
-    columns: [name, booking, customer, return_date, late_days, deposit_refund, extra_due, status]
+    columns: [name, booking, customer, return_date, late_days, signed_by, deposit_refund, extra_due, status]
     sort: -return_date
   form:
     layout:
       - section: {id: Alat kembali}
         columns:
           - [booking, return_date, refund_method]
-          - [customer, rental_item, planned_end, late_days]
+          - [customer, rental_item, qty, planned_end, late_days, track_units]
+      - section: {id: Checklist unit}
+        fields: [units]
       - section: {id: Denda dan kerusakan}
         columns:
-          - [late_fee, damage_fee, damage_notes]
+          - [late_fee, unit_damage, damage_fee, total_damage, damage_notes]
           - [deposit, deposit_kept, covered_late, covered_damage]
       - section: {id: Hasil}
         columns:
           - [deposit_refund]
           - [extra_due]
+      - section: {id: Serah terima}
+        columns:
+          - [signed_by, received_by]
+          - [photo, signature]
