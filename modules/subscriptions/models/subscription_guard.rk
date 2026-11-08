@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: subscription_guard
+label: {id: Penjaga langganan, en: Subscription guard}
+icon: check
+naming: LGD-{######}
+title_field: reason
+# Never stored (the pattern of courses.course_guard): a flow that must refuse the action it runs in creates one, and the
+# rule of its reason fails with that message, which rolls the whole action back.
+permissions:
+  - {role: finance_manager, create: true}
+  - {role: sales_manager, create: true}
+  - {role: collector, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: invoice_twice, label: {id: Faktur langganan tidak cocok}}
+      - {value: invoice_tag, label: {id: Catatan faktur langganan}}
+      - {value: extra_billed, label: {id: Tambahan sudah ditagih}}
+      - {value: deposit_mismatch, label: {id: Setoran tidak cocok}}
+      - {value: collection_deposited, label: {id: Uang tertagih sudah disetor}}
+      - {value: collection_over, label: {id: Uang tertagih melebihi tagihan}}
+      - {value: deposit_payment, label: {id: Pembayaran dari setoran}}
+      - {value: collection_area, label: {id: Bukan area penagih}}
+      - {value: invoice_kept, label: {id: Faktur langganan terakhir}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: invoice_twice
+    on: save
+    check: reason != 'invoice_twice'
+    message: {id: 'Faktur ini tidak cocok dengan tagihan langganannya (pelanggan atau jumlah sebelum PPN beda), atau tagihan itu sudah punya faktur diajukan'}
+  - name: invoice_tag
+    on: save
+    check: reason != 'invoice_tag'
+    message: {id: 'Catatan faktur langganan tidak bisa diubah (penanda tagihan langganan)'}
+  - name: extra_billed
+    on: save
+    check: reason != 'extra_billed'
+    message: {id: 'Tambahan ini sudah ditagih: hanya tanggal sampai dan status aktif yang bisa diubah; jumlah baru dibuat sebagai tambahan baru'}
+  - name: deposit_mismatch
+    on: save
+    check: reason != 'deposit_mismatch'
+    message: {id: 'Uang yang dihitung tidak sama dengan total uang tertagih penagih ini yang belum disetor (atau tidak ada yang belum disetor)'}
+  - name: collection_deposited
+    on: save
+    check: reason != 'collection_deposited'
+    message: {id: 'Uang tertagih ini sudah disetor; tidak bisa diubah atau dihapus'}
+  - name: collection_over
+    on: save
+    check: reason != 'collection_over'
+    message: {id: 'Uang tertagih yang belum disetor untuk langganan ini melebihi yang belum dibayar'}
+  - name: collection_area
+    on: save
+    check: reason != 'collection_area'
+    message: {id: 'Langganan ini bukan di area penagih ini'}
+  - name: invoice_kept
+    on: save
+    check: reason != 'invoice_kept'
+    message: {id: 'Ini satu-satunya faktur tagihan langganan itu; perbaiki drafnya, jangan dihapus (periodenya sudah ditagih)'}
+  - name: deposit_payment
+    on: save
+    check: reason != 'deposit_payment'
+    message: {id: 'Pembayaran ini dari setoran penagih: tidak bisa dihapus atau dibatalkan; jumlah, pelanggan, metode dan catatannya tetap'}

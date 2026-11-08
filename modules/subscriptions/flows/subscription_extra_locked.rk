@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: subscription_extra_locked
+label: {id: Tambahan yang sudah ditagih dikunci}
+# An extra a bill took keeps what it billed: only its until date and active flag change after that.
+on: subscription_extra.updated
+if: >-
+  event.before != null && event.before.last_bill != '' && (event.amount != event.before.amount
+    || event.item != event.before.item || event.description != event.before.description || event.repeat != event.before.repeat
+    || event.from_date != event.before.from_date || event.subscription != event.before.subscription)
+steps:
+  - create: subscription_guard
+    set:
+      reason: "'extra_billed'"
+      document: event.name

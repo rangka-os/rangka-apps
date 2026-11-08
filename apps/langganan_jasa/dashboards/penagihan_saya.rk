@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: penagihan_saya
+label: {id: Penagihan saya, en: My collections}
+description: {id: 'Langganan di area kamu yang belum lunas, dan uang yang belum disetor'}
+default_period: 30
+roles: [collector, finance_manager]
+cache: 1m
+# A collector sees only the subscriptions and collections of their own areas (row scope of role collector); finance
+# sees all of them.
+widgets:
+  - name: to_collect
+    type: number
+    label: {id: Belum dibayar di area saya}
+    model: subscription
+    aggregate: sum
+    field: unpaid_amount
+    filter: unpaid_amount > 0
+    compact: true
+    span: 4
+  - name: in_hand
+    type: number
+    label: {id: Uang di tangan belum disetor}
+    model: field_collection
+    aggregate: sum
+    field: amount
+    filter: deposit == ''
+    compact: true
+    span: 4
+  - name: suspended
+    type: number
+    label: {id: Ditangguhkan}
+    model: subscription
+    aggregate: count
+    filter: status == 'suspended'
+    good_when: down
+    span: 4
+  - name: visit_list
+    type: list
+    label: {id: Daftar kunjungan (paling lama telat dulu)}
+    model: subscription
+    filter: unpaid_amount > 0 && status != 'stopped'
+    sort: overdue_since
+    limit: 50
+    columns: [customer_name, address, phone, unpaid_amount, status]
+    span: 12
+  - name: my_collections
+    type: list
+    label: {id: Uang tertagih belum disetor}
+    model: field_collection
+    filter: deposit == ''
+    sort: collected_on
+    limit: 50
+    columns: [collected_on, customer_name, amount]
+    span: 12
