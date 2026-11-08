@@ -4,7 +4,9 @@ label: {id: Alat keluar dicatat}
 # The booking must be waiting to go out (schedule booked): a second checkout of the same booking, or one of a
 # cancelled booking, is refused. The units physically out (other bookings still out, also late ones) plus this one
 # may not exceed the item's units. The schedule becomes out with the actual date. Reads rental_item before
-# rental_schedule, like every flow of this module (one lock order).
+# rental_schedule, then rental_unit, like every flow of this module (one lock order). Each unit on the checklist must
+# be in the warehouse, still used, and not last recorded broken or lost; it becomes out with this booking, and its
+# condition is the one on the checklist (kept as out_condition for a cancelled return).
 on: rental_checkout.submitted
 steps:
   - {find: rental_item, where: name == event.rental_item, as: ri}
@@ -19,3 +21,13 @@ steps:
   - update: s
     if: s != null
     set: {state: "'out'", out_date: event.out_date, checkout: event.name}
+  - for_each: event.units
+    as: row
+    do:
+      - {find: rental_unit, where: name == row.unit, as: u}
+      - create: rental_guard
+        if: "u == null || u.state != 'in' || !u.active || u.condition == 'rusak' || u.condition == 'hilang'"
+        set: {reason: "'unit_busy'", document: event.name}
+      - update: u
+        if: u != null
+        set: {state: "'out'", booking: event.booking, condition: row.condition, out_condition: row.condition, last_checkout: event.name}

@@ -10,6 +10,7 @@ title_field: reason
 permissions:
   - {role: sales_manager, create: true}
   - {role: finance_manager, create: true}
+  - {role: rental_staff, create: true}
 fields:
   - name: reason
     type: select
@@ -26,6 +27,10 @@ fields:
       - {value: invoice_tag, label: {id: Catatan faktur sewa diubah}}
       - {value: still_out, label: {id: Unit masih di luar}}
       - {value: before_out, label: {id: Kembali sebelum keluar}}
+      - {value: unit_busy, label: {id: Unit tidak bisa keluar}}
+      - {value: unit_not_out, label: {id: Unit bukan milik pesanan ini}}
+      - {value: units_mismatch, label: {id: Unit kembali tidak sama dengan unit keluar}}
+      - {value: unit_moved, label: {id: Unit sudah dipakai lagi}}
   - name: document
     type: data
     label: {id: Dokumen}
@@ -70,3 +75,19 @@ rules:
     on: save
     check: reason != 'before_out'
     message: {id: Tanggal kembali tidak boleh sebelum tanggal alat keluar}
+  - name: unit_busy
+    on: save
+    check: reason != 'unit_busy'
+    message: {id: 'Ada unit yang masih keluar, sudah tidak dipakai, atau tercatat rusak atau hilang. Pilih unit lain, atau ubah kondisinya setelah diperbaiki.'}
+  - name: unit_not_out
+    on: save
+    check: reason != 'unit_not_out'
+    message: {id: 'Ada unit di checklist yang tidak sedang keluar untuk pesanan ini.'}
+  - name: units_mismatch
+    on: save
+    check: reason != 'units_mismatch'
+    message: {id: 'Unit yang kembali harus sama dengan semua unit yang keluar untuk pesanan ini (unit hilang tetap dicatat, kondisi Hilang).'}
+  - name: unit_moved
+    on: save
+    check: reason != 'unit_moved'
+    message: {id: 'Ada unit yang sudah tercatat keluar atau kembali di dokumen lain sesudah ini. Batalkan dokumen itu dulu.'}

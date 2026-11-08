@@ -5,10 +5,27 @@ label: {id: Alat kembali dicatat}
 # before the equipment went out. The schedule becomes returned with the actual date. The deposit journal (2-1400
 # against 4-9200 and cash or bank) is gl_rental_return_post. What the deposit does not cover (in a PKP business: all
 # of the fee, with PPN on the invoice) becomes a draft invoice whose notes carry this return's number in ().
+# Units: the checklist must list exactly the units out with this booking (none for a booking that went out without a
+# checklist); each goes back to the warehouse with the condition on the checklist (a lost one stays recorded hilang
+# and cannot go out again until someone changes its condition).
 on: rental_return.submitted
 steps:
   - {find: rental_item, where: name == event.rental_item, as: ri}
   - {find: rental_schedule, where: booking == event.booking, as: s}
+  - {find_all: rental_unit, where: "booking == event.booking && state == 'out'", as: outs}
+  - create: rental_guard
+    if: outs.size() != event.units.size()
+    set: {reason: "'units_mismatch'", document: event.name}
+  - for_each: event.units
+    as: row
+    do:
+      - {find: rental_unit, where: name == row.unit, as: u}
+      - create: rental_guard
+        if: "u == null || u.state != 'out' || u.booking != event.booking"
+        set: {reason: "'unit_not_out'", document: event.name}
+      - update: u
+        if: u != null
+        set: {state: "'in'", booking: "''", condition: row.condition, last_return: event.name}
   - create: rental_guard
     if: s == null || s.state != 'out'
     set: {reason: "'not_out'", document: event.name}

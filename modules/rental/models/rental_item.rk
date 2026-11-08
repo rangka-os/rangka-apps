@@ -5,10 +5,13 @@ icon: stock
 naming: ALT-{####}
 title_field: title
 # A catalogue item rented out by the day: how many units there are, the rate per unit per day, the deposit per unit
-# and the late fee per unit per day. A booking copies the rate, deposit and late fee when it is made.
+# and the late fee per unit per day. A booking copies the rate, deposit and late fee when it is made. With track_units
+# on, its units are registered one by one (rental_unit) and every checkout and return lists which units, with a
+# condition checklist, the customer's signature and a printed BAST (berita acara serah terima).
 permissions:
   - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
   - {role: sales_manager, read: true, export: true}
+  - {role: rental_staff, read: true}
   - {role: head_office, read: true, export: true}
 fields:
   - name: item
@@ -44,6 +47,11 @@ fields:
     label: {id: Denda telat per hari}
     help: {id: Per unit untuk setiap hari lewat dari tanggal kembali}
     default: '0'
+  - name: track_units
+    type: check
+    label: {id: Serah terima per unit}
+    help: {id: 'Nyalakan kalau tiap unit punya kode atau nomor seri: alat keluar dan kembali wajib mencatat unit, kondisi, dan nama penyewa'}
+    default: 'false'
   - name: active
     type: check
     label: {id: Masih disewakan}
@@ -69,7 +77,7 @@ views:
     layout:
       - section: {id: Alat}
         columns:
-          - [item, title, units, active]
+          - [item, title, units, track_units, active]
           - [daily_rate, deposit_per_unit, late_fee_per_day]
       - section: {id: Catatan}
         fields: [notes]
