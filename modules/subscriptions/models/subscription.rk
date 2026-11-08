@@ -1,0 +1,233 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: subscription
+label: {id: Langganan, en: Subscription}
+icon: repeat
+naming: LGN-{#####}
+title_field: customer_name
+# One client's subscription to a plan, on its own cycle.
+# - Cycle: monthly, every 3 months, yearly, or N months paid in advance; cycle_months is 1, 3, 12 or N. The cycle and
+#   the price may change at any time; they apply from the next bill.
+# - Anchor: "start" bills every period from the start date (a retainer started on the 15th bills on the 15th);
+#   "month_start" bills on the 1st, and a start on another day gets a first bill pro-rated by days, from the start date
+#   to the day before the next 1st (open-isp practice). Periods are counted from the anchor with add_months (contract
+#   0031), never from the previous period, so a 31st anchor does not drift: period k starts at
+#   add_months(anchor_date, billed_months). The start date, the anchor and the customer cannot change after the first bill.
+# - Bills: flow subscription_billing (every day, 00:05) bills each subscription whose next bill date has come: one
+#   subscription_bill and one draft sales invoice per period. billed_months and prorata_billed are written only by it.
+# - end_date: no period that starts on or after it is billed; the period it falls in is billed up to the day before,
+#   pro-rated by days; the subscription is stopped from that day. It cannot fall before billed_through.
+# - Status (computed, never set by hand) from the facts the dunning flows write (oldest_due, checked_on): stopped once
+#   end_date has come; else suspended when the oldest unpaid invoice is suspend_after_days past due, late when past
+#   due, else active. stop_after_days > 0 makes the dunning flow set end_date when the oldest unpaid invoice is that
+#   late (stop_due). Its invoices carry {langganan:<name>} in their notes.
+# The collector of a subscription is its area's (row scope of role collector). Not deleted by anyone but the owner: a
+# client who leaves gets an end date, which keeps the history.
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
+  - {role: collector, read: true}
+  # the invoice and payment flows refresh a subscription's unpaid amount as whoever submits
+  - {role: sales_manager, read: true, write: true}
+fields:
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, required: true}
+  - {name: customer_name, type: data, label: {id: Nama pelanggan}, compute: customer.customer_name, in_list: true}
+  - {name: phone, type: data, label: {id: Telepon}, compute: customer.phone}
+  - {name: address, type: data, label: {id: Alamat}, compute: customer.address}
+  - {name: plan, type: link, to: subscription_plan, label: {id: Paket}, required: true, in_list: true}
+  - {name: plan_name, type: data, label: {id: Nama paket}, compute: plan.plan_name}
+  - {name: item, type: link, to: item, label: {id: Nama jasa di faktur}, compute: plan.item}
+  - name: service_id
+    type: data
+    label: {id: ID layanan}
+    help: {id: 'Nomor pelanggan, user PPPoE, domain, atau nomor lisensi'}
+  - {name: area, type: link, to: service_area, label: {id: Area}, in_list: true}
+  - {name: collector, type: link, to: user, label: {id: Penagih}, compute: area.collector}
+  - name: cycle
+    type: select
+    label: {id: Siklus tagihan}
+    required: true
+    default: plan.default_cycle
+    options:
+      - {value: monthly, label: {id: Bulanan}}
+      - {value: quarterly, label: {id: Tiap 3 bulan}}
+      - {value: yearly, label: {id: Tahunan}}
+      - {value: prepaid, label: {id: Bayar di muka N bulan}}
+  - name: prepaid_months
+    type: int
+    label: {id: Bayar di muka (bulan)}
+    default: plan.default_prepaid_months
+    depends_on: cycle == 'prepaid'
+  - name: cycle_months
+    type: int
+    label: {id: Bulan per tagihan}
+    compute: "cycle == 'monthly' ? 1 : (cycle == 'quarterly' ? 3 : (cycle == 'yearly' ? 12 : prepaid_months))"
+  - {name: monthly_price, type: currency, label: {id: Harga per bulan}, default: plan.monthly_price, required: true}
+  - name: discount_percent
+    type: float
+    label: {id: Potongan (%)}
+    help: {id: 'Misalnya potongan tahunan; berlaku mulai tagihan berikutnya'}
+    default: '0'
+  - name: monthly_net
+    type: currency
+    label: {id: Nilai per bulan (MRR)}
+    compute: round(monthly_price * (100 - discount_percent) / 100)
+    in_list: true
+  - name: start_date
+    type: date
+    label: {id: Mulai berlangganan}
+    default: today()
+    required: true
+  - name: anchor
+    type: select
+    label: {id: Tanggal tagihan}
+    required: true
+    default: "'start'"
+    options:
+      - {value: start, label: {id: Tiap tanggal mulai}}
+      - {value: month_start, label: {id: Tiap tanggal 1 (bulan pertama diprorata)}}
+  - name: anchor_date
+    type: date
+    label: {id: Awal periode penuh pertama}
+    compute: "anchor == 'month_start' && truncate(start_date, 7) + '-01' != start_date ? add_months(truncate(start_date, 7) + '-01', 1) : start_date"
+  - {name: end_date, type: date, label: {id: Berhenti mulai}}
+  - {name: due_days, type: int, label: {id: Jatuh tempo (hari dari awal periode)}, default: plan.due_days}
+  - {name: suspend_after_days, type: int, label: {id: Ditangguhkan setelah telat (hari)}, default: plan.suspend_after_days}
+  - {name: stop_after_days, type: int, label: {id: Berhenti otomatis setelah telat (hari)}, default: plan.stop_after_days}
+  # written by flow subscription_billing only
+  - {name: billed_months, type: int, label: {id: Bulan sudah ditagih}, default: '0', read_only: true}
+  - {name: prorata_billed, type: check, label: {id: Prorata sudah ditagih}, read_only: true}
+  - {name: last_bill, type: link, to: subscription_bill, label: {id: Tagihan terakhir}, read_only: true}
+  - name: next_is_prorata
+    type: check
+    label: {id: Tagihan berikutnya prorata}
+    compute: anchor_date != start_date && !prorata_billed
+  # the first day after the full periods billed; a period an end date cut short and then the end date taken away
+  # (the client stays) leaves billed_through before it: the rest of that period is billed first (audit 2026-11-08 #12)
+  - {name: boundary, type: date, label: {id: Batas periode penuh}, hidden: true, compute: "add_months(anchor_date, billed_months)"}
+  - name: resume
+    type: check
+    label: {id: Tagihan berikutnya sisa periode}
+    hidden: true
+    compute: "!next_is_prorata && billed_through != '' && last_period_start != '' && last_cycle_value > 0 && billed_through < boundary"
+  - name: next_bill_date
+    type: date
+    label: {id: Tagihan berikutnya}
+    compute: "next_is_prorata ? start_date : (resume ? billed_through : boundary)"
+    in_list: true
+  # the period as the cycle runs, then cut at the end date: a client who stops mid-period is billed up to the day before
+  # end_date, pro-rated by days of that period (audit 2026-11-08 #1)
+  - name: cycle_period_end
+    type: date
+    label: {id: Akhir periode penuh}
+    hidden: true
+    compute: "(next_is_prorata ? anchor_date : (resume ? boundary : add_months(anchor_date, billed_months + cycle_months))) - duration(1)"
+  - name: next_period_end
+    type: date
+    label: {id: Akhir periode berikutnya}
+    compute: "end_date != '' && end_date - duration(1) < cycle_period_end ? end_date - duration(1) : cycle_period_end"
+  - name: cycle_amount
+    type: currency
+    label: {id: Nilai periode penuh}
+    hidden: true
+    compute: >-
+      next_is_prorata ? round(monthly_net * days_between(start_date, anchor_date) / days_between(add_months(anchor_date, -1), anchor_date))
+        : (resume ? round(last_full_amount * days_between(billed_through, boundary) / days_between(last_period_start, boundary)) : monthly_net * cycle_months)
+  - name: next_amount
+    type: currency
+    label: {id: Nilai tagihan berikutnya}
+    help: {id: 'Tanpa baris tambahan dan PPN'}
+    compute: "next_period_end == cycle_period_end ? cycle_amount : round(cycle_amount * days_between(next_bill_date, next_period_end + duration(1)) / days_between(next_bill_date, cycle_period_end + duration(1)))"
+  - {name: billed_through, type: date, label: {id: Sudah ditagih sampai sebelum}, read_only: true}
+  # the last period billed as the cycle runs (before an end date cut it): what the rest of it is pro-rated against
+  - {name: last_period_start, type: date, label: {id: Awal periode terakhir}, read_only: true, hidden: true}
+  - {name: last_full_amount, type: currency, label: {id: Nilai penuh periode terakhir}, read_only: true, hidden: true}
+  - {name: last_cycle_value, type: currency, label: {id: Nilai satu siklus saat periode terakhir}, read_only: true, hidden: true}
+  # facts written by the dunning flows only; the status is computed from them when they are saved
+  - {name: unpaid_amount, type: currency, label: {id: Belum dibayar}, read_only: true, in_list: true}
+  - name: deposit_waiting
+    type: currency
+    label: {id: Setoran penagih menunggu diajukan}
+    help: {id: 'Uang tunai yang sudah disetor tapi pembayarannya belum diajukan finance'}
+    read_only: true
+  - {name: overdue_amount, type: currency, label: {id: Lewat jatuh tempo}, read_only: true}
+  - {name: oldest_due, type: date, label: {id: Jatuh tempo tagihan tertua yang belum lunas}, read_only: true}
+  - {name: checked_on, type: date, label: {id: Status dicek}, read_only: true}
+  - {name: prev_status, type: data, label: {id: Status sebelum dicek}, read_only: true, hidden: true}
+  - name: overdue_since
+    type: date
+    label: {id: Telat sejak}
+    compute: "oldest_due != '' && checked_on != '' && oldest_due < checked_on ? oldest_due : ''"
+  - name: late_days
+    type: int
+    label: {id: Telat (hari)}
+    compute: "overdue_since == '' ? 0 : days_between(overdue_since, checked_on)"
+  - name: stop_due
+    type: check
+    label: {id: Waktunya berhenti otomatis}
+    hidden: true
+    compute: end_date == '' && stop_after_days > 0 && late_days >= stop_after_days
+  - name: status
+    type: select
+    label: {id: Status layanan}
+    compute: "end_date != '' && end_date <= (checked_on == '' ? start_date : checked_on) ? 'stopped' : (late_days >= suspend_after_days ? 'suspended' : (late_days > 0 ? 'late' : 'active'))"
+    in_list: true
+    chip: true
+    options:
+      - {value: active, label: {id: Aktif}}
+      - {value: late, label: {id: Telat}}
+      - {value: suspended, label: {id: Ditangguhkan}}
+      - {value: stopped, label: {id: Berhenti}}
+  # copies the billing flow takes at the first bill (rule terms_locked)
+  - {name: locked_start, type: date, label: {id: Mulai (terkunci)}, read_only: true, hidden: true}
+  - {name: locked_anchor, type: data, label: {id: Tanggal tagihan (terkunci)}, read_only: true, hidden: true}
+  - {name: locked_customer, type: data, label: {id: Pelanggan (terkunci)}, read_only: true, hidden: true}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: prepaid_range
+    on: save
+    check: cycle != 'prepaid' || (prepaid_months >= 1 && prepaid_months <= 36)
+    message: {id: 'Bayar di muka antara 1 dan 36 bulan'}
+  - name: price_positive
+    on: save
+    check: monthly_price > 0 && discount_percent >= 0 && discount_percent < 100 && monthly_net > 0
+    message: {id: 'Harga per bulan harus lebih dari 0 dan potongan 0 sampai di bawah 100%'}
+  - name: end_after_start
+    on: save
+    check: end_date == '' || end_date > start_date
+    message: {id: 'Tanggal berhenti harus sesudah tanggal mulai'}
+  - name: ladder_valid
+    on: save
+    check: due_days >= 0 && due_days <= 60 && suspend_after_days >= 1 && suspend_after_days <= 365 && (stop_after_days == 0 || (stop_after_days > suspend_after_days && stop_after_days <= 730))
+    message: {id: 'Jatuh tempo 0 sampai 60 hari, ditangguhkan 1 sampai 365 hari, berhenti otomatis 0 atau lebih lama dari ditangguhkan'}
+  - name: terms_locked
+    on: save
+    check: locked_start == '' || (start_date == locked_start && anchor == locked_anchor && (locked_customer == '' || customer == locked_customer))
+    message: {id: 'Sudah ada tagihan: pelanggan, tanggal mulai dan tanggal tagihan tidak bisa diubah lagi'}
+  - name: end_not_billed
+    on: save
+    check: end_date == '' || billed_through == '' || end_date >= billed_through
+    message: {id: 'Periode sampai tanggal itu sudah ditagih; isi tanggal berhenti sesudah periode terakhir yang ditagih'}
+views:
+  list:
+    columns: [name, customer_name, plan, area, monthly_net, next_bill_date, status]
+    filters: [status, area, plan, collector]
+    sort: customer_name
+  form:
+    layout:
+      - section: {id: Pelanggan}
+        columns:
+          - [customer, customer_name, phone, address]
+          - [service_id, area, collector, status]
+      - section: {id: Paket dan siklus}
+        columns:
+          - [plan, cycle, prepaid_months, cycle_months]
+          - [monthly_price, discount_percent, monthly_net]
+      - section: {id: Periode}
+        columns:
+          - [start_date, anchor, anchor_date, end_date]
+          - [next_bill_date, next_period_end, next_amount, billed_months]
+      - section: {id: Penagihan}
+        columns:
+          - [due_days, suspend_after_days, stop_after_days]
+          - [unpaid_amount, deposit_waiting, overdue_amount, overdue_since, late_days, checked_on]
+      - section: {id: Catatan}
+        fields: [notes]

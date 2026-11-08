@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: invoice_subscription_once
+label: {id: Satu faktur per tagihan langganan}
+# An invoice that names a subscription bill ([<bill>] in its notes) is submitted only when it names exactly one bill,
+# carries that bill's {langganan:<subscription>}, goes to the bill's customer for exactly its total before PPN (dpp),
+# and no other submitted invoice carries the bill. An invoice with a {langganan:...} tag but no bill is refused too. So
+# a period is never invoiced twice and an invoice is never moved to another client or amount. Then the subscription's
+# unpaid amount is refreshed (what a collector sees).
+on: sales_invoice.submitted
+steps:
+  - find_all: subscription_bill
+    where: event.notes.contains('[' + name + ']')
+    as: tags
+  - find: sales_invoice
+    where: size(tags) == 1 && name != event.name && docstatus == 1 && notes.contains('[' + tags[0].name + ']')
+    as: twin
+  - if: >-
+      size(tags) > 1 || (size(tags) == 0 && event.notes.contains('{langganan:'))
+        || (size(tags) == 1 && (twin != null || tags[0].customer != event.customer || tags[0].total != event.dpp
+          || !event.notes.contains('{langganan:' + tags[0].subscription + '}')))
+    create: subscription_guard
+    set:
+      reason: "'invoice_twice'"
+      document: event.name
+  - find: subscription
+    where: size(tags) == 1 && name == tags[0].subscription
+    as: s
+  - find_all: sales_invoice
+    where: s != null && docstatus == 1 && outstanding > 0 && notes.contains('{langganan:' + s.name + '}')
+    as: open
+  - update: s
+    if: s != null
+    set:
+      unpaid_amount: open.map(i, i.outstanding).sum()

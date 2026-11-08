@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: service_area_collector
+label: {id: Penagih area pindah ke langganannya}
+# A subscription's collector is its area's (a computed field, saved with the subscription). When an area gets another
+# collector, every subscription of the area is saved again so the new collector sees it (row scope).
+on: service_area.updated
+if: event.before != null && event.collector != event.before.collector
+steps:
+  - {find_all: subscription, where: area == event.name, as: subs}
+  - for_each: subs
+    as: s
+    do:
+      - update: s
+        set: {area: s.area}

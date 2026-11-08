@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: subscription_month
+label: {id: Rekap bulan langganan, en: Subscription month}
+icon: chart
+naming: RBL-{YYYY}-{###}
+title_field: month
+# One row per calendar month, refreshed by flow subscription_dunning every day for this month and the month before:
+# what was invoiced (submitted invoices of subscriptions dated in that month, net of PPh 23 and retention), what of it
+# is paid, the collection rate, and the subscriptions and MRR at the last refresh.
+permissions:
+  - {role: finance_manager, read: true, export: true, print: true}
+fields:
+  - {name: month, type: data, label: {id: Bulan}, required: true, unique: true, read_only: true, in_list: true}
+  - {name: month_start, type: date, label: {id: Awal bulan}, compute: month + '-01'}
+  - {name: billed, type: currency, label: {id: Ditagih}, read_only: true, in_list: true}
+  - {name: collected, type: currency, label: {id: Sudah dibayar}, read_only: true, in_list: true}
+  - name: collection_rate
+    type: float
+    label: {id: Tingkat tertagih (%)}
+    compute: "billed > 0 ? round(collected * 100 / billed, 1) : 0"
+    in_list: true
+  - {name: invoices, type: int, label: {id: Jumlah faktur}, read_only: true}
+  - {name: active_count, type: int, label: {id: Langganan berjalan}, read_only: true}
+  - {name: mrr, type: currency, label: {id: MRR}, read_only: true}
+  - {name: refreshed_on, type: date, label: {id: Diperbarui}, read_only: true}
+views:
+  list:
+    columns: [month, billed, collected, collection_rate, active_count, mrr]
+    sort: -month

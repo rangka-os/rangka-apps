@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: langganan_jasa
+version: 1.0.0
+title: {id: Langganan jasa, en: Service subscriptions}
+label: {id: Rangka Langganan, en: Rangka Subscriptions}
+summary:
+  id: Paket, siklus per klien, tagihan otomatis tiap periode, status layanan dan isolir, area, penagih dan setorannya, MRR dan tingkat tertagih.
+rangka: '>=0.5'
+# A piece (riset/desain/11-susunan-kepingan.md) for businesses that bill the same client every period: digital agency
+# retainers, RT/RW net, resellers of a software licence, maintenance contracts. The bills become sales invoices;
+# receiving their payment, reminders and aging come from faktur_piutang, the books from pembukuan. payments requires
+# procurement, so its modules come along; their entries live in faktur_piutang's and pembelian_pemasok's menus.
+modules:
+  users: ^1.0
+  contacts: ^1.0
+  catalogue: ^1.0
+  invoicing: ^1.0
+  payments: ^1.0
+  procurement: ^1.0
+  subscriptions: ^1.0
+dashboards: [langganan_ringkas, penagihan_saya]
+roles: [finance_manager, collector]
+home: {dashboard: langganan_ringkas}
+menu:
+  - group: {id: Langganan}
+    items: [subscription, subscription_bill, subscription_extra, subscription_status_log]
+  - group: {id: Penagihan lapangan}
+    items: [field_collection, collector_deposit, service_area]
+  - group: {id: Pengaturan langganan}
+    items: [subscription_plan, subscription_month]

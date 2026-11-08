@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+# Site letterhead. Fictional data.
+legal_name: Contoh Net Nusantara
+tagline: Internet rumah dan usaha
+address: |
+  Jl. Contoh Jaringan No. 5
+  Bogor 16100
+phone: '+62 251 000 0000'
+email: halo@contohnet.test
+website: contohnet.test
+bank:
+  - {bank: Bank Contoh, account: '000 000 0021', holder: Contoh Net Nusantara, branch: Bogor}
+signatory: {name: Nama Penandatangan, title: Pemilik}
+footer: {id: Terima kasih sudah berlangganan}

@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: subscription_extra
+label: {id: Tambahan tagihan langganan, en: Subscription extra}
+icon: plus
+naming: TMB-{#####}
+title_field: description
+# A line added to a subscription's bills: once (an installation fee, an extra design job this month) or every period
+# (an add-on, a second access point) from a date until an optional date; the amount is per full cycle, pro-rated on a
+# shorter bill like the plan line. The billing flow adds every active extra whose
+# dates overlap the period it bills (from_date on or before the period's last day, until_date empty or on or after its
+# first day) as a line of the draft invoice; a one-off extra is marked with the bill that took it and is not billed
+# again. An extra cannot change after a bill took it (flow subscription_extra_locked); a recurring one that should end gets an
+# until date, a new amount is a new extra.
+permissions:
+  # no delete: an extra a bill took stays as the record of that line; one that is not wanted is set inactive
+  - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
+fields:
+  - {name: subscription, type: link, to: subscription, label: {id: Langganan}, required: true, in_list: true}
+  - {name: customer_name, type: data, label: {id: Pelanggan}, compute: subscription.customer_name, in_list: true}
+  - {name: description, type: data, label: {id: Keterangan di faktur}, required: true, in_list: true}
+  - {name: item, type: link, to: item, label: {id: Nama jasa di faktur}, default: subscription.item, required: true}
+  - {name: amount, type: currency, label: {id: Jumlah per tagihan}, required: true, in_list: true}
+  - name: repeat
+    type: select
+    label: {id: Berlaku}
+    required: true
+    default: "'once'"
+    in_list: true
+    options:
+      - {value: once, label: {id: Sekali}}
+      - {value: every_period, label: {id: Tiap tagihan}}
+  - {name: from_date, type: date, label: {id: Mulai}, default: today(), required: true}
+  - {name: until_date, type: date, label: {id: Sampai}, depends_on: repeat == 'every_period'}
+  - {name: active, type: check, label: {id: Aktif}, default: 'true', in_list: true}
+  - {name: billed_bill, type: link, to: subscription_bill, label: {id: Ditagih di}, read_only: true}
+  - {name: last_bill, type: link, to: subscription_bill, label: {id: Tagihan terakhir}, read_only: true}
+rules:
+  - name: amount_positive
+    on: save
+    check: amount > 0
+    message: {id: 'Jumlah tambahan harus lebih dari 0; potongan ditulis di potongan langganan'}
+  - name: until_after_from
+    on: save
+    check: until_date == '' || until_date >= from_date
+    message: {id: 'Tanggal sampai harus sesudah tanggal mulai'}
+views:
+  list:
+    columns: [name, customer_name, description, amount, repeat, from_date, active]
+    filters: [subscription, repeat, active]
+    sort: -from_date

@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: field_collection_not_deleted
+label: {id: Uang tertagih yang sudah disetor tidak dihapus}
+on: field_collection.deleted
+if: event.deposit != ''
+steps:
+  - create: subscription_guard
+    set:
+      reason: "'collection_deposited'"
+      document: event.name
