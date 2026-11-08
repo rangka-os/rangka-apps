@@ -100,10 +100,18 @@ fields:
     type: check
     label: {id: Tagihan berikutnya prorata}
     compute: anchor_date != start_date && !prorata_billed
+  # the first day after the full periods billed; a period an end date cut short and then the end date taken away
+  # (the client stays) leaves billed_through before it: the rest of that period is billed first (audit 2026-11-08 #12)
+  - {name: boundary, type: date, label: {id: Batas periode penuh}, hidden: true, compute: "add_months(anchor_date, billed_months)"}
+  - name: resume
+    type: check
+    label: {id: Tagihan berikutnya sisa periode}
+    hidden: true
+    compute: "!next_is_prorata && billed_through != '' && billed_through < boundary"
   - name: next_bill_date
     type: date
     label: {id: Tagihan berikutnya}
-    compute: "next_is_prorata ? start_date : add_months(anchor_date, billed_months)"
+    compute: "next_is_prorata ? start_date : (resume ? billed_through : boundary)"
     in_list: true
   # the period as the cycle runs, then cut at the end date: a client who stops mid-period is billed up to the day before
   # end_date, pro-rated by days of that period (audit 2026-11-08 #1)
@@ -111,7 +119,7 @@ fields:
     type: date
     label: {id: Akhir periode penuh}
     hidden: true
-    compute: "(next_is_prorata ? anchor_date : add_months(anchor_date, billed_months + cycle_months)) - duration(1)"
+    compute: "(next_is_prorata ? anchor_date : (resume ? boundary : add_months(anchor_date, billed_months + cycle_months))) - duration(1)"
   - name: next_period_end
     type: date
     label: {id: Akhir periode berikutnya}
@@ -120,13 +128,18 @@ fields:
     type: currency
     label: {id: Nilai periode penuh}
     hidden: true
-    compute: "next_is_prorata ? round(monthly_net * days_between(start_date, anchor_date) / days_between(add_months(anchor_date, -1), anchor_date)) : monthly_net * cycle_months"
+    compute: >-
+      next_is_prorata ? round(monthly_net * days_between(start_date, anchor_date) / days_between(add_months(anchor_date, -1), anchor_date))
+        : (resume ? round(last_full_amount * days_between(billed_through, boundary) / days_between(last_period_start, boundary)) : monthly_net * cycle_months)
   - name: next_amount
     type: currency
     label: {id: Nilai tagihan berikutnya}
     help: {id: 'Tanpa baris tambahan dan PPN'}
     compute: "next_period_end == cycle_period_end ? cycle_amount : round(cycle_amount * days_between(next_bill_date, next_period_end + duration(1)) / days_between(next_bill_date, cycle_period_end + duration(1)))"
   - {name: billed_through, type: date, label: {id: Sudah ditagih sampai sebelum}, read_only: true}
+  # the last period billed as the cycle runs (before an end date cut it): what the rest of it is pro-rated against
+  - {name: last_period_start, type: date, label: {id: Awal periode terakhir}, read_only: true, hidden: true}
+  - {name: last_full_amount, type: currency, label: {id: Nilai penuh periode terakhir}, read_only: true, hidden: true}
   # facts written by the dunning flows only; the status is computed from them when they are saved
   - {name: unpaid_amount, type: currency, label: {id: Belum dibayar}, read_only: true, in_list: true}
   - name: deposit_waiting

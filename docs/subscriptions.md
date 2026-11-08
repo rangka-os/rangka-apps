@@ -17,7 +17,8 @@ POS app or another licence, maintenance contracts. Site: `examples/sites/demo-la
    drift (31 Jan, 28 Feb, 31 Mar). Price, discount and cycle can change at any time and apply from the next period; the
    start date, anchor and customer lock at the first bill. An end date stops billing for periods that start on or after
    it; the period it falls in is billed up to the day before, pro-rated by days; it cannot fall before what is billed
-   (`billed_through`).
+   (`billed_through`). If the end date is then taken away or moved later (the client stays), the rest of that period is
+   billed next, pro-rated (*Sisa periode*), before the next full period.
 4. **Tambahan** (`subscription_extra`): a line added once (an installation fee, an extra job this month) or every period
    from a date until an optional date (a static IP, a second access point). Locked once billed except its until date and
    active flag.
@@ -63,6 +64,9 @@ POS app or another licence, maintenance contracts. Site: `examples/sites/demo-la
 ## Known limits
 - The deposit's oldest-first window assumes the waiting drafts keep their allocations; if finance moves one, the rail
   refuses an allocation over what an invoice owes when the next is submitted.
+- A subscription invoice cancelled without an amended copy leaves its period billed and not invoiced (the cancelled
+  invoice and the bill are the trace); the overview's list of overdue invoices does not show it. Amend, do not just
+  cancel.
 - An invoice with a down payment (uang muka) is refused by the guard (its dpp is less than the bill); subscriptions do
   not take down payments.
 

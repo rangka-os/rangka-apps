@@ -27,6 +27,7 @@ fields:
     options:
       - {value: regular, label: {id: Periode penuh}}
       - {value: prorata, label: {id: Prorata}}
+      - {value: remainder, label: {id: Sisa periode}}
   - {name: period_start, type: date, label: {id: Periode mulai}, required: true, read_only: true, in_list: true}
   - {name: period_end, type: date, label: {id: Periode sampai}, required: true, read_only: true, in_list: true}
   - {name: months, type: int, label: {id: Bulan}, read_only: true}

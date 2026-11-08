@@ -306,6 +306,19 @@ def scenario_subs_end_dates(api):
         eq(f"{n}: billed through its end date, nothing after", (s["billed_through"], s["next_bill_date"] >= s["end_date"]), (s["end_date"], True))
     st, resp = fm.patch("subscription", made[0], {"end_date": (d(cases[0]["end_date"]) - datetime.timedelta(days=1)).isoformat()})
     check("an end date before what is already billed is refused (422)", refused(st, resp, "sudah ditagih"), (st, resp))
+    # the client stays after all (audit #12): the rest of the cut period is billed, pro-rated, then the cycle goes on
+    bt = d(cases[0]["end_date"])
+    boundary = add_months(s_start, 2)
+    st, resp = fm.patch("subscription", made[0], {"end_date": None})
+    check("finance takes the end date away (200)", st == 200 and not api.get("subscription", made[0]).get("end_date"), (st, resp))
+    new = bill_all(api, "remainder")
+    rb = [api.get("subscription_bill", x.split("/", 1)[1]) for x in new]
+    rb = [b for b in rb if b["subscription"] == made[0]]
+    want = [("remainder", bt.isoformat(), (boundary - datetime.timedelta(days=1)).isoformat(), js_round(150000 * (boundary - bt).days / (boundary - add_months(s_start, 1)).days))]
+    if boundary <= today:
+        want.append(("regular", boundary.isoformat(), (add_months(s_start, 3) - datetime.timedelta(days=1)).isoformat(), 150000))
+    eq("the rest of that period is billed next, pro-rated against the full period", sorted((b["kind"], b["period_start"], b["period_end"], b["base_amount"]) for b in rb), sorted(want))
+    fm.patch("subscription", made[0], {"end_date": (boundary if boundary > today else add_months(s_start, 3)).isoformat()})
     CTX["ended"] = made
 
 

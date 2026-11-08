@@ -12,7 +12,9 @@ label: {id: Tagihan langganan otomatis}
 #    notes with {langganan:<subscription>} and [<bill>] (a flow cannot submit: finance checks and submits it, then
 #    payment, reminders, aging, PPN and bank matching are the money rail's);
 # 4. the extras taken are marked, the subscription moves on (prorata_billed or billed_months) and its start date and
-#    anchor and customer are locked; billed_through is the day after the period billed.
+#    anchor and customer are locked; billed_through is the day after the period billed. A period an end date cut short
+#    whose end date was then taken away (the client stays) is billed for the rest of it first, pro-rated against the
+#    full period (kind remainder), before the next full period.
 # At most 500 subscriptions per run (the oldest bill dates first); the next run takes the rest.
 schedule: '5 0 * * *'
 steps:
@@ -34,10 +36,10 @@ steps:
         set:
           subscription: s.name
           customer: s.customer
-          kind: "s.next_is_prorata ? 'prorata' : 'regular'"
+          kind: "s.next_is_prorata ? 'prorata' : (s.resume ? 'remainder' : 'regular')"
           period_start: s.next_bill_date
           period_end: s.next_period_end
-          months: "s.next_is_prorata ? 0 : s.cycle_months"
+          months: "s.next_is_prorata || s.resume ? 0 : s.cycle_months"
           base_amount: s.next_amount
           extras_total: extras.map(x, x.amount).sum()
           due_date: s.next_bill_date + duration(s.due_days)
@@ -63,7 +65,9 @@ steps:
       - update: s
         set:
           prorata_billed: "s.next_is_prorata ? true : s.prorata_billed"
-          billed_months: "s.next_is_prorata ? s.billed_months : s.billed_months + s.cycle_months"
+          billed_months: "s.next_is_prorata || s.resume ? s.billed_months : s.billed_months + s.cycle_months"
+          last_period_start: "s.resume ? s.last_period_start : s.next_bill_date"
+          last_full_amount: "s.resume ? s.last_full_amount : s.cycle_amount"
           last_bill: bill.name
           locked_start: s.start_date
           locked_anchor: s.anchor
