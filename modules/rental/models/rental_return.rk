@@ -13,8 +13,9 @@ title_field: booking
 # submitted. The late fee counts at most 60 days; a loss beyond that is charged as damage (Biaya kerusakan atau hilang).
 # Handover: the checklist lists each unit back, its condition and what its damage or loss costs (fee per row). The
 # fees of the rows (unit_damage) plus any other damage typed in damage_fee are the damage (total_damage) kept from the
-# deposit after the late fee. An item with track_units must bring back exactly the units that went out (the lost ones
-# as rows marked hilang; flow rental_return_on_submit), and the customer signs. Photo and signature are attachments,
+# deposit after the late fee. A return must bring back exactly the units that went out with the booking (the lost
+# ones as rows marked hilang; checked by flow rental_return_on_submit, so a booking that went out by count before
+# track_units was switched on still comes back by count), and for an item with track_units the customer signs. Photo and signature are attachments,
 # as on the checkout. The BAST prints from rental_bast_in. Warehouse staff fill the checklist; the admin submits,
 # since the submit pays the deposit back.
 permissions:
@@ -77,15 +78,11 @@ rules:
     on: save
     level: warn
     check: return_date <= booking.end_date + duration(60)
-    message: {id: 'Telat lebih dari 60 hari: denda telat dihitung 60 hari saja. Masukkan sisa kerugian di biaya kerusakan atau hilang.'}
+    message: {id: 'Telat lebih dari 60 hari: denda telat dihitung 60 hari saja. Masukkan sisa kerugian di biaya kerusakan atau hilang lain.'}
   - name: damage_not_negative
     on: save
     check: "damage_fee >= 0 && units.map(r, r.fee < 0 ? 1 : 0).sum() == 0"
     message: {id: Biaya kerusakan tidak boleh minus}
-  - name: units_required
-    on: save
-    check: "!track_units || units.size() > 0"
-    message: {id: 'Alat ini diterima per unit: isi checklist unit yang kembali, termasuk yang hilang'}
   - name: units_match_qty
     on: save
     check: units.size() == 0 || units.size() == qty

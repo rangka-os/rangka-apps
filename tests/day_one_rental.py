@@ -485,6 +485,15 @@ def scenario_rental_handover(api):
     check("Keuangan marks KAM-A-02 repaired -> 200", st == 200 and rec(r).get("condition") == "lengkap", (st, r))
     st, r = gd.patch("rental_unit", KAM2, {"state": "out"})
     eq("a hand edit of a unit's position is ignored (read_only)", unit(api, KAM2).get("state"), "in")
+    st, r = sm.create("rental_unit", {"rental_item": CAMERA, "code": "KAM-A-99", "state": "out", "booking": b["name"]})
+    eq("a new unit cannot be created as out with a booking (read_only)", (st, rec(r).get("state"), rec(r).get("booking")), (201, "in", ""))
+    if st == 201:
+        api.call("DELETE", f"/api/v1/r/rental_unit/{rec(r)['name']}")
+    st, rt = gd.create("rental_return", {"booking": nb["name"], "return_date": d(1), "signed_by": "Budi Contoh"})
+    st, r = submit(sm, "rental_return", rec(rt).get("name", "x"))
+    check("a return of a booking that has not gone out is refused (not_out)", st == 422 and "not_out" in rules(r), (st, r))
+    if rec(rt).get("name"):
+        sm.call("DELETE", f"/api/v1/r/rental_return/{Api.q(rec(rt)['name'])}")
 
     # sound S1 back with SND-01 lost: 3.000.000 on the checklist, more than the deposit, the rest on a draft invoice
     st, r1 = gd.create("rental_return", {"booking": s1["name"], "return_date": d(0), "signed_by": "Pak Contoh WO",
