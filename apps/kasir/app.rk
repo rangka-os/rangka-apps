@@ -20,6 +20,10 @@ modules:
 dashboards: [kasir_ringkas]
 roles: [cashier, head_office]
 home: {model: pos_sale}
+# contract 0030: the cashier lands on the cashier screen; head office opens it from the Kerja group
+work:
+  - {screen: kasir, roles: [cashier], home: true}
+  - {screen: kasir, roles: [head_office]}
 menu:
   - group: {id: Kasir}
     items: [pos_sale, pos_shift, pos_shift_close]
