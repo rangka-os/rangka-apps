@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: field_collection_locked
+label: {id: Uang tertagih yang sudah disetor dikunci}
+# A deposited collection is the record of cash that went into Kas: it does not change (the deposit flow's own write
+# starts no flow, so it is not refused).
+on: field_collection.updated
+if: event.before != null && event.before.deposit != ''
+steps:
+  - create: subscription_guard
+    set:
+      reason: "'collection_deposited'"
+      document: event.name

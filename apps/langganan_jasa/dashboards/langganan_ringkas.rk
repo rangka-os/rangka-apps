@@ -1,0 +1,167 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: langganan_ringkas
+label: {id: Ringkasan langganan, en: Subscriptions overview}
+description: {id: 'MRR, tagihan bulan ini, tingkat tertagih, tunggakan per umur dan layanan yang ditangguhkan'}
+default_period: 30
+roles: [finance_manager]
+cache: 5m
+# Subscription invoices are the sales invoices whose notes carry {langganan:<subscription>} (flow subscription_billing).
+# MRR is the monthly value (price less discount) of the subscriptions not stopped (Stripe's definition: a yearly
+# subscription counts a twelfth). The collection rate is the month recap's (flow subscription_dunning, every night):
+# paid over invoiced, of the submitted subscription invoices dated this month.
+widgets:
+  - name: mrr
+    type: number
+    label: {id: MRR (nilai per bulan)}
+    model: subscription
+    aggregate: sum
+    field: monthly_net
+    filter: status != 'stopped'
+    compact: true
+    span: 3
+  - name: running
+    type: number
+    label: {id: Langganan berjalan}
+    model: subscription
+    aggregate: count
+    filter: status != 'stopped'
+    span: 3
+  - name: billed_this_month
+    type: number
+    label: {id: Tagihan bulan ini}
+    model: sales_invoice
+    aggregate: sum
+    field: amount_due
+    filter: docstatus == 1 && notes.contains('{langganan:') && posting_date >= truncate(today(), 7) + '-01'
+    compact: true
+    span: 3
+  - name: collection_rate
+    type: number
+    label: {id: Tingkat tertagih bulan ini (%)}
+    model: subscription_month
+    aggregate: max
+    field: collection_rate
+    filter: month == truncate(today(), 7)
+    span: 3
+  - name: drafts_waiting
+    type: number
+    label: {id: Draf faktur menunggu diajukan}
+    model: sales_invoice
+    aggregate: count
+    filter: docstatus == 0 && notes.contains('{langganan:')
+    good_when: down
+    span: 3
+  - name: due_soon
+    type: number
+    label: {id: Jatuh tempo 3 hari lagi}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && notes.contains('{langganan:') && due_date >= today() && due_date <= today() + duration(3)
+    compact: true
+    span: 3
+  - name: suspended
+    type: number
+    label: {id: Ditangguhkan (isolir)}
+    model: subscription
+    aggregate: count
+    filter: status == 'suspended'
+    good_when: down
+    span: 3
+  - name: cash_with_collectors
+    type: number
+    label: {id: Uang di penagih belum disetor}
+    model: field_collection
+    aggregate: sum
+    field: amount
+    filter: deposit == ''
+    good_when: down
+    compact: true
+    span: 3
+  - name: overdue_1_30
+    type: number
+    label: {id: Tunggakan 1-30 hari}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && notes.contains('{langganan:') && due_date < today() && due_date >= today() - duration(30)
+    good_when: down
+    compact: true
+    span: 3
+  - name: overdue_31_60
+    type: number
+    label: {id: Tunggakan 31-60 hari}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && notes.contains('{langganan:') && due_date < today() - duration(30) && due_date >= today() - duration(60)
+    good_when: down
+    compact: true
+    span: 3
+  - name: overdue_61_90
+    type: number
+    label: {id: Tunggakan 61-90 hari}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && notes.contains('{langganan:') && due_date < today() - duration(60) && due_date >= today() - duration(90)
+    good_when: down
+    compact: true
+    span: 3
+  - name: overdue_over_90
+    type: number
+    label: {id: Tunggakan lebih dari 90 hari}
+    model: sales_invoice
+    aggregate: sum
+    field: outstanding
+    filter: docstatus == 1 && outstanding > 0 && notes.contains('{langganan:') && due_date < today() - duration(90)
+    good_when: down
+    compact: true
+    span: 3
+  - name: rate_by_month
+    type: chart
+    chart: bar
+    label: {id: Tingkat tertagih per bulan (%)}
+    model: subscription_month
+    aggregate: max
+    field: collection_rate
+    group_by: month_start
+    grain: month
+    span: 6
+  - name: by_status
+    type: chart
+    chart: donut
+    label: {id: Langganan per status}
+    model: subscription
+    aggregate: count
+    group_by: status
+    span: 6
+  - name: overdue_by_area
+    type: chart
+    chart: bar
+    label: {id: Tunggakan per area}
+    model: subscription
+    aggregate: sum
+    field: overdue_amount
+    filter: overdue_amount > 0
+    group_by: area
+    sort: -value
+    span: 12
+  - name: suspended_list
+    type: list
+    label: {id: Layanan ditangguhkan (isolir)}
+    model: subscription
+    filter: status == 'suspended'
+    sort: overdue_since
+    limit: 30
+    columns: [customer_name, service_id, area, overdue_since, overdue_amount]
+    span: 12
+  - name: overdue_invoices
+    type: list
+    label: {id: Tagihan langganan lewat jatuh tempo}
+    model: sales_invoice
+    filter: docstatus == 1 && outstanding > 0 && notes.contains('{langganan:') && due_date < today()
+    sort: due_date
+    limit: 30
+    columns: [name, customer, due_date, outstanding]
+    span: 12

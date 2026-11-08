@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: deposit_payment_not_cancelled
+label: {id: Pembayaran dari setoran tidak dibatalkan}
+# The payment of a deposited collection (its number in [] in the notes) is cash counted into Kas: it is not
+# cancelled and amended into another amount or method (audit 2026-11-08 #2).
+on: payment.cancelled
+if: event.direction == 'receive' && event.notes.startsWith('Setoran ')
+steps:
+  - {find: field_collection, where: "deposit != '' && event.notes.contains('[' + name + ']')", as: c}
+  - if: c != null
+    create: subscription_guard
+    set:
+      reason: "'deposit_payment'"
+      document: event.name

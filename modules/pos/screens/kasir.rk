@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+# The cashier's work screen (contract 0030 §2 counter): the kernel web app renders it from these slots. Money, stock
+# and numbering stay in pos_sale (computes, rules, stock: block, journal flows); the screen only fills the sale.
+name: kasir
+type: counter
+label: {id: Kasir, en: Cashier}
+icon: wallet
+roles: [cashier, head_office]
+device: tablet
+needs: [print, scan]
+offline: queue
+counter:
+  catalogue:
+    model: item
+    filter: "kind != 'material'"
+    title: item_name
+    search: [item_name, sku, barcode]
+    group_by: category
+    price: rate
+    barcode: barcode
+  document:
+    model: pos_sale
+    lines: items
+    line: {item: item, qty: qty, price: rate, note: note}
+    total: grand_total
+    change: change_amount
+    set: {date: "today()"}
+  payments: {table: payments, method: method, amount: amount, ref: ref, methods: [cash, qris]}
+  session:
+    model: pos_shift
+    link: shift
+    filter: "cashier == user.email"
+    state: {field: state, open: open, closed: closed}
+    open: [outlet, opening_cash]
+    set: {outlet: "user.outlets.size() > 0 ? user.outlets[0] : ''"}
+    close: {model: pos_shift_close, link: shift, fields: [counted_cash, closing_note]}
+  customer: {field: buyer}
+  hold: true
+  print: pos_receipt
