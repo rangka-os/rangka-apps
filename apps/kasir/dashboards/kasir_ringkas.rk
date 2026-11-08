@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: kasir_ringkas
+label: {id: Ringkasan kasir, en: Cashier summary}
+default_period: 30
+cache: 5m
+roles: [head_office]
+# What the cashiers rang up (paid receipts, docstatus 1), per outlet, per day and per payment method, and how the
+# drawers closed. A voided receipt (docstatus 2) is out of every sum; its amended replacement is in.
+widgets:
+  - {name: net_total, type: number, label: {id: Penjualan kasir}, model: pos_sale, aggregate: sum, field: grand_total, filter: docstatus == 1, period: date, compact: true, span: 3}
+  - {name: margin_period, type: number, label: {id: Margin}, description: {id: Penjualan dikurangi harga pokok barang dan bahan}, model: pos_sale, aggregate: sum, field: margin, filter: docstatus == 1, period: date, compact: true, span: 3}
+  - {name: receipts, type: number, label: {id: Struk}, model: pos_sale, filter: docstatus == 1, period: date, compact: true, span: 3}
+  - {name: voids, type: number, label: {id: Struk dibatalkan}, model: pos_sale, filter: docstatus == 2, period: date, compact: true, span: 3, good_when: down}
+  - {name: open_shifts, type: number, label: {id: Sesi kasir terbuka}, model: pos_shift, filter: state == 'open', compact: true, span: 4}
+  - {name: cash_difference, type: number, label: {id: Selisih kas}, description: {id: 'Jumlah selisih laci saat tutup sesi; minus berarti kas kurang'}, model: pos_shift_close, aggregate: sum, field: cash_difference, filter: docstatus == 1, period: close_date, compact: true, span: 4}
+  - {name: qris_period, type: number, label: {id: Masuk lewat QRIS}, model: pos_sale, aggregate: sum, field: qris_amount, filter: docstatus == 1, period: date, compact: true, span: 4}
+  - {name: net_by_outlet, type: chart, chart: bar, label: {id: Penjualan kasir per outlet}, model: pos_sale, group_by: outlet, aggregate: sum, field: grand_total, filter: docstatus == 1, period: date, sort: -value, span: 6}
+  - {name: net_by_day, type: chart, chart: bar, label: {id: Penjualan kasir per hari}, model: pos_sale, group_by: date, grain: day, aggregate: sum, field: grand_total, filter: docstatus == 1, period: date, span: 6}
+  - {name: net_by_method, type: chart, chart: donut, label: {id: Cara bayar}, model: pos_sale, group_by: method, aggregate: sum, field: grand_total, filter: docstatus == 1, period: date, span: 6}
+  - {name: shifts_short, type: list, label: {id: Sesi dengan selisih kas}, model: pos_shift_close, filter: docstatus == 1 && cash_difference != 0, period: close_date, columns: [name, outlet, close_date, shift, cash_difference], sort: cash_difference, limit: 10, span: 6}

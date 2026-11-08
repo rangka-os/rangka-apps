@@ -13,6 +13,8 @@ title_field: date
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, import: true, print: true}
   - {role: outlet_staff, read: true, create: true, write: true, submit: true}
+  # module pos: a cashier's sale checks that its outlet and day have no setoran (it would book the cash twice)
+  - {role: cashier, read: true}
 fields:
   - name: outlet
     type: link

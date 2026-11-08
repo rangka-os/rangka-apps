@@ -15,6 +15,7 @@ permissions:
   - {role: field_sales, read: true}
   # course schools: the program's line on the invoice
   - {role: course_admin, read: true}
+  - {role: cashier, read: true}
 fields:
   - name: item_name
     type: data

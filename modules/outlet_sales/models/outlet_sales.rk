@@ -22,6 +22,8 @@ permissions:
   # and loyverse when ritel_cabang added them).
   - {role: outlet_staff, read: true, create: true, write: true, submit: true, if: source == 'form'}
   - {role: outlet_staff, read: true}
+  # module pos: a cashier's sale checks that its outlet and day have no daily sales record (Jalur A and B)
+  - {role: cashier, read: true}
 fields:
   - name: outlet
     type: link

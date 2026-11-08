@@ -4,6 +4,8 @@ label: {id: Ringkasan penjualan, en: Sales summary}
 default_period: 30
 cache: 5m
 # Daily sales only (piece penjualan_harian): what sold per outlet and what it cost. Stock lives in stok_ringkas.
+# Outlets that ring up in Juragan's cashier (piece kasir, module pos) are not in outlet_sales (one sales source per
+# outlet): where it is installed their receipts show in the pos_* widgets, so the owner sees both on one page.
 widgets:
   - name: net_total
     type: number
@@ -57,4 +59,29 @@ widgets:
     field: net_total
     filter: docstatus == 1
     period: date
+    span: 6
+  - name: pos_net_total
+    type: number
+    label: {id: Penjualan kasir Juragan}
+    description: {id: Struk lunas dari outlet yang memakai kasir Juragan}
+    if: app_installed('pos')
+    model: pos_sale
+    aggregate: sum
+    field: grand_total
+    filter: docstatus == 1
+    period: date
+    compact: true
+    span: 6
+  - name: pos_net_by_outlet
+    type: chart
+    chart: bar
+    label: {id: Penjualan kasir per outlet}
+    if: app_installed('pos')
+    model: pos_sale
+    group_by: outlet
+    aggregate: sum
+    field: grand_total
+    filter: docstatus == 1
+    period: date
+    sort: -value
     span: 6

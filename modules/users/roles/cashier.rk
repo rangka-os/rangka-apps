@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: cashier
+label: {id: Kasir}
+description: {id: 'Membuka sesi kasir dan mencatat penjualan di outlet tempatnya bekerja'}
+# Contract 0010 §5: only records of the member's outlets (shifts, sales, their stock moves and journal lines).
+scope: {field: outlet, from: user.outlets}
