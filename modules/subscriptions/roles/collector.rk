@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: collector
+label: {id: Penagih}
+description: {id: 'Melihat langganan di area yang dia pegang dan mencatat uang tunai yang dia tagih di lapangan'}
+# Contract 0010 §5: areas, subscriptions and field collections whose collector is the member's own user record (rangka
+# user add --record). A collector reads no invoice: what a subscription still owes is on the subscription.
+scope: {field: collector, from: '[user.name]'}

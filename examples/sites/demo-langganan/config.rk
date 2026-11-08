@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for a subscription business (composed from pieces, riset/desain/11): a small RT/RW net with home plans
+# billed on the 1st (first month pro-rated), two areas each with a collector, a 6-month prepaid home client, and
+# business clients on a quarterly and a yearly cycle with a static IP added every period. Not a PKP. Data:
+# examples/fixtures/demo-langganan (synthetic, fictional names). Bills are made every day at 00:05 and statuses at
+# 02:00, Asia/Jakarta (scheduler.timezone in system.rk).
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: Contoh Net Nusantara}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: false}
+orgs:
+  contoh_net:
+    name: Contoh Net Nusantara
+    code: CNN
+    config:
+      org: {legal_name: Contoh Net Nusantara}
+      tax: {pkp: false}
+      numbering:
+        invoice: {pattern: "INV/{ORG}/{YY}/{####}", reset: yearly}
+apps: [langganan_jasa, faktur_piutang, pembukuan]
+plan: tumbuh
+sso: {domains: [contohnet.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, finance_manager]}

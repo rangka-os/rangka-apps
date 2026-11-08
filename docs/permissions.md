@@ -8,7 +8,8 @@ All roles live in the `users` module, which every module requires, so a permissi
 An app lists the roles it uses in `roles:` (`crm`: sales_rep, sales_manager; `jasa_proyek`: sales_manager,
 finance_manager, purchasing_manager, project_admin; `fnb_cabang`, `ritel_cabang` and `produksi_pabrik`: head_office, outlet_staff;
 `grosir_distribusi`: sales_manager, finance_manager, head_office, field_sales; `kelas_kursus`: course_admin, instructor
-(its role file is in the `courses` module), finance_manager; `kasir`: cashier, head_office).
+(its role file is in the `courses` module), finance_manager; `kasir`: cashier, head_office; `langganan_jasa`:
+finance_manager, collector (its role file is in the `subscriptions` module)).
 
 Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e export, p print, i import.
 **all** = r c w d s x a e p (no import unless written). `outlet_staff` has a row scope
@@ -144,6 +145,27 @@ company). Seats and billed counts are written by flows. `MATRIX` rows live in `t
 | course_charge (no delete for anyone but the owner: a cancelled charge's key must stay) | r c w e p | | all but d | r (the invoice flows read it as the submitter) |
 | course_guard (never stored; a flow's refusal) | c | | c | c |
 
+### Subscriptions (module subscriptions, piece langganan_jasa)
+
+`finance_manager` runs plans, areas, subscriptions and extras, submits the draft invoices and counts deposits.
+`collector` (Penagih, in the `subscriptions` module, since its row scope names the field `collector`) sees only the areas,
+subscriptions, status rows and collections of their own user record (`rangka user add --record`), records the cash they
+collect, and reads no invoice. Bills, the month recap and every status fact are written by flows (read-only fields);
+the billing flow runs as the scheduler or the owner. `sales_manager` gets what the invoice and payment flows read and
+write as whoever submits. `MATRIX` rows live in `tests/day_one_subscriptions.py`.
+
+| Model | finance_manager | collector | sales_manager |
+| --- | --- | --- | --- |
+| subscription_plan | r c w e p | r | |
+| service_area | r c w e p | r (own) | |
+| subscription (status computed; billing and dunning facts read-only; no delete: set an end date) | r c w e p | r (own) | r w (the invoice and payment flows) |
+| subscription_extra (no delete; locked once billed) | r c w e p | | |
+| subscription_bill (made only by flow subscription_billing) | r e p | | r (the invoice flow) |
+| subscription_status_log (rows by the dunning flows) | r c e p | r (own) | r c |
+| subscription_month | r e p | | |
+| field_collection (locked once deposited) | r c w d e p | r c w d (own) | r (the payment flows) |
+| collector_deposit (not cancelled) | r c w s e p | r | |
+| subscription_guard (never stored; a flow's refusal) | c | c | c |
 ### Cashier (module pos, piece kasir)
 
 One new role, `cashier` (Kasir, in the `users` module because catalogue, outlets, stock and accounting grant it reads),

@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: subscription_plan
+label: {id: Paket langganan, en: Subscription plan}
+icon: tag
+naming: PKT-{###}
+title_field: plan_name
+# A plan: the monthly price and the defaults a new subscription copies (cycle, due days, dunning ladder). A
+# subscription keeps its own copy, so changing a plan changes only the subscriptions made after.
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
+  - {role: collector, read: true}
+fields:
+  - {name: plan_name, type: data, label: {id: Nama paket}, required: true, in_list: true}
+  - {name: item, type: link, to: item, label: {id: Nama jasa di faktur}, required: true, in_list: true}
+  - {name: monthly_price, type: currency, label: {id: Harga per bulan}, required: true, in_list: true}
+  - name: default_cycle
+    type: select
+    label: {id: Siklus tagihan}
+    required: true
+    default: "'monthly'"
+    in_list: true
+    options:
+      - {value: monthly, label: {id: Bulanan}}
+      - {value: quarterly, label: {id: Tiap 3 bulan}}
+      - {value: yearly, label: {id: Tahunan}}
+      - {value: prepaid, label: {id: Bayar di muka N bulan}}
+  - name: default_prepaid_months
+    type: int
+    label: {id: Bayar di muka (bulan)}
+    default: '6'
+    depends_on: default_cycle == 'prepaid'
+  - name: due_days
+    type: int
+    label: {id: Jatuh tempo (hari dari awal periode)}
+    default: '7'
+  - name: suspend_after_days
+    type: int
+    label: {id: Ditangguhkan setelah telat (hari)}
+    help: {id: 'Layanan ditandai ditangguhkan (isolir) bila tagihan tertua lewat jatuh tempo sekian hari'}
+    default: '10'
+  - name: stop_after_days
+    type: int
+    label: {id: Berhenti otomatis setelah telat (hari)}
+    help: {id: '0 = tidak pernah berhenti otomatis'}
+    default: '0'
+  - {name: active, type: check, label: {id: Masih dijual}, default: 'true', in_list: true}
+  - {name: description, type: text, label: {id: Keterangan}}
+rules:
+  - name: price_positive
+    on: save
+    check: monthly_price > 0
+    message: {id: 'Harga per bulan harus lebih dari 0'}
+  - name: prepaid_range
+    on: save
+    check: default_cycle != 'prepaid' || (default_prepaid_months >= 1 && default_prepaid_months <= 36)
+    message: {id: 'Bayar di muka antara 1 dan 36 bulan'}
+  - name: ladder_valid
+    on: save
+    check: due_days >= 0 && due_days <= 60 && suspend_after_days >= 1 && suspend_after_days <= 365 && (stop_after_days == 0 || (stop_after_days > suspend_after_days && stop_after_days <= 730))
+    message: {id: 'Jatuh tempo 0 sampai 60 hari, ditangguhkan 1 sampai 365 hari, berhenti otomatis 0 atau lebih lama dari ditangguhkan'}
+views:
+  list:
+    columns: [plan_name, item, monthly_price, default_cycle, active]
+    sort: plan_name
+  form:
+    layout:
+      - section: {id: Paket}
+        columns:
+          - [plan_name, item, monthly_price, active]
+          - [default_cycle, default_prepaid_months]
+      - section: {id: Jatuh tempo dan penagihan}
+        columns:
+          - [due_days, suspend_after_days, stop_after_days]
+      - section: {id: Keterangan}
+        fields: [description]

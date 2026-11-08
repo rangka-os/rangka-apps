@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: subscription_status_log
+label: {id: Riwayat status layanan, en: Service status log}
+icon: history
+naming: RSL-{YYYY}-{######}
+title_field: subscription
+# One row per change of a subscription's service status, written by the dunning flows. The suspended rows of today are
+# the list of connections to isolate (by hand until the router connector exists; rangka-edge D6).
+permissions:
+  # created only by the dunning flows (every field read-only), as whoever submits a payment
+  - {role: finance_manager, read: true, create: true, export: true, print: true}
+  - {role: sales_manager, read: true, create: true}
+  - {role: collector, read: true}
+fields:
+  - {name: subscription, type: link, to: subscription, label: {id: Langganan}, required: true, read_only: true, in_list: true}
+  - {name: customer_name, type: data, label: {id: Pelanggan}, compute: subscription.customer_name, in_list: true}
+  - {name: collector, type: link, to: user, label: {id: Penagih}, compute: subscription.collector}
+  - {name: changed_on, type: date, label: {id: Tanggal}, required: true, read_only: true, in_list: true}
+  - {name: from_status, type: data, label: {id: Dari}, read_only: true, in_list: true}
+  - {name: to_status, type: data, label: {id: Menjadi}, read_only: true, in_list: true}
+  - {name: overdue_since, type: date, label: {id: Telat sejak}, read_only: true}
+  - {name: overdue_amount, type: currency, label: {id: Lewat jatuh tempo}, read_only: true}
+views:
+  list:
+    columns: [changed_on, customer_name, from_status, to_status, overdue_amount]
+    filters: [subscription, to_status]
+    sort: -changed_on
