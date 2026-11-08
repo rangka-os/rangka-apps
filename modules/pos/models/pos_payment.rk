@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One payment of a cashier sale: cash handed over (the change comes back from it) or a QRIS payment to the outlet's
+# QRIS (exact, with the reference of the notification). Two rows make a split payment. The shape is the one the
+# counter work screen fills (rangka-os proposal 0030: payments {table, method, amount}).
+name: pos_payment
+is_child: true
+fields:
+  - name: method
+    type: select
+    label: {id: Cara bayar}
+    required: true
+    default: "'cash'"
+    options:
+      - {value: cash, label: {id: Tunai}}
+      - {value: qris, label: {id: QRIS}}
+  - {name: amount, type: currency, label: {id: Jumlah}, required: true}
+  - {name: ref, type: data, label: {id: Ref QRIS}, help: {id: 'Nomor referensi di notifikasi QRIS, kalau ada'}}

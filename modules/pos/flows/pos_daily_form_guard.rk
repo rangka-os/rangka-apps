@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Jalur A and B never on the same outlet and day (audit kasir M2): a daily sales record (form, Moka, POS file) of an
+# outlet and day that already has a paid cashier receipt is refused, so the day's revenue and stock are never taken
+# twice even when head office switches the outlet's sales_source. Runs as whoever submits the record (head office,
+# outlet staff), who read the receipts of their outlets for it.
+name: pos_daily_form_guard
+label: {id: 'Penjualan harian diajukan: tolak kalau outlet itu sudah memakai kasir hari itu'}
+on: outlet_sales.submitted
+steps:
+  - find_all: pos_sale
+    where: outlet == event.outlet && date == event.date && docstatus == 1
+    limit: 1
+    as: receipts
+  - if: receipts.size() > 0
+    create: pos_guard
+    set:
+      reason: "'cashier_same_day'"
+      document: receipts[0].name

@@ -22,6 +22,10 @@ permissions:
   # project admins also read the debit line of vendor bills: a project expense on a bill moves its cost out of that line
   - {role: project_admin, read: true, create: true, if: "voucher_type in ['timesheet', 'project_expense'] || (voucher_type == 'vendor_bill' && line in ['1', '2'])"}
   - {role: outlet_staff, read: true, create: true, if: "voucher_type in ['outlet_sales', 'outlet_takings', 'goods_receipt', 'stock_adjustment', 'stock_count', 'stock_transfer_receipt', 'production_batch', 'outlet_return']"}
+  # a cashier reads the lines of its receipts; the close's lines (cash difference) are created by its flow but not read
+  # by the cashier (blind count, audit kasir M4)
+  - {role: cashier, read: true, create: true, if: "voucher_type == 'pos_sale'"}
+  - {role: cashier, create: true, if: "voucher_type == 'pos_shift_close'"}
 fields:
   - name: posting_date
     type: date

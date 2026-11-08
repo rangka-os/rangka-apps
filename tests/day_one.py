@@ -3989,7 +3989,8 @@ def eqf(name, got, want):
 
 
 def new_outlet(api, label):
-    st, o = api.create("outlet", {"outlet_name": label, "code": label.upper().replace(" ", "-")[:16]})
+    code = re.sub(r"[^A-Z0-9]+", "-", label.upper())[:16].strip("-")   # outlet code_shape: A-Z 0-9 and "-"
+    st, o = api.create("outlet", {"outlet_name": label, "code": code})
     check(f"create outlet {label}", st == 201, o)
     return o["name"]
 
@@ -5352,6 +5353,7 @@ import day_one_returns  # noqa: E402
 import day_one_rental  # noqa: E402
 import day_one_courses  # noqa: E402
 import day_one_subscriptions  # noqa: E402
+import day_one_pos  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5360,6 +5362,7 @@ day_one_returns.bind(sys.modules[__name__])
 day_one_rental.bind(sys.modules[__name__])   # also registers demo-sewa (orgs, members, matrix rows)
 day_one_courses.bind(sys.modules[__name__])
 day_one_subscriptions.bind(sys.modules[__name__])
+day_one_pos.bind(sys.modules[__name__])      # also registers demo-kasir
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5375,6 +5378,7 @@ SCENARIOS = {
     "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],
     "demo-kursus": day_one_courses.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-langganan": day_one_subscriptions.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
+    "demo-kasir": day_one_pos.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
 # accounting last: it checks the books against every document the scenarios above submitted
 for _site in ("demo-jasa", "demo-fnb", "demo-ritel", "demo-grosir", "demo-produksi", "demo-manpower", "demo-sewa"):
@@ -5420,6 +5424,8 @@ def main():
         day_one_payroll.setup_demo_manpower(api, k)
     if a.site == "demo-sewa":
         day_one_rental.setup_demo_sewa(api, k)
+    if a.site == "demo-kasir":
+        day_one_pos.setup_demo_kasir(api, k)
     for sc in SCENARIOS[a.site]:
         if a.only and a.only not in sc.__name__:
             continue

@@ -1,0 +1,53 @@
+# Synthetic demo data for CV Contoh Warung Rasa, a fictional shop and coffee kiosk. No real people, businesses or
+# brands. Opening stock, shifts and sales are made by the scenarios (tests/day_one_pos.py), not seeded.
+uom:
+  - {name: UOM-001, uom_name: Pcs}
+  - {name: UOM-002, uom_name: Dus}
+  - {name: UOM-003, uom_name: Kg}
+  - {name: UOM-004, uom_name: Liter}
+  - {name: UOM-005, uom_name: Porsi}
+  - {name: UOM-006, uom_name: Pak}
+outlet:
+  - {name: OUT-01, outlet_name: Gudang pusat Warung Rasa, code: HO, city: Bandung, is_head_office: true, active: true}
+  - {name: OUT-02, outlet_name: Toko Contoh Dago, code: DGO, city: Bandung, address: Jl. Contoh Dago No. 9, sales_source: kasir, active: true}
+  - {name: OUT-03, outlet_name: Kedai Contoh Riau, code: RIU, city: Bandung, address: Jl. Contoh Riau No. 3, sales_source: kasir, active: true}
+  - {name: OUT-04, outlet_name: Toko Contoh Cimahi, code: CMH, city: Cimahi, address: Jl. Contoh Cimahi No. 4, sales_source: form, active: true}
+item:
+  # retail goods, sold per piece or per dus / pak
+  - {name: BRG-0001, item_name: Air mineral 600 ml, kind: good, stock_uom: UOM-001, sku: AIR-600, barcode: '8990000000011', rate: 4000, standard_cost: 2500}
+  - {name: BRG-0002, item_name: Mi instan goreng, kind: good, stock_uom: UOM-001, sku: MI-GRG, barcode: '8990000000028', rate: 3500, standard_cost: 2600}
+  - {name: BRG-0003, item_name: Gula pasir 1 kg, kind: good, stock_uom: UOM-001, sku: GULA-1K, rate: 18000, standard_cost: 15000}
+  - {name: BRG-0004, item_name: Pulsa listrik (jasa bayar), kind: service, stock_uom: UOM-001, rate: 3000}
+  # coffee kiosk: materials and menu items with a recipe
+  - {name: BRG-0011, item_name: Kopi bubuk, kind: material, stock_uom: UOM-003, sku: MAT-KOPI, standard_cost: 120000}
+  - {name: BRG-0012, item_name: Susu segar, kind: material, stock_uom: UOM-004, sku: MAT-SUSU, standard_cost: 20000}
+  - {name: BRG-0013, item_name: Gula aren cair, kind: material, stock_uom: UOM-004, sku: MAT-AREN, standard_cost: 40000}
+  - {name: BRG-0014, item_name: Gelas plastik, kind: material, stock_uom: UOM-001, sku: MAT-GELAS, standard_cost: 600}
+  - {name: BRG-0015, item_name: Roti bakar cokelat, kind: good, stock_uom: UOM-001, sku: RTI-CKL, rate: 15000, standard_cost: 6000}
+  - {name: BRG-0021, item_name: Kopi susu aren, kind: product, stock_uom: UOM-005, sales_uom: UOM-005, sku: KSA, rate: 22000}
+  - {name: BRG-0022, item_name: Kopi hitam, kind: product, stock_uom: UOM-005, sales_uom: UOM-005, sku: KHT, rate: 15000}
+uom_conversion:
+  - {name: KONV-0001, item: BRG-0001, uom: UOM-002, factor: 24, rate: 84000}
+  - {name: KONV-0002, item: BRG-0002, uom: UOM-002, factor: 40}
+  - {name: KONV-0003, item: BRG-0002, uom: UOM-006, factor: 5, rate: 16500}
+recipe:
+  - name: RSP-0001
+    product: BRG-0021
+    recipe_name: Kopi susu aren
+    yield_qty: 1
+    lines:
+      - {material: BRG-0011, qty: 0.018}
+      - {material: BRG-0012, qty: 0.15}
+      - {material: BRG-0013, qty: 0.025}
+      - {material: BRG-0014, qty: 1}
+  - name: RSP-0002
+    product: BRG-0022
+    recipe_name: Kopi hitam
+    yield_qty: 1
+    lines:
+      - {material: BRG-0011, qty: 0.015}
+      - {material: BRG-0014, qty: 1}
+user:
+  - {name: USR-001, full_name: Rina Contoh, role: head_office, email: rina@contohwarung.test}
+  - {name: USR-002, full_name: Dika Contoh, role: cashier, email: dika.dago@contohwarung.test}
+  - {name: USR-003, full_name: Sari Contoh, role: cashier, email: sari.riau@contohwarung.test}

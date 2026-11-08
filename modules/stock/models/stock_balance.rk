@@ -8,6 +8,7 @@ naming: SB-{######}
 permissions:
   - {role: head_office, read: true, export: true}
   - {role: outlet_staff, read: true}
+  - {role: cashier, read: true}
 fields:
   - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, read_only: true, in_list: true}
   - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}

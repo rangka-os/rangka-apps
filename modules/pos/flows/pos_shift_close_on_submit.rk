@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Runs inside the close's submit, as the cashier. Reading pos_shift takes the flow read lock of contract 0025, the
+# same one the sales' flows take, so a sale is either counted before the close or refused after it. A shift already
+# closed (two closes at once) is refused, and so is a close whose figures went stale: a sale was paid or voided between
+# the figures being read and this lock, so the cash and QRIS it would settle in the journal are not the shift's.
+name: pos_shift_close_on_submit
+label: {id: 'Tutup sesi diajukan: sesi kasir ditutup'}
+on: pos_shift_close.submitted
+steps:
+  - {find: pos_shift, where: name == event.shift, as: s}
+  - if: s == null || s.state != 'open'
+    create: pos_guard
+    set: {reason: "'shift_closed'", document: event.name}
+  - if: s != null && (s.cash_total != event.cash_total || s.qris_total != event.qris_total || s.opening_cash != event.opening_cash)
+    create: pos_guard
+    set: {reason: "'close_stale'", document: event.name}
+  - update: s
+    if: s != null
+    set:
+      state: "'closed'"
+      closed_by: event.name
+      counted_cash: event.counted_cash
+      cash_difference: event.cash_difference

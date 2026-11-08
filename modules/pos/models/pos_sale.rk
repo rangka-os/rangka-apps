@@ -1,0 +1,222 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Transaksi kasir: one receipt. A draft is the open basket; submitting it is the payment: the receipt gets its number
+# per outlet and month (STRK-<outlet code>-<YYMM>-<n>, contract 0009 §2a), the goods leave the outlet's stock (a menu
+# item through its active recipe), and the shift's totals grow (flow pos_sale_on_submit). Prices come from the item
+# (or from the unit picked on the line, uom_conversion.rate); the cashier gives discounts, never a price. Prices
+# include PPN for a PKP business, as on outlet_sales, so the journal splits the PPN out the same way.
+# Payment is a table (cash with change, QRIS, or both), the shape of the counter work screen (proposal 0030).
+# Void: cancel, only on the sale's day while its shift is open (flow pos_sale_on_cancel: the kernel runs no
+# `on: cancel` rule, so the checks live in the flow, under the shift's lock); the stock comes back at the cost it
+# left with and the shift's totals shrink. A partial return on the same day is a void and an amended receipt without the returned items
+# (the amendment keeps the number with -1). Goods that went to waste after the void go out with a stock_adjustment.
+name: pos_sale
+label: {id: Transaksi kasir, en: Cashier sale}
+icon: receipt
+is_submittable: true
+naming: STRK-{outlet.code}-{YY}{MM}-{#####}
+title_field: grand_total
+on_submit: [stock.post_moves]
+on_cancel: [stock.reverse_moves]
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: cashier, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, print: true}
+  # flow pos_daily_form_guard reads the receipts of the outlet a daily sales record is submitted for
+  - {role: outlet_staff, read: true}
+fields:
+  - name: shift
+    type: link
+    to: pos_shift
+    label: {id: Sesi kasir}
+    required: true
+    peek: [outlet, opening_date, cashier]
+  # outlet and date are not read_only: an amendment (a partial return) copies only writable values. The rules hold
+  # them to the shift's outlet and to the day of payment.
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    default: shift.outlet
+    in_list: true
+  - name: date
+    type: date
+    label: {id: Tanggal}
+    default: today()
+    in_list: true
+  - name: buyer
+    type: data
+    label: {id: Pembeli atau meja}
+    help: {id: 'Boleh kosong. Nama pembeli, nomor meja atau nomor antrean'}
+    in_list: true
+  - name: items
+    type: table
+    of: pos_sale_item
+    label: {id: Barang}
+    min_rows: 1
+  - name: gross_total
+    type: currency
+    label: {id: Harga sebelum diskon}
+    compute: "items.map(l, l.gross).sum()"
+  - name: subtotal
+    type: currency
+    label: {id: Subtotal}
+    compute: "items.map(l, l.amount).sum()"
+  - name: discount_amount
+    type: currency
+    label: {id: Diskon nota}
+    help: {id: 'Potongan rupiah untuk seluruh nota, setelah diskon per barang'}
+    default: '0'
+  - name: discount_total
+    type: currency
+    label: {id: Total diskon}
+    compute: gross_total - subtotal + discount_amount
+  - name: grand_total
+    type: currency
+    label: {id: Total}
+    compute: subtotal - discount_amount
+    in_list: true
+  # Payment (table payments, rows of pos_payment): no row means exact cash; a cash row is what the buyer handed over,
+  # a QRIS row is paid exactly. Change comes only out of cash, so QRIS may not exceed the total.
+  - {name: payments, type: table, of: pos_payment, label: {id: Pembayaran}}
+  - name: qris_amount
+    type: currency
+    label: {id: Dibayar QRIS}
+    compute: "payments.map(p, p.method == 'qris' ? p.amount : 0).sum()"
+  - name: cash_received
+    type: currency
+    label: {id: Uang tunai diterima}
+    compute: "payments.size() == 0 ? grand_total : payments.map(p, p.method == 'cash' ? p.amount : 0).sum()"
+  - name: cash_amount
+    type: currency
+    label: {id: Dibayar tunai}
+    help: {id: 'Total dikurangi QRIS: uang tunai yang tinggal di laci'}
+    compute: grand_total - qris_amount
+  - name: change_amount
+    type: currency
+    label: {id: Kembalian}
+    compute: cash_received + qris_amount - grand_total
+  - name: method
+    type: select
+    label: {id: Cara bayar}
+    compute: "qris_amount == 0 ? 'cash' : (qris_amount >= grand_total ? 'qris' : 'split')"
+    in_list: true
+    chip: true
+    options:
+      - {value: cash, label: {id: Tunai}}
+      - {value: qris, label: {id: QRIS}}
+      - {value: split, label: {id: Tunai + QRIS}}
+  - name: cogs_total
+    type: currency
+    label: {id: Harga pokok}
+    help: {id: 'Diisi sistem saat dibayar: barang atau bahan resep x rata-rata biaya'}
+    read_only: true
+  - name: margin
+    type: currency
+    label: {id: Margin}
+    compute: grand_total - cogs_total
+  # Same monthly tax recap as outlet_sales: PPN inside a PKP shop's prices, and the 0,5% final PPh of PP 55/2022.
+  - name: ppn_in_sales
+    type: currency
+    label: {id: PPN dalam penjualan}
+    compute: "tax.pkp ? round(grand_total * tax.ppn_rate * tax.dpp_num / (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num)) : 0"
+  - name: pph_final
+    type: currency
+    label: {id: 'PPh final 0,5%'}
+    compute: round((grand_total - ppn_in_sales) * 5 / 1000)
+# Cashier controls (audit kasir M5): a receipt whose discounts exceed 20% of its price waits for head office
+# (contract 0007; the owner may always approve). A void is not held: an approved verb runs again as a requester
+# without their outlets, so the flow's own-shift check cannot run (kernel card t_7782ebb1 follow-up); voids stay
+# same day, open shift, own shift, and are counted on the shift and the dashboard.
+approvals:
+  - name: big_discount
+    on: submit
+    when: "discount_total * 100 > gross_total * 20 && !('head_office' in user.roles) && !('owner' in user.roles)"
+    approvers: [head_office]
+    label: {id: Persetujuan kantor pusat untuk diskon di atas 20%, en: Head office approves a discount above 20%}
+stock:
+  date: date
+  moves:
+    - {lines: items, out: outlet, explode: recipe, reason: sale, cogs: cogs}
+  cogs_total: cogs_total
+rules:
+  # the receipt number carries the outlet code (STRK-<code>-...); head office could have emptied it since the shift
+  # opened: say so when saving, not only at payment (kernel 409 numbering)
+  - name: outlet_has_code
+    on: save
+    check: outlet.code != ''
+    message: {id: 'Outlet ini belum punya Kode; minta kantor pusat mengisi Kode outlet (dipakai di nomor struk)'}
+  - name: outlet_of_shift
+    on: save
+    check: outlet == shift.outlet
+    message: {id: 'Outlet transaksi harus sama dengan outlet sesi kasirnya'}
+  - name: shift_open
+    on: save
+    check: shift.state == 'open'
+    message: {id: 'Sesi kasir ini sudah ditutup; buka sesi baru'}
+  - name: own_shift
+    on: save
+    check: "shift.cashier == user.email || 'head_office' in user.roles || 'owner' in user.roles"
+    message: {id: 'Ini sesi kasir orang lain; pakai sesi kasirmu sendiri'}
+  # Jalur A or Jalur B per outlet: with outlet_sales installed, only an outlet whose sales source is the cashier.
+  - name: outlet_uses_cashier
+    on: save
+    check: "!app_installed('outlet_sales') || (outlet.moka_name == '' && outlet.sales_source == 'kasir')"
+    message: {id: 'Outlet ini mencatat penjualan lewat Moka, file POS atau formulir harian. Ubah Sumber penjualan outlet ke Kasir Juragan dulu'}
+  - name: qty_positive
+    on: save
+    check: "items.map(l, l.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: line_discount_range
+    on: save
+    check: "items.map(l, l.discount_pct < 0 || l.discount_pct > 100 ? 1 : 0).sum() == 0"
+    message: {id: Diskon barang harus 0 sampai 100 persen}
+  - name: unit_of_item
+    on: save
+    check: "items.map(l, l.packing_item != l.item ? 1 : 0).sum() == 0"
+    message: {id: 'Satuan yang dipilih bukan satuan barang itu'}
+  - name: priced
+    on: save
+    check: "items.map(l, l.rate <= 0 ? 1 : 0).sum() == 0"
+    message: {id: 'Ada barang tanpa harga jual; isi Harga jual di data barang'}
+  - name: receipt_discount_range
+    on: save
+    check: discount_amount >= 0 && discount_amount <= subtotal
+    message: {id: Diskon nota tidak boleh negatif atau melebihi subtotal}
+  - name: payment_positive
+    on: save
+    check: "payments.map(p, p.amount <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah pembayaran harus lebih dari 0}
+  - name: qris_not_over
+    on: save
+    check: qris_amount <= grand_total
+    message: {id: 'QRIS tidak boleh melebihi total; kembalian hanya dari uang tunai'}
+  - name: paid_enough
+    on: save
+    check: change_amount >= 0
+    message: {id: 'Pembayaran kurang dari total'}
+  - name: paid_today
+    on: submit
+    check: date == today()
+    message: {id: 'Draf ini dari hari lain; buat transaksi baru untuk hari ini'}
+views:
+  list:
+    columns: [name, date, outlet, grand_total, method, status, buyer]
+    filters: [outlet, method, shift]
+    sort: -name
+  form:
+    layout:
+      - section: {id: Transaksi}
+        columns:
+          - [shift, outlet, date]
+          - [buyer]
+      - section: {id: Barang}
+        fields: [items]
+      - section: {id: Bayar}
+        columns:
+          - [subtotal, discount_amount, grand_total]
+          - [cash_received, qris_amount, change_amount]
+      - section: {id: Pembayaran}
+        fields: [payments]
+      - section: {id: Ringkasan}
+        columns:
+          - [gross_total, discount_total, cogs_total, margin]
+          - [ppn_in_sales, pph_final]

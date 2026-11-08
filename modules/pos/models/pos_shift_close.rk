@@ -1,0 +1,77 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Tutup sesi: the cashier counts the drawer and closes the shift, blind: the cash that should be there and the
+# difference are hidden from the cashier (contract 0027) and shown to head office (dashboard kasir_ringkas). The figures of the shift are read from it (computed
+# from the link while this is a draft, frozen at submit); the counted cash against the cash that should be there is
+# the difference, journalled as selisih kas (gl_pos_shift_close_post). Submitting it closes the shift (flow
+# pos_shift_close_on_submit, under the read lock of contract 0025): a shift already closed, or one that took a sale
+# after these figures were read, refuses the close, and the cashier saves it again to read the new figures.
+# Head office can cancel a close to reopen the shift (a miscount), and close it again with a new Tutup sesi.
+name: pos_shift_close
+label: {id: Tutup sesi kasir, en: Shift close}
+icon: wallet
+is_submittable: true
+naming: TUTUP-{outlet.code}-{YY}{MM}-{####}
+title_field: shift
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, export: true, print: true}
+  - {role: cashier, read: true, create: true, write: true, delete: true, submit: true, print: true}
+fields:
+  - {name: shift, type: link, to: pos_shift, label: {id: Sesi kasir}, required: true, in_list: true, peek: [opening_date, cashier, state]}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, default: shift.outlet, read_only: true, in_list: true}
+  - {name: close_date, type: date, label: {id: Tanggal tutup}, default: today(), read_only: true, in_list: true}
+  - {name: opening_cash, type: currency, label: {id: Modal kas}, compute: shift.opening_cash}
+  - {name: sales_count, type: int, label: {id: Jumlah transaksi}, compute: shift.sales_count}
+  - {name: net_total, type: currency, label: {id: Penjualan bersih}, compute: shift.net_total, in_list: true, hidden_for: [cashier]}
+  # blind count (contract 0027): what should be in the drawer and the difference are hidden from the cashier
+  - {name: cash_total, type: currency, label: {id: Tunai masuk}, compute: shift.cash_total, hidden_for: [cashier]}
+  - {name: qris_total, type: currency, label: {id: QRIS masuk}, compute: shift.qris_total, hidden_for: [cashier]}
+  - {name: void_count, type: int, label: {id: Transaksi dibatalkan}, compute: shift.void_count}
+  - name: expected_cash
+    type: currency
+    label: {id: Tunai seharusnya}
+    help: {id: 'Modal kas ditambah tunai masuk'}
+    compute: opening_cash + cash_total
+    hidden_for: [cashier]
+  - name: counted_cash
+    type: currency
+    label: {id: Hitung fisik}
+    help: {id: 'Semua uang tunai di laci, termasuk modal'}
+    required: true
+  - name: cash_difference
+    type: currency
+    label: {id: Selisih kas}
+    help: {id: 'Hitung fisik dikurangi tunai seharusnya. Minus berarti kas kurang'}
+    compute: counted_cash - expected_cash
+    in_list: true
+    hidden_for: [cashier]
+  - {name: closing_note, type: text, label: {id: Catatan}}
+rules:
+  - name: shift_open
+    on: save
+    check: shift.state == 'open'
+    message: {id: 'Sesi kasir ini sudah ditutup'}
+  - name: own_shift
+    on: save
+    check: "shift.cashier == user.email || 'head_office' in user.roles || 'owner' in user.roles"
+    message: {id: 'Ini sesi kasir orang lain; tutup sesi kasirmu sendiri'}
+  - name: counted_not_negative
+    on: save
+    check: counted_cash >= 0
+    message: {id: Hitung fisik tidak boleh negatif}
+views:
+  list:
+    columns: [name, outlet, close_date, net_total, cash_difference, status, shift]
+    filters: [outlet]
+    sort: -name
+  form:
+    layout:
+      - section: {id: Sesi}
+        columns:
+          - [shift, outlet, close_date]
+          - [opening_cash, sales_count, void_count]
+      - section: {id: Hitung laci}
+        columns:
+          - [net_total, cash_total, qris_total]
+          - [expected_cash, counted_cash, cash_difference]
+      - section: {id: Catatan}
+        fields: [closing_note]
