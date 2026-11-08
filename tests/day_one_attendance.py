@@ -404,7 +404,8 @@ def scenario_attendance_close_edges(api):
     eq("each assignment is paid and billed at its own rate (1 x 200.000/300.000; 2 x 260.000/400.000)",
        got, sorted([(asg["a1"], 1, 200_000, 300_000), (asg["a2"], 2, 520_000, 800_000)]))
     h = api.find("timesheet", f"project == '{P}' && worker == '{ws['MP-113']}'")
-    eq("an hourly assignment still gets a per-day recap", [(x["rate_basis"], x["days"], x["attendance_close"]) for x in h], [("day", 1, C1)])
+    eq("an hourly assignment gets a per-day recap at the worker's day rates (audit r2: 1 x 200.000 pay, 300.000 billed)",
+       [(x["rate_basis"], x["days"], x["attendance_close"], x["cost_amount"], x["amount"]) for x in h], [("day", 1, C1, 200_000, 300_000)])
     # Reopen the second close: delete its draft recap, cancel, amend, submit again.
     for x in api.find("timesheet", f"attendance_close == '{C2}'"):
         api.call("DELETE", f"/api/v1/r/timesheet/{Api.q(x['name'])}")
@@ -430,6 +431,18 @@ def scenario_attendance_close_edges(api):
     check("a close over a day that already has a daily timesheet is refused", refused(st, resp, "timesheet lain"), (st, resp))
     st, resp = api.verb("attendance_close", C1, "cancel")
     check("a close whose recaps live cannot be cancelled", refused(st, resp, "timesheet"), (st, resp))
+    # A recap typed over both closes for Dewa, whose days are in the older close only (audit r2 R2-2).
+    st, ts = api.create("timesheet", {"project": P, "worker": ws["MP-113"], "work_date": str(D(8)), "period_to": str(D(1)), "days": 1, "description": "Rekap impor"})
+    st2, resp2 = api.verb("timesheet", ts.get("name", "x"), "submit") if st == 201 else (st, ts)
+    check("a recap over days already in an older close is refused too", refused(st2, resp2, "timesheet lain"), (st2, resp2))
+    # One photo, one day (audit r2 R2-3).
+    used = next((x for x in api.find("attendance_log", f"worker == '{ws['MP-112']}' && docstatus == 1")), {})
+    lat, lng = near(SITE, 5, 5)
+    st, lg = api.create("attendance_log", {"worker": ws["MP-112"], "assignment": asg["c"], "work_date": str(t), "clock_in": f"{t}T08:00:00+07:00",
+                                           "in_lat": lat, "in_lng": lng, "clock_out": f"{t}T17:00:00+07:00", "out_lat": lat, "out_lng": lng,
+                                           "in_photo": used.get("in_photo", "")})
+    st2, resp2 = api.verb("attendance_log", lg.get("name", "x"), "submit") if st == 201 else (st, lg)
+    check("a clock-in photo already used by another log is refused", bool(used.get("in_photo")) and refused(st2, resp2, "foto"), (used, st2, resp2))
 
 
 SCENARIOS = [scenario_attendance_clock, scenario_attendance_supervisor, scenario_attendance_close, scenario_attendance_close_edges]

@@ -52,7 +52,9 @@ steps:
         set:
           project: event.project
           worker: a.worker
-          assignment: a.name
+          # An hourly assignment's rates are per hour: its per-day recap takes the worker's day rates instead (no
+          # assignment), as an imported recap does (audit r2 R2-1).
+          assignment: "a.rate_basis == 'hour' ? '' : a.name"
           work_date: event.period_from
           period_to: event.period_to
           rate_basis: "'day'"
