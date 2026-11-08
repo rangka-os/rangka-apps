@@ -8,7 +8,8 @@ All roles live in the `users` module, which every module requires, so a permissi
 An app lists the roles it uses in `roles:` (`crm`: sales_rep, sales_manager; `jasa_proyek`: sales_manager,
 finance_manager, purchasing_manager, project_admin; `fnb_cabang`, `ritel_cabang` and `produksi_pabrik`: head_office, outlet_staff;
 `grosir_distribusi`: sales_manager, finance_manager, head_office, field_sales; `kelas_kursus`: course_admin, instructor
-(its role file is in the `courses` module), finance_manager; `kasir`: cashier, head_office).
+(its role file is in the `courses` module), finance_manager; `kasir`: cashier, head_office; `jasa_proyek` also
+field_worker and site_supervisor, whose role files are in the `projects` module).
 
 Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e export, p print, i import.
 **all** = r c w d s x a e p (no import unless written). `outlet_staff` has a row scope
@@ -26,7 +27,7 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | quotation, customer_order | all | r p | | r c w s (submit held by `manager_approval`) | | | |
 | project (finance and sales write only for the invoice flows that keep `billed_amount`; contract terms freeze once billed) | r w | r w | | all | | | |
 | acceptance | r | r | | all | | | |
-| assignment (cost rates) | | r | | all | | | |
+| assignment (cost rates; field_worker r own, site_supervisor r own site, rates hidden from both) | | r | | all | | | |
 | timesheet (pay and cost) | | r | | all + i (`attendance_recap` import) | | | |
 | billing_milestone (state written by flows; no delete; finance and sales write only through the invoice flows, an amount edit by them is refused) | r w | r w e | | r c w e i | | | |
 | project_expense (sales only `reimbursable` rows, billed on to the client; purchasing only rows linking a `vendor_bill`, for its cancel guard) | r | all but d | r | all | | | |
@@ -123,6 +124,27 @@ Sales and purchasing have no access.
 | payslip | | all | | r c (draft from the recap's flow) |
 | payroll_close (Tutup periode gaji: freezes totals, margin row, client invoice) | | all | | r |
 | payroll_guard (never stored; a flow's refusal, also inside a recap cancel and an invoice save) | c | c | | c |
+
+### Field attendance (module projects, in jasa_proyek)
+
+Two roles with their files in the `projects` module, since their row scopes name its fields: `field_worker` (Pekerja
+lapangan) with scope `worker` from `[user.name]` (the member's worker record, `rangka user add --record WRK-0001`), and
+`site_supervisor` (Pengawas lokasi, mandor or danru) with scope `work_site` from `user.outlets` (the kernel's one list of
+places per member holds work site codes, `--outlets LOK-001`). A worker clocks in and out on their own logs and submits
+them; a log outside the radius, without position, entered more than a day late or with overtime is held for the site
+supervisor (approvals `outside_site`, `late_entry`, `overtime`, contract 0007), who must be able to read the log, so only
+the supervisor of that site (or the owner) decides it. Neither role reads worker records (pay); the log carries the
+worker's name, and the worker reads their site's point through their assignment, not the list of client sites. The rates
+of an assignment are `hidden_for: [field_worker, site_supervisor]`. The project admin closes a period (attendance_close),
+whose submit makes the draft recap timesheets; the workers' and the admin's submits run the guards, so both create
+attendance_guard. `MATRIX` rows live in `tests/day_one_attendance.py`.
+
+| Model | field_worker | site_supervisor | project_admin | finance_manager |
+| --- | --- | --- | --- | --- |
+| work_site (point, radius) | | r (own sites) | r c w d e p | r |
+| attendance_log (no delete or cancel by the worker; a held submit is decided in Persetujuan) | r c w s (own) | r p (own sites) | all | r e |
+| attendance_close (Rekap absen lapangan: makes the recap timesheets) | r (the guards read it) | r | all | r |
+| attendance_guard (never stored; a flow's refusal) | c | | c | |
 
 ### Courses (module courses, piece kelas_kursus)
 

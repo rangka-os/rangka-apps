@@ -1,0 +1,254 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: attendance_log
+label: {id: Absen harian, en: Attendance log}
+icon: clock
+is_submittable: true
+naming: ABS-{YYYY}{MM}-{#####}
+title_field: worker_name
+# One worker, one day at one work site: clocked in and out with the phone's position and a photo (A2, plans/layar-kerja.md
+# §4.1; the record of the `clock` screen in contract 0030 §2 and §9, built later as WS9a). The worker creates it at clock-in
+# (draft), fills the clock-out and submits it. A submitted log is one day present; attendance_close turns the days of a
+# period into the monthly recap timesheet that payroll already reads (payslip_from_recap).
+#
+# Inside the radius it submits at once. Outside the radius, with no position, entered late or with overtime, the submit
+# waits for the site supervisor (contract 0007 approvals below), who sees the reason, the distance and the photo; a rejected
+# log stays a draft and is not counted. Nothing is refused for being far away (contract 0030 §4, as Talenta and Gadjian do).
+#
+# Distance: the kernel has no distance_m yet (it comes with WS6, the `geo` field type). Until then the phone sends lat/lng
+# and its own distance (in_distance_m, kept for the record only), and the kernel decides inside/outside itself from lat/lng
+# with a flat-earth formula (equirectangular; cos(lat) by its Taylor series, enough for |lat| < 30): squared metres against
+# the squared radius, so no square root is needed. A faked position (fake GPS) is not detected; the supervisor checks the
+# photo (contract 0030 §4).
+#
+# Photos are attachments of the record (contract 0011, POST /api/v1/r/attendance_log/{name}/attachments); in_photo and
+# out_photo (type image, contract 0030 §4) hold the attachment id. The kernel does not check yet that the id belongs to this
+# record, nor gives the field a camera widget (WS6).
+#
+# Not linked to by any record while it is a draft (contract 0030 §10), so it can be submittable.
+permissions:
+  # A worker sees and writes only their own logs (row scope worker = their worker record, roles/field_worker.rk). No cancel,
+  # no delete: a submitted day is corrected by the project admin.
+  - {role: field_worker, read: true, create: true, write: true, submit: true}
+  # The supervisor reads the logs of their sites and decides the held submits (approvals); writes nothing.
+  - {role: site_supervisor, read: true, print: true}
+  - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true, export: true}
+fields:
+  - name: worker
+    type: link
+    to: worker
+    label: {id: Tenaga kerja}
+    required: true
+    in_list: true
+  # The name, for the worker and the supervisor, who may not read worker records (they carry pay).
+  - name: worker_name
+    type: data
+    label: {id: Nama}
+    read_only: true
+    in_list: true
+    compute: "worker != '' ? worker.worker_name : ''"
+  - name: assignment
+    type: link
+    to: assignment
+    label: {id: Penugasan}
+    required: true
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+    default: assignment.project
+    in_list: true
+  - name: work_site
+    type: link
+    to: work_site
+    label: {id: Lokasi kerja}
+    default: assignment.work_site
+    in_list: true
+  - name: work_date
+    type: date
+    label: {id: Tanggal}
+    required: true
+    default: today()
+    in_list: true
+  # Clock-in
+  - name: clock_in
+    type: datetime
+    label: {id: Jam masuk}
+    required: true
+    default: now()
+    in_list: true
+  - {name: in_lat, type: float, label: {id: Lintang masuk}}
+  - {name: in_lng, type: float, label: {id: Bujur masuk}}
+  - {name: in_accuracy_m, type: float, label: {id: Akurasi GPS masuk (m)}}
+  # What the phone computed; the decision uses in_site_m below.
+  - {name: in_distance_m, type: float, label: {id: Jarak masuk menurut HP (m)}}
+  - {name: in_photo, type: image, label: {id: Foto masuk (lampiran)}}
+  # Clock-out
+  - name: clock_out
+    type: datetime
+    label: {id: Jam keluar}
+    in_list: true
+  - {name: out_lat, type: float, label: {id: Lintang keluar}}
+  - {name: out_lng, type: float, label: {id: Bujur keluar}}
+  - {name: out_accuracy_m, type: float, label: {id: Akurasi GPS keluar (m)}}
+  - {name: out_distance_m, type: float, label: {id: Jarak keluar menurut HP (m)}}
+  - {name: out_photo, type: image, label: {id: Foto keluar (lampiran)}}
+  - name: overtime_hours
+    type: float
+    label: {id: Jam lembur}
+    default: '0'
+  # Why the worker is outside the site, has no position, enters a past day or claims overtime.
+  - name: reason
+    type: text
+    label: {id: Alasan}
+  # The site's point and radius at the time of the log (frozen at submit with the rest of the record).
+  - {name: site_lat, type: float, label: {id: Lintang lokasi}, read_only: true, compute: "work_site != '' ? work_site.lat : 0"}
+  - {name: site_lng, type: float, label: {id: Bujur lokasi}, read_only: true, compute: "work_site != '' ? work_site.lng : 0"}
+  - {name: site_radius_m, type: int, label: {id: Radius lokasi (m)}, read_only: true, compute: "work_site != '' ? work_site.radius_m : 0"}
+  # Metres per degree of longitude at the site: 111320 x cos(lat), cos by 1 - x^2/2 + x^4/24 - x^6/720 (x in radians).
+  - name: site_m_per_lng
+    type: float
+    label: {id: Meter per derajat bujur}
+    hidden: true
+    read_only: true
+    compute: "111320.0 * (1.0 - (site_lat * 0.0174532925) * (site_lat * 0.0174532925) / 2.0 + (site_lat * 0.0174532925) * (site_lat * 0.0174532925) * (site_lat * 0.0174532925) * (site_lat * 0.0174532925) / 24.0 - (site_lat * 0.0174532925) * (site_lat * 0.0174532925) * (site_lat * 0.0174532925) * (site_lat * 0.0174532925) * (site_lat * 0.0174532925) * (site_lat * 0.0174532925) / 720.0)"
+  - {name: in_located, type: check, label: {id: Lokasi masuk ada}, read_only: true, compute: "in_lat != 0 || in_lng != 0"}
+  - {name: in_dx, type: float, label: {id: Selisih timur masuk (m)}, hidden: true, read_only: true, compute: "(in_lng - site_lng) * site_m_per_lng"}
+  - {name: in_ax, type: float, label: {id: Selisih timur masuk mutlak}, hidden: true, read_only: true, compute: "in_dx < 0 ? -in_dx : in_dx"}
+  - {name: in_ay, type: float, label: {id: Selisih utara masuk mutlak}, hidden: true, read_only: true, compute: "in_dy < 0 ? -in_dy : in_dy"}
+  - {name: in_dy, type: float, label: {id: Selisih utara masuk (m)}, hidden: true, read_only: true, compute: "(in_lat - site_lat) * 110574.0"}
+  - name: in_inside
+    type: check
+    label: {id: Masuk di dalam radius}
+    read_only: true
+    compute: "in_located && work_site != '' && in_dx * in_dx + in_dy * in_dy <= site_radius_m * site_radius_m"
+  # Distance in metres for people to read (octagonal approximation of the square root: max + 0.4 min, within ~4%).
+  - name: in_site_m
+    type: int
+    label: {id: Jarak masuk dari lokasi (m)}
+    read_only: true
+    compute: "!in_located || work_site == '' ? 0 : round((in_ax > in_ay ? in_ax : in_ay) * 0.96 + (in_ax > in_ay ? in_ay : in_ax) * 0.4)"
+  - {name: out_located, type: check, label: {id: Lokasi keluar ada}, read_only: true, compute: "out_lat != 0 || out_lng != 0"}
+  - {name: out_dx, type: float, label: {id: Selisih timur keluar (m)}, hidden: true, read_only: true, compute: "(out_lng - site_lng) * site_m_per_lng"}
+  - {name: out_ax, type: float, label: {id: Selisih timur keluar mutlak}, hidden: true, read_only: true, compute: "out_dx < 0 ? -out_dx : out_dx"}
+  - {name: out_ay, type: float, label: {id: Selisih utara keluar mutlak}, hidden: true, read_only: true, compute: "out_dy < 0 ? -out_dy : out_dy"}
+  - {name: out_dy, type: float, label: {id: Selisih utara keluar (m)}, hidden: true, read_only: true, compute: "(out_lat - site_lat) * 110574.0"}
+  - name: out_inside
+    type: check
+    label: {id: Keluar di dalam radius}
+    read_only: true
+    compute: "out_located && work_site != '' && out_dx * out_dx + out_dy * out_dy <= site_radius_m * site_radius_m"
+  - name: out_site_m
+    type: int
+    label: {id: Jarak keluar dari lokasi (m)}
+    read_only: true
+    compute: "!out_located || work_site == '' ? 0 : round((out_ax > out_ay ? out_ax : out_ay) * 0.96 + (out_ax > out_ay ? out_ay : out_ax) * 0.4)"
+  # Outside: clock-in not inside the radius (or no position), or a clock-out entered and not inside.
+  - name: outside_site
+    type: check
+    label: {id: Di luar radius}
+    read_only: true
+    in_list: true
+    chip: true
+    compute: "!in_inside || (clock_out != '' && !out_inside)"
+  # One live log per worker per day (flow attendance_log_guard_*: a cancelled one frees the day for its amendment).
+  - name: day_key
+    type: data
+    label: {id: Kunci hari}
+    hidden: true
+    read_only: true
+    compute: "worker + ':' + work_date"
+rules:
+  - name: assignment_of_worker
+    on: save
+    check: assignment == '' || assignment.worker == worker
+    message: {id: 'Penugasan ini bukan milik tenaga kerja ini'}
+  - name: within_assignment
+    on: save
+    check: assignment == '' || (work_date >= assignment.start_date && work_date <= assignment.end_date)
+    message: {id: 'Tanggal absen di luar masa penugasan'}
+  - name: same_project_and_site
+    on: save
+    check: assignment == '' || (project == assignment.project && work_site == assignment.work_site)
+    message: {id: 'Proyek dan lokasi kerja mengikuti penugasan'}
+  - name: has_site
+    on: save
+    check: work_site != ''
+    message: {id: 'Penugasan ini belum punya lokasi kerja; minta admin proyek mengisinya'}
+  - name: not_future
+    on: save
+    check: work_date <= today()
+    message: {id: 'Tidak bisa absen untuk tanggal yang belum datang'}
+  - name: position_valid
+    on: save
+    check: in_lat >= -90 && in_lat <= 90 && in_lng >= -180 && in_lng <= 180 && out_lat >= -90 && out_lat <= 90 && out_lng >= -180 && out_lng <= 180 && in_accuracy_m >= 0 && out_accuracy_m >= 0 && in_distance_m >= 0 && out_distance_m >= 0
+    message: {id: 'Posisi GPS tidak valid'}
+  - name: photo_is_attachment
+    on: save
+    check: (in_photo == '' || in_photo.startsWith('att_')) && (out_photo == '' || out_photo.startsWith('att_'))
+    message: {id: 'Foto diisi dengan id lampiran (unggah fotonya dulu)'}
+  - name: out_after_in
+    on: save
+    check: clock_out == '' || clock_out > clock_in
+    message: {id: 'Jam keluar harus sesudah jam masuk'}
+  - name: overtime_range
+    on: save
+    check: overtime_hours >= 0 && overtime_hours <= 12
+    message: {id: 'Jam lembur 0 sampai 12 jam per hari'}
+  - name: reason_when_outside
+    on: save
+    check: "!outside_site || size(reason) >= 5"
+    message: {id: 'Kamu di luar radius lokasi kerja (atau lokasi tidak terbaca): tulis alasannya'}
+  - name: reason_when_overtime
+    on: save
+    check: overtime_hours == 0 || size(reason) >= 5
+    message: {id: 'Tulis alasan atau pekerjaan lemburnya'}
+  - name: clocked_out
+    on: submit
+    check: clock_out != ''
+    message: {id: 'Isi jam keluar dulu (absen pulang) sebelum diajukan'}
+  # The supervisor judges a far clock-in by its photo, so one is required there.
+  - name: photo_when_outside
+    on: submit
+    check: "!outside_site || in_photo != ''"
+    message: {id: 'Absen di luar radius butuh foto masuk'}
+# Held for the site supervisor (contract 0007); the owner may always approve. The verb then runs as the worker.
+approvals:
+  - name: outside_site
+    on: submit
+    when: outside_site
+    approvers: [site_supervisor]
+    label: {id: Absen di luar radius lokasi kerja, en: Clock-in outside the site radius}
+  - name: late_entry
+    on: submit
+    when: days_between(work_date, today()) > 1
+    approvers: [site_supervisor]
+    label: {id: Absen diisi lebih dari sehari kemudian, en: Attendance entered more than a day late}
+  - name: overtime
+    on: submit
+    when: overtime_hours > 0
+    approvers: [site_supervisor]
+    label: {id: Lembur, en: Overtime}
+views:
+  list:
+    columns: [name, worker_name, work_site, work_date, clock_in, clock_out, outside_site, status]
+    sort: -work_date
+  form:
+    layout:
+      - section: {id: Absen}
+        columns:
+          - [worker, assignment, project, work_site]
+          - [work_date, overtime_hours, outside_site]
+      - section: {id: Masuk}
+        columns:
+          - [clock_in, in_photo, in_site_m, in_inside]
+          - [in_lat, in_lng, in_accuracy_m, in_distance_m]
+      - section: {id: Keluar}
+        columns:
+          - [clock_out, out_photo, out_site_m, out_inside]
+          - [out_lat, out_lng, out_accuracy_m, out_distance_m]
+      - section: {id: Alasan}
+        fields: [reason]
+      - section: {id: Lokasi kerja}
+        columns:
+          - [site_lat, site_lng, site_radius_m]

@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: attendance_guard
+label: {id: Penjaga absen, en: Attendance guard}
+icon: check
+naming: AGD-{######}
+title_field: reason
+# Never stored (the pattern of project_guard and payroll_guard): a flow that must refuse the action it runs in creates
+# one, and the rule of its reason fails with that message, which rolls the whole action back. Create is granted to the
+# roles whose saves and submits run those flows (an approved submit runs as the worker who asked).
+permissions:
+  - {role: field_worker, create: true}
+  - {role: project_admin, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: second_log, label: {id: Absen kedua di hari yang sama}}
+      - {value: period_closed, label: {id: Periode absen sudah direkap}}
+      - {value: close_overlap, label: {id: Periode rekap tumpang tindih}}
+      - {value: close_has_recap, label: {id: Rekap absen dipakai timesheet}}
+  - name: document
+    type: data
+    label: {id: Dokumen}
+rules:
+  - name: second_log
+    on: save
+    check: reason != 'second_log'
+    message: {id: 'Tenaga kerja ini sudah punya absen di tanggal itu (satu absen per orang per hari)'}
+  - name: period_closed
+    on: save
+    check: reason != 'period_closed'
+    message: {id: 'Absen tanggal ini sudah masuk rekap absen lapangan yang diajukan; batalkan rekapnya dulu'}
+  - name: close_overlap
+    on: save
+    check: reason != 'close_overlap'
+    message: {id: 'Proyek ini sudah punya rekap absen lapangan yang tanggalnya tumpang tindih'}
+  - name: close_has_recap
+    on: save
+    check: reason != 'close_has_recap'
+    message: {id: 'Rekap ini sudah jadi timesheet; hapus draf atau batalkan timesheet-nya dulu'}

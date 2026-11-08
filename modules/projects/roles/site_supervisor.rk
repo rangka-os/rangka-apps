@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: site_supervisor
+label: {id: Pengawas lokasi}
+description: {id: 'Mandor atau danru: melihat absen lokasi kerjanya dan menyetujui absen di luar radius, terlambat diisi atau lembur'}
+# Contract 0010 §5: records whose work_site is one of the member's places of work. The kernel keeps one list of places per
+# member, `outlets` (rangka user add --outlets LOK-001,LOK-002); for this role it holds work site codes.
+scope: {field: work_site, from: user.outlets}

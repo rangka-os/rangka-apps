@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: attendance_close
+label: {id: Rekap absen lapangan, en: Field attendance close}
+icon: calendar
+is_submittable: true
+naming: RAB-{YYYY}-{####}
+title_field: project
+# Closes the field attendance of one project for a pay period (21 Oct to 20 Nov, or a calendar month): on submit, flow
+# attendance_close_on_submit counts each assigned worker's submitted daily logs (attendance_log) of the period and makes
+# one draft monthly recap timesheet per worker (work_date = period_from, period_to, days, overtime hours), the same shape
+# the attendance_recap import makes. The project admin checks and submits those recaps; payroll then makes the slips
+# (payslip_from_recap) and the client invoice as before. While the close is submitted, logs of its period can be neither
+# submitted nor cancelled (attendance_log_guard_submitted, attendance_log_cancel_guard); to reopen, delete or cancel its
+# recaps, then cancel the close.
+permissions:
+  - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true}
+  # Read so the flows that run in their submit can see whether a period is closed.
+  - {role: site_supervisor, read: true}
+  - {role: field_worker, read: true}
+fields:
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek}
+    required: true
+    in_list: true
+  - name: period_from
+    type: date
+    label: {id: Dari tanggal}
+    required: true
+    in_list: true
+  - name: period_to
+    type: date
+    label: {id: Sampai tanggal}
+    required: true
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+  # One close per project and start of period (a second one would count the same days twice).
+  - name: close_key
+    type: data
+    label: {id: Kunci periode}
+    hidden: true
+    unique: true
+    compute: "project + ':' + period_from"
+rules:
+  - name: period_valid
+    on: save
+    check: period_to >= period_from && days_between(period_from, period_to) <= 30
+    message: {id: 'Periode rekap: sampai tanggal tidak boleh sebelum tanggal mulai, paling lama 31 hari'}
+  - name: period_over
+    on: submit
+    check: period_to <= today()
+    message: {id: 'Periode ini belum selesai; rekap absen setelah tanggal terakhirnya'}
+views:
+  list:
+    columns: [name, project, period_from, period_to, status]
+    sort: -period_from
+  form:
+    layout:
+      - section: {id: Rekap absen}
+        columns:
+          - [project, period_from, period_to]
+          - [notes]
