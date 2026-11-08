@@ -417,22 +417,30 @@ def scenario_subs_collectors(api):
     st, resp = fm.call("DELETE", f"/api/v1/r/payment/{Api.q(pay['name'])}")
     check("and is not deleted", refused(st, resp, "dari setoran penagih"), (st, resp))
 
-    # a second collection before finance submits the first payment: allocated after the draft waiting
-    st, c2 = col1.create("field_collection", {"subscription": "LGN-00002", "amount": 100000})
-    check("Dodi collects 100.000 more from LGN-00002 (201)", st == 201, (st, c2))
+    # two more collections of the same subscription before finance submits the first payment, in one deposit: each is
+    # allocated after the drafts already waiting (the first deposit's, then the one made just before it)
+    st, c2 = col1.create("field_collection", {"subscription": "LGN-00002", "amount": 60000})
+    st3, c3 = col1.create("field_collection", {"subscription": "LGN-00002", "amount": 40000})
+    check("Dodi collects 60.000 and 40.000 more from LGN-00002 (201, 201)", st == 201 and st3 == 201, (st, c2, st3, c3))
     st, d2 = fm.create("collector_deposit", {"collector": "USR-002", "cash_counted": 100000})
     st2, resp = fm.verb("collector_deposit", (d2 or {}).get("name", "-"), "submit")
-    check("the second deposit submits (200)", st == 201 and st2 == 200, (st, d2, st2, resp))
-    pay2 = api.get("payment", api.get("field_collection", rec(c2)["name"]).get("payment") or "-") or {}
-    want2, start, end = [], 300000, 400000
-    pos = 0
-    for i in invs:
-        a = max(0, min(pos + i["outstanding"], end) - max(pos, start))
-        if a > 0:
-            want2.append((i["name"], a))
-        pos += i["outstanding"]
-    eq("its payment takes the invoices after what the first draft covers", sorted((a["sales_invoice"], a["amount"]) for a in pay2.get("allocations", [])), sorted(want2))
-    for p in (pay, pay2):
+    check("one deposit of both submits (200)", st == 201 and st2 == 200, (st, d2, st2, resp))
+
+    def window(lo, hi):
+        out, pos = [], 0
+        for i in invs:
+            a = max(0, min(pos + i["outstanding"], hi) - max(pos, lo))
+            if a > 0:
+                out.append((i["name"], a))
+            pos += i["outstanding"]
+        return sorted(out)
+    pays = {}
+    for c, lo, hi in ((c2, 300000, 360000), (c3, 360000, 400000)):
+        p = api.get("payment", api.get("field_collection", rec(c)["name"]).get("payment") or "-") or {}
+        pays[p.get("name")] = p
+        eq(f"collection of {hi - lo} takes the invoices after what the drafts before it cover", sorted((a["sales_invoice"], a["amount"]) for a in p.get("allocations", [])), window(lo, hi))
+    pay2 = list(pays.values())
+    for p in [pay] + pay2:
         st, resp = fm.verb("payment", p["name"], "submit", {"force": True})
         check(f"finance submits the deposit's payment {p['name']} (200)", st == 200, (st, resp))
     s2b = api.get("subscription", "LGN-00002")

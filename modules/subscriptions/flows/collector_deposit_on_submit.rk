@@ -22,13 +22,15 @@ steps:
     set:
       reason: "'deposit_mismatch'"
       document: event.name
+  # the open subscription invoices, read once: a draft payment does not change what an invoice still owes
+  - find_all: sales_invoice
+    where: docstatus == 1 && outstanding > 0 && notes.contains('{langganan:')
+    sort: due_date
+    as: allopen
   - for_each: cols
     as: c
     do:
-      - find_all: sales_invoice
-        where: docstatus == 1 && outstanding > 0 && notes.contains('{langganan:' + c.subscription + '}')
-        sort: due_date
-        as: invs
+      # read per collection: a draft made for an earlier collection of the same subscription in this deposit counts
       - find_all: payment
         where: docstatus == 0 && direction == 'receive' && reference == c.subscription && notes.startsWith('Setoran ')
         as: drafts
@@ -42,8 +44,8 @@ steps:
           reference: c.subscription
           notes: "'Setoran ' + event.name + ', ' + c.name + ' (' + c.customer_name + ')'"
           allocations: >-
-            invs.filter(i, max(0, min(invs.filter(j, j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name)).map(j, j.outstanding).sum() + i.outstanding, drafts.map(p, p.amount).sum() + c.amount) - max(invs.filter(j, j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name)).map(j, j.outstanding).sum(), drafts.map(p, p.amount).sum())) > 0)
-              .map(i, {'sales_invoice': i.name, 'amount': max(0, min(invs.filter(j, j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name)).map(j, j.outstanding).sum() + i.outstanding, drafts.map(p, p.amount).sum() + c.amount) - max(invs.filter(j, j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name)).map(j, j.outstanding).sum(), drafts.map(p, p.amount).sum()))})
+            allopen.filter(i, i.notes.contains('{langganan:' + c.subscription + '}')).filter(i, max(0, min(allopen.filter(j, j.notes.contains('{langganan:' + c.subscription + '}') && (j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name))).map(j, j.outstanding).sum() + i.outstanding, drafts.map(p, p.amount).sum() + c.amount) - max(allopen.filter(j, j.notes.contains('{langganan:' + c.subscription + '}') && (j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name))).map(j, j.outstanding).sum(), drafts.map(p, p.amount).sum())) > 0)
+              .map(i, {'sales_invoice': i.name, 'amount': max(0, min(allopen.filter(j, j.notes.contains('{langganan:' + c.subscription + '}') && (j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name))).map(j, j.outstanding).sum() + i.outstanding, drafts.map(p, p.amount).sum() + c.amount) - max(allopen.filter(j, j.notes.contains('{langganan:' + c.subscription + '}') && (j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name))).map(j, j.outstanding).sum(), drafts.map(p, p.amount).sum()))})
         as: pay
       - update: c
         set:
