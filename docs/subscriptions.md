@@ -15,7 +15,9 @@ POS app or another licence, maintenance contracts. Site: `examples/sites/demo-la
      pro-rated by days (start 17 Aug: 15/31 of a month for 17-31 Aug).
    Period k starts at `add_months(anchor, months billed)`, never from the previous period, so a 31st anchor does not
    drift (31 Jan, 28 Feb, 31 Mar). Price, discount and cycle can change at any time and apply from the next period; the
-   start date and anchor lock at the first bill. An end date stops billing for periods that start on or after it.
+   start date, anchor and customer lock at the first bill. An end date stops billing for periods that start on or after
+   it; the period it falls in is billed up to the day before, pro-rated by days; it cannot fall before what is billed
+   (`billed_through`).
 4. **Tambahan** (`subscription_extra`): a line added once (an installation fee, an extra job this month) or every period
    from a date until an optional date (a static IP, a second access point). Locked once billed except its until date and
    active flag.
@@ -23,7 +25,7 @@ POS app or another licence, maintenance contracts. Site: `examples/sites/demo-la
    `scheduler.timezone` of system.rk; the owner can also run it from the flow list): each subscription whose next bill
    date has come gets one period billed per run, as a bill and a **draft sales invoice** dated the period's first day,
    due `due_days` after, one line for the plan and one per extra, notes tagged `{langganan:<subscription>} [<bill>]`.
-   Finance checks and submits the drafts; from there payments, reminders, aging, PPN, Coretax and bank matching are the
+   Finance checks and submits the drafts (a draft can be edited, but the only live invoice of a bill is not deleted); from there payments, reminders, aging, PPN, Coretax and bank matching are the
    money rail's (`faktur_piutang`), the journal `accounting`'s.
 6. **Status layanan**, every day at 02:00 by flow `subscription_dunning`, and at once when a client's payment is
    submitted (`subscription_status_on_payment`): from the oldest submitted invoice still unpaid, *Telat* when past due,
@@ -32,8 +34,9 @@ POS app or another licence, maintenance contracts. Site: `examples/sites/demo-la
    suspension. Paying lifts a suspension at once.
 7. **Uang tertagih penagih** (`field_collection`): cash a collector took in the field, on a subscription of their own
    area (a collector reads no invoices). **Setoran penagih** (`collector_deposit`): finance counts the cash; it must equal
-   the collections not yet deposited; each becomes a draft cash payment allocated to the subscription's oldest unpaid
-   invoices, after the drafts already waiting. Finance submits them (Kas, invoices paid).
+   the collections not yet deposited; each becomes a draft cash payment (notes `Setoran <deposit> [<collection>]`)
+   allocated to the subscription's oldest unpaid invoices, after the drafts already waiting, and counts on the
+   subscription as `deposit_waiting` until finance submits it (Kas, invoices paid).
 8. **Rekap bulan** (`subscription_month`), refreshed every night: invoiced and paid of the month's subscription
    invoices, the collection rate, running subscriptions and MRR.
 
@@ -50,9 +53,18 @@ POS app or another licence, maintenance contracts. Site: `examples/sites/demo-la
   customer, for exactly its total before PPN, with its subscription tag, and once; an invoice with a subscription tag but
   no bill is refused; the notes of a tagged invoice cannot be edited (`invoice_subscription_tag_lock`).
 - **Collections within what is owed.** The collections of a subscription not yet deposited stay within its unpaid
-  amount (checked under the read lock of contract 0025). A deposited collection and the draft payment it made cannot
-  be deleted, and that payment's amount, client, method and notes cannot change.
+  amount less the deposits waiting (checked when saved, under the read lock of contract 0025; not again at the deposit,
+  so cash in hand always reaches Kas, a surplus becomes the client's credit). A deposited collection cannot change or
+  be deleted; the payment it made cannot be deleted or cancelled, and its amount, client, method and notes stay.
+- **Arrears of a stopped client.** A stopped subscription that still owes, or has a deposit waiting, is refreshed by the
+  dunning and payment flows like a live one.
 - **Exact deposit.** A deposit whose cash differs from the collections' total is refused, not booked with a shortage.
+
+## Known limits
+- The deposit's oldest-first window assumes the waiting drafts keep their allocations; if finance moves one, the rail
+  refuses an allocation over what an invoice owes when the next is submitted.
+- An invoice with a down payment (uang muka) is refused by the guard (its dpp is less than the bill); subscriptions do
+  not take down payments.
 
 ## Not yet (follow-up cards)
 - Submitting many drafts at once (bulk submit in the kernel UI or a flow `submit` step): today finance submits each.

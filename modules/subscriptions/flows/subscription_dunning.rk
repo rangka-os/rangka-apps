@@ -2,9 +2,10 @@
 name: subscription_dunning
 label: {id: Status layanan dan rekap langganan}
 # Every day at 02:00 (open-isp practice), and by the owner from the flow list. The dunning ladder, per subscription that
-# is not finally stopped, from its submitted invoices still unpaid (found once for the run, oldest due date first):
+# is not finally stopped (a stopped one that still owes, or has a deposit waiting, is refreshed too: its arrears are
+# still collected), from its submitted invoices still unpaid (found once for the run, oldest due date first):
 # - stopped: its end date has come; or stop_after_days > 0 and the oldest unpaid invoice is that many days past due,
-#   which sets the end date (today, or the end of the periods already billed when that is later);
+#   which sets the end date (today, or billed_through when that is later);
 # - suspended: the oldest unpaid invoice is suspend_after_days or more past due (isolir; the owner is told);
 # - late: past due, less than that; active: nothing past due (paying lifts a suspension, also at once through flow
 #   subscription_status_on_payment).
@@ -20,10 +21,14 @@ steps:
     sort: due_date
     as: allopen
   - find_all: subscription
-    where: status != 'stopped' || end_date == '' || end_date > today()
+    where: status != 'stopped' || end_date == '' || end_date > today() || unpaid_amount > 0 || deposit_waiting > 0
     sort: name
     limit: 2000
     as: subs
+  # draft payments of collector deposits not submitted yet (deposit_waiting, what a collector may still collect)
+  - find_all: payment
+    where: docstatus == 0 && direction == 'receive' && notes.startsWith('Setoran ')
+    as: waiting
   - for_each: subs
     as: s
     do:
@@ -34,10 +39,11 @@ steps:
           overdue_amount: "allopen.filter(i, i.notes.contains('{langganan:' + s.name + '}')).filter(i, i.due_date < today()).map(i, i.outstanding).sum()"
           oldest_due: "size(allopen.filter(i, i.notes.contains('{langganan:' + s.name + '}'))) > 0 ? allopen.filter(i, i.notes.contains('{langganan:' + s.name + '}'))[0].due_date : ''"
           checked_on: today()
+          deposit_waiting: waiting.filter(p, p.reference == s.name).map(p, p.amount).sum()
       - update: s
         if: s.stop_due
         set:
-          end_date: "today() >= add_months(s.anchor_date, s.billed_months) ? today() : add_months(s.anchor_date, s.billed_months)"
+          end_date: "s.billed_through == '' || today() >= s.billed_through ? today() : s.billed_through"
       - create: subscription_status_log
         if: s.status != s.prev_status
         set:

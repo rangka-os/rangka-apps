@@ -2,7 +2,8 @@
 name: field_collection_cap_created
 label: {id: Uang tertagih tidak melebihi tagihan}
 # Runs as the collector (who reads no invoices): the collections of a subscription not yet deposited, this one
-# included, stay within what the subscription still owes (unpaid_amount, refreshed by the subscription flows). The read
+# included, stay within what the subscription still owes less the deposits waiting for finance (unpaid_amount and
+# deposit_waiting, refreshed by the subscription flows); and the subscription is in the collector's area. The read
 # lock on field_collection (contract 0025) makes two collections saved at the same moment check one after the other.
 on: field_collection.created
 if: event.deposit == ''
@@ -11,7 +12,12 @@ steps:
   - find_all: field_collection
     where: subscription == event.subscription && deposit == '' && name != event.name
     as: others
-  - if: s == null || others.map(c, c.amount).sum() + event.amount > s.unpaid_amount
+  - if: s == null || s.collector != event.collector
+    create: subscription_guard
+    set:
+      reason: "'collection_area'"
+      document: event.name
+  - if: others.map(c, c.amount).sum() + event.amount > s.unpaid_amount - s.deposit_waiting
     create: subscription_guard
     set:
       reason: "'collection_over'"

@@ -2,7 +2,8 @@
 name: subscription_billing
 label: {id: Tagihan langganan otomatis}
 # Every day at 00:05 (scheduler.timezone of system.rk), and by the owner from the flow list: each subscription whose
-# next bill date has come (not stopped, before its end date) gets its next period billed. One run bills one period per
+# next bill date has come (before its end date; a period the end date cuts is billed up to the day before it,
+# pro-rated) gets its next period billed. One run bills one period per
 # subscription (the oldest unbilled); a subscription behind by several periods catches up one period per run. Per
 # subscription, in the run's one transaction (contract 0031 for_each):
 # 1. the active extras overlapping the period (one-off ones not billed before);
@@ -11,12 +12,12 @@ label: {id: Tagihan langganan otomatis}
 #    notes with {langganan:<subscription>} and [<bill>] (a flow cannot submit: finance checks and submits it, then
 #    payment, reminders, aging, PPN and bank matching are the money rail's);
 # 4. the extras taken are marked, the subscription moves on (prorata_billed or billed_months) and its start date and
-#    anchor are locked.
+#    anchor and customer are locked; billed_through is the day after the period billed.
 # At most 500 subscriptions per run (the oldest bill dates first); the next run takes the rest.
 schedule: '5 0 * * *'
 steps:
   - find_all: subscription
-    where: "next_bill_date != '' && next_bill_date <= today() && status != 'stopped' && (end_date == '' || next_bill_date < end_date)"
+    where: "next_bill_date != '' && next_bill_date <= today() && (end_date == '' || next_bill_date < end_date)"
     sort: next_bill_date
     limit: 500
     as: due
@@ -52,8 +53,6 @@ steps:
               + (s.next_is_prorata ? ' (prorata)' : ''), 'qty': 1, 'rate': bill.base_amount}]
               + extras.map(x, {'item': x.item, 'description': x.description, 'qty': 1, 'rate': x.amount})
         as: inv
-      - update: bill
-        set: {draft_invoice: inv.name}
       - for_each: extras
         as: x
         do:
@@ -68,3 +67,5 @@ steps:
           last_bill: bill.name
           locked_start: s.start_date
           locked_anchor: s.anchor
+          locked_customer: s.customer
+          billed_through: s.next_period_end + duration(1)

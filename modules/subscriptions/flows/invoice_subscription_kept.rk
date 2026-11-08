@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: invoice_subscription_kept
+label: {id: Faktur terakhir tagihan langganan tidak dihapus}
+# A bill's period is billed once (period_key): deleting its only live invoice would leave the period billed and never
+# invoiced. A second draft of the same bill, or a draft whose tag names no bill, may be deleted.
+on: sales_invoice.deleted
+if: event.notes.contains('{langganan:')
+steps:
+  - find_all: subscription_bill
+    where: event.notes.contains('[' + name + ']')
+    as: tags
+  - find: sales_invoice
+    where: size(tags) == 1 && docstatus != 2 && notes.contains('[' + tags[0].name + ']')
+    as: other
+  - if: size(tags) == 1 && other == null
+    create: subscription_guard
+    set:
+      reason: "'invoice_kept'"
+      document: event.name

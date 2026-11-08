@@ -76,15 +76,21 @@ def expected_bills(s, today, billed_before=0):
     anchor = start if s["anchor"] == "start" or start.day == 1 else add_months(first, 1)
     end = d(s["end_date"]) if s.get("end_date") else None
     out = []
+
+    def cut(kind, ps, nxt, amount):
+        """A period [ps, nxt) that the end date cuts is billed up to the day before it, pro-rated by days."""
+        if end is not None and end < nxt:
+            amount = js_round(amount * (end - ps).days / (nxt - ps).days)
+            nxt = end
+        out.append((kind, ps, nxt - datetime.timedelta(days=1), amount))
     if anchor != start and start <= today and (end is None or start < end):
-        days = (anchor - start).days
-        out.append(("prorata", start, anchor - datetime.timedelta(days=1), js_round(net * days / (anchor - add_months(anchor, -1)).days)))
+        cut("prorata", start, anchor, js_round(net * (anchor - start).days / (anchor - add_months(anchor, -1)).days))
     k = billed_before
     while True:
         ps = add_months(anchor, k)
         if ps > today or (end is not None and ps >= end):
             return out
-        out.append(("regular", ps, add_months(anchor, k + months) - datetime.timedelta(days=1), net * months))
+        cut("regular", ps, add_months(anchor, k + months), net * months)
         k += months
 
 
@@ -125,6 +131,18 @@ def bill_all(api, label="billing"):
         made += new
     fail(f"{label}: billing caught up within 60 runs", len(made))
     return made
+
+
+def bill_invoice(api, bill):
+    """The live invoice of a bill (found by its tag: a draft is renamed when submitted)."""
+    x = rows_all(api, "sales_invoice", f"docstatus != 2 && notes.contains('[{bill}]')")
+    return x[0]["name"] if x else "-"
+
+
+def collection_payment(api, col):
+    """The payment a deposited collection made (its number in [] in the notes)."""
+    x = rows_all(api, "payment", f"notes.contains('[{col}]')")
+    return api.get("payment", x[0]["name"]) if x else {}
 
 
 def sub_invoices(api, sub, where=""):
@@ -191,8 +209,7 @@ def scenario_subs_billing(api):
         inv = api.get("sales_invoice", invs[0]["name"]) if len(invs) == 1 else {}
         due = (d(b["period_start"]) + datetime.timedelta(days=s["due_days"])).isoformat()
         if not (len(invs) == 1 and inv["docstatus"] == 0 and inv["customer"] == s["customer"] and inv["posting_date"] == b["period_start"]
-                and inv["due_date"] == due == b["due_date"] and "{langganan:%s}" % s["name"] in inv["notes"] and inv["subtotal"] == b["total"]
-                and b["draft_invoice"] == inv["name"]):
+                and inv["due_date"] == due == b["due_date"] and "{langganan:%s}" % s["name"] in inv["notes"] and inv["subtotal"] == b["total"]):
             bad.append((b["name"], len(invs), {k: inv.get(k) for k in ("customer", "posting_date", "due_date", "subtotal", "notes")}, b["total"], due))
     check(f"each of the {len(bills)} bills has one draft invoice: its customer, dated the period's start, due due_days after, subtotal = bill total", not bad, bad[:3])
 
@@ -203,7 +220,7 @@ def scenario_subs_billing(api):
     eq("the one-off extra is marked with that bill", api.get("subscription_extra", "TMB-00002")["billed_bill"], b3[0]["name"])
     b5 = [b for b in bills if b["subscription"] == "LGN-00005"]
     check("LGN-00005: the static IP (every period) is on each quarterly bill", b5 and all(b["extras_total"] == 100000 for b in b5), [(b["period_start"], b["extras_total"]) for b in b5])
-    inv5 = api.get("sales_invoice", b5[0]["draft_invoice"]) if b5 else {}
+    inv5 = api.get("sales_invoice", bill_invoice(api, b5[0]["name"])) if b5 else {}
     eq("its invoice: a plan line and an extra line", sorted((i["item"], i["rate"]) for i in inv5.get("items", [])), [("BRG-0003", 4500000), ("BRG-0004", 100000)])
 
     # the period ledger and the locked terms
@@ -213,6 +230,11 @@ def scenario_subs_billing(api):
        (True, n_reg, "2026-08-17", "month_start"))
     st, resp = fm.patch("subscription", "LGN-00001", {"start_date": "2026-08-20"})
     check("a billed subscription's start date cannot change (422)", refused(st, resp, "tidak bisa diubah lagi"), (st, resp))
+    st, resp = fm.patch("subscription", "LGN-00001", {"customer": "CUST-0003"})
+    check("nor its customer (422; audit #6)", refused(st, resp, "tidak bisa diubah lagi"), (st, resp))
+    one = [b for b in bills if b["subscription"] == "LGN-00006"][0]
+    st, resp = fm.call("DELETE", f"/api/v1/r/sales_invoice/{Api.q(bill_invoice(api, one['name']))}")
+    check("the only draft invoice of a bill cannot be deleted (409/422; audit #7)", refused(st, resp, "satu-satunya faktur"), (st, resp))
     st, resp = fm.patch("subscription", "LGN-00001", {"end_date": "2026-09-15"})
     check("an end date inside a billed period is refused (422)", refused(st, resp, "sudah ditagih"), (st, resp))
     st, resp = fm.patch("subscription", "LGN-00001", {"billed_months": 0, "prorata_billed": False})
@@ -255,13 +277,45 @@ def scenario_subs_new_and_change(api):
     fm.patch("subscription", s["name"], {"monthly_price": 250000, "cycle": "monthly"})
 
 
+def scenario_subs_end_dates(api):
+    """A client who stops mid-period (audit #1): the period is billed up to the day before the end date, pro-rated,
+    and the run goes on for everyone (one transaction for all subscriptions)."""
+    fm = CTX.get("fm")
+    if fm is None:
+        return
+    today = kernel_today()
+    s_start = today - datetime.timedelta(days=40)
+    cases = [   # started 40 days ago on its own date, stops 5 days into its second month; a pro-rated start cut short
+        {"customer": "CUST-0005", "plan": "PKT-001", "area": "ARE-003", "start_date": s_start.isoformat(), "anchor": "start",
+         "end_date": (add_months(s_start, 1) + datetime.timedelta(days=5)).isoformat()},
+        {"customer": "CUST-0006", "plan": "PKT-001", "area": "ARE-003", "start_date": (today - datetime.timedelta(days=3)).isoformat(), "anchor": "month_start",
+         "end_date": (today - datetime.timedelta(days=1)).isoformat()},
+    ]
+    made = []
+    for body in cases:
+        st, x = fm.create("subscription", body)
+        if not check(f"finance adds a subscription {body['start_date']} to {body['end_date']} (201)", st == 201, (st, x)):
+            return
+        made.append(x["name"])
+    bill_all(api, "end dates")
+    for n in made:
+        s = api.get("subscription", n)
+        want = sorted((k, a.isoformat(), b.isoformat(), amt) for k, a, b, amt in expected_bills(s, today))
+        got = sorted((b["kind"], b["period_start"], b["period_end"], b["base_amount"]) for b in rows_all(api, "subscription_bill", f"subscription == '{n}'"))
+        eq(f"{n}: the period the end date cuts is billed to the day before it, pro-rated", got, want)
+        eq(f"{n}: billed through its end date, nothing after", (s["billed_through"], s["next_bill_date"] >= s["end_date"]), (s["end_date"], True))
+    st, resp = fm.patch("subscription", made[0], {"end_date": (d(cases[0]["end_date"]) - datetime.timedelta(days=1)).isoformat()})
+    check("an end date before what is already billed is refused (422)", refused(st, resp, "sudah ditagih"), (st, resp))
+    CTX["ended"] = made
+
+
 def scenario_subs_invoice_guard(api):
     """Finance submits the drafts; the invoice of a bill goes to its customer, for its total, once, with its tags."""
     fm = CTX.get("fm")
     if fm is None or not CTX.get("new_bill"):
         return
     nb = api.get("subscription_bill", CTX["new_bill"])
-    draft = nb["draft_invoice"]
+    draft = bill_invoice(api, nb["name"])
     st, resp = fm.patch("sales_invoice", draft, {"notes": "Langganan tanpa penanda"})
     check("the notes of a subscription invoice cannot be edited (tags locked, 409/422)", refused(st, resp, "Catatan faktur langganan"), (st, resp))
     inv = api.get("sales_invoice", draft)
@@ -365,6 +419,22 @@ def scenario_subs_payment_lifts(api):
         check("and the change is logged", any(x["to_status"] == "active" for x in logs), logs)
 
 
+def scenario_subs_stopped_arrears(api):
+    """A stopped subscription that still owes stays refreshed (audit #3): paying it at the office clears it."""
+    fm = CTX.get("fm")
+    ended = [n for n in CTX.get("ended", []) if api.get("subscription", n)["status"] == "stopped"]
+    if fm is None or not ended:
+        return
+    n = ended[0]
+    s = api.get("subscription", n)
+    open_ = [i for i in sub_invoices(api, n) if i["docstatus"] == 1 and i["outstanding"] > 0]
+    check(f"{n} is stopped and still owes", s["unpaid_amount"] > 0 and s["unpaid_amount"] == sum(i["outstanding"] for i in open_), (s["status"], s["unpaid_amount"]))
+    st, p = fm.create("payment", {"direction": "receive", "customer": s["customer"], "method": "transfer", "amount": s["unpaid_amount"],
+                                  "allocations": [{"sales_invoice": i["name"], "amount": i["outstanding"]} for i in open_]})
+    st2, resp = fm.verb("payment", (p or {}).get("name", "-"), "submit", {"force": True})
+    eq(f"{n}: paid at the office, its arrears go to 0 at once", (st, st2, api.get("subscription", n)["unpaid_amount"]), (201, 200, 0))
+
+
 def scenario_subs_collectors(api):
     fm, col1, col2 = CTX.get("fm"), CTX.get("col1"), CTX.get("col2")
     if col1 is None or col2 is None:
@@ -380,7 +450,7 @@ def scenario_subs_collectors(api):
     st, resp = col1.create("field_collection", {"subscription": "LGN-00003", "amount": 1000})
     check("a collection on another area's subscription is refused", st in (403, 422), (st, resp))
     st, resp = col1.create("field_collection", {"subscription": "LGN-00002", "amount": owed + 1})
-    check("more than the subscription owes is refused (422)", refused(st, resp, "tidak lebih dari yang belum dibayar"), (st, resp))
+    check("more than the subscription owes is refused (422)", refused(st, resp, "melebihi yang belum dibayar"), (st, resp))
     st, c1 = col1.create("field_collection", {"subscription": "LGN-00002", "amount": 300000})
     check("Dodi records 300.000 collected from LGN-00002 (201), as himself", st == 201 and rec(c1).get("collector") == "USR-002", (st, c1))
     st, resp = col1.create("field_collection", {"subscription": "LGN-00002", "amount": owed - 300000 + 1})
@@ -396,7 +466,7 @@ def scenario_subs_collectors(api):
     check("with 300.000 counted it submits (200)", st == 200, (st, resp))
     dep1 = (resp or {}).get("name", dep["name"])
     c1 = api.get("field_collection", rec(c1)["name"])
-    pay = api.get("payment", c1.get("payment") or "-") or {}
+    pay = collection_payment(api, c1["name"])
     invs = sorted((i for i in sub_invoices(api, "LGN-00002") if i["docstatus"] == 1 and i["outstanding"] > 0), key=lambda i: (i["due_date"], i["name"]))
     want, left = [], 300000
     for i in invs:
@@ -416,6 +486,9 @@ def scenario_subs_collectors(api):
     check("the deposit's draft payment keeps its method, amount and client (422)", refused(st, resp, "dari setoran penagih"), (st, resp))
     st, resp = fm.call("DELETE", f"/api/v1/r/payment/{Api.q(pay['name'])}")
     check("and is not deleted", refused(st, resp, "dari setoran penagih"), (st, resp))
+    eq("the deposit waits on the subscription until finance submits it", api.get("subscription", "LGN-00002")["deposit_waiting"], 300000)
+    st, resp = col1.create("field_collection", {"subscription": "LGN-00002", "amount": owed - 300000 + 1})
+    check("so what was deposited cannot be collected again meanwhile (422; audit #4)", refused(st, resp, "melebihi yang belum dibayar"), (st, resp))
 
     # two more collections of the same subscription before finance submits the first payment, in one deposit: each is
     # allocated after the drafts already waiting (the first deposit's, then the one made just before it)
@@ -436,14 +509,18 @@ def scenario_subs_collectors(api):
         return sorted(out)
     pays = {}
     for c, lo, hi in ((c2, 300000, 360000), (c3, 360000, 400000)):
-        p = api.get("payment", api.get("field_collection", rec(c)["name"]).get("payment") or "-") or {}
+        p = collection_payment(api, rec(c)["name"])
         pays[p.get("name")] = p
         eq(f"collection of {hi - lo} takes the invoices after what the drafts before it cover", sorted((a["sales_invoice"], a["amount"]) for a in p.get("allocations", [])), window(lo, hi))
     pay2 = list(pays.values())
     for p in [pay] + pay2:
         st, resp = fm.verb("payment", p["name"], "submit", {"force": True})
         check(f"finance submits the deposit's payment {p['name']} (200)", st == 200, (st, resp))
+    pay1 = collection_payment(api, c1["name"])
+    st, resp = fm.verb("payment", pay1.get("name", "-"), "cancel")
+    check("a submitted deposit payment cannot be cancelled (422; audit #2)", refused(st, resp, "dari setoran penagih"), (st, resp))
     s2b = api.get("subscription", "LGN-00002")
+    eq("no deposit waits any more", s2b["deposit_waiting"], 0)
     eq("LGN-00002 owes 400.000 less", s2b["unpaid_amount"], owed - 400000)
     eq("nothing left in the collector's hands", sum(x["amount"] for x in rows_all(api, "field_collection", "deposit == ''")), 0)
 
@@ -481,5 +558,5 @@ def scenario_subs_dashboards(api):
         check("and cannot open the owner's overview (403)", st == 403, (st, resp))
 
 
-SCENARIOS = [setup_demo_langganan, scenario_subs_fixtures, scenario_subs_schedules, scenario_subs_billing, scenario_subs_new_and_change, scenario_subs_invoice_guard,
-             scenario_subs_dunning, scenario_subs_payment_lifts, scenario_subs_collectors, scenario_subs_dashboards]
+SCENARIOS = [setup_demo_langganan, scenario_subs_fixtures, scenario_subs_schedules, scenario_subs_billing, scenario_subs_new_and_change, scenario_subs_end_dates, scenario_subs_invoice_guard,
+             scenario_subs_dunning, scenario_subs_payment_lifts, scenario_subs_stopped_arrears, scenario_subs_collectors, scenario_subs_dashboards]

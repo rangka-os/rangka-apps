@@ -6,11 +6,13 @@ label: {id: Setoran penagih jadi draf pembayaran}
 # 0. Refused when the collector has no collection on or before the deposit date left to deposit, or the cash counted is
 #    not exactly their total.
 # 1. Per collection (for_each, contract 0031): a draft cash payment of the client, dated the day it was collected,
-#    reference = the subscription, notes "Setoran <deposit>, <collection>". Allocated to the subscription's submitted
+#    reference = the subscription, notes "Setoran <deposit> [<collection>] <client>" (the collection's number in [] is
+#    how the payment is found again: a draft is renamed when submitted). Allocated to the subscription's submitted
 #    unpaid invoices oldest first (due date, then number), after the draft payments already waiting for that
 #    subscription (they take the oldest first too): the collection covers the window [waiting, waiting + amount) of
 #    the invoices' outstanding laid end to end. What is left is unallocated, the client's credit.
-# 2. The collection is marked with the deposit and its draft payment. Finance submits the payments (Kas, invoices paid).
+# 2. The collection is marked with the deposit; the subscription's deposit_waiting adds the cash, so a collector cannot
+#    collect it again before finance submits the payment (Kas, invoices paid; the payment flow refreshes it).
 on: collector_deposit.submitted
 steps:
   - find_all: field_collection
@@ -42,12 +44,14 @@ steps:
           amount: c.amount
           method: "'cash'"
           reference: c.subscription
-          notes: "'Setoran ' + event.name + ', ' + c.name + ' (' + c.customer_name + ')'"
+          notes: "'Setoran ' + event.name + ' [' + c.name + '] ' + c.customer_name"
           allocations: >-
             allopen.filter(i, i.notes.contains('{langganan:' + c.subscription + '}')).filter(i, max(0, min(allopen.filter(j, j.notes.contains('{langganan:' + c.subscription + '}') && (j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name))).map(j, j.outstanding).sum() + i.outstanding, drafts.map(p, p.amount).sum() + c.amount) - max(allopen.filter(j, j.notes.contains('{langganan:' + c.subscription + '}') && (j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name))).map(j, j.outstanding).sum(), drafts.map(p, p.amount).sum())) > 0)
               .map(i, {'sales_invoice': i.name, 'amount': max(0, min(allopen.filter(j, j.notes.contains('{langganan:' + c.subscription + '}') && (j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name))).map(j, j.outstanding).sum() + i.outstanding, drafts.map(p, p.amount).sum() + c.amount) - max(allopen.filter(j, j.notes.contains('{langganan:' + c.subscription + '}') && (j.due_date < i.due_date || (j.due_date == i.due_date && j.name < i.name))).map(j, j.outstanding).sum(), drafts.map(p, p.amount).sum()))})
         as: pay
       - update: c
+        set: {deposit: event.name}
+      - {find: subscription, where: name == c.subscription, as: sub}
+      - update: sub
         set:
-          deposit: event.name
-          payment: pay.name
+          deposit_waiting: drafts.map(p, p.amount).sum() + c.amount

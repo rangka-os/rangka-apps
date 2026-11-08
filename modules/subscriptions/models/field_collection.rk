@@ -6,9 +6,11 @@ naming: UTP-{YYYY}-{#####}
 title_field: customer_name
 # Cash a collector took from a client in the field (Rangka has no cash until the collector deposits it). Recorded on a
 # subscription, not an invoice: a collector reads no invoices, and what the subscription still owes is on it
-# (unpaid_amount, refreshed by the flows). A collector deposit takes every collection of its collector not yet
+# (unpaid_amount less deposit_waiting, refreshed by the flows). The cap and the collector's area are checked when the
+# collection is saved (flows field_collection_cap_*), not again when it is deposited: cash in hand is deposited even
+# when the client paid the rest elsewhere meanwhile (the surplus is the client's credit) or the area changed hands. A collector deposit takes every collection of its collector not yet
 # deposited and turns each into a draft cash payment allocated to the subscription's oldest unpaid invoices (flow
-# collector_deposit_on_submit). Once deposited a collection cannot change or be deleted (flows field_collection_*).
+# collector_deposit_on_submit; the payment carries this collection's number in []). Once deposited a collection cannot change or be deleted (flows field_collection_*).
 permissions:
   - {role: collector, read: true, create: true, write: true, delete: true}
   - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true, print: true}
@@ -23,17 +25,12 @@ fields:
   - {name: amount, type: currency, label: {id: Uang diterima}, required: true, in_list: true}
   - {name: collected_on, type: date, label: {id: Tanggal tagih}, default: today(), required: true, in_list: true}
   - {name: deposit, type: link, to: collector_deposit, label: {id: Disetor di}, read_only: true, in_list: true}
-  - {name: payment, type: data, label: {id: Draf pembayaran}, read_only: true}
   - {name: notes, type: text, label: {id: Catatan}}
 rules:
-  - name: amount_valid
+  - name: amount_positive
     on: save
-    check: amount > 0 && amount <= subscription.unpaid_amount
-    message: {id: 'Uang diterima harus lebih dari 0 dan tidak lebih dari yang belum dibayar langganan ini'}
-  - name: own_area
-    on: save
-    check: subscription.collector == collector
-    message: {id: 'Langganan ini bukan di area penagih ini'}
+    check: amount > 0
+    message: {id: 'Uang diterima harus lebih dari 0'}
   - name: not_future
     on: save
     check: collected_on <= today()

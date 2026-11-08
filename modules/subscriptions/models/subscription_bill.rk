@@ -5,9 +5,10 @@ icon: invoice
 naming: TLG-{YYYY}-{#####}
 title_field: customer_name
 # One billed period of a subscription, made only by flow subscription_billing (no role creates or edits one; every
-# field is read-only). It holds the period, the amounts and the draft invoice the flow made: that invoice carries this
-# bill's number in [] and {langganan:<subscription>} in its notes, and can be submitted only for exactly this bill's
-# total, to its customer, once (flow invoice_subscription_once). period_key is unique: a period is billed once whatever
+# field is read-only). It holds the period and the amounts; the draft invoice the flow made carries this bill's number
+# in [] and {langganan:<subscription>} in its notes (found by that tag: a draft is renamed when submitted), and can be
+# submitted only for exactly this bill's total, to its customer, once (flow invoice_subscription_once); the last live
+# invoice of a bill is not deleted (flow invoice_subscription_kept). period_key is unique: a period is billed once whatever
 # runs the flow. A wrong invoice is cancelled and amended (the amended copy keeps the tags); the bill stays as the
 # record that the period was billed.
 permissions:
@@ -33,7 +34,6 @@ fields:
   - {name: extras_total, type: currency, label: {id: Tambahan}, read_only: true}
   - {name: total, type: currency, label: {id: Total sebelum PPN}, compute: base_amount + extras_total, in_list: true}
   - {name: due_date, type: date, label: {id: Jatuh tempo}, read_only: true}
-  - {name: draft_invoice, type: data, label: {id: Draf faktur}, read_only: true}
   - {name: period_key, type: data, label: {id: Kunci periode}, hidden: true, unique: true, compute: "subscription + '|' + period_start"}
 rules:
   - name: period_valid

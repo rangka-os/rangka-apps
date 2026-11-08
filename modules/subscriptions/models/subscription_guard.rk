@@ -23,6 +23,8 @@ fields:
       - {value: collection_deposited, label: {id: Uang tertagih sudah disetor}}
       - {value: collection_over, label: {id: Uang tertagih melebihi tagihan}}
       - {value: deposit_payment, label: {id: Pembayaran dari setoran}}
+      - {value: collection_area, label: {id: Bukan area penagih}}
+      - {value: invoice_kept, label: {id: Faktur langganan terakhir}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: invoice_twice
@@ -49,7 +51,15 @@ rules:
     on: save
     check: reason != 'collection_over'
     message: {id: 'Uang tertagih yang belum disetor untuk langganan ini melebihi yang belum dibayar'}
+  - name: collection_area
+    on: save
+    check: reason != 'collection_area'
+    message: {id: 'Langganan ini bukan di area penagih ini'}
+  - name: invoice_kept
+    on: save
+    check: reason != 'invoice_kept'
+    message: {id: 'Ini satu-satunya faktur tagihan langganan itu; perbaiki drafnya, jangan dihapus (periodenya sudah ditagih)'}
   - name: deposit_payment
     on: save
     check: reason != 'deposit_payment'
-    message: {id: 'Pembayaran ini dari setoran penagih: tidak bisa dihapus, dan jumlah, pelanggan dan metodenya tidak bisa diubah'}
+    message: {id: 'Pembayaran ini dari setoran penagih: tidak bisa dihapus atau dibatalkan; jumlah, pelanggan, metode dan catatannya tetap'}
