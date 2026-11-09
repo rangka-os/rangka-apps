@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# BAST when equipment comes back: each unit's condition when it went out and now, the fee of each damaged or lost
+# unit, the late fee, what was kept from the deposit, what is paid back and what is still billed. A5.
+name: rental_bast_in
+model: rental_return
+label: {id: Berita acara serah terima (kembali), en: Handover record (back)}
+paper: A5
+template: rental_bast_in.html
+default: true

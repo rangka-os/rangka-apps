@@ -10,6 +10,8 @@ title_field: rental_item
 permissions:
   - {role: sales_manager, read: true, create: true, write: true, export: true}
   - {role: finance_manager, read: true, write: true, export: true}
+  # write: the checkout flow of the warehouse staff moves the schedule to out (its fields are read_only)
+  - {role: rental_staff, read: true, write: true}
   - {role: head_office, read: true, export: true}
 fields:
   - {name: booking, type: link, to: rental_booking, label: {id: Pesanan sewa}, required: true, unique: true, read_only: true, in_list: true}
