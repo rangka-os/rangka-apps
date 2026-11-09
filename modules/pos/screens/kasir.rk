@@ -18,6 +18,7 @@ counter:
     group_by: category
     price: rate
     barcode: barcode
+    available: {model: stock_balance, item: item, qty: qty, match: {outlet: outlet}}
   document:
     model: pos_sale
     lines: items
