@@ -5,4 +5,9 @@
 name: coretax
 version: 1.0.0
 title: {id: Lapor pajak Coretax, en: Coretax tax filing}
+summary:
+  id: Siapkan masa pajak dan berkas unduhan untuk lapor di Coretax.
+  en: Prepare tax periods and the files to report in Coretax.
+category: tax
+icon: file-list-3-line
 requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.2, catalogue: ^1.2, invoicing: ^1.5, procurement: ^1.1, payments: ^1.4}

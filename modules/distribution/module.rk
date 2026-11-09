@@ -6,4 +6,9 @@
 name: distribution
 version: 1.0.0
 title: {id: Distribusi, en: Distribution}
+summary:
+  id: Catat giro masuk dari pelanggan grosir sampai cair.
+  en: Track post-dated cheques from wholesale customers until they clear.
+category: finance
+icon: file-paper-2-line
 requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, orders: ^1.0, invoicing: ^1.0, payments: ^1.0, procurement: ^1.0}

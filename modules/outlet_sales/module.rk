@@ -2,6 +2,11 @@
 name: outlet_sales
 version: 1.2.0
 title: {id: Penjualan outlet, en: Outlet sales}
+summary:
+  id: Rekap penjualan harian per outlet, setoran kas dan retur di kasir.
+  en: Daily sales per outlet, cash deposits and returns at the till.
+category: sales
+icon: store-2-line
 requires: {rangka: '>=0.5', users: ^1.0, outlets: ^1.0, catalogue: ^1.0, stock: ^1.1}
 # Semantics fixed in docs/kernel-hooks.md (section stock): submitting posts the stock moves through the recipes.
 hooks: [stock.reverse_moves]

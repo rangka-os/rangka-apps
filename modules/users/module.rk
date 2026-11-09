@@ -2,4 +2,9 @@
 name: users
 version: 1.2.0
 title: {id: Pengguna, en: Users}
+summary:
+  id: Orang yang memakai Rangka di usaha kamu.
+  en: The people who use Rangka in your business.
+category: people
+icon: user-line
 requires: {rangka: '>=0.5'}

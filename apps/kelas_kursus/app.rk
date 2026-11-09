@@ -5,6 +5,8 @@ title: {id: Kelas dan kursus, en: Classes and courses}
 label: {id: Rangka Kelas & Kursus, en: Rangka Classes & Courses}
 summary:
   id: Program kelas, angkatan dengan kuota dan jadwal, peserta, pendaftaran, absen per pertemuan, dan tagihan bayar penuh, cicilan atau per bulan.
+category: operations
+icon: graduation-cap-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md) for course schools, tutoring, online courses and company training. The
 # charges become sales invoices; receiving their payment, reminders and aging come from faktur_piutang, the books from
