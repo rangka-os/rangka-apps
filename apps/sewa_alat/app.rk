@@ -4,26 +4,28 @@ version: 1.0.0
 title: {id: Sewa alat, en: Equipment rental}
 label: {id: Rangka Sewa Alat, en: Rangka Equipment Rental}
 summary:
-  id: Jadwal sewa tanpa bentrok, alat keluar dan kembali, deposit, denda telat dan faktur sewa.
+  id: Jadwal sewa tanpa bentrok, serah terima per unit dengan checklist dan berita acara, deposit, denda telat dan kerusakan, faktur sewa.
 category: operations
 icon: tools-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md) for rental businesses (kamera, alat pesta, alat outdoor). The rent
-# invoices it drafts are collected through faktur_piutang (payments); the deposit journals need pembukuan.
+# invoices it drafts are collected through faktur_piutang (payments); the deposit journals need pembukuan. Staf gudang
+# (rental_staff) records equipment out and back per unit with a checklist and prints the BAST; their dashboard is
+# alat_hari_ini. The handover screens of contract 0030 (kernel WS8) bind here with work: once the renderer exists.
 modules:
   users: ^1.0
   contacts: ^1.0
   catalogue: ^1.0
   invoicing: ^1.0
   rental: ^1.0
-dashboards: [sewa_ringkas]
-roles: [sales_manager, finance_manager, head_office]
+dashboards: [sewa_ringkas, alat_hari_ini]
+roles: [sales_manager, finance_manager, head_office, rental_staff]
 home: {dashboard: sewa_ringkas}
 menu:
   - group: {id: Sewa alat}
     items: [rental_booking, rental_checkout, rental_return, rental_schedule]
   - group: {id: Alat dan pelanggan}
-    items: [rental_item, item, customer]
+    items: [rental_item, rental_unit, item, customer]
 onboarding:
   - ask: {id: 'Alat apa saja yang kamu sewakan?'}
     sets: seed.products

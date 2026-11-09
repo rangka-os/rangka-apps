@@ -7,8 +7,16 @@ naming: KLR-{YYYY}-{#####}
 title_field: booking
 # The equipment of a booking leaves on its actual date. Submitting it moves the booking's schedule from booked to out
 # (flow rental_checkout_on_submit refuses a booking that is not waiting to go out); cancelling it moves it back.
+# Handover (berita acara serah terima): the checklist lists each unit handed over and its condition; an item with
+# track_units must list exactly the booked number of units, and the customer who receives them signs (signed_by,
+# required on submit). A photo and the drawn signature are attachments of this record (contract 0011); their ids are
+# kept in photo and signature, the image and signature fields of contract 0030 §5 (the camera and signature pad come
+# with kernel WS6). The BAST prints from rental_bast_out. The flow marks each unit out with this booking and refuses
+# a unit that is already out.
 permissions:
   - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  # warehouse staff hand the equipment over (no money moves on a checkout); undoing one is the admin's
+  - {role: rental_staff, read: true, create: true, write: true, delete: true, submit: true, export: true, print: true}
   - {role: finance_manager, read: true, export: true, print: true}
   - {role: head_office, read: true, export: true, print: true}
 fields:
@@ -16,22 +24,73 @@ fields:
   - {name: customer, type: data, label: {id: Pelanggan}, compute: booking.customer, in_list: true}
   - {name: rental_item, type: data, label: {id: Alat}, compute: booking.rental_item, in_list: true}
   - {name: qty, type: int, label: {id: Jumlah unit}, compute: booking.qty}
+  # names for the BAST (prints only resolve top-level links)
+  - {name: customer_name, type: data, label: {id: Nama pelanggan}, hidden: true, compute: booking.customer.customer_name}
+  - {name: item_title, type: data, label: {id: Nama alat}, hidden: true, compute: booking.rental_item.title}
+  - {name: track_units, type: check, label: {id: Serah terima per unit}, compute: booking.rental_item.track_units}
   - {name: out_date, type: date, label: {id: Tanggal keluar}, required: true, default: today(), in_list: true}
+  - {name: units, type: table, of: rental_checkout_unit, label: {id: Checklist unit}}
   - {name: notes, type: text, label: {id: 'Catatan (kondisi alat, kelengkapan)'}}
+  - {name: signed_by, type: data, label: {id: Diterima oleh (nama penyewa)}, in_list: true}
+  - {name: handed_by, type: data, label: {id: Diserahkan oleh (petugas)}}
+  - {name: photo, type: image, label: {id: Foto alat saat keluar}, help: {id: 'Id lampiran foto (att_...). Foto lain cukup dilampirkan ke catatan ini'}}
+  - {name: signature, type: signature, label: {id: Tanda tangan penyewa}, help: {id: 'Id lampiran gambar tanda tangan (att_...)'}}
 rules:
   - name: booking_submitted
     on: save
     check: booking.docstatus == 1
     message: {id: Pesanan sewa belum diajukan atau sudah batal}
+  - name: units_required
+    on: save
+    check: "!track_units || units.size() > 0"
+    message: {id: 'Alat ini diserahkan per unit: isi checklist unit yang keluar'}
+  - name: units_match_qty
+    on: save
+    check: units.size() == 0 || units.size() == qty
+    message: {id: Jumlah unit di checklist harus sama dengan jumlah unit pesanan}
+  - name: units_of_item
+    on: save
+    check: "units.map(r, r.unit_item == rental_item ? 0 : 1).sum() == 0"
+    message: {id: Ada unit dari alat lain di checklist}
+  - name: units_unique
+    on: save
+    check: "units.map(r, units.map(x, x.unit == r.unit ? 1 : 0).sum()).sum() == units.size()"
+    message: {id: Unit yang sama tercatat dua kali di checklist}
+  - name: unit_fit
+    on: save
+    check: "units.map(r, r.condition == 'rusak' || r.condition == 'hilang' ? 1 : 0).sum() == 0"
+    message: {id: 'Unit rusak atau hilang tidak bisa disewakan. Ganti dengan unit lain.'}
+  - name: signed_by_required
+    on: submit
+    check: "!track_units || signed_by != ''"
+    message: {id: Isi nama penyewa yang menerima alat (tanda tangan berita acara)}
+  - name: signature_needs_name
+    on: save
+    check: signature == '' || signed_by != ''
+    message: {id: Tanda tangan perlu nama penyewa yang menandatangani}
+  - name: photo_is_attachment
+    on: save
+    check: "photo == '' || photo.startsWith('att_')"
+    message: {id: 'Foto harus berupa lampiran catatan ini (id att_...)'}
+  - name: signature_is_attachment
+    on: save
+    check: "signature == '' || signature.startsWith('att_')"
+    message: {id: 'Tanda tangan harus berupa lampiran catatan ini (id att_...)'}
 views:
   list:
-    columns: [name, booking, customer, rental_item, out_date, status]
+    columns: [name, booking, customer, rental_item, out_date, signed_by, status]
     sort: -out_date
   form:
     layout:
       - section: {id: Alat keluar}
         columns:
           - [booking, out_date]
-          - [customer, rental_item, qty]
+          - [customer, rental_item, qty, track_units]
+      - section: {id: Checklist unit}
+        fields: [units]
+      - section: {id: Serah terima}
+        columns:
+          - [signed_by, handed_by]
+          - [photo, signature]
       - section: {id: Catatan}
         fields: [notes]
