@@ -5,6 +5,8 @@ title: {id: Sewa alat, en: Equipment rental}
 label: {id: Rangka Sewa Alat, en: Rangka Equipment Rental}
 summary:
   id: Jadwal sewa tanpa bentrok, alat keluar dan kembali, deposit, denda telat dan faktur sewa.
+category: operations
+icon: tools-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md) for rental businesses (kamera, alat pesta, alat outdoor). The rent
 # invoices it drafts are collected through faktur_piutang (payments); the deposit journals need pembukuan.

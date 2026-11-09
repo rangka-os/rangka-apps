@@ -2,6 +2,11 @@
 name: orders
 version: 1.1.0
 title: {id: Pesanan pelanggan, en: Customer orders}
+summary:
+  id: Catat pesanan pelanggan sebelum dikirim dan ditagih.
+  en: Record customer orders before they are delivered and billed.
+category: sales
+icon: shopping-cart-2-line
 requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0}
 optional: {quotation: ^1.0, delivery: ^1.0}
 # Semantics fixed in docs/kernel-hooks.md. The make_invoice action lives on customer_order, so the hook is declared

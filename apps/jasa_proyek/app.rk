@@ -5,6 +5,8 @@ title: {id: Jasa proyek, en: Project services}
 label: {id: Rangka Jasa Proyek, en: Rangka Project Services}
 summary:
   id: Dari penawaran dan penugasan tenaga kerja sampai faktur, pembayaran dan piutang, untuk satu atau beberapa PT.
+category: operations
+icon: briefcase-line
 rangka: '>=0.5'
 modules:
   accounting: ^1.0

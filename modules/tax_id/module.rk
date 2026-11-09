@@ -2,4 +2,9 @@
 name: tax_id
 version: 1.0.0
 title: {id: Pajak Indonesia, en: Indonesian taxes}
+summary:
+  id: Kode pajak Indonesia seperti PPN dan PPh untuk dokumen penjualan dan pembelian.
+  en: Indonesian tax codes such as PPN and PPh for sales and purchase documents.
+category: tax
+icon: percent-line
 requires: {rangka: '>=0.5', users: ^1.0}

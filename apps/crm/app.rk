@@ -15,6 +15,8 @@ menu:
     items: [customer, item, outlet, user]
 summary:
   id: Kelola lead dari WhatsApp sampai closing, dengan pipeline yang bisa langsung jadi faktur.
+category: sales
+icon: customer-service-2-line
 connectors:
   - name: whatsapp_business
     flow: pipeline/flows/whatsapp_to_lead.rk

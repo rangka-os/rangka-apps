@@ -9,6 +9,8 @@ title: {id: Ritel multi cabang, en: Multi-branch retail}
 label: {id: Rangka Ritel Cabang, en: Rangka Multi-branch Retail}
 summary:
   id: Impor penjualan dari kasir lama, stok per cabang, pembelian, barang titipan, setoran harian dan laporan barang laku.
+category: sales
+icon: store-3-line
 rangka: '>=0.5'
 modules:
   accounting: ^1.0

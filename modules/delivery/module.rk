@@ -7,5 +7,10 @@
 name: delivery
 version: 1.1.0
 title: {id: Pengiriman dan retur, en: Delivery and returns}
+summary:
+  id: Surat jalan, pemenuhan pesanan dan retur penjualan.
+  en: Delivery notes, order fulfilment and sales returns.
+category: operations
+icon: truck-line
 requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, outlets: ^1.0, stock: ^1.0, orders: ^1.0, invoicing: ^1.0, payments: ^1.0}
 hooks: [stock.reverse_moves]

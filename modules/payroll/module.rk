@@ -2,6 +2,11 @@
 name: payroll
 version: 1.0.0
 title: {id: Penggajian, en: Payroll}
+summary:
+  id: Data gaji pekerja, periode gaji, slip gaji dan tutup periode.
+  en: Worker pay data, pay periods, payslips and period close.
+category: people
+icon: money-dollar-box-line
 # Monthly pay of outsourced workers from the attendance recap (projects.timesheet with period_to): payslips with BPJS and
 # PPh 21 TER, the deposits of the month, the extra employer cost on the project margin and the client invoice (wages +
 # BPJS + fee, or fee only). Rules and sources: docs/payroll.md.

@@ -5,6 +5,8 @@ title: {id: Penjualan harian, en: Daily sales}
 label: {id: Rangka Penjualan Harian, en: Rangka Daily Sales}
 summary:
   id: Penjualan harian per outlet dari kasir yang sudah dipakai atau formulir harian, memotong stok lewat resep.
+category: sales
+icon: store-2-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md). The cashier stays where it is: this takes its daily totals in. It needs
 # stock (outlet_sales requires it), so a site with this piece always has stok_outlet's modules too.

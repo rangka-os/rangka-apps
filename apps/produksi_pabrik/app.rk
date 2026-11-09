@@ -8,6 +8,8 @@ title: {id: Produksi pabrik kecil, en: Small-factory production}
 label: {id: Rangka Produksi Pabrik, en: Rangka Factory Production}
 summary:
   id: Resep bertingkat, SPK, hasil per batch dengan kedaluwarsa, HPP aktual dan upah borongan.
+category: operations
+icon: hammer-line
 rangka: '>=0.5'
 modules:
   accounting: ^1.0
