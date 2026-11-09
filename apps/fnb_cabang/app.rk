@@ -5,6 +5,8 @@ title: {id: F&B multi cabang, en: Multi-branch F&B}
 label: {id: Rangka F&B Cabang, en: Rangka Multi-branch F&B}
 summary:
   id: Penjualan harian, stok bahan baku, transfer, opname dan pembelian untuk beberapa outlet.
+category: operations
+icon: restaurant-line
 rangka: '>=0.5'
 modules:
   accounting: ^1.0

@@ -7,6 +7,11 @@
 name: production
 version: 1.1.0
 title: {id: Produksi, en: Production}
+summary:
+  id: Resep produksi, SPK, hasil per batch dan upah borongan.
+  en: Bills of materials, work orders, batch output and piece-rate wages.
+category: operations
+icon: hammer-line
 requires: {rangka: '>=0.5', users: ^1.0, catalogue: ^1.0, outlets: ^1.0, stock: ^1.0, workforce: ^1.0}
 optional: {orders: ^1.0}
 hooks: [stock.reverse_moves]

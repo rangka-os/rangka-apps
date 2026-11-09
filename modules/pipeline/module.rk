@@ -2,6 +2,11 @@
 name: pipeline
 version: 1.0.0
 title: {id: Pipeline penjualan, en: Sales pipeline}
+summary:
+  id: Lead, peluang dan aktivitas penjualan sampai closing.
+  en: Leads, deals and sales activities through to closing.
+category: sales
+icon: funnel-line
 requires: {rangka: '>=0.5', contacts: ^1.0, users: ^1.0}
 optional: {invoicing: ^1.0}
 hooks: [crm.convert_lead, crm.mark_won]

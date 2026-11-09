@@ -2,4 +2,9 @@
 name: currency
 version: 1.0.0
 title: {id: Mata uang, en: Currencies}
+summary:
+  id: Pakai mata uang asing dengan kurs yang tercatat.
+  en: Use foreign currencies with recorded exchange rates.
+category: finance
+icon: exchange-dollar-line
 requires: {rangka: '>=0.5', users: ^1.0}
