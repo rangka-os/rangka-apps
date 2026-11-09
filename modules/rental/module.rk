@@ -2,6 +2,11 @@
 name: rental
 version: 1.0.0
 title: {id: Sewa alat, en: Equipment rental}
+summary:
+  id: Sewa alat dengan jadwal tanpa bentrok, alat keluar dan kembali.
+  en: Equipment rental with clash-free schedules, check-out and return.
+category: operations
+icon: tools-line
 # Rental of countable equipment (cameras, party tents, chairs, sound systems): a rental item is a catalogue item with
 # a number of units, a daily rate, a deposit per unit and a late fee per day. A booking reserves units for a range of
 # dates [start_date, end_date): the return day is free for the next booking. Its submit refuses a booking whose

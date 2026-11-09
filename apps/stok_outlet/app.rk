@@ -5,6 +5,8 @@ title: {id: Stok outlet, en: Outlet stock}
 label: {id: Rangka Stok Outlet, en: Rangka Outlet Stock}
 summary:
   id: Saldo dan mutasi stok per outlet, transfer, opname, penyesuaian dan resep, tanpa harus memasang penjualan atau pembelian.
+category: stock
+icon: archive-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md): a small app a site composes with others in config.rk apps; the kernel
 # installs the union of their modules (contract 0001). This one is the stock core; penjualan_harian and

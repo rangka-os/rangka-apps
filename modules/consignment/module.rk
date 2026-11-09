@@ -7,4 +7,9 @@
 name: consignment
 version: 1.1.0
 title: {id: Konsinyasi, en: Consignment}
+summary:
+  id: Catat barang titipan dan setoran hasil penjualannya.
+  en: Track consigned goods and the money paid in for them.
+category: sales
+icon: hand-coin-line
 requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, outlets: ^1.0, stock: ^1.0, procurement: ^1.0}

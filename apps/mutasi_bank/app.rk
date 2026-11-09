@@ -5,6 +5,8 @@ title: {id: Mutasi bank, en: Bank statement}
 label: {id: Rangka Mutasi Bank, en: Rangka Bank Statement}
 summary:
   id: Impor mutasi rekening dan cocokkan uang masuk dengan faktur yang dibayar.
+category: finance
+icon: bank-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md) on top of faktur_piutang: bank_statement requires invoicing and payments.
 modules:

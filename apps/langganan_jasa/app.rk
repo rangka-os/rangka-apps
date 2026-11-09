@@ -5,6 +5,8 @@ title: {id: Langganan jasa, en: Service subscriptions}
 label: {id: Rangka Langganan, en: Rangka Subscriptions}
 summary:
   id: Paket, siklus per klien, tagihan otomatis tiap periode, status layanan dan isolir, area, penagih dan setorannya, MRR dan tingkat tertagih.
+category: sales
+icon: repeat-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md) for businesses that bill the same client every period: digital agency
 # retainers, RT/RW net, resellers of a software licence, maintenance contracts. The bills become sales invoices;

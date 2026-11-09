@@ -5,6 +5,8 @@ title: {id: Pembukuan, en: Bookkeeping}
 label: {id: Rangka Pembukuan, en: Rangka Bookkeeping}
 summary:
   id: Jurnal otomatis dari dokumen yang sudah ada, laba rugi, neraca, arus kas, saldo awal dan tutup buku.
+category: finance
+icon: book-2-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md). It journals whatever the other pieces submit (its flows react only to
 # the models the site has), so it adds no work of its own beyond the opening balance.
