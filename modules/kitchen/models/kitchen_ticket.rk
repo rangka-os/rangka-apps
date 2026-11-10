@@ -27,11 +27,12 @@ fields:
   - {name: buyer, type: data, label: {id: Pembeli atau meja}, read_only: true}
   # a corrected receipt (void, then amend) sends its lines again: the kitchen sees it is a revision of the earlier one
   - {name: revision_of, type: link, to: pos_sale, label: {id: Revisi dari struk}, read_only: true}
-  # the card's title: the table or buyer when the cashier typed one, else the receipt number
+  # the card's title: the table or buyer when the cashier typed one, else the receipt number; REVISI first for a
+  # corrected receipt
   - name: heading
     type: data
     label: {id: Pesanan}
-    compute: "buyer != '' ? buyer : sale"
+    compute: "(revision_of != '' ? 'REVISI ' : '') + (buyer != '' ? buyer : sale)"
     in_list: true
   - {name: items, type: table, of: kitchen_ticket_item, label: {id: Menu}, read_only: true, min_rows: 1}
   - {name: item_count, type: float, label: {id: Jumlah porsi}, compute: "items.map(l, l.qty).sum()"}

@@ -187,7 +187,8 @@ def scenario_kitchen_void_and_revision(api):
     check("the corrected receipt is paid -> 200", st == 200, (st, r))
     ts = tickets(api, rec(r).get("name"))
     check("the corrected receipt sends one Bar ticket marked as a revision of the voided receipt",
-          [t["station"] for t in ts] == [BAR] and ts[0]["revision_of"] == s1["name"] and lines(ts[0]) == [(KHT, 1, "")], ts)
+          [t["station"] for t in ts] == [BAR] and ts[0]["revision_of"] == s1["name"] and lines(ts[0]) == [(KHT, 1, "")]
+          and ts[0]["heading"] == "REVISI Meja 7", ts)
     st, raw, _ = api.print_html("kitchen_ticket", ts[0]["name"], "kitchen_ticket") if ts else (0, "", "")
     check("the revision ticket prints REVISI", "REVISI" in page_text(raw), page_text(raw)[:300])
     CTX["kt_revision"] = ts[0]["name"] if ts else None

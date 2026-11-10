@@ -27,9 +27,9 @@ Receipt, outlet, station, table and lines of a ticket are read-only; staff chang
 
 ## Screen and print
 - `screens/dapur.rk`: `queue` over today's open tickets, columns Baru, Dimasak, Siap, steps Masak, Siap, Diambil,
-  refresh 5 s. Bound in app `dapur` as home of `kitchen`, and offered to `cashier` and `head_office`. The renderer
-  is kernel WS4; until it is on rangka-os `main` the screen shows the kernel's notice and the tickets are worked from
-  the list or kanban of Tiket dapur.
+  refresh 5 s. Bound in app `dapur` as home of `kitchen`, and offered to `cashier` and `head_office`. Rendered by
+  the kernel's queue renderer (rangka-os WS4, contract 0030 §2). The card shows no link to the receipt (a receipt's
+  title is its total); its title is the table or receipt number, with REVISI for a corrected receipt.
 - Print `kitchen_ticket` (80 mm): station, table, receipt, time in, qty x menu with note, REVISI or BATAL. Printed
   from the browser; automatic printing to a station printer waits for rangka-edge (contract 0003).
 - Dashboard `dapur_hari_ini`: today's tickets per status and station, the oldest open first.
