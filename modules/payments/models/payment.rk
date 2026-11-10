@@ -91,6 +91,7 @@ fields:
     label: {id: Gateway pembayaran}
     options:
       - {value: xendit, label: {id: Xendit}}
+      - {value: doku, label: {id: DOKU}}
   - name: gateway_ref
     type: data
     label: {id: ID transaksi gateway}
