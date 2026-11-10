@@ -47,6 +47,9 @@ fields:
     label: {id: Absen}
   - {name: present_count, type: int, label: {id: Hadir}, compute: "attendance.map(a, a.status == 'present' ? 1 : 0).sum()", in_list: true}
   - {name: absent_count, type: int, label: {id: Tidak hadir}, compute: "attendance.map(a, a.status != 'present' ? 1 : 0).sum()"}
+  # the teacher ticks this after checking the attendance (every line starts as present); dashboard kelas_saya lists
+  # the meetings of the teacher that are not ticked yet
+  - {name: attendance_taken, type: check, label: {id: Absen sudah dicek}, help: {id: 'Centang setelah absen semua peserta dicek'}, default: 'false', in_list: true}
   - name: session_key
     type: data
     label: {id: Kunci pertemuan}
@@ -84,7 +87,7 @@ views:
           - [batch, session_no, session_date, topic]
           - [start_time, end_time, delivery, class_link]
       - section: {id: Absen}
-        fields: [attendance]
+        fields: [attendance, attendance_taken]
       - section: {id: Ringkasan}
         columns:
           - [present_count, absent_count]
