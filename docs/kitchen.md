@@ -22,7 +22,8 @@ Receipt, outlet, station, table and lines of a ticket are read-only; staff chang
 ## Roles (row scope by `outlet`, contract 0010)
 - `kitchen` (Dapur): reads and moves the tickets of their outlets; reads no receipt and no money. Home: work screen `dapur`.
 - `cashier`: the flow makes the tickets as the cashier; marks a ready ticket Diambil.
-- `outlet_staff`: reads the tickets (widgets on dashboard `outlet_hari_ini` of piece stok_outlet).
+- `outlet_staff`: reads the tickets and dashboard `dapur_hari_ini` (their home stays `outlet_hari_ini` when stok_outlet
+  is listed before dapur in the site's apps).
 - `head_office`: everything except delete; sets up stations and routes.
 
 ## Screen and print

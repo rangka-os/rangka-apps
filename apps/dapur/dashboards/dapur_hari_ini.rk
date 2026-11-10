@@ -4,9 +4,10 @@ label: {id: Dapur hari ini, en: Kitchen today}
 description: {id: 'Tiket dapur hari ini per status dan stasiun, dan yang paling lama menunggu'}
 default_period: 1
 cache: 1m
-# Kitchen staff and cashiers see only their outlets' tickets (row scope of roles kitchen and cashier); head office
-# sees every outlet. No money: a ticket carries no price.
-roles: [kitchen, cashier, head_office]
+# Kitchen staff, cashiers and outlet staff see only their outlets' tickets (row scope by outlet); head office sees
+# every outlet. No money: a ticket carries no price, and no column links the receipt (its title is its total).
+# Outlet staff land on outlet_hari_ini (stok_outlet comes before dapur in the site's apps); this one is in their menu.
+roles: [kitchen, cashier, outlet_staff, head_office]
 widgets:
   - {name: waiting, type: number, label: {id: Belum dimasak}, model: kitchen_ticket, filter: "status == 'new' && date == today()", good_when: down, span: 3}
   - {name: cooking, type: number, label: {id: Sedang dimasak}, model: kitchen_ticket, filter: "status == 'cooking' && date == today()", span: 3}

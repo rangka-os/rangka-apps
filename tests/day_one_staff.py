@@ -101,14 +101,12 @@ def scenario_staff_outlet_kasir(api):
     if wh:
         allt = api.find("stock_transfer", "docstatus == 1 && state != 'received'")
         eq("head office (no outlets): transfers to receive at every outlet", num(wh["to_receive"]), len(allt))
-    if "tickets_open" in ws:   # the dapur piece is installed on demo-kasir
-        open_riu = api.find("kitchen_ticket", f"outlet == 'OUT-03' && date == '{today}' && status != 'picked_up' && status != 'void'")
-        eq("Wati: open kitchen tickets of Riau today", num(ws["tickets_open"]), len(open_riu))
-        check("Wati's ticket list: Riau only", {r.get("outlet") for r in rows(ws["tickets_list"])} <= {"OUT-03"}, rows(ws["tickets_list"]))
-        if CTX.get("tono"):
-            lands(CTX["tono"], "Tono (kitchen)", "#/w/dapur")
-    else:
-        fail("demo-kasir has the dapur piece: kitchen widgets on outlet_hari_ini", sorted(ws))
+    if CTX.get("tono"):   # the dapur piece on demo-kasir: Wati reads Riau's kitchen board, Tono lands on the kitchen screen
+        wd = dashboard(wati, "dapur_hari_ini")
+        open_riu = api.find("kitchen_ticket", f"outlet == 'OUT-03' && date == '{today}' && status == 'new'")
+        eq("Wati: kitchen tickets waiting at Riau (dapur_hari_ini)", num(wd.get("waiting", {})), len(open_riu))
+        check("Wati's open ticket list: Riau only", {r.get("outlet") for r in rows(wd.get("open_list"))} <= {"OUT-03"}, rows(wd.get("open_list")))
+        lands(CTX["tono"], "Tono (kitchen)", "#/w/dapur")
     # the goods arrive: Wati receives Riau's, head office Dago's (the books count goods in transit at no outlet)
     for to, item, qty, cl in (("OUT-03", "BRG-0001", 6, wati), ("OUT-02", "BRG-0015", 2, hq)):
         if not sent.get(to):

@@ -31,16 +31,3 @@ widgets:
     limit: 20
     columns: [name, outlet, reason, docstatus]
     span: 12
-  # with the dapur piece (module kitchen): the outlet's kitchen tickets today
-  - {name: tickets_open, type: number, label: {id: Tiket dapur terbuka}, model: kitchen_ticket, filter: "status != 'picked_up' && status != 'void' && date == today()", if: "app_installed('kitchen')", span: 6}
-  - {name: tickets_done, type: number, label: {id: Tiket dapur selesai hari ini}, model: kitchen_ticket, filter: "status == 'picked_up' && date == today()", if: "app_installed('kitchen')", span: 6}
-  - name: tickets_list
-    type: list
-    label: {id: Tiket dapur hari ini (paling lama dulu)}
-    model: kitchen_ticket
-    filter: "status != 'picked_up' && status != 'void' && date == today()"
-    if: "app_installed('kitchen')"
-    sort: sent_at
-    limit: 30
-    columns: [name, heading, station, status, sent_at]
-    span: 12

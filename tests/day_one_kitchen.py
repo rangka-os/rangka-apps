@@ -259,8 +259,6 @@ def scenario_kitchen_dashboard_and_screen(api):
     wh = dashboard(hq, "dapur_hari_ini")
     if wh:
         eq("head office's dashboard: every outlet", num(wh["waiting"]), count(allt, "new"))
-    st, r = wati.call("GET", "/api/v1/dashboards/dapur_hari_ini")
-    check("Wati (outlet staff) is not offered Dapur hari ini -> 403", st == 403, (st, r))
     st, m = tono.call("GET", "/api/v1/meta")
     work = (m or {}).get("work") or []
     check("Tono's home is the kitchen screen (meta.work: dapur, home)", work[:1] == [{"screen": "dapur", "home": True}], work)
