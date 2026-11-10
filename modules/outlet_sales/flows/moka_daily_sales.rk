@@ -1,57 +1,54 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
-# Every hour at :15 (scheduler.timezone), and from the flow list: per outlet with Moka, the oldest past day that has
-# staged Moka lines becomes one DRAFT outlet_sales (source moka), and its lines are marked posted. A run takes one day
-# per outlet, so a backlog catches up one day per outlet per run. Today is never taken (Moka still sells).
-# A day with an unmapped line waits until head office maps it (its lines are day_held; the whole day goes in together,
-# so the record is right the first time); later days of the outlet go on. A day that already has a live Moka record (an export imported earlier, or an API record of lines
-# that came in late) gets legacy_key_overlap, and rule legacy_key_reviewed holds the submit until head office has
-# removed what is counted twice. key_version 3 marks a record from the API, so an export imported for the same day
-# later is flagged the same way by flow moka_legacy_key_overlap.
-# Stock moves when the draft is submitted (stock.post_moves through the recipes), never here.
+# Every hour at :15 (scheduler.timezone), and from the flow list: the staged Moka lines of past days become DRAFT
+# outlet_sales (source moka, key_version 3), one record per outlet and day, oldest first, up to 30 outlet-days and 1000
+# lines each per run (the rest waits for the next run); the lines are marked posted. Today is never taken (Moka still
+# sells). Stock moves when a draft is submitted (stock.post_moves through the recipes), never here.
+# Every API line is posted exactly once, so a second API record for a day (lines that came in or were mapped after the
+# day was recapped, or a day over 1000 lines) holds other sales, not the same ones, and is not flagged. Only an export
+# (key_version 1 or 2) on the same outlet and day can count the same sales twice: the API record is then flagged
+# (legacy_key_overlap) and rule legacy_key_reviewed holds its submit until head office has removed what is counted
+# twice; an export imported after the API day is flagged by flow moka_legacy_key_overlap.
+# An unmapped line waits in Baris penjualan Moka and does not hold anything back; once mapped it joins the next recap.
 name: moka_daily_sales
 label: {id: Rekap harian penjualan Moka per outlet}
 schedule: '15 * * * *'
 steps:
-  - find_all: outlet
-    where: "moka_name != ''"
-    sort: name
-    as: outs
-  - for_each: outs
-    as: o
+  - for_each: "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]"
+    as: slot
     do:
       - find_all: moka_sale_line
-        where: "outlet == o.name && status == 'staged' && !day_held && date < today()"
+        where: "status == 'staged' && outlet != '' && date < today()"
         sort: date
         limit: 1
         as: first
       - find_all: moka_sale_line
         if: size(first) > 0
-        where: "outlet == o.name && date == first[0].date && status == 'staged'"
+        where: "outlet == first[0].outlet && date == first[0].date && status == 'staged'"
         sort: name
-        limit: 2000
+        limit: 1000
         as: rows
-      - find: moka_sale_line
+      - find: outlet
         if: size(first) > 0
-        where: "outlet == o.name && date == first[0].date && status == 'unmapped'"
-        as: held
+        where: name == first[0].outlet
+        as: o
       - find: outlet_sales
         if: size(first) > 0
-        where: "outlet == o.name && date == first[0].date && source == 'moka' && docstatus != 2"
-        as: other
+        where: "outlet == first[0].outlet && date == first[0].date && source == 'moka' && docstatus != 2 && key_version != 3"
+        as: filed
       - create: outlet_sales
-        if: size(first) > 0 && held == null
+        if: size(first) > 0
         set:
-          outlet: o.name
+          outlet: first[0].outlet
           date: first[0].date
           source: "'moka'"
-          moka_outlet: o.moka_name
+          moka_outlet: "o != null ? o.moka_name : ''"
           key_version: "3"
           note: "'Dari Moka API'"
-          legacy_key_overlap: other != null
+          legacy_key_overlap: filed != null
           lines: "rows.map(r, {'item': r.item, 'description': r.description, 'qty': r.qty, 'gross': r.gross, 'discount': r.discount, 'refund': r.refund})"
         as: sales
       - for_each: rows
-        if: size(first) > 0 && held == null
+        if: size(first) > 0
         as: r
         do:
           - update: r

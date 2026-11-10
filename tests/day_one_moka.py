@@ -51,6 +51,7 @@ def scenario_moka_api(api):
     d1 = (today - datetime.timedelta(days=1)).isoformat()
     d2 = (today - datetime.timedelta(days=2)).isoformat()
     d3 = (today - datetime.timedelta(days=3)).isoformat()
+    d4 = (today - datetime.timedelta(days=4)).isoformat()
     st, resp = api.patch("outlet", BRAGA, {"moka_outlet_id": "70002"})
     check("Braga gets its Moka outlet id", st == 200, (st, resp))
 
@@ -78,7 +79,7 @@ def scenario_moka_api(api):
     eq("refunded sale: a sale line and a refund line (qty < 0, gross 0, refund = net)", sorted((r["item"], r["qty"], r["gross"], r["refund"]) for r in rows2),
        [(ORI, -1, 0, 15000), (ORI, 1, 15000, 0)])
 
-    # an item Juragan does not know: unmapped, the day waits
+    # an item Juragan does not know: unmapped (head office is told)
     ev3 = event(91000003, d1, [line("Es jeruk", "MK-JRK", 1, 8000)], hour="12:10:00")
     run(api, "moka_transaction_staged", ev3)
     tx3 = api.find("moka_transaction", "transaction_id == '91000003'")
@@ -91,69 +92,76 @@ def scenario_moka_api(api):
     check("unknown outlet: transaction kept without outlet, line unmapped", len(tx4) == 1 and tx4[0]["outlet"] in ("", None)
           and all(r["status"] == "unmapped" for r in api.find("moka_sale_line", f"transaction == '{tx4[0]['name']}'")), tx4)
 
-    # a sale of today and one two days ago
+    # a sale of today, one two days ago, and three days ago one known and one unknown item (no variant, refund or
+    # discount keys in that checkout: they are optional)
     run(api, "moka_transaction_staged", event(91000005, today.isoformat(), [line("Tahu goreng pedas", "TH-PDS", 1, 18000)]))
     run(api, "moka_transaction_staged", event(91000006, d2, [line("Tahu goreng pedas", "TH-PDS", 3, 18000)]))
-    # three days ago: one known item and one unknown (no variant or refund keys in the checkout: they are optional)
     ev8 = event(91000008, d3, [line("Tahu goreng original", "TH-ORI", 1, 15000), line("Kerupuk", "MK-KRP", 2, 5000)])
     for c in ev8["checkouts"]:
         c.pop("item_variant_name"), c.pop("refunded_quantity"), c.pop("discount_amount")
     st, out = run(api, "moka_transaction_staged", ev8)
     tx8 = api.find("moka_transaction", "transaction_id == '91000008'")
     l8 = api.find("moka_sale_line", f"transaction == '{tx8[0]['name']}'") if tx8 else []
-    check("checkout without variant, refund and discount keys: recorded, the day held by its unknown item",
-          st == 200 and sorted((r["status"], r["day_held"]) for r in l8) == [("staged", True), ("unmapped", False)], (st, out, l8))
+    check("checkout without variant, refund and discount keys: recorded, the unknown item unmapped",
+          st == 200 and sorted(r["status"] for r in l8) == ["staged", "unmapped"], (st, out, l8))
 
-    # people: head office cannot type a Moka transaction or change a staged line
+    # people: head office cannot type a Moka transaction, and a staged line keeps an item
     st, resp = hq.create("moka_transaction", {"transaction_id": "x1"})
     check("head office cannot create a moka_transaction -> 403", denied(st, resp), (st, resp))
     if rows:
         st, resp = hq.patch("moka_sale_line", rows[0]["name"], {"item": ""})
         check("a staged line keeps its item (rule staged_has_outlet_and_item)", st == 422 and "staged_has_outlet_and_item" in str(resp), (st, resp))
 
-    # the recap: the oldest past day per outlet that is not held (d3 waits for its mapping, so d2), today never
+    def api_sales(day):
+        return api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{day}' && source == 'moka' && key_version == 3 && docstatus != 2")
+
+    # the recap: every past day with staged lines, one record per outlet and day; unmapped lines wait, hold nothing back
     st, out = run(api, "moka_daily_sales")
     check("recap runs", st == 200, (st, out))
-    eq("recap: the held day three days ago is not taken", len(api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{d3}' && key_version == 3")), 0)
-    s2 = api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{d2}' && source == 'moka' && key_version == 3")
-    check("recap: two days ago becomes one draft for Braga, net Rp 54.000", len(s2) == 1 and s2[0]["docstatus"] == 0 and s2[0]["net_total"] == 54000, s2)
-    um8 = [r for r in l8 if r["status"] == "unmapped"]
-    if um8:
-        st, resp = hq.patch("moka_sale_line", um8[0]["name"], {"item": ORI})
-        check("head office maps the day's last unknown item: the day is free", st == 200 and not any(
-            r["day_held"] for r in api.find("moka_sale_line", f"transaction == '{tx8[0]['name']}'")), (st, resp))
-        run(api, "moka_daily_sales")
-        s3 = api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{d3}' && key_version == 3")
-        check("recap: three days ago after the mapping, net Rp 25.000", len(s3) == 1 and s3[0]["net_total"] == 25000, s3)
-    eq("recap: today is not taken", len(api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{today.isoformat()}' && source == 'moka' && key_version == 3")), 0)
-
-    # yesterday waits for the unmapped line; head office maps it
+    s3, s2, s1 = api_sales(d3), api_sales(d2), api_sales(d1)
+    check("recap: three days ago, its known item only: net Rp 15.000", len(s3) == 1 and s3[0]["net_total"] == 15000, s3)
+    check("recap: two days ago, net Rp 54.000", len(s2) == 1 and s2[0]["net_total"] == 54000 and s2[0]["docstatus"] == 0, s2)
+    # 30000 + (36000 - 3000) + 15000 - 15000 (refund); Es jeruk is still unmapped
+    check("recap: yesterday without the unmapped line, net Rp 63.000, not flagged", len(s1) == 1 and s1[0]["net_total"] == 63000
+          and not s1[0].get("legacy_key_overlap"), s1)
+    eq("recap: today is not taken", len(api_sales(today.isoformat())), 0)
     st, out = run(api, "moka_daily_sales")
-    eq("yesterday is held while a line is unmapped", len(api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{d1}' && key_version == 3")), 0)
-    if um:
-        st, resp = hq.patch("moka_sale_line", um[0]["name"], {"item": PDS})
-        check("head office maps the unknown item", st == 200, (st, resp))
-        eq("the mapped line is staged", api.get("moka_sale_line", um[0]["name"])["status"], "staged")
-    st, out = run(api, "moka_daily_sales")
-    s1 = api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{d1}' && source == 'moka' && key_version == 3")
-    # 30000 + (36000 - 3000) + 15000 - 15000 + 8000 (mapped Es jeruk at Moka's price) = 71000
-    check("recap: yesterday becomes one draft, net Rp 71.000, not flagged", len(s1) == 1 and s1[0]["net_total"] == 71000 and not s1[0].get("legacy_key_overlap"), s1)
+    eq("recap again: nothing new", (len(api_sales(d1)), len(api_sales(d2)), len(api_sales(d3))), (1, 1, 1))
     if s1:
-        lines = api.find("moka_sale_line", f"sales == '{s1[0]['name']}'")
-        check("its five lines are posted", len(lines) == 5 and all(r["status"] == "posted" for r in lines), lines)
-        if lines:
-            st, resp = hq.patch("moka_sale_line", lines[0]["name"], {"item": PDS})
+        posted = api.find("moka_sale_line", f"sales == '{s1[0]['name']}'")
+        check("its four lines are posted", len(posted) == 4 and all(r["status"] == "posted" for r in posted), posted)
+        if posted:
+            st, resp = hq.patch("moka_sale_line", posted[0]["name"], {"item": PDS})
             check("head office cannot change a posted Moka line -> 403", denied(st, resp), (st, resp))
         st, resp = hq.verb("outlet_sales", s1[0]["name"], "submit")
         check("head office submits the Moka day: stock out through the recipes", st == 200 and (resp or {}).get("cogs_total", 0) > 0, (st, resp))
 
-    # a line that arrives after the day was recapped: a second record, flagged and held at submit
+    # head office maps the unknown items: they go into the next recap as their own records, not flagged
+    for u, item in ((um, PDS), ([r for r in l8 if r["status"] == "unmapped"], ORI)):
+        if u:
+            st, resp = hq.patch("moka_sale_line", u[0]["name"], {"item": item})
+            check("head office maps an unknown item, the line is staged", st == 200 and api.get("moka_sale_line", u[0]["name"])["status"] == "staged", (st, resp))
+    run(api, "moka_daily_sales")
+    eq("mapped lines: a second record for yesterday (Rp 8.000) and for three days ago (Rp 10.000), neither flagged",
+       (sorted(x["net_total"] for x in api_sales(d1)), sorted(x["net_total"] for x in api_sales(d3)),
+        any(x.get("legacy_key_overlap") for x in api_sales(d1) + api_sales(d3))), ([8000, 63000], [10000, 15000], False))
+
+    # a late transaction of a recapped day: its own record, not flagged
     run(api, "moka_transaction_staged", event(91000007, d1, [line("Tahu goreng original", "TH-ORI", 1, 15000)], hour="21:59:00"))
     run(api, "moka_daily_sales")
-    late = api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{d1}' && key_version == 3 && docstatus == 0")
-    check("late line: a second draft for the day, flagged", len(late) == 1 and late[0]["legacy_key_overlap"] is True, late)
-    if late:
-        st, resp = hq.verb("outlet_sales", late[0]["name"], "submit")
+    eq("late transaction: another record for yesterday, not flagged", sorted((x["net_total"], bool(x.get("legacy_key_overlap"))) for x in api_sales(d1)),
+       [(8000, False), (15000, False), (63000, False)])
+
+    # an export of the same day already imported (key_version 2): the API record is flagged and held at submit
+    st, filed = api.create("outlet_sales", {"outlet": BRAGA, "date": d4, "source": "moka", "moka_outlet": "Tahu Contoh - Braga", "key_version": 2,
+                                            "lines": [{"item": ORI, "qty": 1, "gross": 15000}]})
+    check("an export record for four days ago", st == 201, (st, filed))
+    run(api, "moka_transaction_staged", event(91000009, d4, [line("Tahu goreng original", "TH-ORI", 1, 15000)]))
+    run(api, "moka_daily_sales")
+    s4 = api_sales(d4)
+    check("API day with an export already there: flagged", len(s4) == 1 and s4[0]["legacy_key_overlap"] is True, s4)
+    if s4:
+        st, resp = hq.verb("outlet_sales", s4[0]["name"], "submit")
         check("the flagged draft cannot be submitted before head office checks it", st in (409, 422) and "legacy_key_reviewed" in str(resp), (st, resp))
 
 

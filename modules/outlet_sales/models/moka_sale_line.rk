@@ -37,9 +37,6 @@ fields:
       - {value: unmapped, label: {id: Belum dipetakan}}
       - {value: posted, label: {id: Sudah direkap}}
   - {name: sales, type: link, to: outlet_sales, label: {id: Penjualan harian}, read_only: true, in_list: true}
-  # true while the line's outlet and day still have an unmapped line: the daily recap skips the day (and only that day)
-  # until head office maps it. Kept by flows moka_transaction_staged and moka_line_mapped.
-  - {name: day_held, type: check, label: {id: Hari ditahan}, read_only: true}
 rules:
   - name: staged_has_outlet_and_item
     on: save
