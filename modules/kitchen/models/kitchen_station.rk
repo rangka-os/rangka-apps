@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A place in an outlet's kitchen that gets its own tickets: Bar (drinks), Dapur panas (hot food), Pastry. Which items
+# go there is set by kitchen_route (item category -> station). An outlet with no active station makes no ticket.
+name: kitchen_station
+label: {id: Stasiun dapur, en: Kitchen station}
+icon: stock
+naming: STD-{###}
+title_field: station_name
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, print: true}
+  # flow kitchen_ticket_on_sale reads the stations of the outlet as the cashier who took the payment
+  - {role: cashier, read: true}
+  - {role: kitchen, read: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - name: station_name
+    type: data
+    label: {id: Nama stasiun}
+    help: {id: 'Misalnya Bar, Dapur panas, Pastry'}
+    required: true
+    in_list: true
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    required: true
+    in_list: true
+  - name: active
+    type: check
+    label: {id: Aktif}
+    default: 'true'
+    in_list: true
+  - {name: notes, type: text, label: {id: Catatan}}
+  # one station of a name per outlet
+  - {name: station_key, type: data, label: {id: Kunci stasiun}, hidden: true, unique: true, compute: "outlet + '/' + station_name"}
+views:
+  list:
+    columns: [station_name, outlet, active]
+    filters: [outlet, active]
+    sort: station_name

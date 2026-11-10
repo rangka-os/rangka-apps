@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+# The kitchen display (contract 0030 queue): today's open tickets of the member's outlet (row scope), oldest first, in
+# columns Baru, Dimasak, Siap. One tap moves a card one step (flow kitchen_ticket_on_update stamps the time; the
+# renderer's "Urungkan" is the step back). Rendered by the kernel's queue renderer (rangka-os WS4).
+# No link to the receipt on the card: a receipt's title is its total (pos_sale title_field), and the kitchen sees no
+# money; the card's title carries the table or receipt number and REVISI for a corrected receipt.
+name: dapur
+type: queue
+label: {id: Dapur, en: Kitchen}
+icon: list
+roles: [kitchen, cashier, head_office]
+device: tablet
+needs: [print]
+queue:
+  source: {model: kitchen_ticket, filter: "status != 'picked_up' && status != 'void' && date == today()", sort: sent_at}
+  card: {title: heading, subtitle: station, lines: items, line: [description, qty, note], age_from: sent_at}
+  columns: {by: status, values: [new, cooking, ready]}
+  steps:
+    - {when: "status == 'new'", set: {status: cooking}, label: {id: Masak}}
+    - {when: "status == 'cooking'", set: {status: ready}, label: {id: Siap}}
+    - {when: "status == 'ready'", set: {status: picked_up}, label: {id: Diambil}}
+  refresh: 5

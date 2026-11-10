@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Tiket dapur: the lines of one paid receipt that one station cooks. Made only by flow kitchen_ticket_on_sale when the
+# receipt is paid, so its receipt, outlet, station and lines are read-only; staff change only the status. The status
+# runs Baru -> Dimasak -> Siap -> Diambil, one step at a time or one step back (the work screen's "Urungkan"); each
+# step is stamped by flow kitchen_ticket_on_update. Batal comes only from the receipt being voided. Not submittable:
+# a ticket is a work card, nothing is booked from it (no stock, no money; the receipt did that).
+# Fields follow the queue slot of kernel contract 0030 §2: source (status, date, sent_at), card (heading, station,
+# lines items with description, qty, note), steps (set status), columns by status.
+name: kitchen_ticket
+label: {id: Tiket dapur, en: Kitchen ticket}
+icon: list
+naming: TKD-{outlet.code}-{YY}{MM}-{#####}
+title_field: heading
+permissions:
+  # the flow makes the tickets as whoever took the payment (cashier, or head office on any outlet), and voids them as
+  # whoever voids the receipt; a ticket typed by hand has no lines (read-only) and is refused (min_rows);
+  # the cashier (or the waiter on the cashier's login) marks a ready ticket picked up
+  - {role: head_office, read: true, create: true, write: true, export: true, print: true}
+  - {role: cashier, read: true, create: true, write: true, print: true}
+  - {role: kitchen, read: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - {name: sale, type: link, to: pos_sale, label: {id: Struk}, read_only: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, read_only: true, in_list: true}
+  - {name: station, type: link, to: kitchen_station, label: {id: Stasiun}, read_only: true, in_list: true}
+  - {name: date, type: date, label: {id: Tanggal}, read_only: true, default: today(), in_list: true}
+  - {name: buyer, type: data, label: {id: Pembeli atau meja}, read_only: true}
+  # a corrected receipt (void, then amend) sends its lines again: the kitchen sees it is a revision of the earlier one
+  - {name: revision_of, type: link, to: pos_sale, label: {id: Revisi dari struk}, read_only: true}
+  # the card's title: the table or buyer when the cashier typed one, else the receipt number; REVISI first for a
+  # corrected receipt
+  - name: heading
+    type: data
+    label: {id: Pesanan}
+    compute: "(revision_of != '' ? 'REVISI ' : '') + (buyer != '' ? buyer : sale)"
+    in_list: true
+  - {name: items, type: table, of: kitchen_ticket_item, label: {id: Menu}, read_only: true, min_rows: 1}
+  - {name: item_count, type: float, label: {id: Jumlah porsi}, compute: "items.map(l, l.qty).sum()"}
+  - name: status
+    type: select
+    label: {id: Status}
+    required: true
+    default: "'new'"
+    in_list: true
+    chip: true
+    options:
+      - {value: new, label: {id: Baru}}
+      - {value: cooking, label: {id: Dimasak}}
+      - {value: ready, label: {id: Siap}}
+      - {value: picked_up, label: {id: Diambil}}
+      - {value: void, label: {id: Batal}}
+  # when each step happened (flow kitchen_ticket_on_update); sent_at is the moment the receipt was paid
+  - {name: sent_at, type: datetime, label: {id: Masuk dapur}, read_only: true, default: now()}
+  - {name: cooking_at, type: datetime, label: {id: Mulai dimasak}, read_only: true}
+  - {name: ready_at, type: datetime, label: {id: Siap}, read_only: true}
+  - {name: picked_up_at, type: datetime, label: {id: Diambil}, read_only: true}
+  - {name: void_at, type: datetime, label: {id: Dibatalkan}, read_only: true}
+views:
+  list:
+    columns: [name, heading, station, status, sent_at, item_count, outlet]
+    filters: [outlet, station, status, date]
+    sort: -sent_at
+  kanban:
+    group_by: status
+    title: heading
+    card: [station, item_count, sent_at]
+  form:
+    layout:
+      - section: {id: Tiket}
+        columns:
+          - [heading, station, status]
+          - [sale, outlet, date, buyer, revision_of]
+      - section: {id: Menu}
+        fields: [items]
+      - section: {id: Waktu}
+        columns:
+          - [sent_at, cooking_at, ready_at]
+          - [picked_up_at, void_at]
