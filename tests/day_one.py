@@ -182,7 +182,8 @@ class Kernel:
         first = self.orgs[0][0]
         web = os.path.join(self.os_dir, "web")    # the app's screens, for a --keep demo in a browser
         self.proc = subprocess.Popen([self.binary, "serve"] + self.args() + (["--org", first] if first else []) + (["--web", web] if os.path.isdir(web) else [])
-                                     + ["--dev-open", "--addr", f"127.0.0.1:{self.port}"],
+                                     + ["--dev-open", "--addr", f"127.0.0.1:{self.port}"]
+                                     + ["--files-dir", os.path.join(self.state_dir, "files")],   # attachments stay out of the checkout
                                      stdout=self.log, stderr=subprocess.STDOUT, env=self.env)
         for _ in range(100):
             if self.proc.poll() is not None:
@@ -5357,6 +5358,7 @@ import day_one_courses  # noqa: E402
 import day_one_subscriptions  # noqa: E402
 import day_one_pos  # noqa: E402
 import day_one_doku  # noqa: E402
+import day_one_attendance  # noqa: E402
 import day_one_staff  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
@@ -5368,6 +5370,7 @@ day_one_courses.bind(sys.modules[__name__])
 day_one_subscriptions.bind(sys.modules[__name__])
 day_one_pos.bind(sys.modules[__name__])      # also registers demo-kasir
 day_one_doku.bind(sys.modules[__name__])
+day_one_attendance.bind(sys.modules[__name__])
 day_one_staff.bind(sys.modules[__name__])
 
 SCENARIOS = {
@@ -5380,7 +5383,7 @@ SCENARIOS = {
                    scenario_permissions, scenario_payment_methods] + day_one_returns.SCENARIOS_RITEL,
     "demo-grosir": day_one_grosir.SCENARIOS + [scenario_payment_instruction, scenario_permissions, scenario_payment_methods],
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
-    "demo-manpower": day_one_payroll.SCENARIOS + [scenario_permissions],
+    "demo-manpower": day_one_payroll.SCENARIOS + day_one_attendance.SCENARIOS + [scenario_permissions],
     "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],
     "demo-kursus": day_one_courses.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-langganan": day_one_subscriptions.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],

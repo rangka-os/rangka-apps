@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: rekap_absen
+label: {id: Rekap absen lapangan, en: Field attendance}
+description: {id: 'Siapa yang sudah absen hari ini, absen di luar radius yang menunggu persetujuan, dan hari hadir per pekerja'}
+# For the site supervisor (only the logs of their sites, row scope work_site) and the project admin (every site). The
+# held submits themselves are decided in Persetujuan (contract 0007); this board shows which logs wait.
+default_period: 31
+roles: [site_supervisor, project_admin]
+cache: 1m
+widgets:
+  - {name: in_today, type: number, label: {id: Absen hari ini}, model: attendance_log, filter: work_date == today() && docstatus != 2, compact: true, span: 3}
+  - {name: outside_today, type: number, label: {id: Di luar radius hari ini}, model: attendance_log, filter: work_date == today() && docstatus != 2 && outside_site, compact: true, span: 3, good_when: down}
+  - {name: waiting, type: number, label: {id: Menunggu persetujuan}, description: {id: 'Sudah absen pulang tapi belum sah'}, model: attendance_log, filter: docstatus == 0 && clock_out != '', compact: true, span: 3, good_when: down}
+  - {name: days_present, type: number, label: {id: Hari hadir sah}, model: attendance_log, filter: docstatus == 1, period: work_date, compact: true, span: 3}
+  - {name: waiting_list, type: list, label: {id: Absen yang menunggu}, model: attendance_log, filter: docstatus == 0 && clock_out != '', columns: [name, worker_name, work_date, in_site_m, overtime_hours, reason], sort: work_date, limit: 20, span: 12}
+  - {name: by_worker, type: chart, chart: bar, label: {id: Hari hadir per pekerja}, model: attendance_log, group_by: worker_name, filter: docstatus == 1, period: work_date, sort: -value, span: 6}
+  - {name: by_site, type: chart, chart: bar, label: {id: Hari hadir per lokasi}, model: attendance_log, group_by: work_site, filter: docstatus == 1, period: work_date, sort: -value, span: 6}
+  - {name: today_list, type: list, label: {id: Absen hari ini}, model: attendance_log, filter: work_date == today() && docstatus != 2, columns: [worker_name, work_site, clock_in, clock_out, in_site_m, status], sort: clock_in, limit: 50, span: 12}

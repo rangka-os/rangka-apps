@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: attendance_log_cancel_guard
+label: {id: Absen di periode yang sudah direkap tidak bisa dibatalkan}
+# The day is already in a recap timesheet (and maybe a payslip): cancel the close first.
+on: attendance_log.cancelled
+steps:
+  - find: attendance_close
+    where: project == event.project && docstatus == 1 && period_from <= event.work_date && period_to >= event.work_date
+    as: closed
+  - if: closed != null
+    create: attendance_guard
+    set:
+      reason: "'period_closed'"
+      document: closed.name
