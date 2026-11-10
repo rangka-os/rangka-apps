@@ -5,7 +5,8 @@ demo-sewa`. Fixtures are synthetic (examples/fixtures/demo-sewa/demo.rk). Dates 
 dashboard checks (late, going out today) hold whenever the test runs.
 
 Members: Admin sewa (sales_manager) books, records equipment out and back; Keuangan (finance_manager) sets rates and
-corrects returns; Kantor pusat (head_office) reads. The owner (seeded) can do everything.
+corrects returns; Kantor pusat (head_office) reads; Staf gudang (rental_staff) hands equipment over per unit (checklist,
+photo, signature, BAST) without touching money. The owner (seeded) can do everything.
 """
 import datetime
 import os
@@ -26,16 +27,20 @@ def d(n):
 
 _R, _RP = {"read", "export"}, {"read", "export", "print"}
 _DOC = {"read", "create", "write", "delete", "submit", "cancel", "amend", "export", "print"}
+_STAFF = {"read", "create", "write", "delete", "export", "print"}
 MATRIX = {
-    "rental_item": {"finance_manager": {"read", "create", "write", "export", "print"}, "sales_manager": _R, "head_office": _R},
-    "rental_booking": {"sales_manager": _DOC, "finance_manager": _RP | {"cancel"}, "head_office": _RP},
-    "rental_checkout": {"sales_manager": _DOC, "finance_manager": _RP, "head_office": _RP},
-    "rental_return": {"sales_manager": _DOC - {"cancel", "amend"}, "finance_manager": _RP | {"cancel", "amend"}, "head_office": _RP},
+    "rental_item": {"finance_manager": {"read", "create", "write", "export", "print"}, "sales_manager": _R, "head_office": _R, "rental_staff": {"read"}},
+    "rental_booking": {"sales_manager": _DOC, "finance_manager": _RP | {"cancel"}, "head_office": _RP, "rental_staff": {"read"}},
+    "rental_checkout": {"sales_manager": _DOC, "finance_manager": _RP, "head_office": _RP, "rental_staff": _STAFF | {"submit"}},
+    # warehouse staff fill the return checklist; its submit pays the deposit back, so it stays the admin's
+    "rental_return": {"sales_manager": _DOC - {"cancel", "amend"}, "finance_manager": _RP | {"cancel", "amend"}, "head_office": _RP, "rental_staff": _STAFF},
     # written only by the flows of whoever submits or cancels (its fields are read_only)
-    "rental_schedule": {"sales_manager": {"read", "create", "write", "export"}, "finance_manager": {"read", "write", "export"}, "head_office": _R},
-    "rental_guard": {"sales_manager": {"create"}, "finance_manager": {"create"}},   # never stored (a flow's refusal)
+    "rental_schedule": {"sales_manager": {"read", "create", "write", "export"}, "finance_manager": {"read", "write", "export"}, "head_office": _R, "rental_staff": {"read", "write"}},
+    "rental_unit": {"finance_manager": {"read", "create", "write", "export", "print"}, "sales_manager": {"read", "create", "write", "export"},
+                    "head_office": _R, "rental_staff": {"read", "write", "export"}},
+    "rental_guard": {"sales_manager": {"create"}, "finance_manager": {"create"}, "rental_staff": {"create"}},   # never stored (a flow's refusal)
 }
-MEMBERS = [("sm", "sales_manager"), ("fm", "finance_manager"), ("hq", "head_office")]
+MEMBERS = [("sm", "sales_manager"), ("fm", "finance_manager"), ("hq", "head_office"), ("gd", "rental_staff")]
 
 
 def bind(m):
@@ -45,7 +50,7 @@ def bind(m):
     m.SITE_ORGS["demo-sewa"] = [("sewa_contoh", "demo-sewa")]
     # the shared matrix check (scenario_permissions) runs for the two counter roles; head office here only reads the
     # rental (its payment and goods-receipt grants belong to outlet sites) and is checked in scenario_rental_roles
-    m.SITE_MEMBERS["demo-sewa"] = MEMBERS[:2]
+    m.SITE_MEMBERS["demo-sewa"] = [MEMBERS[0], MEMBERS[1], MEMBERS[3]]
     m.MATRIX.update(MATRIX)
 
 
@@ -64,7 +69,8 @@ def setup_demo_sewa(api, k):
     pw = secrets.token_urlsafe(18)   # throwaway password of a throwaway database
     for (key, role), (email, rec_, name) in zip(MEMBERS, [("dimas@contohsewa.test", "USR-002", "Dimas Contoh"),
                                                           ("wulan@contohsewa.test", "USR-003", "Wulan Contoh"),
-                                                          ("rina.hq@contohsewa.test", "", "Rina Contoh")]):
+                                                          ("rina.hq@contohsewa.test", "", "Rina Contoh"),
+                                                          ("agus.gudang@contohsewa.test", "USR-004", "Agus Contoh")]):
         code, out = k.user_add(email, role, org, name, record=rec_, password=pw)
         cl = Api.login(k.base, email, pw) if code == 0 else None
         if cl is None:
@@ -315,6 +321,209 @@ def scenario_rental_still_out(api):
     check("then lens L2 goes out -> 200", st == 200, (st, c))
 
 
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64   # sniffed as image/png (contract 0011 sniffs the bytes)
+KAM1, KAM2, SND1, SND2 = "UNT-00001", "UNT-00002", "UNT-00003", "UNT-00004"
+
+
+def attach(cl, model, name, filename):
+    """Upload a small PNG to a record (contract 0011); returns the attachment id or ''."""
+    st, a = cl.upload(f"/api/v1/r/{model}/{Api.q(name)}/attachments", {}, filename, PNG)
+    check(f"{model} {name}: {filename} attached -> 201", st == 201 and (a or {}).get("id", "").startswith("att_"), (st, a))
+    return (a or {}).get("id", "") if st == 201 else ""
+
+
+def unit(api, name):
+    return api.get("rental_unit", name) or {}
+
+
+def handover_out(cl, b, rows, date=None, **extra):
+    """A checkout draft with a checklist; returns (status, record or error body)."""
+    body = dict({"booking": b, "out_date": date or d(0), "units": rows}, **extra)
+    st, c = cl.create("rental_checkout", body)
+    return st, rec(c) if st == 201 else c
+
+
+def scenario_rental_handover(api):
+    """Plan layar-kerja A6: cameras and sound systems go out and come back per unit, with a condition checklist, a
+    photo and the customer's signature as attachments, and a printed BAST. Warehouse staff hand over; the checklist
+    fees of the return are kept from the deposit with the late fee; a broken or lost unit cannot go out again."""
+    sm, fm, gd = CTX.get("sm"), CTX.get("fm"), CTX.get("gd")
+    if not (sm and fm and gd):
+        fail("rental members signed in", CTX.get("login_error"))
+        return
+    units = {r["name"]: r for r in api.list("rental_unit", limit=50)}
+    eq("fixtures: four units with codes, in the warehouse, two cameras and two sound systems",
+       sorted((r["code"], r["rental_item"], r["state"], r["condition"]) for r in units.values()),
+       [("KAM-A-01", CAMERA, "in", "lengkap"), ("KAM-A-02", CAMERA, "in", "lengkap"), ("SND-01", SOUND, "in", "lengkap"), ("SND-02", SOUND, "in", "lengkap")])
+    st, resp = gd.create("rental_booking", {"customer": BUDI, "rental_item": CAMERA, "qty": 1, "start_date": d(200), "days": 1})
+    check("Staf gudang may not book -> 403", denied(st, resp), (st, resp))
+
+    # two cameras for days -3 to -1, deposit 2 x 1.000.000 in cash
+    b = book(sm, CAMERA, 2, d(-3), 2, "cameras x2 (days -3 to -1)", customer=FILM)
+    if not b:
+        return
+    st, r = handover_out(gd, b["name"], [])
+    check("checkout of a tracked item without a checklist: refused (units_required)", st == 422 and "units_required" in rules(r), (st, r))
+    st, r = handover_out(gd, b["name"], [{"unit": KAM1}])
+    check("checklist with 1 unit for a booking of 2: refused (units_match_qty)", st == 422 and "units_match_qty" in rules(r), (st, r))
+    st, r = handover_out(gd, b["name"], [{"unit": KAM1}, {"unit": SND1}])
+    check("a sound system on a camera checklist: refused (units_of_item)", st == 422 and "units_of_item" in rules(r), (st, r))
+    st, r = handover_out(gd, b["name"], [{"unit": KAM1}, {"unit": KAM1}])
+    check("the same unit twice: refused (units_unique)", st == 422 and "units_unique" in rules(r), (st, r))
+    st, r = handover_out(gd, b["name"], [{"unit": KAM1}, {"unit": KAM2, "condition": "rusak"}])
+    check("a unit marked broken at checkout cannot go out (unit_fit)", st == 422 and "unit_fit" in rules(r), (st, r))
+    st, c = handover_out(gd, b["name"], [{"unit": KAM1, "notes": "baterai 2, tas"}, {"unit": KAM2, "condition": "lecet", "notes": "lecet sisi kiri"}],
+                         d(-3), handed_by="Agus Contoh")
+    if not check("Staf gudang drafts the camera checkout with a two-unit checklist -> 201", st == 201, (st, c)):
+        return
+    eq("checklist rows carry the unit code and serial number", [(x.get("unit_code"), x.get("serial_no")) for x in c.get("units", [])],
+       [("KAM-A-01", "CTH-KA-0001"), ("KAM-A-02", "CTH-KA-0002")])
+    st, r = submit(gd, "rental_checkout", c["name"])
+    check("submit without the customer's name: refused (signed_by_required)", st == 422 and "signed_by_required" in rules(r), (st, r))
+    st, r = gd.patch("rental_checkout", c["name"], {"photo": "foto-kamera.jpg"})
+    check("a photo that is not an attachment id: refused (photo_is_attachment)", st == 422 and "photo_is_attachment" in rules(r), (st, r))
+    photo, sig = attach(gd, "rental_checkout", c["name"], "kamera-keluar.png"), attach(gd, "rental_checkout", c["name"], "ttd-penyewa.png")
+    st, r = gd.patch("rental_checkout", c["name"], {"photo": photo, "signature": sig})
+    check("a signature without the signer's name: refused (signature_needs_name)", st == 422 and "signature_needs_name" in rules(r), (st, r))
+    st, r = gd.patch("rental_checkout", c["name"], {"photo": photo, "signature": sig, "signed_by": "Sari Contoh (Komunitas Film)"})
+    check("photo, signature and signer saved -> 200", st == 200, (st, r))
+    st, out = submit(gd, "rental_checkout", c["name"])
+    if not check("Staf gudang submits the camera checkout -> 200", st == 200 and out.get("docstatus") == 1, (st, out)):
+        return
+    st, atts = gd.call("GET", f"/api/v1/r/rental_checkout/{Api.q(out['name'])}/attachments")
+    eq("photo and signature follow the checkout to its number (attachments of the record)",
+       sorted(a["id"] for a in (atts or {}).get("data", [])), sorted([photo, sig]))
+    eq("checkout keeps the attachment ids in photo and signature", (out.get("photo"), out.get("signature")), (photo, sig))
+    u1, u2 = unit(api, KAM1), unit(api, KAM2)
+    eq("both cameras are out with this booking; KAM-A-02 noted scratched",
+       [(u.get("state"), u.get("booking"), u.get("condition"), u.get("last_checkout")) for u in (u1, u2)],
+       [("out", b["name"], "lengkap", out["name"]), ("out", b["name"], "lecet", out["name"])])
+    eq("schedule out with the checkout", (schedule(api, b["name"]).get("state"), schedule(api, b["name"]).get("checkout")), ("out", out["name"]))
+    st, html, ctype = gd.print_html("rental_checkout", out["name"])
+    check("BAST keluar prints for Staf gudang -> 200 html", st == 200 and "text/html" in ctype, (st, ctype))
+    for want in ("Berita acara serah terima alat", out["name"], "KAM-A-01", "CTH-KA-0002", "Lecet", "lecet sisi kiri", "Sari Contoh (Komunitas Film)", "Agus Contoh", sig):
+        check(f"BAST keluar shows {want!r}", want in html, want)
+
+    # sound systems: one out on a short booking, the next booking of the same unit cannot take it while it is out
+    s1 = book(sm, SOUND, 1, d(-2), 1, "sound S1 (day -2 to -1)", customer=WO)
+    s2 = book(sm, SOUND, 1, d(-1), 1, "sound S2 (day -1 to 0)", customer=ARISAN)
+    if not (s1 and s2):
+        return
+    st, c1 = handover_out(gd, s1["name"], [{"unit": SND1}], d(-2), signed_by="Pak Contoh WO")
+    st, o1 = submit(gd, "rental_checkout", c1.get("name", "x"))
+    check("sound S1 goes out with SND-01 -> 200", st == 200, (st, o1))
+    st, c2 = handover_out(gd, s2["name"], [{"unit": SND1}], d(-1), signed_by="Ibu Contoh")
+    st, r = submit(gd, "rental_checkout", c2.get("name", "x"))
+    check("sound S2 cannot take SND-01 while it is out with S1 (unit_busy)", st == 422 and "unit_busy" in rules(r), (st, r))
+    st, r = gd.patch("rental_checkout", c2.get("name", "x"), {"units": [{"unit": SND2}]})
+    st, o2 = submit(gd, "rental_checkout", c2.get("name", "x"))
+    check("sound S2 goes out with SND-02 -> 200", st == 200, (st, o2))
+
+    # cameras back on day 0 (1 day late): KAM-A-02 broken, 250.000 repair on the checklist
+    st, rt = gd.create("rental_return", {"booking": b["name"], "return_date": d(0), "units": [{"unit": KAM1}]})
+    check("return checklist with 1 of 2 units: refused (units_match_qty)", st == 422 and "units_match_qty" in rules(rt), (st, rt))
+    st, rt = gd.create("rental_return", {"booking": b["name"], "return_date": d(0), "received_by": "Agus Contoh",
+                                         "units": [{"unit": KAM1}, {"unit": KAM2, "condition": "rusak", "fee": 250_000, "notes": "layar retak"}]})
+    if not check("Staf gudang drafts the camera return with the checklist -> 201", st == 201, (st, rt)):
+        return
+    rt = rec(rt)
+    eq("return rows show the condition at checkout and now", [(x.get("unit_code"), x.get("out_condition"), x.get("condition"), x.get("fee")) for x in rt.get("units", [])],
+       [("KAM-A-01", "lengkap", "lengkap", 0), ("KAM-A-02", "lecet", "rusak", 250_000)])
+    st, r = submit(gd, "rental_return", rt["name"])
+    check("Staf gudang may not submit a return (it pays the deposit back) -> 403", denied(st, r), (st, r))
+    st, r = submit(sm, "rental_return", rt["name"])
+    check("submit without the customer's name: refused (signed_by_required)", st == 422 and "signed_by_required" in rules(r), (st, r))
+    sig2 = attach(gd, "rental_return", rt["name"], "ttd-kembali.png")
+    gd.patch("rental_return", rt["name"], {"signed_by": "Sari Contoh (Komunitas Film)", "signature": sig2})
+    st, ret = submit(sm, "rental_return", rt["name"])
+    if not check("Admin sewa submits the camera return -> 200", st == 200, (st, ret)):
+        return
+    eq("cameras: 1 day late x 2 x 150.000 = 300.000, checklist damage 250.000, deposit 2.000.000, 1.450.000 back",
+       (ret["late_fee"], ret["unit_damage"], ret["total_damage"], ret["covered_late"], ret["covered_damage"], ret["deposit_refund"], ret["extra_due"]),
+       (300_000, 250_000, 250_000, 300_000, 250_000, 1_450_000, 0))
+    eq("cameras: return journal 2-1400 +2.000.000, 4-9200 -550.000, Kas -1.450.000",
+       gl(api, "rental_return", ret["name"]), {"21400": 2_000_000, "49200": -550_000, "11100": -1_450_000})
+    eq("both cameras back in the warehouse, KAM-A-02 recorded broken",
+       [(unit(api, n).get("state"), unit(api, n).get("booking"), unit(api, n).get("condition"), unit(api, n).get("last_return")) for n in (KAM1, KAM2)],
+       [("in", "", "lengkap", ret["name"]), ("in", "", "rusak", ret["name"])])
+    st, html, _ = sm.print_html("rental_return", ret["name"])
+    check("BAST kembali prints -> 200", st == 200, st)
+    for want in ("Alat kembali " + ret["name"], "KAM-A-02", "Rusak", "layar retak", "Rp 250.000", "Rp 300.000", "Rp 1.450.000", "Telat 1 hari"):
+        check(f"BAST kembali shows {want!r}", want in html, want)
+
+    # the broken camera cannot go out until it is repaired; KAM-A-01 goes out on the next booking
+    nb = book(sm, CAMERA, 1, d(1), 1, "camera N (day 1)", customer=BUDI)
+    if not nb:
+        return
+    st, cn = handover_out(gd, nb["name"], [{"unit": KAM2}], d(0), signed_by="Budi Contoh")
+    st, r = submit(gd, "rental_checkout", cn.get("name", "x"))
+    check("the camera recorded broken cannot go out (unit_busy)", st == 422 and "unit_busy" in rules(r), (st, r))
+    gd.patch("rental_checkout", cn.get("name", "x"), {"units": [{"unit": KAM1}]})
+    st, on = submit(gd, "rental_checkout", cn.get("name", "x"))
+    check("camera N goes out with KAM-A-01 -> 200", st == 200, (st, on))
+    st, r = fm.verb("rental_return", ret["name"], "cancel")
+    check("the camera return cannot be cancelled while KAM-A-01 is out again (unit_moved)", st == 422 and "unit_moved" in rules(r), (st, r))
+    st, r = gd.verb("rental_checkout", on.get("name", "x"), "cancel")
+    check("Staf gudang may not cancel a checkout -> 403", denied(st, r), (st, r))
+    st, r = sm.verb("rental_checkout", on.get("name", "x"), "cancel")
+    check("Admin sewa cancels camera N's checkout -> 200", st == 200, (st, r))
+    eq("KAM-A-01 back in the warehouse, schedule of N booked again", (unit(api, KAM1).get("state"), schedule(api, nb["name"]).get("state")), ("in", "booked"))
+    st, r = fm.verb("rental_return", ret["name"], "cancel")
+    check("Keuangan cancels the camera return -> 200", st == 200, (st, r))
+    eq("cancelled return: both cameras out again with the booking, KAM-A-02 back to its checkout condition (lecet)",
+       [(unit(api, n).get("state"), unit(api, n).get("booking"), unit(api, n).get("condition")) for n in (KAM1, KAM2)],
+       [("out", b["name"], "lengkap"), ("out", b["name"], "lecet")])
+    eq("cancelled return: journal reversed", gl(api, "rental_return", ret["name"], "reverse"), {"21400": -2_000_000, "49200": 550_000, "11100": 1_450_000})
+    st, am = fm.verb("rental_return", ret["name"], "amend")
+    am = rec(am)
+    if check("Keuangan amends the return -> 200/201", st in (200, 201) and am.get("name"), (st, am)):
+        eq("the amended return keeps the checklist", [(x.get("unit"), x.get("condition"), x.get("fee")) for x in am.get("units", [])],
+           [(KAM1, "lengkap", 0), (KAM2, "rusak", 250_000)])
+        st, r2 = submit(sm, "rental_return", am["name"])
+        check("Admin sewa submits the amended return -> 200", st == 200 and r2.get("deposit_refund") == 1_450_000, (st, r2))
+    st, r = fm.patch("rental_unit", KAM2, {"condition": "lengkap", "notes": "layar diganti di servis"})
+    check("Keuangan marks KAM-A-02 repaired -> 200", st == 200 and rec(r).get("condition") == "lengkap", (st, r))
+    st, r = gd.patch("rental_unit", KAM2, {"state": "out"})
+    eq("a hand edit of a unit's position is ignored (read_only)", unit(api, KAM2).get("state"), "in")
+    st, r = sm.create("rental_unit", {"rental_item": CAMERA, "code": "KAM-A-99", "state": "out", "booking": b["name"]})
+    eq("a new unit cannot be created as out with a booking (read_only)", (st, rec(r).get("state"), rec(r).get("booking")), (201, "in", ""))
+    if st == 201:
+        api.call("DELETE", f"/api/v1/r/rental_unit/{rec(r)['name']}")
+    st, rt = gd.create("rental_return", {"booking": nb["name"], "return_date": d(1), "signed_by": "Budi Contoh"})
+    st, r = submit(sm, "rental_return", rec(rt).get("name", "x"))
+    check("a return of a booking that has not gone out is refused (not_out)", st == 422 and "not_out" in rules(r), (st, r))
+    if rec(rt).get("name"):
+        sm.call("DELETE", f"/api/v1/r/rental_return/{Api.q(rec(rt)['name'])}")
+
+    # sound S1 back with SND-01 lost: 3.000.000 on the checklist, more than the deposit, the rest on a draft invoice
+    st, r1 = gd.create("rental_return", {"booking": s1["name"], "return_date": d(0), "signed_by": "Pak Contoh WO",
+                                         "units": [{"unit": SND2}]})
+    st, r = submit(sm, "rental_return", rec(r1).get("name", "x"))
+    check("S1 cannot return SND-02, which is out with S2 (unit_not_out)", st == 422 and "unit_not_out" in rules(r), (st, r))
+    gd.patch("rental_return", rec(r1).get("name", "x"), {"units": [{"unit": SND1, "condition": "hilang", "fee": 3_000_000, "notes": "tidak kembali"}]})
+    st, sr = submit(sm, "rental_return", rec(r1).get("name", "x"))
+    if check("S1 returns with SND-01 recorded lost -> 200", st == 200, (st, sr)):
+        eq("S1: late 1 day 200.000 + lost 3.000.000 against 1.000.000 deposit: nothing back, 2.200.000 billed",
+           (sr["covered_late"], sr["covered_damage"], sr["deposit_refund"], sr["extra_due"]), (200_000, 800_000, 0, 2_200_000))
+        inv = api.find("sales_invoice", f"notes.contains('({sr['name']})')")
+        eq("S1: a draft invoice of 2.200.000 for the loss", [(i["customer"], i["subtotal"], i["docstatus"]) for i in inv], [(WO, 2_200_000, 0)])
+        eq("SND-01 back on the books as lost", (unit(api, SND1).get("state"), unit(api, SND1).get("condition")), ("in", "hilang"))
+
+    # untracked items keep going out by count (lens, lamps, tent, chairs; earlier scenarios)
+    ws = dashboard(gd, "alat_hari_ini")
+    if ws:
+        rows = api.list("rental_schedule", limit=500)
+        eq("alat_hari_ini: Siapkan keluar = booked and due", num(ws["to_go_out"]), sum(1 for r in rows if r["state"] == "booked" and r["start_date"] <= d(0)))
+        eq("alat_hari_ini: Harus kembali hari ini", num(ws["due_back"]), sum(1 for r in rows if r["state"] == "out" and r["end_date"] == d(0)))
+        eq("alat_hari_ini: Telat kembali", num(ws["late"]), sum(1 for r in rows if r["state"] == "out" and r["end_date"] < d(0)))
+        eq("alat_hari_ini: units broken or lost = SND-01", num(ws["units_to_check"]), 1)
+        out_rows = ws["units_out"].get("rows", ws["units_out"].get("data", []))
+        eq("alat_hari_ini: units out = the cameras (amended return keeps them in) and SND-02",
+           sorted(x.get("code") for x in out_rows), ["SND-02"])
+    st, resp = CTX["hq"].call("GET", "/api/v1/dashboards/alat_hari_ini")
+    check("Kantor pusat opens alat_hari_ini -> 200", st == 200, (st, resp))
+
+
 def scenario_rental_invoice_guards(api):
     """Audit finding 1 and 2: a rental invoice is submitted once, only for a live document, and its notes are locked."""
     sm = CTX.get("sm")
@@ -458,4 +667,4 @@ def _sum_by(rows, cond):
 
 
 SCENARIOS = [scenario_rental_fixtures, scenario_rental_booking_conflict, scenario_rental_race, scenario_rental_out_and_back,
-             scenario_rental_cancel, scenario_rental_still_out, scenario_rental_invoice_guards, scenario_rental_pkp, scenario_rental_roles, scenario_rental_dashboard]
+             scenario_rental_cancel, scenario_rental_still_out, scenario_rental_handover, scenario_rental_invoice_guards, scenario_rental_pkp, scenario_rental_roles, scenario_rental_dashboard]

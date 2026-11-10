@@ -9,6 +9,8 @@ title: {id: Grosir dan distribusi, en: Wholesale distribution}
 label: {id: Rangka Grosir Distribusi, en: Rangka Wholesale Distribution}
 summary:
   id: Pesanan salesman dengan harga per tier, tahan kredit otomatis, surat jalan, retur, giro dan piutang per salesman.
+category: sales
+icon: truck-line
 rangka: '>=0.5'
 modules:
   accounting: ^1.0

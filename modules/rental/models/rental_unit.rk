@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: rental_unit
+label: {id: Unit alat, en: Rental unit}
+icon: tag
+naming: UNT-{#####}
+title_field: code
+# One physical unit of a rental item (a camera body, a sound system set), with the code on its sticker or barcode and
+# its serial number. An item with "Serah terima per unit" on (rental_item.track_units) goes out and comes back by
+# unit: the checkout and the return list which units, in what condition (checklist). Where the unit is (state,
+# booking, last documents) is written only by the flows of this module (rental_checkout_on_submit and the others);
+# the condition is also editable by hand, so a unit repaired or found again can go out again.
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
+  # write: the checkout and return flows of whoever submits or cancels them update the unit (state fields read_only)
+  - {role: sales_manager, read: true, create: true, write: true, export: true}
+  - {role: rental_staff, read: true, write: true, export: true}
+  - {role: head_office, read: true, export: true}
+fields:
+  - {name: rental_item, type: link, to: rental_item, label: {id: Alat}, required: true, in_list: true}
+  - name: code
+    type: data
+    label: {id: Kode unit}
+    help: {id: 'Tulisan di stiker atau barcode unit, misalnya KAM-A-01'}
+    required: true
+    unique: true
+    in_list: true
+  - {name: serial_no, type: data, label: {id: Nomor seri}, in_list: true}
+  - name: condition
+    type: select
+    label: {id: Kondisi terakhir}
+    help: {id: 'Diisi otomatis dari checklist alat keluar dan kembali. Ubah ke Lengkap setelah unit diperbaiki atau ditemukan'}
+    default: "'lengkap'"
+    in_list: true
+    chip: true
+    options:
+      - {value: lengkap, label: {id: 'Lengkap, baik'}}
+      - {value: lecet, label: {id: Lecet}}
+      - {value: rusak, label: {id: Rusak}}
+      - {value: hilang, label: {id: Hilang}}
+  - name: state
+    type: select
+    label: {id: Posisi}
+    default: "'in'"
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: in, label: {id: Di gudang}}
+      - {value: out, label: {id: Keluar}}
+  - {name: booking, type: link, to: rental_booking, label: {id: Sedang dipakai pesanan}, read_only: true}
+  # the condition written at checkout: a cancelled return puts it back
+  - {name: out_condition, type: data, label: {id: Kondisi saat keluar}, read_only: true, hidden: true}
+  - {name: last_checkout, type: link, to: rental_checkout, label: {id: Alat keluar terakhir}, read_only: true}
+  - {name: last_return, type: link, to: rental_return, label: {id: Alat kembali terakhir}, read_only: true}
+  - {name: active, type: check, label: {id: Masih dipakai}, default: 'true'}
+  - {name: notes, type: text, label: {id: Catatan}}
+views:
+  list:
+    columns: [code, rental_item, serial_no, condition, state, booking]
+    filters: [rental_item, condition, state]
+    sort: code
+  form:
+    layout:
+      - section: {id: Unit}
+        columns:
+          - [rental_item, code, serial_no, active]
+          - [condition, state, booking]
+      - section: {id: Riwayat}
+        columns:
+          - [last_checkout]
+          - [last_return]
+      - section: {id: Catatan}
+        fields: [notes]

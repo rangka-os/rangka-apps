@@ -1,0 +1,98 @@
+{{define "style"}}
+/* Arah E, sama dengan surat jalan: netral, satu tanda merek, checklist per unit, dua tanda tangan. A5. */
+.lh { display: flex; gap: 4mm; align-items: flex-start; padding-bottom: 4mm; margin-bottom: 5mm; border-bottom: 1px solid #1C1917; }
+.lh .logo { max-height: 16mm; max-width: 40mm; }
+.lh .mono { width: 12mm; height: 12mm; border-radius: 2.5mm; background: #1C1917; color: #fff; font-weight: 700; font-size: 16pt; line-height: 12mm; text-align: center; flex: none; }
+.lh .legal-name { font-size: 1.3em; font-weight: 600; }
+.lh .address { white-space: pre-line; }
+.lh .contacts span+span::before { content: " · "; }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 6mm; }
+.head h1 { font-size: 1.6em; margin: 0; letter-spacing: 0.02em; }
+.head .no { font-size: 1.1em; font-weight: 600; margin-top: 1mm; }
+.status { display: inline-block; margin-top: 2mm; padding: 0.6mm 2.4mm; border: 1px solid #1C1917; border-radius: 99px; font-size: 0.9em; font-weight: 600; }
+.box { min-width: 62mm; padding: 3mm 4mm; border: 1px solid #D6D3D1; border-radius: 2mm; background: #F5F5F4; }
+.box .k, .meta .k { color: #57534E; }
+.box .v { font-size: 1.15em; font-weight: 600; }
+.meta { display: flex; gap: 8mm; margin: 5mm 0 2mm; }
+.meta > div { flex: 1; }
+.meta table td { border: 0; padding: 0.6mm 0; }
+.meta table td:first-child { color: #57534E; width: 32mm; }
+.addr { white-space: pre-line; }
+.items { margin-top: 4mm; }
+.items th { border-bottom: 1px solid #1C1917; color: #57534E; font-weight: 600; font-size: 0.9em; }
+.items tbody { counter-reset: row; }
+.items tbody tr { counter-increment: row; }
+.items td.no { width: 8mm; color: #57534E; }
+.items td.no::before { content: counter(row); }
+.items td.qty { font-size: 1.1em; font-weight: 600; }
+.items td.check { width: 22mm; }
+.num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.note { margin-top: 3mm; font-size: 0.9em; }
+.sign { display: flex; gap: 6mm; margin-top: 10mm; break-inside: avoid; }
+.sign > div { flex: 1; text-align: center; }
+.sign .space { height: 20mm; border-bottom: 1px solid #1C1917; margin-bottom: 1.5mm; }
+.cond { font-weight: 600; }
+.esign { font-size: 0.85em; }
+.money td { border: 0; padding: 0.6mm 0; }
+.money td:first-child { color: #57534E; }
+.money tr.total td { border-top: 1px solid #1C1917; font-weight: 600; padding-top: 1.5mm; }
+{{end}}
+{{define "letterhead"}}{{with .Letterhead}}<header class="lh">
+{{if .logo_src}}<img class="logo" src="{{.logo_src}}" alt="">{{else if .legal_name}}<div class="mono" aria-hidden="true">{{upper (slice .legal_name 0 1)}}</div>{{end}}
+<div>
+<div class="legal-name">{{.legal_name}}</div>
+{{with .tagline}}<div class="muted">{{.}}</div>{{end}}
+{{with .address}}<div class="address">{{.}}</div>{{end}}
+{{if or .phone .email .website}}<div class="contacts">{{with .phone}}<span>{{.}}</span>{{end}}{{with .email}}<span>{{.}}</span>{{end}}{{with .website}}<span>{{.}}</span>{{end}}</div>{{end}}
+</div></header>{{end}}{{end}}
+{{define "cond"}}{{$c := printf "%v" .}}{{if eq $c "lengkap"}}Lengkap, baik{{else if eq $c "lecet"}}Lecet{{else if eq $c "rusak"}}Rusak{{else if eq $c "hilang"}}Hilang{{else}}{{$c}}{{end}}{{end}}
+{{template "letterhead" .}}
+{{- $ds := printf "%v" .Doc.docstatus -}}
+<div class="head">
+  <div>
+    <h1>Berita acara serah terima alat</h1>
+    <div class="no">Alat keluar {{.Doc.name}}</div>
+    <div class="status">{{if eq $ds "0"}}Draf, alat belum diserahkan{{else if eq $ds "2"}}Batal{{else}}Alat diserahkan{{end}}</div>
+  </div>
+  <div class="box">
+    <div class="k">Tanggal keluar</div>
+    <div class="v">{{date .Doc.out_date "long"}}</div>
+    <div class="k">Kembali {{date .Links.booking.end_date "long"}}</div>
+  </div>
+</div>
+<div class="meta">
+  <div>
+    <div class="k">Penyewa</div>
+    <div><strong>{{with .Doc.customer_name}}{{.}}{{else}}{{.Doc.customer}}{{end}}</strong></div>
+  </div>
+  <div>
+    <table>
+      <tr><td>No. pesanan</td><td>{{.Doc.booking}}</td></tr>
+      <tr><td>Alat</td><td>{{with .Doc.item_title}}{{.}}{{else}}{{.Doc.rental_item}}{{end}}</td></tr>
+      <tr><td>Jumlah</td><td>{{number .Doc.qty}} unit, {{number .Links.booking.days}} hari</td></tr>
+    </table>
+  </div>
+</div>
+{{if .Doc.units}}
+<table class="items">
+  <thead><tr><th>No</th><th>Kode unit</th><th>Nomor seri</th><th>Kondisi</th><th>Catatan</th></tr></thead>
+  <tbody>
+  {{range $row := .Doc.units}}
+  <tr>
+    <td class="no"></td>
+    <td>{{with $row.unit_code}}{{.}}{{else}}{{$row.unit}}{{end}}</td>
+    <td>{{$row.serial_no}}</td>
+    <td class="cond">{{template "cond" $row.condition}}</td>
+    <td>{{$row.notes}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}
+{{if .Doc.notes}}<p class="note"><span class="muted">Catatan:</span> {{.Doc.notes}}</p>{{end}}
+<p class="note muted">Penyewa menerima alat di atas dalam kondisi seperti tertulis, dan mengembalikannya pada tanggal kembali. Telat dan kerusakan dipotong dari deposit sesuai pesanan sewa.</p>
+<div class="sign">
+  <div><div>Yang menyerahkan</div><div class="space"></div><div>{{if .Doc.handed_by}}{{.Doc.handed_by}}{{else}}<span class="muted">Nama dan tanda tangan</span>{{end}}</div></div>
+  <div><div>Penyewa</div><div class="space"></div><div>{{if .Doc.signed_by}}{{.Doc.signed_by}}{{else}}<span class="muted">Nama dan tanda tangan</span>{{end}}</div>
+  {{if .Doc.signature}}<div class="esign muted">Ditandatangani di aplikasi, lampiran {{.Doc.signature}}</div>{{end}}</div>
+</div>

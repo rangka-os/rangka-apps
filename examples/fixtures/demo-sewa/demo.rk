@@ -1,5 +1,7 @@
 # Synthetic demo data for CV Contoh Sewa Kamera, a fictional camera and party-equipment rental. No real people,
-# businesses or brands. Bookings are made by the scenarios (tests/day_one_rental.py), not seeded.
+# businesses or brands. Bookings are made by the scenarios (tests/day_one_rental.py), not seeded. Cameras and sound
+# systems are handed over per unit (track_units, units with codes and serial numbers); the lens, lamps, tent and chairs
+# go out by count.
 uom:
   - {name: UOM-001, uom_name: Unit}
   - {name: UOM-002, uom_name: Set}
@@ -13,6 +15,7 @@ user:
   - {name: USR-001, full_name: Rina Contoh, role: Pemilik}
   - {name: USR-002, full_name: Dimas Contoh, role: Admin sewa}
   - {name: USR-003, full_name: Wulan Contoh, role: Keuangan}
+  - {name: USR-004, full_name: Agus Contoh, role: Staf gudang}
 customer:
   - {name: CUST-0001, customer_name: Budi Contoh Fotografer, city: Yogyakarta, payment_days: 0}
   - {name: CUST-0002, customer_name: Sanggar Contoh Wedding Organizer, city: Sleman, payment_days: 7}
@@ -26,9 +29,14 @@ item:
   - {name: BRG-0005, item_name: Kursi lipat, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: SW-KRS, category: KTG-002}
   - {name: BRG-0006, item_name: Sound system kecil, kind: service, stock_uom: UOM-002, sales_uom: UOM-002, sku: SW-SND, category: KTG-002}
 rental_item:
-  - {name: ALT-0001, item: BRG-0001, units: 2, daily_rate: 250000, deposit_per_unit: 1000000, late_fee_per_day: 150000}
+  - {name: ALT-0001, item: BRG-0001, track_units: true, units: 2, daily_rate: 250000, deposit_per_unit: 1000000, late_fee_per_day: 150000}
   - {name: ALT-0002, item: BRG-0002, units: 1, daily_rate: 150000, deposit_per_unit: 750000, late_fee_per_day: 100000}
   - {name: ALT-0003, item: BRG-0003, units: 3, daily_rate: 100000, deposit_per_unit: 300000, late_fee_per_day: 50000}
   - {name: ALT-0004, item: BRG-0004, units: 4, daily_rate: 400000, deposit_per_unit: 500000, late_fee_per_day: 200000}
   - {name: ALT-0005, item: BRG-0005, units: 100, daily_rate: 5000, deposit_per_unit: 10000, late_fee_per_day: 2500}
-  - {name: ALT-0006, item: BRG-0006, units: 2, daily_rate: 350000, deposit_per_unit: 1000000, late_fee_per_day: 200000}
+  - {name: ALT-0006, item: BRG-0006, track_units: true, units: 2, daily_rate: 350000, deposit_per_unit: 1000000, late_fee_per_day: 200000}
+rental_unit:
+  - {name: UNT-00001, rental_item: ALT-0001, code: KAM-A-01, serial_no: CTH-KA-0001}
+  - {name: UNT-00002, rental_item: ALT-0001, code: KAM-A-02, serial_no: CTH-KA-0002}
+  - {name: UNT-00003, rental_item: ALT-0006, code: SND-01, serial_no: CTH-SN-0101}
+  - {name: UNT-00004, rental_item: ALT-0006, code: SND-02, serial_no: CTH-SN-0102}

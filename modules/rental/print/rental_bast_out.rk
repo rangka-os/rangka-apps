@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# BAST (berita acara serah terima) when equipment goes out: who rents what, which units in what condition, the return
+# date, and two signatures. A5, printed from the browser (contract 0008). The drawn signature is an attachment
+# (contract 0011); the page's CSP allows no image but a QR, so the BAST names it and leaves room for a wet signature
+# until kernel WS6 can print it.
+name: rental_bast_out
+model: rental_checkout
+label: {id: Berita acara serah terima (keluar), en: Handover record (out)}
+paper: A5
+template: rental_bast_out.html
+default: true

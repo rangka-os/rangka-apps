@@ -5,6 +5,8 @@ title: {id: Kasir, en: Cashier}
 label: {id: Rangka Kasir, en: Rangka Cashier}
 summary:
   id: Kasir di browser untuk toko dan kedai, sesi kas per outlet, struk bernomor, tunai dan QRIS, stok dan resep terpotong otomatis.
+category: sales
+icon: shopping-basket-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md) for a shop or an F&B outlet that rings up its sales in Juragan
 # (Jalur B v0: online, no devices). The stock it takes out lives in stok_outlet's modules, so a site with this piece
@@ -20,6 +22,10 @@ modules:
 dashboards: [kasir_ringkas]
 roles: [cashier, head_office]
 home: {model: pos_sale}
+# contract 0030: the cashier lands on the cashier screen; head office opens it from the Kerja group
+work:
+  - {screen: kasir, roles: [cashier], home: true}
+  - {screen: kasir, roles: [head_office]}
 menu:
   - group: {id: Kasir}
     items: [pos_sale, pos_shift, pos_shift_close]

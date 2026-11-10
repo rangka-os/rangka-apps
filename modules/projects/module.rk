@@ -2,5 +2,10 @@
 name: projects
 version: 1.0.0
 title: {id: Proyek, en: Projects}
+summary:
+  id: Proyek dengan penugasan, absensi, biaya, termin tagihan dan untung per proyek.
+  en: Projects with assignments, attendance, costs, milestone billing and profit per project.
+category: operations
+icon: briefcase-line
 requires: {rangka: '>=0.5', contacts: ^1.0, users: ^1.0, workforce: ^1.0}
 optional: {orders: ^1.0, invoicing: ^1.0, procurement: ^1.0, payroll: ^1.0}

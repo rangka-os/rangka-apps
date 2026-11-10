@@ -2,6 +2,11 @@
 name: subscriptions
 version: 1.0.0
 title: {id: Langganan, en: Subscriptions}
+summary:
+  id: Paket langganan, tagihan tiap periode, area layanan dan setoran penagih.
+  en: Subscription plans, bills each period, service areas and collector deposits.
+category: sales
+icon: repeat-line
 # Businesses that bill the same client every period: a digital agency's retainers, an RT/RW net, a reseller of a POS
 # app. Plans with a monthly price; one subscription per client with its own cycle (monthly, 3 months, yearly or N
 # months paid in advance), start date and anchor (every start date, or the 1st with the first period pro-rated);

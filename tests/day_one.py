@@ -108,7 +108,9 @@ class Kernel:
         self.own_site = site_dir is not None   # a caller's throwaway copy: the test plan is added in place
         self.os_dir, self.binary, self.connectors = lib_env()
         self.pgtemp = os.path.join(self.os_dir, "kernel", "scripts", "pgtemp.sh")
-        self.env = dict(os.environ, PGTEMP_STATE=os.path.join(state_dir, "pgtemp.state"))
+        # attachments (contract 0011) go to the throwaway state, never to ./data/files of the checkout
+        self.env = dict(os.environ, PGTEMP_STATE=os.path.join(state_dir, "pgtemp.state"),
+                        RANGKA_FILES_DIR=os.path.join(state_dir, "files"))
         self.proc = None
         self.log = open(os.path.join(state_dir, "serve.log"), "w+")
         self.logpath = self.log.name
@@ -181,7 +183,7 @@ class Kernel:
         web = os.path.join(self.os_dir, "web")    # the app's screens, for a --keep demo in a browser
         self.proc = subprocess.Popen([self.binary, "serve"] + self.args() + (["--org", first] if first else []) + (["--web", web] if os.path.isdir(web) else [])
                                      + ["--dev-open", "--addr", f"127.0.0.1:{self.port}"],
-                                     stdout=self.log, stderr=subprocess.STDOUT)
+                                     stdout=self.log, stderr=subprocess.STDOUT, env=self.env)
         for _ in range(100):
             if self.proc.poll() is not None:
                 self.log.seek(0)
