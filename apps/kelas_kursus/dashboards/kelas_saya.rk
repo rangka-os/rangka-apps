@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: kelas_saya
+label: {id: Kelas saya, en: My classes}
+description: {id: 'Untuk pengajar: kelas yang jadwalnya hari ini, peserta, dan absen pertemuan yang belum dicek'}
+default_period: 30
+cache: 1m
+# A teacher sees only their own batches, meetings and students (row scope of role instructor: field instructor = the
+# member's user record) and no money (enrollment fees are hidden from the role, contract 0027). Today's weekday comes
+# from the days since a Monday (2024-01-01): CEL has no weekday function.
+roles: [instructor]
+widgets:
+  - name: classes_today
+    type: list
+    label: {id: Kelas hari ini (menurut jadwal mingguan)}
+    model: course_batch
+    filter: "start_date <= today() && (end_date == '' || end_date >= today()) && class_days.contains(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][days_between('2024-01-01', today()) % 7])"
+    sort: batch_name
+    limit: 20
+    columns: [batch_name, program, delivery, location, seats_taken]
+    span: 12
+  - {name: sessions_today, type: number, label: {id: Pertemuan dibuka hari ini}, model: course_session, filter: session_date == today(), span: 4}
+  - {name: attendance_open, type: number, label: {id: Absen belum dicek}, model: course_session, filter: "session_date <= today() && !attendance_taken", good_when: down, span: 4}
+  - {name: my_students, type: number, label: {id: Peserta aktif}, model: enrollment, filter: "status == 'registered' || status == 'active'", span: 4}
+  - name: attendance_list
+    type: list
+    label: {id: Pertemuan yang absennya belum dicek}
+    model: course_session
+    filter: "session_date <= today() && !attendance_taken"
+    sort: session_date
+    limit: 20
+    columns: [batch, session_no, session_date, topic, present_count, absent_count]
+    span: 12
+  - name: students
+    type: list
+    label: {id: Peserta saya}
+    model: enrollment
+    filter: "status == 'registered' || status == 'active'"
+    sort: batch
+    limit: 50
+    columns: [student, batch, status]
+    span: 12

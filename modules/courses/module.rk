@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: courses
-version: 1.0.0
+version: 1.1.0
 title: {id: Kursus dan pelatihan, en: Courses and training}
 summary:
   id: Program kursus, angkatan, peserta, pendaftaran, jadwal pertemuan dan tagihannya.

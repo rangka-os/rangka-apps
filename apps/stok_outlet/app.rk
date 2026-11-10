@@ -17,7 +17,9 @@ modules:
   catalogue: ^1.0
   outlets: ^1.0
   stock: ^1.0
-dashboards: [stok_ringkas]
+# the outlet's kitchen tickets on outlet_hari_ini, when the dapur piece is installed
+optional: {kitchen: ^1.0}
+dashboards: [stok_ringkas, outlet_hari_ini]
 roles: [head_office, outlet_staff]
 home: {dashboard: stok_ringkas}
 menu:
