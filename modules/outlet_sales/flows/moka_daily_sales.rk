@@ -2,8 +2,8 @@
 # Every hour at :15 (scheduler.timezone), and from the flow list: per outlet with Moka, the oldest past day that has
 # staged Moka lines becomes one DRAFT outlet_sales (source moka), and its lines are marked posted. A run takes one day
 # per outlet, so a backlog catches up one day per outlet per run. Today is never taken (Moka still sells).
-# A day with an unmapped line waits until head office maps it (the whole day goes in together, so the record is right
-# the first time). A day that already has a live Moka record (an export imported earlier, or an API record of lines
+# A day with an unmapped line waits until head office maps it (its lines are day_held; the whole day goes in together,
+# so the record is right the first time); later days of the outlet go on. A day that already has a live Moka record (an export imported earlier, or an API record of lines
 # that came in late) gets legacy_key_overlap, and rule legacy_key_reviewed holds the submit until head office has
 # removed what is counted twice. key_version 3 marks a record from the API, so an export imported for the same day
 # later is flagged the same way by flow moka_legacy_key_overlap.
@@ -20,7 +20,7 @@ steps:
     as: o
     do:
       - find_all: moka_sale_line
-        where: "outlet == o.name && status == 'staged' && date < today()"
+        where: "outlet == o.name && status == 'staged' && !day_held && date < today()"
         sort: date
         limit: 1
         as: first

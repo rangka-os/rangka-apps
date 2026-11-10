@@ -50,6 +50,7 @@ def scenario_moka_api(api):
     today = kernel_today()
     d1 = (today - datetime.timedelta(days=1)).isoformat()
     d2 = (today - datetime.timedelta(days=2)).isoformat()
+    d3 = (today - datetime.timedelta(days=3)).isoformat()
     st, resp = api.patch("outlet", BRAGA, {"moka_outlet_id": "70002"})
     check("Braga gets its Moka outlet id", st == 200, (st, resp))
 
@@ -93,6 +94,15 @@ def scenario_moka_api(api):
     # a sale of today and one two days ago
     run(api, "moka_transaction_staged", event(91000005, today.isoformat(), [line("Tahu goreng pedas", "TH-PDS", 1, 18000)]))
     run(api, "moka_transaction_staged", event(91000006, d2, [line("Tahu goreng pedas", "TH-PDS", 3, 18000)]))
+    # three days ago: one known item and one unknown (no variant or refund keys in the checkout: they are optional)
+    ev8 = event(91000008, d3, [line("Tahu goreng original", "TH-ORI", 1, 15000), line("Kerupuk", "MK-KRP", 2, 5000)])
+    for c in ev8["checkouts"]:
+        c.pop("item_variant_name"), c.pop("refunded_quantity"), c.pop("discount_amount")
+    st, out = run(api, "moka_transaction_staged", ev8)
+    tx8 = api.find("moka_transaction", "transaction_id == '91000008'")
+    l8 = api.find("moka_sale_line", f"transaction == '{tx8[0]['name']}'") if tx8 else []
+    check("checkout without variant, refund and discount keys: recorded, the day held by its unknown item",
+          st == 200 and sorted((r["status"], r["day_held"]) for r in l8) == [("staged", True), ("unmapped", False)], (st, out, l8))
 
     # people: head office cannot type a Moka transaction or change a staged line
     st, resp = hq.create("moka_transaction", {"transaction_id": "x1"})
@@ -101,11 +111,20 @@ def scenario_moka_api(api):
         st, resp = hq.patch("moka_sale_line", rows[0]["name"], {"item": ""})
         check("a staged line keeps its item (rule staged_has_outlet_and_item)", st == 422 and "staged_has_outlet_and_item" in str(resp), (st, resp))
 
-    # the recap: the oldest past day per outlet first (d2), today never
+    # the recap: the oldest past day per outlet that is not held (d3 waits for its mapping, so d2), today never
     st, out = run(api, "moka_daily_sales")
     check("recap runs", st == 200, (st, out))
+    eq("recap: the held day three days ago is not taken", len(api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{d3}' && key_version == 3")), 0)
     s2 = api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{d2}' && source == 'moka' && key_version == 3")
     check("recap: two days ago becomes one draft for Braga, net Rp 54.000", len(s2) == 1 and s2[0]["docstatus"] == 0 and s2[0]["net_total"] == 54000, s2)
+    um8 = [r for r in l8 if r["status"] == "unmapped"]
+    if um8:
+        st, resp = hq.patch("moka_sale_line", um8[0]["name"], {"item": ORI})
+        check("head office maps the day's last unknown item: the day is free", st == 200 and not any(
+            r["day_held"] for r in api.find("moka_sale_line", f"transaction == '{tx8[0]['name']}'")), (st, resp))
+        run(api, "moka_daily_sales")
+        s3 = api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{d3}' && key_version == 3")
+        check("recap: three days ago after the mapping, net Rp 25.000", len(s3) == 1 and s3[0]["net_total"] == 25000, s3)
     eq("recap: today is not taken", len(api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{today.isoformat()}' && source == 'moka' && key_version == 3")), 0)
 
     # yesterday waits for the unmapped line; head office maps it

@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # Head office picked the outlet and the item of an unmapped Moka line: it becomes staged and goes into the next daily
-# recap (flow moka_daily_sales).
+# recap (flow moka_daily_sales); when it was the day's last unmapped line, the day's lines are no longer held.
 name: moka_line_mapped
 label: {id: Baris Moka yang sudah dipetakan siap direkap}
 on: moka_sale_line.updated
@@ -9,6 +9,22 @@ steps:
   - find: moka_sale_line
     where: name == event.name
     as: rec
+  # another unmapped line of the same outlet and day keeps the day held
+  - find: moka_sale_line
+    where: "outlet == event.outlet && date == event.date && status == 'unmapped' && name != event.name"
+    as: still
   - update: rec
     set:
       status: "'staged'"
+      day_held: still != null
+  # it was the day's last unmapped line: the day is free for the recap
+  - find_all: moka_sale_line
+    if: still == null
+    where: "outlet == event.outlet && date == event.date && day_held"
+    as: freed
+  - for_each: freed
+    if: still == null
+    as: f
+    do:
+      - update: f
+        set: {day_held: "false"}
