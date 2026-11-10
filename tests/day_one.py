@@ -5358,6 +5358,7 @@ import day_one_courses  # noqa: E402
 import day_one_subscriptions  # noqa: E402
 import day_one_pos  # noqa: E402
 import day_one_doku  # noqa: E402
+import day_one_kitchen  # noqa: E402
 import day_one_attendance  # noqa: E402
 import day_one_staff  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
@@ -5370,6 +5371,7 @@ day_one_courses.bind(sys.modules[__name__])
 day_one_subscriptions.bind(sys.modules[__name__])
 day_one_pos.bind(sys.modules[__name__])      # also registers demo-kasir
 day_one_doku.bind(sys.modules[__name__])
+day_one_kitchen.bind(sys.modules[__name__])
 day_one_attendance.bind(sys.modules[__name__])
 day_one_staff.bind(sys.modules[__name__])
 
@@ -5387,7 +5389,7 @@ SCENARIOS = {
     "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],
     "demo-kursus": day_one_courses.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-langganan": day_one_subscriptions.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
-    "demo-kasir": day_one_pos.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
+    "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
 for _site in ("demo-jasa", "demo-fnb"):
     SCENARIOS[_site] += day_one_doku.SCENARIOS
@@ -5441,6 +5443,7 @@ def main():
         day_one_rental.setup_demo_sewa(api, k)
     if a.site == "demo-kasir":
         day_one_pos.setup_demo_kasir(api, k)
+        day_one_kitchen.setup(api, k)
         day_one_staff.setup_kasir(api, k)
     for sc in SCENARIOS[a.site]:
         if a.only and a.only not in sc.__name__:

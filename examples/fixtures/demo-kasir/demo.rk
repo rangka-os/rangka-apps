@@ -12,20 +12,24 @@ outlet:
   - {name: OUT-02, outlet_name: Toko Contoh Dago, code: DGO, city: Bandung, address: Jl. Contoh Dago No. 9, sales_source: kasir, active: true}
   - {name: OUT-03, outlet_name: Kedai Contoh Riau, code: RIU, city: Bandung, address: Jl. Contoh Riau No. 3, sales_source: kasir, active: true}
   - {name: OUT-04, outlet_name: Toko Contoh Cimahi, code: CMH, city: Cimahi, address: Jl. Contoh Cimahi No. 4, sales_source: form, active: true}
+item_category:
+  - {name: KTG-001, category_name: Minuman kopi}
+  - {name: KTG-002, category_name: Makanan}
+  - {name: KTG-003, category_name: Barang toko}
 item:
   # retail goods, sold per piece or per dus / pak
-  - {name: BRG-0001, item_name: Air mineral 600 ml, kind: good, stock_uom: UOM-001, sku: AIR-600, barcode: '8990000000011', rate: 4000, standard_cost: 2500}
-  - {name: BRG-0002, item_name: Mi instan goreng, kind: good, stock_uom: UOM-001, sku: MI-GRG, barcode: '8990000000028', rate: 3500, standard_cost: 2600}
-  - {name: BRG-0003, item_name: Gula pasir 1 kg, kind: good, stock_uom: UOM-001, sku: GULA-1K, rate: 18000, standard_cost: 15000}
+  - {name: BRG-0001, category: KTG-003, item_name: Air mineral 600 ml, kind: good, stock_uom: UOM-001, sku: AIR-600, barcode: '8990000000011', rate: 4000, standard_cost: 2500}
+  - {name: BRG-0002, category: KTG-003, item_name: Mi instan goreng, kind: good, stock_uom: UOM-001, sku: MI-GRG, barcode: '8990000000028', rate: 3500, standard_cost: 2600}
+  - {name: BRG-0003, category: KTG-003, item_name: Gula pasir 1 kg, kind: good, stock_uom: UOM-001, sku: GULA-1K, rate: 18000, standard_cost: 15000}
   - {name: BRG-0004, item_name: Pulsa listrik (jasa bayar), kind: service, stock_uom: UOM-001, rate: 3000}
   # coffee kiosk: materials and menu items with a recipe
   - {name: BRG-0011, item_name: Kopi bubuk, kind: material, stock_uom: UOM-003, sku: MAT-KOPI, standard_cost: 120000}
   - {name: BRG-0012, item_name: Susu segar, kind: material, stock_uom: UOM-004, sku: MAT-SUSU, standard_cost: 20000}
   - {name: BRG-0013, item_name: Gula aren cair, kind: material, stock_uom: UOM-004, sku: MAT-AREN, standard_cost: 40000}
   - {name: BRG-0014, item_name: Gelas plastik, kind: material, stock_uom: UOM-001, sku: MAT-GELAS, standard_cost: 600}
-  - {name: BRG-0015, item_name: Roti bakar cokelat, kind: good, stock_uom: UOM-001, sku: RTI-CKL, rate: 15000, standard_cost: 6000}
-  - {name: BRG-0021, item_name: Kopi susu aren, kind: product, stock_uom: UOM-005, sales_uom: UOM-005, sku: KSA, rate: 22000}
-  - {name: BRG-0022, item_name: Kopi hitam, kind: product, stock_uom: UOM-005, sales_uom: UOM-005, sku: KHT, rate: 15000}
+  - {name: BRG-0015, category: KTG-002, item_name: Roti bakar cokelat, kind: good, stock_uom: UOM-001, sku: RTI-CKL, rate: 15000, standard_cost: 6000}
+  - {name: BRG-0021, category: KTG-001, item_name: Kopi susu aren, kind: product, stock_uom: UOM-005, sales_uom: UOM-005, sku: KSA, rate: 22000}
+  - {name: BRG-0022, category: KTG-001, item_name: Kopi hitam, kind: product, stock_uom: UOM-005, sales_uom: UOM-005, sku: KHT, rate: 15000}
 uom_conversion:
   - {name: KONV-0001, item: BRG-0001, uom: UOM-002, factor: 24, rate: 84000}
   - {name: KONV-0002, item: BRG-0002, uom: UOM-002, factor: 40}
@@ -47,7 +51,17 @@ recipe:
     lines:
       - {material: BRG-0011, qty: 0.015}
       - {material: BRG-0014, qty: 1}
+# kitchen tickets (module kitchen): Kedai Riau has a bar for the coffees and a kitchen for the food; the shops have no
+# station, so their receipts make no ticket
+kitchen_station:
+  - {name: STD-001, station_name: Bar, outlet: OUT-03, active: true}
+  - {name: STD-002, station_name: Dapur, outlet: OUT-03, active: true}
+kitchen_route:
+  - {name: RTD-0001, station: STD-001, category: KTG-001}
+  - {name: RTD-0002, station: STD-002, category: KTG-002}
 user:
   - {name: USR-001, full_name: Rina Contoh, role: head_office, email: rina@contohwarung.test}
   - {name: USR-002, full_name: Dika Contoh, role: cashier, email: dika.dago@contohwarung.test}
   - {name: USR-003, full_name: Sari Contoh, role: cashier, email: sari.riau@contohwarung.test}
+  - {name: USR-004, full_name: Tono Contoh, role: kitchen, email: tono.riau@contohwarung.test}
+  - {name: USR-005, full_name: Wati Contoh, role: outlet_staff, email: wati.riau@contohwarung.test}
