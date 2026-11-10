@@ -41,7 +41,9 @@ def home(meta):
 
 
 def setup_kasir(api, k):
-    """Wati, outlet staff at Kedai Riau (after day_one_pos.setup_demo_kasir)."""
+    """Wati, outlet staff at Kedai Riau (after day_one_pos.setup_demo_kasir); day_one_kitchen may have added her."""
+    if CTX.get("wati"):
+        return
     pw = secrets.token_urlsafe(18)   # throwaway password of a throwaway database
     email = "wati.riau@contohwarung.test"
     code, out = k.user_add(email, "outlet_staff", CTX.get("org") or "warung_contoh", "Wati Contoh", outlets="OUT-03", password=pw)
@@ -99,6 +101,12 @@ def scenario_staff_outlet_kasir(api):
     if wh:
         allt = api.find("stock_transfer", "docstatus == 1 && state != 'received'")
         eq("head office (no outlets): transfers to receive at every outlet", num(wh["to_receive"]), len(allt))
+    if CTX.get("tono"):   # the dapur piece on demo-kasir: Wati reads Riau's kitchen board, Tono lands on the kitchen screen
+        wd = dashboard(wati, "dapur_hari_ini")
+        open_riu = api.find("kitchen_ticket", f"outlet == 'OUT-03' && date == '{today}' && status == 'new'")
+        eq("Wati: kitchen tickets waiting at Riau (dapur_hari_ini)", num(wd.get("waiting", {})), len(open_riu))
+        check("Wati's open ticket list: Riau only", {r.get("outlet") for r in rows(wd.get("open_list"))} <= {"OUT-03"}, rows(wd.get("open_list")))
+        lands(CTX["tono"], "Tono (kitchen)", "#/w/dapur")
     # the goods arrive: Wati receives Riau's, head office Dago's (the books count goods in transit at no outlet)
     for to, item, qty, cl in (("OUT-03", "BRG-0001", 6, wati), ("OUT-02", "BRG-0015", 2, hq)):
         if not sent.get(to):

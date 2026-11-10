@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: dapur_hari_ini
+label: {id: Dapur hari ini, en: Kitchen today}
+description: {id: 'Tiket dapur hari ini per status dan stasiun, dan yang paling lama menunggu'}
+default_period: 1
+cache: 1m
+# Kitchen staff, cashiers and outlet staff see only their outlets' tickets (row scope by outlet); head office sees
+# every outlet. No money: a ticket carries no price, and no column links the receipt (its title is its total).
+# Outlet staff land on outlet_hari_ini (stok_outlet comes before dapur in the site's apps); this one is in their menu.
+roles: [kitchen, cashier, outlet_staff, head_office]
+widgets:
+  - {name: waiting, type: number, label: {id: Belum dimasak}, model: kitchen_ticket, filter: "status == 'new' && date == today()", good_when: down, span: 3}
+  - {name: cooking, type: number, label: {id: Sedang dimasak}, model: kitchen_ticket, filter: "status == 'cooking' && date == today()", span: 3}
+  - {name: ready, type: number, label: {id: Siap diambil}, model: kitchen_ticket, filter: "status == 'ready' && date == today()", good_when: down, span: 3}
+  - {name: done, type: number, label: {id: Sudah diambil}, model: kitchen_ticket, filter: "status == 'picked_up' && date == today()", span: 3}
+  - name: open_list
+    type: list
+    label: {id: Tiket terbuka (paling lama dulu)}
+    model: kitchen_ticket
+    filter: "status != 'picked_up' && status != 'void' && date == today()"
+    sort: sent_at
+    limit: 30
+    columns: [name, heading, station, status, sent_at, item_count]
+    span: 12
+  - {name: by_station, type: chart, chart: bar, label: {id: Porsi per stasiun hari ini}, model: kitchen_ticket, group_by: station, aggregate: sum, field: item_count, filter: "status != 'void' && date == today()", sort: -value, span: 6}
+  - {name: voided, type: number, label: {id: Tiket batal hari ini}, model: kitchen_ticket, filter: "status == 'void' && date == today()", good_when: down, span: 6}

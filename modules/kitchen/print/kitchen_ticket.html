@@ -1,0 +1,29 @@
+{{define "style"}}
+/* Tiket dapur: dibaca dari jarak satu lengan, jadi huruf besar dan tanpa harga. Hitam putih untuk thermal. */
+body { font-size: 10pt; }
+.c { text-align: center; }
+.station { font-size: 1.6em; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.heading { font-size: 1.5em; font-weight: 700; }
+.rule { border-top: 1px dashed #1C1917; margin: 2mm 0; }
+.row { display: flex; justify-content: space-between; gap: 2mm; }
+.line { display: flex; gap: 3mm; margin: 1.5mm 0; font-size: 1.25em; font-weight: 700; }
+.line .qty { min-width: 9mm; text-align: right; }
+.note { font-size: .85em; font-weight: 400; font-style: italic; }
+.flag { font-weight: 700; border: 1px solid #1C1917; padding: 1mm; text-align: center; margin: 1mm 0; }
+.muted { color: #57534E; }
+{{end}}
+{{- $st := printf "%v" .Doc.status -}}
+<div class="c station">{{with .Links.station}}{{.station_name}}{{else}}{{.Doc.station}}{{end}}</div>
+<div class="c muted">{{.Links.outlet.outlet_name}}</div>
+<div class="rule"></div>
+<div class="c heading">{{.Doc.heading}}</div>
+<div class="row"><span>Struk</span><span>{{.Doc.sale}}</span></div>
+<div class="row"><span>Masuk</span><span>{{date .Doc.date}}{{with .Doc.sent_at}} {{slice (printf "%v" .) 11 16}}{{end}}</span></div>
+{{with .Doc.revision_of}}<div class="flag">REVISI dari {{.}}</div>{{end}}
+{{if eq $st "void"}}<div class="flag">BATAL, JANGAN DIMASAK</div>{{end}}
+<div class="rule"></div>
+{{range $row := .Doc.items}}
+<div class="line"><span class="qty">{{number $row.qty}}x</span><span>{{if $row.description}}{{$row.description}}{{else}}{{$row.item}}{{end}}{{with $row.note}}<div class="note">{{.}}</div>{{end}}</span></div>
+{{end}}
+<div class="rule"></div>
+<div class="c muted">{{.Doc.name}}</div>

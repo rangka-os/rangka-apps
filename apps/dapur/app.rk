@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: dapur
+version: 1.0.0
+title: {id: Tiket dapur, en: Kitchen tickets}
+label: {id: Rangka Tiket Dapur, en: Rangka Kitchen Tickets}
+summary:
+  id: Pesanan dari kasir langsung jadi tiket per stasiun dapur (bar, dapur panas), dengan status dimasak, siap dan diambil, dan cetak tiket 80 mm.
+category: sales
+icon: restaurant-line
+rangka: '>=0.5'
+# A piece (riset/desain/11-susunan-kepingan.md) on top of kasir for an F&B outlet: stations per outlet, item categories
+# routed to them, a ticket per station for each paid receipt. A shop on the same site sets no station and gets no
+# ticket. Kitchen staff (role kitchen, scoped to their outlets) land on the kitchen screen (contract 0030 queue).
+modules:
+  users: ^1.2
+  catalogue: ^1.3
+  outlets: ^1.2
+  pos: ^1.0
+  kitchen: ^1.0
+dashboards: [dapur_hari_ini]
+roles: [kitchen, cashier, head_office]
+home: {dashboard: dapur_hari_ini}
+work:
+  - {screen: dapur, roles: [kitchen], home: true}
+  - {screen: dapur, roles: [cashier, head_office]}
+menu:
+  - group: {id: Dapur}
+    items: [kitchen_ticket]
+  - group: {id: Pengaturan dapur}
+    items: [kitchen_station, kitchen_route, item_category]
+onboarding:
+  - ask: {id: 'Outlet mana yang punya dapur atau bar, dan apa saja stasiunnya?'}
+    sets: seed.kitchen_station
+  - ask: {id: 'Kategori menu mana dimasak di stasiun mana?'}
+    sets: seed.kitchen_route

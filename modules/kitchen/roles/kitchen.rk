@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: kitchen
+label: {id: Dapur}
+description: {id: 'Melihat tiket dapur outlet tempatnya bekerja dan menandai pesanan dimasak dan siap'}
+# Contract 0010 §5: only the tickets and stations of the member's outlets. No money: a ticket carries no price.
+scope: {field: outlet, from: user.outlets}
