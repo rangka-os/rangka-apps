@@ -26,14 +26,17 @@ modules:
   bank_statement: ^1.0
   procurement: ^1.0
   payroll: ^1.0
-dashboards: [jasa_overview, ar_aging, project_margin]
-roles: [sales_manager, finance_manager, purchasing_manager, project_admin]
+dashboards: [jasa_overview, ar_aging, project_margin, absen_saya, rekap_absen]
+# field_worker and site_supervisor (field attendance, A2) have their role files in the projects module.
+roles: [sales_manager, finance_manager, purchasing_manager, project_admin, field_worker, site_supervisor]
 home: {dashboard: jasa_overview}
 menu:
   - group: {id: Penjualan}
     items: [quotation, customer_order, sales_invoice]
   - group: {id: Proyek}
     items: [project, billing_milestone, assignment, timesheet, project_expense, acceptance, project_ledger]
+  - group: {id: Absen lapangan}
+    items: [attendance_log, attendance_close, work_site]
   - group: {id: Tenaga kerja}
     items: [worker]
   - group: {id: Penggajian}

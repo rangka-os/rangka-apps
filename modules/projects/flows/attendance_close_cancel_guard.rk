@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: attendance_close_cancel_guard
+label: {id: Rekap absen yang sudah jadi timesheet tidak bisa dibatalkan}
+# Its recap timesheets carry the days into payroll: delete the drafts or cancel the submitted ones first (a recap used by
+# a submitted payslip cannot be cancelled either, recap_cancel_guard), then cancel the close.
+on: attendance_close.cancelled
+steps:
+  - find: timesheet
+    where: attendance_close == event.name && docstatus != 2
+    as: ts
+  - if: ts != null
+    create: attendance_guard
+    set:
+      reason: "'close_has_recap'"
+      document: ts.name
