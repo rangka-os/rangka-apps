@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One Moka sale as the moka connector's poll delivered it (rangka-connectors moka, trigger transaction_created, one poll
+# per outlet). Written only by flow moka_transaction_staged; transaction_id is unique, so a transaction delivered twice
+# (a repeated poll, two runs racing) rolls the second run back and nothing is counted twice. Its lines are
+# moka_sale_line records, which flow moka_daily_sales turns into one draft outlet_sales per outlet and day.
+name: moka_transaction
+label: {id: Transaksi Moka, en: Moka transaction}
+icon: store
+naming: MKT-{YYYY}-{#####}
+title_field: receipt_no
+permissions:
+  - {role: head_office, read: true, export: true}
+fields:
+  - {name: transaction_id, type: data, label: {id: ID transaksi Moka}, unique: true, read_only: true, in_list: true}
+  - {name: receipt_no, type: data, label: {id: No. struk Moka}, read_only: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, read_only: true, in_list: true}
+  - {name: moka_outlet, type: data, label: {id: Outlet di Moka}, read_only: true}
+  - {name: sold_at, type: datetime, label: {id: Waktu transaksi}, read_only: true}
+  - {name: date, type: date, label: {id: Tanggal}, read_only: true, in_list: true}
+  - {name: payment_type, type: data, label: {id: Cara bayar di Moka}, read_only: true}
+  - {name: total_collected, type: currency, label: {id: Diterima}, read_only: true, in_list: true}
+  - {name: refunded, type: check, label: {id: Ada retur}, read_only: true}
+views:
+  list:
+    columns: [date, outlet, receipt_no, total_collected, transaction_id]
+    filters: [outlet, date]

@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Head office picked the outlet and the item of an unmapped Moka line: it becomes staged and goes into the next daily
+# recap (flow moka_daily_sales).
+name: moka_line_mapped
+label: {id: Baris Moka yang sudah dipetakan siap direkap}
+on: moka_sale_line.updated
+if: event.status == 'unmapped' && event.outlet != '' && event.item != ''
+steps:
+  - find: moka_sale_line
+    where: name == event.name
+    as: rec
+  - update: rec
+    set:
+      status: "'staged'"

@@ -32,7 +32,7 @@ home: {dashboard: ritel_overview}
 # stock but has no menu entry: a shop sells goods as they are.
 menu:
   - group: {id: Penjualan toko}
-    items: [outlet_sales, outlet_takings, pos_refund, outlet_return]
+    items: [outlet_sales, outlet_takings, pos_refund, outlet_return, moka_sale_line, moka_transaction]
   - group: {id: Stok}
     items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
   - group: {id: Pembelian}
