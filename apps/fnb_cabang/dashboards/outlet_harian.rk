@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: outlet_harian
+label: {id: Outlet hari ini, en: Outlet today}
+description: {id: 'Untuk staf outlet: kiriman yang harus diterima, opname, barang terbuang, dan pekerjaan hari ini di outlet kamu'}
+default_period: 1
+cache: 1m
+# Outlet staff see only their outlets (row scope of role outlet_staff: outlet, from_outlet or to_outlet) and no money.
+# "To receive" is a transfer to one of the member's outlets that has left and is not fully received; head office (no
+# outlets) sees every outlet's.
+roles: [outlet_staff, head_office]
+widgets:
+  - {name: to_receive, type: number, label: {id: Kiriman belum diterima}, model: stock_transfer, filter: "docstatus == 1 && state != 'received' && (user.outlets.size() == 0 || to_outlet in user.outlets)", good_when: down, span: 3}
+  - {name: counts_today, type: number, label: {id: Opname hari ini}, model: stock_count, filter: count_date == today(), span: 3}
+  - {name: counts_draft, type: number, label: {id: Opname belum diajukan}, model: stock_count, filter: docstatus == 0, good_when: down, span: 3}
+  - {name: waste_today, type: number, label: {id: Catatan terbuang hari ini}, model: stock_adjustment, filter: "adjustment_date == today() && reason == 'waste'", span: 3}
+  - name: receive_list
+    type: list
+    label: {id: Kiriman yang harus diterima}
+    model: stock_transfer
+    filter: "docstatus == 1 && state != 'received' && (user.outlets.size() == 0 || to_outlet in user.outlets)"
+    sort: transfer_date
+    limit: 20
+    columns: [name, transfer_date, from_outlet, to_outlet, state]
+    span: 12
+  - name: waste_list
+    type: list
+    label: {id: 'Terbuang, rusak dan kedaluwarsa hari ini'}
+    model: stock_adjustment
+    filter: "adjustment_date == today() && (reason == 'waste' || reason == 'damage' || reason == 'expired')"
+    sort: -name
+    limit: 20
+    columns: [name, outlet, reason, docstatus]
+    span: 12
+  # Jalur A: the outlet's daily sales form of today and the drafts not yet submitted
+  - {name: sales_today, type: number, label: {id: Penjualan harian hari ini diajukan}, model: outlet_sales, filter: "date == today() && docstatus == 1", span: 6}
+  - {name: sales_draft, type: number, label: {id: Penjualan harian belum diajukan}, model: outlet_sales, filter: docstatus == 0, good_when: down, span: 6}

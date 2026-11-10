@@ -5358,6 +5358,7 @@ import day_one_courses  # noqa: E402
 import day_one_subscriptions  # noqa: E402
 import day_one_pos  # noqa: E402
 import day_one_attendance  # noqa: E402
+import day_one_staff  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5368,6 +5369,7 @@ day_one_courses.bind(sys.modules[__name__])
 day_one_subscriptions.bind(sys.modules[__name__])
 day_one_pos.bind(sys.modules[__name__])      # also registers demo-kasir
 day_one_attendance.bind(sys.modules[__name__])
+day_one_staff.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5385,6 +5387,10 @@ SCENARIOS = {
     "demo-langganan": day_one_subscriptions.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-kasir": day_one_pos.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
+# staff dashboards (A5): after the site's own scenarios, before the permission matrix
+for _site, _extra in day_one_staff.SCENARIOS.items():
+    _i = SCENARIOS[_site].index(scenario_permissions)
+    SCENARIOS[_site][_i:_i] = _extra
 # accounting last: it checks the books against every document the scenarios above submitted
 for _site in ("demo-jasa", "demo-fnb", "demo-ritel", "demo-grosir", "demo-produksi", "demo-manpower", "demo-sewa"):
     SCENARIOS[_site].append(day_one_accounting.scenario_accounting)
@@ -5431,6 +5437,7 @@ def main():
         day_one_rental.setup_demo_sewa(api, k)
     if a.site == "demo-kasir":
         day_one_pos.setup_demo_kasir(api, k)
+        day_one_staff.setup_kasir(api, k)
     for sc in SCENARIOS[a.site]:
         if a.only and a.only not in sc.__name__:
             continue

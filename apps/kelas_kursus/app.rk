@@ -17,7 +17,7 @@ modules:
   catalogue: ^1.0
   invoicing: ^1.0
   courses: ^1.0
-dashboards: [kursus_ringkas]
+dashboards: [kursus_ringkas, kelas_saya]
 roles: [course_admin, instructor, finance_manager]
 home: {dashboard: kursus_ringkas}
 menu:
