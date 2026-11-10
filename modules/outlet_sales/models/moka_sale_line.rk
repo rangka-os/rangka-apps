@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One item of one Moka transaction, waiting to become a line of the outlet's daily sales (flow moka_daily_sales). A flat
+# record, not a child table, so the daily flow can read every line of an outlet and day with one find_all.
+# status: staged (ready), unmapped (no outlet or no item matched: head office picks them here and the line becomes
+# staged, flow moka_line_mapped; head office may still correct them while staged), posted (in outlet_sales `sales`). A refunded quantity is its own line, as in the
+# export import: qty < 0, gross 0, refund = the refunded share of the line's net.
+name: moka_sale_line
+label: {id: Baris penjualan Moka, en: Moka sales line}
+icon: store
+naming: MKL-{YYYY}-{######}
+title_field: description
+permissions:
+  # head office picks outlet and item until the line is in a daily sales record (the mapping flow writes as them, so the
+  # grant holds for staged too); a posted line is history
+  - {role: head_office, read: true, write: true, export: true, if: status != 'posted'}
+  - {role: head_office, read: true, export: true}
+fields:
+  - {name: transaction, type: link, to: moka_transaction, label: {id: Transaksi Moka}, read_only: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, in_list: true}
+  - {name: date, type: date, label: {id: Tanggal}, read_only: true, in_list: true}
+  - {name: item, type: link, to: item, label: {id: Barang}, in_list: true}
+  - {name: description, type: data, label: {id: Nama di Moka}, read_only: true}
+  - {name: sku, type: data, label: {id: SKU di Moka}, read_only: true}
+  - {name: qty, type: float, label: {id: Qty}, read_only: true, in_list: true}
+  - {name: gross, type: currency, label: {id: Penjualan kotor}, read_only: true}
+  - {name: discount, type: currency, label: {id: Diskon}, read_only: true}
+  - {name: refund, type: currency, label: {id: Retur}, read_only: true}
+  - name: status
+    type: select
+    label: {id: Status}
+    read_only: true
+    in_list: true
+    chip: true
+    default: "'staged'"
+    options:
+      - {value: staged, label: {id: Siap direkap}}
+      - {value: unmapped, label: {id: Belum dipetakan}}
+      - {value: posted, label: {id: Sudah direkap}}
+  - {name: sales, type: link, to: outlet_sales, label: {id: Penjualan harian}, read_only: true, in_list: true}
+rules:
+  - name: staged_has_outlet_and_item
+    on: save
+    check: status != 'staged' || (outlet != '' && item != '')
+    message: {id: 'Baris yang siap direkap harus punya outlet dan barang'}
+  # the recap makes a source moka record, which only an outlet with Moka takes (rule source_matches_outlet)
+  - name: staged_outlet_uses_moka
+    on: save
+    check: status != 'staged' || outlet == '' || outlet.moka_name != ''
+    message: {id: 'Pilih outlet yang memakai Moka (Nama outlet di Moka terisi)'}
+views:
+  list:
+    columns: [date, outlet, description, qty, status, item, sales]
+    filters: [status, outlet, date]

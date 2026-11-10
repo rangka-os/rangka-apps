@@ -5357,6 +5357,7 @@ import day_one_rental  # noqa: E402
 import day_one_courses  # noqa: E402
 import day_one_subscriptions  # noqa: E402
 import day_one_pos  # noqa: E402
+import day_one_moka  # noqa: E402
 import day_one_doku  # noqa: E402
 import day_one_kitchen  # noqa: E402
 import day_one_attendance  # noqa: E402
@@ -5370,6 +5371,7 @@ day_one_rental.bind(sys.modules[__name__])   # also registers demo-sewa (orgs, m
 day_one_courses.bind(sys.modules[__name__])
 day_one_subscriptions.bind(sys.modules[__name__])
 day_one_pos.bind(sys.modules[__name__])      # also registers demo-kasir
+day_one_moka.bind(sys.modules[__name__])
 day_one_doku.bind(sys.modules[__name__])
 day_one_kitchen.bind(sys.modules[__name__])
 day_one_attendance.bind(sys.modules[__name__])
@@ -5391,6 +5393,7 @@ SCENARIOS = {
     "demo-langganan": day_one_subscriptions.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
+SCENARIOS["demo-fnb"] += day_one_moka.SCENARIOS
 for _site in ("demo-jasa", "demo-fnb"):
     SCENARIOS[_site] += day_one_doku.SCENARIOS
 # staff dashboards (A5): after the site's own scenarios, before the permission matrix
