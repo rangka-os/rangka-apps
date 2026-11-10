@@ -2,6 +2,11 @@
 name: courses
 version: 1.0.0
 title: {id: Kursus dan pelatihan, en: Courses and training}
+summary:
+  id: Program kursus, angkatan, peserta, pendaftaran, jadwal pertemuan dan tagihannya.
+  en: Course programmes, cohorts, students, enrolments, sessions and their bills.
+category: operations
+icon: graduation-cap-line
 # Course schools, tutoring centres, online courses and company training: programs, batches (angkatan) with a quota, a
 # teacher and a weekly schedule, students (a person or an employee of a client company), enrollments, sessions with
 # attendance, and charges (paid in full, in instalments or monthly) that become draft sales invoices. Research and plan:

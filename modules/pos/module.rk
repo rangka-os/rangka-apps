@@ -2,6 +2,11 @@
 name: pos
 version: 1.0.0
 title: {id: Kasir, en: Point of sale}
+summary:
+  id: Kasir di browser dengan sesi kas, transaksi dan tutup sesi per outlet.
+  en: A browser till with cash sessions, sales and session close per outlet.
+category: sales
+icon: shopping-basket-line
 # The cashier of a shop or an F&B outlet, online (Jalur B v0; devices and offline come with rangka-edge, contracts
 # 0003 and 0006). A cashier opens a shift (pos_shift) at an outlet with the float in the drawer, rings up sales
 # (pos_sale: items or menu, qty in any unit of the item, line and receipt discounts, paid in cash with change, QRIS,

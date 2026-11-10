@@ -5,6 +5,8 @@ title: {id: Pembelian ke pemasok, en: Purchasing}
 label: {id: Rangka Pembelian, en: Rangka Purchasing}
 summary:
   id: Permintaan dan pesanan pembelian, barang datang (menambah stok), dan tagihan pemasok.
+category: purchasing
+icon: shopping-bag-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md). With stok_outlet, goods received add to stock; without it, it records
 # purchases and supplier bills only (stock is optional for procurement).

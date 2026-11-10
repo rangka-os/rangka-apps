@@ -56,6 +56,17 @@ jobs:
         env: { PYTHON: python }
         run: scripts/validate.sh
 
+      # Skills for AI agents (rangka-os contract 0035): apps/<app>/skills and modules/<m>/skills. Skipped by a kernel
+      # that has no `rangka skills` yet.
+      - name: Skills check
+        working-directory: rangka-apps
+        run: |
+          if ../rangka-os/kernel/bin/rangka 2>&1 | grep -q 'rangka skills'; then
+            ../rangka-os/kernel/bin/rangka skills check apps modules
+          else
+            echo "this rangka-os has no rangka skills command yet; skipped"
+          fi
+
       # day_one.py exits 1 on any failed check (gaps are genuine kernel limitations and do not fail the job).
       - name: day_one kopi-senja
         working-directory: rangka-apps
@@ -81,3 +92,6 @@ jobs:
       - name: day_one demo-langganan
         working-directory: rangka-apps
         run: python tests/day_one.py --site demo-langganan
+      - name: day_one demo-sewa
+        working-directory: rangka-apps
+        run: python tests/day_one.py --site demo-sewa

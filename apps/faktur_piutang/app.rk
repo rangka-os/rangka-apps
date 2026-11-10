@@ -5,6 +5,8 @@ title: {id: Faktur dan piutang, en: Invoices and receivables}
 label: {id: Rangka Faktur & Piutang, en: Rangka Invoices & Receivables}
 summary:
   id: Faktur ke pelanggan, pembayaran masuk, pengingat tagihan, potongan PPh dan umur piutang.
+category: finance
+icon: bill-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md), shared by the service, wholesale and production compositions. payments
 # requires procurement, so its modules come along; their entries live in pembelian_pemasok's menu, not here.

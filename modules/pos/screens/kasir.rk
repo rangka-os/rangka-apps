@@ -18,12 +18,14 @@ counter:
     group_by: category
     price: rate
     barcode: barcode
+    available: {model: stock_balance, item: item, qty: qty, match: {outlet: outlet}}
   document:
     model: pos_sale
     lines: items
     line: {item: item, qty: qty, price: rate, note: note}
     total: grand_total
     change: change_amount
+    summary: [gross_total, discount_total, grand_total]
     set: {date: "today()"}
   payments: {table: payments, method: method, amount: amount, ref: ref, methods: [cash, qris]}
   session:

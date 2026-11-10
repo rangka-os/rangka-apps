@@ -1,0 +1,90 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: alat_hari_ini
+label: {id: Alat hari ini, en: Equipment today}
+description: {id: 'Untuk gudang: alat yang harus disiapkan keluar, yang harus kembali hari ini, yang telat, dan unit yang perlu diperiksa'}
+default_period: 1
+# The warehouse's list for the day, without money: read from rental_schedule (one row per submitted booking, kept by
+# the flows) and rental_unit (where each tracked unit is and its last condition). The queue screen of the plan (kernel
+# WS4) will show the same rows as cards; until then staff open the booking and record the checkout or return.
+roles: [rental_staff, sales_manager, finance_manager, head_office]
+widgets:
+  - name: to_go_out
+    type: number
+    label: {id: Siapkan keluar}
+    model: rental_schedule
+    filter: state == 'booked' && start_date <= today()
+    span: 3
+  - name: due_back
+    type: number
+    label: {id: Harus kembali hari ini}
+    model: rental_schedule
+    filter: state == 'out' && end_date == today()
+    span: 3
+  - name: late
+    type: number
+    label: {id: Telat kembali}
+    model: rental_schedule
+    filter: state == 'out' && end_date < today()
+    good_when: down
+    span: 3
+  - name: units_to_check
+    type: number
+    label: {id: Unit rusak atau hilang}
+    model: rental_unit
+    filter: active && (condition == 'rusak' || condition == 'hilang')
+    good_when: down
+    span: 3
+  - name: to_go_out_list
+    type: list
+    label: {id: Siapkan keluar}
+    model: rental_schedule
+    filter: state == 'booked' && start_date <= today()
+    sort: start_date
+    limit: 30
+    columns: [booking, customer, rental_item, qty, start_date]
+    span: 6
+  - name: due_back_list
+    type: list
+    label: {id: Harus kembali hari ini}
+    model: rental_schedule
+    filter: state == 'out' && end_date == today()
+    sort: rental_item
+    limit: 30
+    columns: [booking, customer, rental_item, qty, out_date]
+    span: 6
+  - name: late_list
+    type: list
+    label: {id: Telat kembali}
+    model: rental_schedule
+    filter: state == 'out' && end_date < today()
+    sort: end_date
+    limit: 30
+    columns: [booking, customer, rental_item, qty, end_date]
+    span: 6
+  - name: done_today
+    type: list
+    label: {id: Sudah keluar atau kembali hari ini}
+    model: rental_schedule
+    filter: (state == 'out' && out_date == today()) || (state == 'returned' && returned_date == today())
+    sort: rental_item
+    limit: 30
+    columns: [booking, customer, rental_item, qty, state]
+    span: 6
+  - name: units_out
+    type: list
+    label: {id: Unit sedang di luar}
+    model: rental_unit
+    filter: state == 'out'
+    sort: code
+    limit: 50
+    columns: [code, rental_item, booking, condition]
+    span: 6
+  - name: units_to_check_list
+    type: list
+    label: {id: Unit perlu diperbaiki atau dicari}
+    model: rental_unit
+    filter: active && (condition == 'rusak' || condition == 'hilang')
+    sort: code
+    limit: 30
+    columns: [code, rental_item, condition, last_return]
+    span: 6

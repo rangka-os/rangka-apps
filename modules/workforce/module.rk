@@ -2,4 +2,9 @@
 name: workforce
 version: 1.0.0
 title: {id: Tenaga kerja, en: Workforce}
+summary:
+  id: Data tenaga kerja yang bisa ditugaskan dan dibayar.
+  en: Workers who can be assigned and paid.
+category: people
+icon: team-line
 requires: {rangka: '>=0.5', users: ^1.0}

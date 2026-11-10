@@ -2,6 +2,11 @@
 name: payments
 version: 1.4.0
 title: {id: Pembayaran, en: Payments}
+summary:
+  id: Catat pembayaran masuk dan keluar, termasuk bukti potong PPh 23.
+  en: Record payments in and out, including PPh 23 withholding slips.
+category: payments
+icon: wallet-3-line
 requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, invoicing: ^1.0, procurement: ^1.0}
 optional: {currency: ^1.0, delivery: ^1.0}
 # Semantics fixed in docs/kernel-hooks.md (section payments).

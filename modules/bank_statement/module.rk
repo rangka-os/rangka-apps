@@ -4,4 +4,9 @@
 name: bank_statement
 version: 1.0.0
 title: {id: Mutasi bank, en: Bank statement}
+summary:
+  id: Impor mutasi rekening bank dan cocokkan uang masuk dengan tagihan.
+  en: Import bank statements and match money in with invoices.
+category: finance
+icon: bank-line
 requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, invoicing: ^1.0, payments: ^1.0}

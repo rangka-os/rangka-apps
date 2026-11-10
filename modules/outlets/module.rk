@@ -2,4 +2,9 @@
 name: outlets
 version: 1.2.0
 title: {id: Outlet, en: Outlets}
+summary:
+  id: Daftar cabang atau lokasi usaha kamu.
+  en: Your branches or business locations.
+category: operations
+icon: map-pin-line
 requires: {rangka: '>=0.5', users: ^1.2}

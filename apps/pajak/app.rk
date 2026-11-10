@@ -5,6 +5,8 @@ title: {id: Pajak, en: Tax}
 label: {id: Rangka Pajak, en: Rangka Tax}
 summary:
   id: Masa pajak dengan unduhan Coretax (faktur PPN keluaran, bukti potong PPh 23) dari faktur dan tagihan yang ada.
+category: tax
+icon: percent-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md) for a PKP business: it reads invoices and supplier bills, so it needs
 # faktur_piutang and pembelian_pemasok (coretax requires invoicing, procurement and payments).
