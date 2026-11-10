@@ -42,6 +42,11 @@ rules:
     on: save
     check: status != 'staged' || (outlet != '' && item != '')
     message: {id: 'Baris yang siap direkap harus punya outlet dan barang'}
+  # the recap makes a source moka record, which only an outlet with Moka takes (rule source_matches_outlet)
+  - name: staged_outlet_uses_moka
+    on: save
+    check: status != 'staged' || outlet == '' || outlet.moka_name != ''
+    message: {id: 'Pilih outlet yang memakai Moka (Nama outlet di Moka terisi)'}
 views:
   list:
     columns: [date, outlet, description, qty, status, item, sales]

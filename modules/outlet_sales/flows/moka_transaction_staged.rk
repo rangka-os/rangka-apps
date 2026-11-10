@@ -45,7 +45,10 @@ steps:
       - find: item
         where: "item_name == c.item_name"
         as: by_item_name
+      # a sale line only for a positive quantity, its discount never above its gross (outlet_sales rules
+      # qty_not_negative and discount_within_gross refuse anything else, and one refused line would stop the recap)
       - create: moka_sale_line
+        if: c.quantity > 0
         set:
           transaction: tx.name
           outlet: tx.outlet
@@ -55,11 +58,13 @@ steps:
           sku: "'sku' in c ? c.sku : ''"
           qty: c.quantity
           gross: c.total_price
-          discount: "'discount_amount' in c ? c.discount_amount : 0"
+          discount: "min('discount_amount' in c ? c.discount_amount : 0, c.total_price)"
           refund: "0"
           status: "tx.outlet == '' || (by_sku == null && by_item_name == null) ? 'unmapped' : 'staged'"
       - create: moka_sale_line
-        if: "'refunded_quantity' in c && c.refunded_quantity > 0"
+        # a refund line only when it returns money: a refund of a free item (100% discount) changes nothing and a line of
+        # qty < 0 without refund is refused by outlet_sales
+        if: "c.quantity > 0 && 'refunded_quantity' in c && c.refunded_quantity > 0 && round((c.total_price - min('discount_amount' in c ? c.discount_amount : 0, c.total_price)) * c.refunded_quantity / c.quantity) > 0"
         set:
           transaction: tx.name
           outlet: tx.outlet
@@ -70,11 +75,15 @@ steps:
           qty: -c.refunded_quantity
           gross: "0"
           discount: "0"
-          refund: "round((c.total_price - ('discount_amount' in c ? c.discount_amount : 0)) * c.refunded_quantity / c.quantity)"
+          refund: "round((c.total_price - min('discount_amount' in c ? c.discount_amount : 0, c.total_price)) * c.refunded_quantity / c.quantity)"
           status: "tx.outlet == '' || (by_sku == null && by_item_name == null) ? 'unmapped' : 'staged'"
   - find_all: moka_sale_line
     where: "transaction == tx.name && status == 'unmapped'"
     as: unmapped
+  - notify: head_office
+    if: "event.checkouts.map(c, c.quantity > 0 ? 0 : 1).sum() > 0"
+    channel: email
+    template: {id: 'Moka {tx.receipt_no} ({tx.moka_outlet}, {tx.date}) punya barang dengan qty 0 atau minus, tidak direkap. Cek di Moka'}
   - notify: head_office
     if: size(unmapped) > 0
     channel: email

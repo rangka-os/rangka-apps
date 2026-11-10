@@ -105,12 +105,25 @@ def scenario_moka_api(api):
     check("checkout without variant, refund and discount keys: recorded, the unknown item unmapped",
           st == 200 and sorted(r["status"] for r in l8) == ["staged", "unmapped"], (st, out, l8))
 
+    # data the recap would refuse never becomes a line: a free item refunded (refund 0), a discount above the price, a
+    # quantity of 0; the recap of other outlets and days goes on
+    ev10 = event(91000010, d2, [line("Tahu goreng original", "TH-ORI", 1, 15000, discount=15000, refunded=1),
+                                line("Tahu goreng pedas", "TH-PDS", 1, 18000, discount=20000), line("Tahu goreng pedas", "TH-PDS", 0, 18000)])
+    st, out = run(api, "moka_transaction_staged", ev10)
+    tx10 = api.find("moka_transaction", "transaction_id == '91000010'")
+    l10 = api.find("moka_sale_line", f"transaction == '{tx10[0]['name']}'") if tx10 else []
+    eq("free item refunded: no refund line; discount capped at the price; qty 0 skipped (head office told)",
+       (sorted((r["qty"], r["gross"], r["discount"], r["refund"]) for r in l10), any("qty 0" in n.get("text", "") for n in out.get("notifications", []))),
+       ([(1, 15000, 15000, 0), (1, 18000, 18000, 0)], True))
+
     # people: head office cannot type a Moka transaction, and a staged line keeps an item
     st, resp = hq.create("moka_transaction", {"transaction_id": "x1"})
     check("head office cannot create a moka_transaction -> 403", denied(st, resp), (st, resp))
     if rows:
         st, resp = hq.patch("moka_sale_line", rows[0]["name"], {"item": ""})
         check("a staged line keeps its item (rule staged_has_outlet_and_item)", st == 422 and "staged_has_outlet_and_item" in str(resp), (st, resp))
+        st, resp = hq.patch("moka_sale_line", rows[0]["name"], {"outlet": "OUT-01"})
+        check("a staged line cannot move to an outlet without Moka (rule staged_outlet_uses_moka)", st == 422 and "staged_outlet_uses_moka" in str(resp), (st, resp))
 
     def api_sales(day):
         return api.find("outlet_sales", f"outlet == '{BRAGA}' && date == '{day}' && source == 'moka' && key_version == 3 && docstatus != 2")
