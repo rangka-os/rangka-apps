@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: payments
-version: 1.4.0
+version: 1.5.0
 title: {id: Pembayaran, en: Payments}
 summary:
   id: Catat pembayaran masuk dan keluar, termasuk bukti potong PPh 23.
