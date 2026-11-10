@@ -8,6 +8,9 @@ permissions:
   - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   # No sales_manager: an assignment carries the cost rates (audit L1).
   - {role: finance_manager, read: true}
+  # A worker reads their own assignments and a supervisor those of their sites (row scopes); rates are hidden from both.
+  - {role: field_worker, read: true}
+  - {role: site_supervisor, read: true}
 fields:
   - name: project
     type: link
@@ -26,6 +29,18 @@ fields:
     type: data
     label: {id: Lokasi}
     default: project.site
+  # Where the worker clocks in (attendance_log): point and radius of the work site.
+  - name: work_site
+    type: link
+    to: work_site
+    label: {id: Lokasi absen}
+    in_list: true
+  # The site's point and radius as the worker's phone reads them for its message (the worker cannot read work_site, so
+  # the firm's other client sites stay private). Refreshed when the assignment is saved; the kernel's check in
+  # attendance_log reads the site itself.
+  - {name: site_lat, type: float, label: {id: Lintang lokasi absen}, read_only: true, compute: "work_site != '' ? work_site.lat : 0"}
+  - {name: site_lng, type: float, label: {id: Bujur lokasi absen}, read_only: true, compute: "work_site != '' ? work_site.lng : 0"}
+  - {name: site_radius_m, type: int, label: {id: Radius absen (m)}, read_only: true, compute: "work_site != '' ? work_site.radius_m : 0"}
   - name: start_date
     type: date
     label: {id: Mulai}
@@ -39,6 +54,7 @@ fields:
   - name: day_rate
     type: currency
     label: {id: Tarif per hari}
+    hidden_for: [field_worker, site_supervisor]
     default: worker.day_rate
     in_list: true
   # Billed per day (manpower, the default) or per hour (consultants); the rates default from the worker.
@@ -52,19 +68,23 @@ fields:
   - name: hour_rate
     type: currency
     label: {id: Tarif per jam}
+    hidden_for: [field_worker, site_supervisor]
     default: worker.hour_rate
   - name: cost_rate
     type: currency
     label: {id: Biaya per satuan}
+    hidden_for: [field_worker, site_supervisor]
     default: "rate_basis == 'hour' ? worker.cost_hour_rate : worker.cost_day_rate"
   # Overtime per hour on this project, from the worker unless the client agreed another rate.
   - name: overtime_rate
     type: currency
     label: {id: Tarif jual lembur per jam}
+    hidden_for: [field_worker, site_supervisor]
     default: worker.overtime_rate
   - name: overtime_cost_rate
     type: currency
     label: {id: Upah lembur per jam}
+    hidden_for: [field_worker, site_supervisor]
     default: worker.overtime_cost_rate
   - name: notes
     type: text
@@ -86,7 +106,7 @@ views:
     layout:
       - section: {id: Penugasan}
         columns:
-          - [project, worker, site]
+          - [project, worker, site, work_site]
           - [start_date, end_date]
       - section: {id: Tarif}
         columns:

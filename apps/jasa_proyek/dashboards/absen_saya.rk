@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: absen_saya
+label: {id: Absen saya, en: My attendance}
+description: {id: 'Absen masuk dan pulang kamu, hari hadir bulan ini dan yang masih menunggu persetujuan mandor'}
+# For field_worker: every widget counts only the worker's own logs (row scope worker, contract 0010). A submitted log is a
+# day present; a draft with a clock-out is waiting (for the supervisor, or for the worker to submit it).
+default_period: 31
+roles: [field_worker]
+cache: 1m
+widgets:
+  - {name: days_present, type: number, label: {id: Hari hadir}, description: {id: 'Absen yang sudah sah (diajukan atau disetujui mandor)'}, model: attendance_log, filter: docstatus == 1, period: work_date, compact: true, span: 4}
+  - {name: overtime, type: number, label: {id: Jam lembur}, model: attendance_log, aggregate: sum, field: overtime_hours, filter: docstatus == 1, period: work_date, compact: true, span: 4}
+  - {name: waiting, type: number, label: {id: Menunggu}, description: {id: 'Sudah absen pulang tapi belum sah: menunggu persetujuan mandor, atau belum kamu ajukan'}, model: attendance_log, filter: docstatus == 0 && clock_out != '', compact: true, span: 4, good_when: down}
+  - {name: today, type: list, label: {id: Absen hari ini}, model: attendance_log, filter: work_date == today() && docstatus != 2, columns: [name, work_site, clock_in, clock_out, outside_site, status], limit: 3, span: 12}
+  - {name: recent, type: list, label: {id: Absen terakhir}, model: attendance_log, filter: docstatus != 2, period: work_date, columns: [work_date, clock_in, clock_out, in_site_m, outside_site, status], sort: -work_date, limit: 31, span: 12}

@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: attendance_log_guard_updated
+label: {id: Satu absen per orang per hari (diubah)}
+# The same check when the worker or the date of a draft changes.
+on: attendance_log.updated
+steps:
+  - find: attendance_log
+    where: day_key == event.day_key && name != event.name && docstatus != 2
+    as: other
+  - if: other != null
+    create: attendance_guard
+    set:
+      reason: "'second_log'"
+      document: other.name

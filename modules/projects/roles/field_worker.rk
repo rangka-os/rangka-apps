@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: field_worker
+label: {id: Pekerja lapangan}
+description: {id: 'Absen masuk dan pulang di lokasi kerja, dan melihat absennya sendiri'}
+# Contract 0010 §5: records whose worker is the member's own worker record (rangka user add --record WRK-0001), so a
+# worker sees only their own logs and assignments. Pay and selling rates of an assignment are hidden (contract 0027).
+scope: {field: worker, from: '[user.name]'}

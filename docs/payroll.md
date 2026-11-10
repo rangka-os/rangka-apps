@@ -10,7 +10,10 @@ of the client contract and the client invoice. Installed with `jasa_proyek`; dem
    BPJS programmes.
 2. Finance opens a **Periode gaji** (`payroll_run`) per client contract (project) and cut-off period: tax year and
    month (the month paid), UMK of the site, JKK rate, JP and BPJS Kesehatan wage caps, how the client is billed.
-3. The project admin imports and submits the attendance recap (`attendance_recap`, rangka-apps#28). Each submitted
+3. The project admin imports and submits the attendance recap (`attendance_recap`, rangka-apps#28), or makes it from the
+   workers' daily clock-ins: a submitted **Rekap absen lapangan** (`attendance_close`) turns the submitted daily logs
+   (`attendance_log`, one per worker per day, checked against the work site's radius and approved by the site supervisor
+   when outside it, late or with overtime) into the same draft recaps, which the project admin submits. Each submitted
    recap of a worker with a profile becomes a draft **Slip gaji** (`payslip`) of the open run of that project.
 4. Finance adjusts drafts (overtime days for PP 35, THR months, other income, deductions) and submits the slips; the
    run's totals follow every submit and cancel.
