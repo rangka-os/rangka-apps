@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: attendance_log_guard_created
+label: {id: Satu absen per orang per hari (baru)}
+# A second live log of the same worker and day would count the day twice in the recap. The read takes the flow lock of
+# contract 0025, so two clock-ins sent at the same moment run one after the other and the second is refused.
+on: attendance_log.created
+steps:
+  - find: attendance_log
+    where: day_key == event.day_key && name != event.name && docstatus != 2
+    as: other
+  - if: other != null
+    create: attendance_guard
+    set:
+      reason: "'second_log'"
+      document: other.name

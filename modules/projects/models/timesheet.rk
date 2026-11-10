@@ -53,6 +53,12 @@ fields:
     type: text
     label: {id: Uraian pekerjaan}
     required: true
+  # Made by a field attendance close (attendance_close_on_submit) from the daily logs; empty for typed or imported recaps.
+  - name: attendance_close
+    type: link
+    to: attendance_close
+    label: {id: Rekap absen lapangan}
+    read_only: true
   - name: evidence
     type: attach
     label: {id: Bukti kerja}
@@ -152,7 +158,7 @@ views:
           - [work_date, period_to, days, hours, overtime_hours]
       - section: {id: Pekerjaan}
         columns:
-          - [description, evidence]
+          - [description, evidence, attendance_close]
       - section: {id: Tagihan}
         columns:
           - [billable, rate_basis, day_rate, hour_rate, overtime_rate, amount]

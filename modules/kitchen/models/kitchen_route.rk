@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Which item category a station cooks: Kopi -> Bar, Makanan -> Dapur panas. A category can go to one station per
+# outlet; a category with no route at an outlet makes no ticket there (bottled drinks the cashier hands over).
+# A separate model rather than a table of the station: a flow reads records without their table rows.
+name: kitchen_route
+label: {id: Kategori ke stasiun, en: Category to station}
+icon: stock
+naming: RTD-{####}
+title_field: category
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, print: true}
+  - {role: cashier, read: true}
+  - {role: kitchen, read: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - {name: station, type: link, to: kitchen_station, label: {id: Stasiun}, required: true, in_list: true, peek: [outlet]}
+  - {name: category, type: link, to: item_category, label: {id: Kategori barang}, required: true, in_list: true}
+  # the station's outlet, so the row scope of contract 0010 (field outlet) applies to routes too
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, compute: station.outlet, in_list: true}
+  # one station per category and outlet
+  - {name: route_key, type: data, label: {id: Kunci rute}, hidden: true, unique: true, compute: "outlet + '/' + category"}
+views:
+  list:
+    columns: [category, station, outlet]
+    filters: [outlet, station, category]
+    sort: category
