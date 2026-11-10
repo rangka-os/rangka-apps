@@ -5,6 +5,8 @@ title: {id: Tiket dapur, en: Kitchen tickets}
 label: {id: Rangka Tiket Dapur, en: Rangka Kitchen Tickets}
 summary:
   id: Pesanan dari kasir langsung jadi tiket per stasiun dapur (bar, dapur panas), dengan status dimasak, siap dan diambil, dan cetak tiket 80 mm.
+category: sales
+icon: restaurant-line
 rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md) on top of kasir for an F&B outlet: stations per outlet, item categories
 # routed to them, a ticket per station for each paid receipt. A shop on the same site sets no station and gets no
