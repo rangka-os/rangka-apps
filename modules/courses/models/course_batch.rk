@@ -70,6 +70,13 @@ fields:
     type: table
     of: course_batch_slot
     label: {id: Jadwal mingguan}
+  # the weekdays of the schedule as text ("mon wed "), so a list or dashboard filter can ask "is there class today"
+  # (dashboard kelas_saya) without reading the table
+  - name: class_days
+    type: data
+    label: {id: Hari kelas}
+    hidden: true
+    compute: "(schedule.map(s, s.weekday == 'mon' ? 1 : 0).sum() > 0 ? 'mon ' : '') + (schedule.map(s, s.weekday == 'tue' ? 1 : 0).sum() > 0 ? 'tue ' : '') + (schedule.map(s, s.weekday == 'wed' ? 1 : 0).sum() > 0 ? 'wed ' : '') + (schedule.map(s, s.weekday == 'thu' ? 1 : 0).sum() > 0 ? 'thu ' : '') + (schedule.map(s, s.weekday == 'fri' ? 1 : 0).sum() > 0 ? 'fri ' : '') + (schedule.map(s, s.weekday == 'sat' ? 1 : 0).sum() > 0 ? 'sat ' : '') + (schedule.map(s, s.weekday == 'sun' ? 1 : 0).sum() > 0 ? 'sun ' : '')"
   - {name: notes, type: text, label: {id: Catatan}}
 rules:
   - name: quota_positive
