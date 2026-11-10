@@ -45,6 +45,14 @@ fields:
     label: {id: Nama outlet di Moka}
     help: {id: 'Persis seperti kolom Outlet di ekspor Moka, misalnya "Tahu Contoh - Dago". Kosongkan kalau outlet ini tidak pakai Moka'}
     depends_on: app_installed('outlet_sales')
+  # Moka's outlet id (connector moka, rangka-connectors): the poll per outlet emits it with every transaction, and flow
+  # moka_transaction_staged finds the outlet by it (else by moka_name = Moka's outlet name). Empty: the outlet's Moka
+  # sales come from the Item Details export only.
+  - name: moka_outlet_id
+    type: data
+    label: {id: ID outlet di Moka}
+    help: {id: 'Diisi saat Moka tersambung lewat API. Kosongkan kalau penjualan Moka masuk lewat ekspor file'}
+    depends_on: app_installed('outlet_sales') && moka_name != ''
   # The sales source of an outlet without Moka (moka_name empty): the daily form (default when empty), a file from
   # another POS in Juragan's template, a Loyverse export, or Juragan's own cashier (module pos). One source per outlet,
   # so a day is never counted twice.

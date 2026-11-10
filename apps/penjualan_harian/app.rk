@@ -25,7 +25,7 @@ roles: [head_office, outlet_staff]
 home: {dashboard: penjualan_ringkas}
 menu:
   - group: {id: Penjualan outlet}
-    items: [outlet_sales, outlet_takings]
+    items: [outlet_sales, outlet_takings, moka_sale_line, moka_transaction]
 onboarding:
   - ask: {id: 'Outlet mana yang pakai Moka?'}
     sets: imports.moka_item_details.outlets

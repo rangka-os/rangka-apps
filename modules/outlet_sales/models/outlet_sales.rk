@@ -62,13 +62,14 @@ fields:
   # match the new key, so an overlapping export re-imports rows of a day already imported. key_version is 2 on every
   # record the current import writes; flow moka_legacy_key_overlap marks a new record whose outlet and day already have
   # a live Moka record without it, and rule legacy_key_reviewed holds its submit until head office has removed the
-  # repeated lines and ticks legacy_key_checked.
+  # repeated lines and ticks legacy_key_checked. key_version 3 is a record from the Moka API (flow moka_daily_sales): an
+  # export imported for the same day, or a second API record of late lines, is flagged and held the same way.
   - {name: key_version, type: int, label: {id: Versi kunci impor}, hidden: true}
   - name: legacy_key_overlap
     type: check
     label: {id: Tumpang tindih impor lama}
     read_only: true
-    help: {id: 'Tanggal ini sudah punya penjualan Moka yang diimpor sebelum pembaruan; baris yang sama bisa masuk lagi'}
+    help: {id: 'Tanggal ini sudah punya penjualan Moka lain (impor sebelum pembaruan, atau dari API Moka); baris yang sama bisa masuk lagi'}
   - name: legacy_key_checked
     type: check
     label: {id: Baris ganda sudah dihapus}
@@ -154,7 +155,7 @@ rules:
   - name: legacy_key_reviewed
     on: submit
     check: "!legacy_key_overlap || legacy_key_checked"
-    message: {id: 'Tanggal ini sudah diimpor sebelum pembaruan: hapus baris yang terulang, lalu centang Baris ganda sudah dihapus'}
+    message: {id: 'Tanggal ini sudah punya penjualan Moka lain (impor lama atau API): hapus baris yang terulang, lalu centang Baris ganda sudah dihapus'}
 views:
   list:
     # outlet, day and net sales first: they fit a phone screen (P7)
