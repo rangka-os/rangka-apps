@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: work_site
+label: {id: Lokasi kerja, en: Work site}
+icon: map
+naming: LOK-{###}
+title_field: site_name
+# Where workers clock in: a client's factory, a building a guard keeps, an office a cleaner works in (A2, plans/layar-kerja.md
+# §4.1, the `site` slot of the clock screen in contract 0030). A clock-in further than radius_m from the point (lat, lng) is
+# kept, not refused, and waits for the site supervisor (attendance_log). The site supervisor's row scope is the members'
+# `outlets` list holding site codes (LOK-001), see roles/site_supervisor.rk.
+permissions:
+  - {role: project_admin, read: true, create: true, write: true, delete: true, export: true, print: true}
+  - {role: finance_manager, read: true}
+  # A site supervisor reads only their own sites (row scope by name). A worker reads the point of their own site through
+  # the assignment (site_lat, site_lng, site_radius_m), not the list of the firm's client sites.
+  - {role: site_supervisor, read: true}
+fields:
+  - name: site_name
+    type: data
+    label: {id: Nama lokasi}
+    required: true
+    in_list: true
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Klien}
+    in_list: true
+  - name: address
+    type: text
+    label: {id: Alamat}
+  # Decimal degrees, as a phone's GPS or a map gives them (Karawang is about -6.3, 107.3).
+  - name: lat
+    type: float
+    label: {id: Lintang (lat)}
+    required: true
+  - name: lng
+    type: float
+    label: {id: Bujur (lng)}
+    required: true
+  - name: radius_m
+    type: int
+    label: {id: Radius absen (meter)}
+    default: '150'
+    in_list: true
+  - name: active
+    type: check
+    label: {id: Aktif}
+    default: 'true'
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: point_valid
+    on: save
+    check: lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && (lat != 0 || lng != 0)
+    message: {id: 'Titik lokasi tidak valid: lintang -90 sampai 90, bujur -180 sampai 180'}
+  # The distance check (attendance_log) is a flat-earth approximation, good to well under a metre for these distances.
+  - name: radius_range
+    on: save
+    check: radius_m >= 20 && radius_m <= 5000
+    message: {id: 'Radius absen 20 sampai 5000 meter'}
+views:
+  list:
+    columns: [name, site_name, customer, radius_m, active]
+  form:
+    layout:
+      - section: {id: Lokasi}
+        columns:
+          - [site_name, customer, active]
+          - [lat, lng, radius_m]
+      - section: {id: Alamat}
+        fields: [address, notes]

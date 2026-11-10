@@ -14,6 +14,8 @@ outlet:
 user:
   - {name: USR-001, full_name: Rina Contoh, role: finance_manager, email: rina@contohtenaga.test}
   - {name: USR-002, full_name: Asep Contoh, role: project_admin, email: asep@contohtenaga.test}
+  - {name: USR-003, full_name: Sinta Contoh, role: site_supervisor, email: sinta@contohtenaga.test}
+  - {name: USR-004, full_name: Taufik Contoh, role: site_supervisor, email: taufik@contohtenaga.test}
 worker:
   - {name: WRK-0001, worker_name: Ade Contoh, employee_no: MP-001, role_title: Operator produksi, day_rate: 310000, cost_day_rate: 235000, overtime_rate: 45000, overtime_cost_rate: 34000, active: true}
   - {name: WRK-0002, worker_name: Bayu Contoh, employee_no: MP-002, role_title: Operator produksi, day_rate: 310000, cost_day_rate: 235000, overtime_rate: 45000, overtime_cost_rate: 34000, active: true}
@@ -56,3 +58,6 @@ payroll_profile:
   - {name: PGJ-0018, worker: WRK-0018, nik: '9999000000000018', has_tax_id: true, ptkp_status: k1, pay_basis: monthly, monthly_salary: 7500000, fixed_allowance: 1000000, daily_allowance: 0, bpjs_tk: true, bpjs_jp: true, bpjs_kes: true, bank_name: Bank Contoh, bank_account: '0000000018', active: true}
   - {name: PGJ-0019, worker: WRK-0019, nik: '9999000000000019', has_tax_id: true, ptkp_status: k3, pay_basis: monthly, monthly_salary: 7500000, fixed_allowance: 1000000, daily_allowance: 0, bpjs_tk: true, bpjs_jp: true, bpjs_kes: true, bank_name: Bank Contoh, bank_account: '0000000019', active: true}
   - {name: PGJ-0020, worker: WRK-0020, nik: '9999000000000020', has_tax_id: true, ptkp_status: k2, pay_basis: monthly, monthly_salary: 12500000, fixed_allowance: 1500000, daily_allowance: 0, bpjs_tk: true, bpjs_jp: true, bpjs_kes: true, bank_name: Bank Contoh, bank_account: '0000000020', active: true}
+work_site:
+  - {name: LOK-001, site_name: Pabrik PT Contoh Garmen Sejahtera, customer: CUST-0001, address: 'Kawasan Industri Contoh Blok A1, Karawang', lat: -6.3105, lng: 107.295, radius_m: 150, active: true}
+  - {name: LOK-002, site_name: Gudang PT Contoh Garmen Sejahtera, customer: CUST-0001, address: 'Jalan Contoh Raya 12, Cikampek', lat: -6.405, lng: 107.456, radius_m: 200, active: true}

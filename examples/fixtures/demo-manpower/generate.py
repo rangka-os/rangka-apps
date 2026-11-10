@@ -47,6 +47,13 @@ for i, n in enumerate(NAMES):
 MONTH = {w[0]: (22 + (i % 5), [0, 6, 10, 14, 20][i % 5]) for i, w in enumerate(WORKERS)}
 MONTH["MP-017"] = (25, 12)
 MONTH["MP-018"], MONTH["MP-019"], MONTH["MP-020"] = (24, 0), (25, 0), (26, 0)
+# Field attendance (A2): the client's factory and its warehouse, fictional points in Karawang and Cikampek (decimal
+# degrees), with the radius a worker must clock in within. The site supervisor of each is a member whose `outlets` list
+# holds the site code (tests/day_one_attendance.py).
+SITES = [{"name": "LOK-001", "site_name": "Pabrik PT Contoh Garmen Sejahtera", "customer": CLIENT, "address": "Kawasan Industri Contoh Blok A1, Karawang",
+          "lat": -6.3105, "lng": 107.2950, "radius_m": 150, "active": True},
+         {"name": "LOK-002", "site_name": "Gudang PT Contoh Garmen Sejahtera", "customer": CLIENT, "address": "Jalan Contoh Raya 12, Cikampek",
+          "lat": -6.4050, "lng": 107.4560, "radius_m": 200, "active": True}]
 # Edits finance makes on the draft slips before submitting them.
 EDITS = {"MP-001": {"other_deduction": 300_000}, "MP-017": {"overtime_days": 5}, "MP-019": {"thr_tenure_months": 7}}
 
@@ -76,13 +83,16 @@ def build():
                     {"name": FEE, "item_name": "Management fee tenaga kerja", "kind": "service", "stock_uom": "UOM-002", "sales_uom": "UOM-002", "sku": "TK-FEE"}],
            "outlet": [{"name": "OUT-01", "outlet_name": "Kantor Karawang", "code": "KRW", "city": "Karawang", "is_head_office": True, "active": True}],
            "user": [{"name": "USR-001", "full_name": "Rina Contoh", "role": "finance_manager", "email": "rina@contohtenaga.test"},
-                    {"name": "USR-002", "full_name": "Asep Contoh", "role": "project_admin", "email": "asep@contohtenaga.test"}]}
+                    {"name": "USR-002", "full_name": "Asep Contoh", "role": "project_admin", "email": "asep@contohtenaga.test"},
+                    {"name": "USR-003", "full_name": "Sinta Contoh", "role": "site_supervisor", "email": "sinta@contohtenaga.test"},
+                    {"name": "USR-004", "full_name": "Taufik Contoh", "role": "site_supervisor", "email": "taufik@contohtenaga.test"}]}
     out["worker"] = [{"name": f"WRK-{i + 1:04d}", "worker_name": f"{w[1]} Contoh", "employee_no": w[0], "role_title": w[2], "day_rate": w[3],
                       "cost_day_rate": w[4], "overtime_rate": w[5], "overtime_cost_rate": w[6], "active": True} for i, w in enumerate(WORKERS)]
     out["payroll_profile"] = [{"name": f"PGJ-{i + 1:04d}", "worker": f"WRK-{i + 1:04d}", "nik": f"9999{i + 1:012d}", "has_tax_id": w[12],
                                "ptkp_status": w[7], "pay_basis": w[8], "monthly_salary": w[9], "fixed_allowance": w[10], "daily_allowance": w[11],
                                "bpjs_tk": True, "bpjs_jp": w[13], "bpjs_kes": True, "bank_name": "Bank Contoh", "bank_account": f"000{i + 1:07d}", "active": True}
                               for i, w in enumerate(WORKERS)]
+    out["work_site"] = SITES
     return out
 
 
