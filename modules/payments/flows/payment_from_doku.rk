@@ -11,30 +11,46 @@
 name: payment_from_doku
 label: {id: Pembayaran DOKU jadi pembayaran faktur}
 on: doku.payment_notified
-if: >-
-  'gateway_ref' in event && 'external_id' in event && 'paid' in event && 'paid_amount' in event &&
-  event.gateway_ref != '' && event.paid == true && event.paid_amount > 0
-idempotency: event.gateway_ref
+# Every paid notification runs the flow; one without DOKU's id or with no readable positive amount records nothing and
+# tells the owner (the money is at DOKU), instead of being skipped silently (audit 2026-11-11 M2). The amount may come
+# as a number or a string of digits.
+if: "'paid' in event && event.paid == true"
+idempotency: "'gateway_ref' in event ? event.gateway_ref : ''"
 steps:
-  - {find: payment, where: "gateway_ref == event.gateway_ref && docstatus != 2", as: done}
-  - {find: sales_invoice, where: "name == event.external_id && docstatus == 1", as: inv}
-  - {find_all: payment, where: "docstatus == 0 && reference == event.external_id", as: drafts}
-  - {find: gateway_ref_claim, where: gateway_ref == event.gateway_ref, as: held}
-  - {find: payment, where: "held != null && name == held.payment && docstatus != 2", as: holder}
+  - find: payment
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0"
+    where: "gateway_ref == event.gateway_ref && docstatus != 2"
+    as: done
+  - find: sales_invoice
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0"
+    where: "name == event.external_id && docstatus == 1"
+    as: inv
+  - find_all: payment
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0"
+    where: "docstatus == 0 && reference == event.external_id"
+    as: drafts
+  - find: gateway_ref_claim
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0"
+    where: gateway_ref == event.gateway_ref
+    as: held
+  - find: payment
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0"
+    where: "held != null && name == held.payment && docstatus != 2"
+    as: holder
   - update: held
-    if: done == null && inv != null && held != null && holder == null
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0 && done == null && inv != null && held != null && holder == null"
     set: {gateway_ref: "''", released_ref: event.gateway_ref}
   - create: gateway_ref_claim
-    if: done == null && inv != null && (held == null || holder == null)
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0 && done == null && inv != null && (held == null || holder == null)"
     set: {gateway_ref: event.gateway_ref, payment: "''"}
     as: claim
   - create: payment
-    if: done == null && inv != null && (held == null || holder == null)
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0 && done == null && inv != null && (held == null || holder == null)"
     set:
       direction: "'receive'"
       customer: inv.customer
       payment_date: today()
-      amount: event.paid_amount
+      amount: "double(string(event.paid_amount))"
       method: >-
         'channel' in event && event.channel == 'QRIS' ? 'qris'
         : (('channel' in event && event.channel.startsWith('VIRTUAL_ACCOUNT')) || ('service' in event && event.service == 'VIRTUAL_ACCOUNT') ? 'va' : 'other')
@@ -42,12 +58,16 @@ steps:
       gateway_ref: event.gateway_ref
       reference: inv.name
       notes: "'Dari DOKU ' + event.gateway_ref"
-      allocations: "min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum()) > 0 ? [{'sales_invoice': inv.name, 'amount': min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum())}] : []"
+      allocations: "min(double(string(event.paid_amount)), inv.outstanding - drafts.map(p, p.allocated_total).sum()) > 0 ? [{'sales_invoice': inv.name, 'amount': min(double(string(event.paid_amount)), inv.outstanding - drafts.map(p, p.allocated_total).sum())}] : []"
     as: pay
   - update: claim
-    if: done == null && inv != null && (held == null || holder == null)
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0 && done == null && inv != null && (held == null || holder == null)"
     set: {payment: pay.name}
   - notify: owner
-    if: done == null && inv == null
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0 && done == null && inv == null"
     channel: email
     template: {id: 'DOKU {event.gateway_ref}: Rp {event.paid_amount} untuk {event.external_id}, faktur tidak ada/terbuka. Catat manual.'}
+  - notify: owner
+    if: "!('gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0)"
+    channel: email
+    template: {id: 'DOKU: ada pembayaran lunas tanpa ID transaksi atau jumlah yang terbaca. Cek DOKU Back Office dan log connector, catat manual.'}
