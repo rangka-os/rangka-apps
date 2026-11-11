@@ -12,7 +12,7 @@ EPS = 0.0005
 
 def bind(m):
     """Take the helpers of tests/day_one.py."""
-    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "messages", "balance", "moves_of", "rows_all", "dashboard", "num", "kernel_today"):
+    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "messages", "balance", "moves_of", "rows_all", "dashboard", "num", "kernel_today", "chart_map"):
         H[k] = getattr(m, k)
     globals().update(H)
 
@@ -73,7 +73,9 @@ def scenario_ritel_returns(api):
         st, resp = staff.create("outlet_return", {"refund": rf["name"], "return_date": d, "items": [{"item": item, "qty": 1}]})
         check(f"a return dated {label} -> 422", refused(st, resp, "Tanggal kembali ke stok"), (st, resp))
     # one unit back on the shelf, by the outlet's own staff, at the cost the sale took it out
-    cogs_before = num(dashboard(api, "ritel_stock", 90).get("cogs_period", {}))
+    ws0 = dashboard(api, "ritel_stock", 90)
+    cogs_before = num(ws0.get("cogs_period", {}))
+    best_before = {k: chart_map(ws0.get(k, {})) for k in ("best_sellers_qty", "best_sellers_value")}
     before = qty_of(balance(api, CLY, item))
     st, ret = staff.create("outlet_return", {"refund": rf["name"], "items": [{"item": item, "qty": 1}]})
     if not check("Cileunyi staff makes a Retur ke stok (201; outlet and sale from the refund)", st == 201 and ret.get("outlet") == CLY and ret.get("sales") == rf["sales"], (st, ret)):
@@ -94,6 +96,13 @@ def scenario_ritel_returns(api):
     if mv:
         back = mv[0]["value"]
         eq("ritel_stock HPP terjual (90 days) lower by the returned value", num(dashboard(api, "ritel_stock", 90).get("cogs_period", {})), cogs_before - back)
+        # Barang laku is net of returns too, like HPP terjual (audit r2 F3)
+        ws1 = dashboard(api, "ritel_stock", 90)
+        for k, less in (("best_sellers_qty", 1), ("best_sellers_value", round(back))):
+            if item in best_before[k]:
+                eq(f"ritel_stock {k}: the returned item lower by {less}", chart_map(ws1.get(k, {})).get(item), best_before[k][item] - less)
+            else:
+                ok(f"ritel_stock {k}: the returned item is not in the top 10 (nothing to compare)")
         eq("ritel_overview HPP kembali dari retur = the return's value", num(dashboard(api, "ritel_overview", 90).get("returned_cost", {})), back)
         eq("the return's move counts -1 sold (sold_qty)", api.get("stock_move", mv[0]["name"]).get("sold_qty"), -1)
         # the books follow the stock (audit r2 F1): Dr Persediaan / Cr HPP at the value that came back
@@ -167,7 +176,7 @@ def race_cancel_vs_return(api, hq, staff, outlet, item, rounds=6):
     """Audit M1: a sale holding only a refund line (a receipt of an earlier day) is cancelled while its return is
     submitted. Never both: either the cancel is refused (live return) or the return is (sale cancelled)."""
     import threading
-    both, done = [], 0
+    both, done, cancelled = [], 0, []
     for i in range(rounds):
         st, s = hq.create("outlet_sales", {"outlet": outlet, "date": kernel_today().isoformat(), "source": "file",
                                            "lines": [{"item": item, "qty": -1, "gross": 0, "refund": 10_000}]})
@@ -190,10 +199,18 @@ def race_cancel_vs_return(api, hq, staff, outlet, item, rounds=6):
         t1.start(); t2.start(); t1.join(); t2.join()
         if res.get("cancel") == 200 and res.get("submit") == 200:
             both.append((sale, ret["name"]))
+        if res.get("cancel") == 200:
+            cancelled.append(sale)
         done += 1
         if res.get("submit") == 200:   # leave the sale cancellable for the next round's stock
             hq.verb("outlet_return", ret["name"], "cancel")
     check(f"race cancel sale vs submit return, {done} rounds: never both committed", done == rounds and not both, both)
+    # a cancelled sale leaves nothing to bring back: its Retur di kasir shows open qty 0 (QA N3)
+    if cancelled:
+        left = [(r["sales"], r["open_qty"]) for r in rows_all(api, "pos_refund", "sales_cancelled == true") if r["sales"] in cancelled]
+        eq(f"Retur di kasir of the {len(cancelled)} cancelled sales: marked, open qty 0", sorted(left), sorted((x, 0) for x in cancelled))
+        staff_open = [r["name"] for r in rows_all(staff, "pos_refund", "open_qty > 0") if r["sales"] in cancelled]
+        eq("outlet staff's 'Belum kembali ke stok' leaves them out", staff_open, [])
 
 
 def scenario_fnb_returns(api):
