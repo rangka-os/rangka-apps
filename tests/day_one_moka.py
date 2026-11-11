@@ -82,6 +82,11 @@ def scenario_moka_api(api):
     for o in (BRAGA, DAGO):
         st, resp = api.patch("outlet", o, {"moka_api_from": api_from})
         check(f"{o} counts Moka API sales from {api_from}", st == 200, (st, resp))
+    l46 = api.find("moka_sale_line", "description == 'Es contoh'")
+    eq("the unknown item polled on the export is unmapped and dated after the gate (head office told on opening)", [(r["status"], r["date"]) for r in l46], [("unmapped", d25)])
+    st, out = run(api, "moka_api_opened", api.get("outlet", BRAGA))
+    check("opening the gate tells head office about the unmapped lines from that day (audit held-release A2)", st == 200
+          and any("belum dipetakan" in n.get("text", "") for n in out.get("notifications", [])), (st, out.get("notifications")))
     l0 = api.find("moka_sale_line", f"transaction == '{tx0[0]['name']}'") if tx0 else []
     eq("gate opened: the line polled before it is staged now", [r["status"] for r in l0], ["staged"])
     tx40 = api.find("moka_transaction", "transaction_id == '91000040'")

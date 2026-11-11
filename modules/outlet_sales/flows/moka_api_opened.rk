@@ -4,7 +4,9 @@
 # opened (audit moka-guard H1): without this they would be counted by neither the API nor the export. Lines dated
 # before the date stay held (the export counts those days). A held line without item (head office emptied it) goes back
 # to unmapped instead of staged, so saving the outlet is never refused by rule staged_has_outlet_and_item (audit
-# moka-guard D2); flow moka_held_release catches held lines this run did not see (D1).
+# moka-guard D2); flow moka_held_release catches held lines this run did not see (D1). Lines of the outlet from the
+# date on that are still unmapped (an unknown item polled while the outlet was on the export, which was not told then:
+# D3) are told to head office now, so the day is not recapped without them unnoticed (audit held-release A2).
 name: moka_api_opened
 label: {id: Baris Moka yang ditahan dilepas saat outlet mulai pakai API}
 on: outlet.updated
@@ -19,3 +21,10 @@ steps:
       - update: l
         set:
           status: "l.item != '' ? 'staged' : 'unmapped'"
+  - find_all: moka_sale_line
+    where: "outlet == event.name && status == 'unmapped' && date >= event.moka_api_from"
+    as: waiting
+  - notify: head_office
+    if: size(waiting) > 0
+    channel: email
+    template: {id: '{event.outlet_name} mulai pakai API Moka: {size(waiting)} baris Moka belum dipetakan, petakan di Baris penjualan Moka'}
