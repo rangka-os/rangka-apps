@@ -286,19 +286,26 @@ def scenario_moka_recap_resilience(api):
     l23 = lines_of(91000023)[1]
     check("Dago takes Moka lines by its Moka name", len(l23) == 1 and l23[0]["outlet"] == DAGO and l23[0]["status"] == "staged", l23)
     st, resp = api.call("DELETE", f"/api/v1/r/item/{bks}") if bks else (0, None)
-    check("the owner deletes the item while its Moka line is staged (the kernel allows it)", st in (200, 204), (st, resp))
+    # a kernel that refuses to delete a record a live record still links (rangka-os card t_5a50f661) answers 409
+    # linked: the item stays and the recap runs as usual; an older kernel deletes it and the recap must survive that
+    refused = st == 409 and ((resp or {}).get("error") or {}).get("code") == "linked"
+    check("the owner deletes the item while its Moka line is staged: refused (409 linked) or allowed (older kernel)",
+          refused or st in (200, 204), (st, resp))
     st, out = run(api, "moka_daily_sales")
-    check("recap with a deleted item: runs", st == 200, (st, out))
-    eq("recap with a deleted item: the day is recapped without it", [x["net_total"] for x in sales(BRAGA, d[10])], [15000])
-    eq("recap with a deleted item: Dago, a later day, recapped too", [x["net_total"] for x in sales(DAGO, d[9])], [45000])
-    gone = [r for r in lines_of(91000022)[1] if r["description"] == "Tahu bakso contoh"]
-    check("the line of the deleted item is unmapped again, item emptied, head office told",
-          len(gone) == 1 and gone[0]["status"] == "unmapped" and gone[0]["item"] in ("", None)
-          and any("Belum dipetakan" in n.get("text", "") for n in out.get("notifications", [])), (gone, out.get("notifications")))
-    if gone:
-        st, resp = hq.patch("moka_sale_line", gone[0]["name"], {"item": PDS})
-        run(api, "moka_daily_sales")
-        eq("mapped again: its own record for that day", sorted(x["net_total"] for x in sales(BRAGA, d[10])), [15000, 20000])
+    check("recap after the delete attempt: runs", st == 200, (st, out))
+    eq("recap after the delete attempt: Dago, a later day, recapped too", [x["net_total"] for x in sales(DAGO, d[9])], [45000])
+    if refused:
+        eq("recap with the item kept: the day is recapped with it", [x["net_total"] for x in sales(BRAGA, d[10])], [35000])
+    else:
+        eq("recap with a deleted item: the day is recapped without it", [x["net_total"] for x in sales(BRAGA, d[10])], [15000])
+        gone = [r for r in lines_of(91000022)[1] if r["description"] == "Tahu bakso contoh"]
+        check("the line of the deleted item is unmapped again, item emptied, head office told",
+              len(gone) == 1 and gone[0]["status"] == "unmapped" and gone[0]["item"] in ("", None)
+              and any("Belum dipetakan" in n.get("text", "") for n in out.get("notifications", [])), (gone, out.get("notifications")))
+        if gone:
+            st, resp = hq.patch("moka_sale_line", gone[0]["name"], {"item": PDS})
+            run(api, "moka_daily_sales")
+            eq("mapped again: its own record for that day", sorted(x["net_total"] for x in sales(BRAGA, d[10])), [15000, 20000])
 
     # Dago stops using Moka (its Moka name emptied) with a staged line: back to unmapped without outlet, nothing stops
     run(api, "moka_transaction_staged", event(91000024, d[11], [line("Tahu goreng original", "TH-ORI", 1, 15000)], outlet_id=70001, outlet_name="Tahu Contoh - Dago"))
