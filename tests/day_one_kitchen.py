@@ -109,6 +109,14 @@ def scenario_kitchen_tickets(api):
     check("a ticket carries no price", not any(k in bar for k in ("rate", "amount", "grand_total")) and
           not any(k in l for l in bar["items"] for k in ("rate", "amount")), bar)
     CTX["kt_bar"], CTX["kt_dapur"] = bar["name"], dapur["name"]
+    # the receipt's title is its number, not its total: the kitchen finds a ticket by the receipt it came from, and the
+    # total of a receipt never shows through the link (audit A4 delta F2)
+    tono, total = CTX.get("tono"), int(float(sale.get("grand_total") or 0))
+    if tono and total:
+        eq("kitchen search by the receipt's total finds nothing (the link title is the receipt number)",
+           [t["name"] for t in tono.list("kitchen_ticket", q=str(total), limit=50) if t["sale"] == sale["name"]], [])
+        eq("kitchen search by the receipt number finds its tickets", sorted(t["name"] for t in tono.list("kitchen_ticket", q=sale["name"], limit=50)
+                                                                          if t["sale"] == sale["name"]), sorted([bar["name"], dapur["name"]]))
 
 
 def scenario_kitchen_steps(api):

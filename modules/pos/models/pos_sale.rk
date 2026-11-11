@@ -13,8 +13,9 @@ name: pos_sale
 label: {id: Transaksi kasir, en: Cashier sale}
 icon: receipt
 is_submittable: true
+# No title_field: a receipt's title is its number (STRK-...), so a link to it (a kitchen ticket, a daily sales check)
+# shows the number and never the total to a role that may not read the receipt.
 naming: STRK-{outlet.code}-{YY}{MM}-{#####}
-title_field: grand_total
 on_submit: [stock.post_moves]
 on_cancel: [stock.reverse_moves]
 permissions:
