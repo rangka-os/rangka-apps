@@ -184,9 +184,12 @@ rules:
     on: save
     check: overtime_hours >= 0 && overtime_hours <= 12
     message: {id: 'Jam lembur 0 sampai 12 jam per hari'}
+  # The reason is asked at the clock-in (the clock screen shows the box only then, contract 0030 §2 clock). A clock-out
+  # outside the radius needs none: it still marks the log outside_site, so the submit waits for the supervisor, who
+  # sees the distance and the photo.
   - name: reason_when_outside
     on: save
-    check: "!outside_site || size(reason) >= 5"
+    check: "in_inside || size(reason) >= 5"
     message: {id: 'Kamu di luar radius lokasi kerja (atau lokasi tidak terbaca): tulis alasannya'}
   - name: reason_when_overtime
     on: save

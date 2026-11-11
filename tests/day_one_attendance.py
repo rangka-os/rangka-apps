@@ -542,10 +542,12 @@ def scenario_attendance_screen(api):
     st, resp = w3.verb("attendance_log", name, "submit")
     check("the open log cannot be submitted before the clock-out", refused(st, resp, "jam keluar"), (st, resp))
     out_now = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=5)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    st, resp = w3.patch("attendance_log", name, {"clock_out": out_now, "out_pos": pos(SITE2, 5, 5), "out_photo": photo(w3, name)})
-    check("clock-out sets the out time, position and photo", st == 200, (st, resp))
+    st, resp = w3.patch("attendance_log", name, {"clock_out": out_now, "out_pos": pos(SITE2, 600, 0), "out_photo": photo(w3, name)})
+    check("a clock-out 600 m away needs no reason (the screen asks only at clock-in) but marks the log outside",
+          st == 200 and rec(resp).get("out_inside") is False and rec(resp).get("outside_site") is True, (st, resp))
     st, resp = w3.verb("attendance_log", name, "submit")
-    check("inside the warehouse radius the screen's log submits at once", st == 200 and rec(resp).get("docstatus") == 1, (st, resp))
+    pend = [a for a in (resp or {}).get("approvals", []) if a.get("state") == "pending"] if isinstance(resp, dict) else []
+    check("so the screen's submit waits for the site supervisor (202, outside_site)", st == 202 and [a.get("policy") for a in pend] == ["outside_site"], (st, resp))
     # Without a position: saved, outside, and the reason is required.
     st, resp = w3.create("attendance_log", dict(body, in_pos=None))
     check("a clock-in without a position needs a reason (counts as outside)", refused(st, resp, "alasan"), (st, resp))
