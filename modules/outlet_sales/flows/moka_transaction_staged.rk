@@ -113,11 +113,12 @@ steps:
           refund: "round((c.total_price - min('discount_amount' in c ? c.discount_amount : 0, c.total_price)) * min(c.refunded_quantity, c.quantity) / c.quantity)"
           status: "tx.outlet == '' || (by_sku == null && by_item_name == null) ? 'unmapped' : (api_open != null ? 'staged' : 'held')"
       - notify: head_office
-        if: "tx.outlet != '' && c.quantity > 0 && c.total_price >= 0 && by_sku == null && by_item_name == null"
+        # an outlet still on the export is not told about items (its lines wait held/unmapped; audit moka-guard D3)
+        if: "tx.outlet != '' && api_open != null && c.quantity > 0 && c.total_price >= 0 && by_sku == null && by_item_name == null"
         channel: email
         template: {id: 'Moka {tx.receipt_no} ({tx.moka_outlet}, {tx.date}): barang "{c.item_name}" belum dikenali, petakan di Baris penjualan Moka'}
   - notify: head_office
-    if: "known == null && event.checkouts.map(c, c.quantity > 0 && c.total_price >= 0 ? 0 : 1).sum() > 0"
+    if: "known == null && (tx.outlet == '' || api_open != null) && event.checkouts.map(c, c.quantity > 0 && c.total_price >= 0 ? 0 : 1).sum() > 0"
     channel: email
     template: {id: 'Moka {tx.receipt_no} ({tx.moka_outlet}, {tx.date}) punya barang dengan qty 0 atau minus, atau total minus, tidak direkap. Cek di Moka'}
   - notify: head_office
