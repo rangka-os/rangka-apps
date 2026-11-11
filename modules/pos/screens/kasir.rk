@@ -12,7 +12,7 @@ offline: queue
 counter:
   catalogue:
     model: item
-    filter: "kind != 'material'"
+    filter: "kind != 'material' && active != false"
     title: item_name
     search: [item_name, sku, barcode]
     group_by: category
