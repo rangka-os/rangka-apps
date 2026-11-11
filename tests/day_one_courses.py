@@ -437,5 +437,72 @@ def scenario_courses_audit(api):
         ca.patch("enrollment", en["name"], {"status": "withdrawn", "left_on": "2026-11-07"})   # out of the attendance scenario's batch list
 
 
+def scenario_courses_roll(api):
+    """The instructor's class roll (screens/absen_kelas.rk, contract 0030 roll): her home; today's classes open by
+    themselves every morning (flow session_of_the_day, every student present); saving the marks ticks Absen sudah dicek
+    (flow session_attendance_checked) so the meeting leaves the roll; the course admin's saves tick nothing."""
+    ins, ca = CTX.get("ins"), CTX.get("ca")
+    if ins is None:
+        return
+    import datetime
+    st, m = ins.call("GET", "/api/v1/meta")
+    work = (m or {}).get("work") or []
+    check("Maya (instructor) lands on the class roll (meta.work: absen_kelas, home)", work[:1] == [{"screen": "absen_kelas", "home": True}], work)
+    sc = ((m or {}).get("screens") or {}).get("absen_kelas") or {}
+    check("absen_kelas is a roll over course_session attendance, no submit", sc.get("type") == "roll" and sc.get("roll", {}).get("rows", {}).get("table") == "attendance"
+          and sc.get("roll", {}).get("submit") is False, sc)
+    if ca:
+        st, r = ca.call("GET", "/api/v1/screens/absen_kelas")
+        check("the course admin is not offered the roll (404)", st == 404, (st, r))
+    # The morning flow: one session today per running batch with a class on today's weekday.
+    today = kernel_today()
+    wd = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"][today.weekday()]
+    want = sorted(b["name"] for b in rows_all(api, "course_batch") if b["start_date"] <= today.isoformat()
+                  and (not b.get("end_date") or b["end_date"] >= today.isoformat()) and wd in (b.get("class_days") or "").split())
+    before = {x["name"] for x in rows_all(api, "course_session")}
+    st, out = api.call("POST", "/api/v1/flows/session_of_the_day/run", {})
+    check("flow session_of_the_day runs (200)", st == 200, (st, out))
+    made = [x for x in rows_all(api, "course_session") if x["name"] not in before]
+    already = sorted({x["batch"] for x in rows_all(api, "course_session") if x["session_date"][:10] == today.isoformat() and x["name"] in before})
+    eq(f"today ({wd}): one new session per batch with a class today and no session yet", sorted(x["batch"] for x in made), [b for b in want if b not in already])
+    for x in made:
+        full = api.get("course_session", x["name"])
+        enr = sorted(e["name"] for e in rows_all(api, "enrollment", f"batch == '{x['batch']}'") if e["status"] in ("registered", "active"))
+        eq(f"{x['batch']}: today's session lists its students, all present, numbered after the last",
+           (sorted((a["enrollment"], a["status"]) for a in full.get("attendance") or []), full["session_no"] > 0, full.get("attendance_taken")),
+           ([(e, "present") for e in enr], True, False))
+    st, out = api.call("POST", "/api/v1/flows/session_of_the_day/run", {})
+    eq("a second run the same day opens nothing new", len(rows_all(api, "course_session")), len(before) + len(made))
+    # Maya's roll: a session of her own batch today, as the screen sees and saves it.
+    st, s = ins.create("course_session", {"batch": INS_OWN, "session_no": 41, "session_date": today.isoformat(), "topic": "Ulangan"})
+    if not check("Maya opens a session of her batch for today (201)", st == 201, (st, s)):
+        return
+    name = s["name"]
+    find = sc.get("roll", {}).get("document", {}).get("find", "false")
+    offered = [x["name"] for x in ins.find("course_session", find)]
+    check("the roll offers it (her own, up to today, not checked)", name in offered, offered)
+    full = ins.get("course_session", name)
+    lines = full.get("attendance") or []
+    check("each line carries the student's name for the roll", lines and all(a.get("student_name") for a in lines), lines)
+    marks = [dict(enrollment=a["enrollment"], status=("sick" if i == 0 else a["status"]), note=("demam" if i == 0 else "")) for i, a in enumerate(lines)]
+    st, r = ins.patch("course_session", name, {"attendance": marks})
+    after = api.get("course_session", name)
+    check("Maya saves the roll: one sick with a note, the rest present; Absen sudah dicek ticks itself",
+          st == 200 and after.get("attendance_taken") is True and after.get("present_count") == len(lines) - 1, (st, r, after.get("attendance_taken")))
+    check("the checked session leaves the roll", name not in [x["name"] for x in ins.find("course_session", find)], name)
+    st, r = ins.patch("course_session", name, {"attendance_taken": False})
+    check("Maya can untick it again (the flow leaves an untick alone)", st == 200 and api.get("course_session", name).get("attendance_taken") is False, (st, r))
+    st, fut = ins.create("course_session", {"batch": INS_OWN, "session_no": 42, "session_date": (today + datetime.timedelta(days=3)).isoformat()})
+    if st == 201:
+        ins.patch("course_session", fut["name"], {"attendance": [dict(enrollment=a["enrollment"], status="present") for a in lines]})
+        check("a future session's save does not tick it", api.get("course_session", fut["name"]).get("attendance_taken") is False, fut["name"])
+    if ca:
+        st, s2 = ca.create("course_session", {"batch": INS_OWN, "session_no": 43, "session_date": today.isoformat()})
+        if st == 201:
+            l2 = api.get("course_session", s2["name"]).get("attendance") or []
+            ca.patch("course_session", s2["name"], {"attendance": [dict(enrollment=a["enrollment"], status="absent") for a in l2]})
+            check("the course admin's save ticks nothing", api.get("course_session", s2["name"]).get("attendance_taken") is False, s2["name"])
+
+
 SCENARIOS = [setup_demo_kursus, scenario_courses_fixtures, scenario_courses_quota, scenario_courses_race, scenario_courses_billing,
-             scenario_courses_audit, scenario_courses_attendance, scenario_courses_dashboard]
+             scenario_courses_audit, scenario_courses_attendance, scenario_courses_dashboard, scenario_courses_roll]

@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: session_attendance_checked
+label: {id: Absen pertemuan dicek saat pengajar menyimpannya}
+# The instructor's roll screen (screens/absen_kelas.rk) saves the attendance lines and nothing else (contract 0030 §2
+# roll; course_session is not submittable). Saving them is the check: an instructor's save of a session on or before
+# its day ticks attendance_taken, so the meeting leaves "Absen belum dicek" (dashboard kelas_saya). A save that
+# unticks it (before ticked) is left as the instructor wrote it; the course admin's saves tick nothing.
+on: course_session.updated
+if: "event.before != null && !event.before.attendance_taken && !event.attendance_taken && size(event.attendance) > 0 && event.session_date <= today() && 'instructor' in user.roles"
+steps:
+  - {find: course_session, where: name == event.name, as: me}
+  - update: me
+    set:
+      attendance_taken: 'true'

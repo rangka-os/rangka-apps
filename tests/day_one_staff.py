@@ -147,8 +147,8 @@ def scenario_staff_instructor(api):
     ins, ins2, ca = CTX.get("ins"), CTX.get("ins2"), CTX.get("ca")
     if not (ins and ins2):
         return
-    lands(ins, "Maya (instructor)", "#/d/kelas_saya")
-    lands(ins2, "Nanda (instructor)", "#/d/kelas_saya")
+    lands(ins, "Maya (instructor)", "#/w/absen_kelas")
+    lands(ins2, "Nanda (instructor)", "#/w/absen_kelas")
     if ca:
         lands(ca, "the course admin", "#/d/kursus_ringkas")
     today = kernel_today()
@@ -167,6 +167,10 @@ def scenario_staff_instructor(api):
         eq(f"{who}: active students = own batches' registered and active", num(ws["my_students"]), len(mine))
         check(f"{who}: the student list holds no fee", not any(k in r for r in rows(ws["students"]) for k in ("total", "price", "monthly_fee")), rows(ws["students"])[:2])
     maya_open = [r.get("name") for r in rows(dashboard(ins, "kelas_saya").get("attendance_list"))]
+    if not maya_open and ca:   # her own saves tick the check (flow session_attendance_checked): the admin opens one for today
+        st, s = ca.create("course_session", {"batch": "ANG-2026-001", "session_no": 70, "session_date": today.isoformat()})
+        check("the course admin opens a session of Maya's batch for today (201)", st == 201, (st, s))
+        maya_open = [r.get("name") for r in rows(dashboard(ins, "kelas_saya").get("attendance_list"))] if st == 201 else []
     if maya_open:
         st, r = ins.patch("course_session", maya_open[0], {"attendance_taken": True})
         check("Maya ticks Absen sudah dicek -> 200", st == 200, (st, r))

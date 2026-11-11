@@ -18,6 +18,7 @@ fields:
     required: true
     in_list: true
   - {name: instructor, type: link, to: user, label: {id: Akun pengajar}, compute: batch.instructor}
+  - {name: batch_title, type: data, label: {id: Nama angkatan}, compute: batch.batch_name}
   - name: session_no
     type: int
     label: {id: Pertemuan ke}

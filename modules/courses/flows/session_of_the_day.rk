@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: session_of_the_day
+label: {id: Pertemuan hari ini dibuka dari jadwal mingguan}
+# Every day at 00:10 (scheduler.timezone), and by the owner from the flow list: each running batch with a class on
+# today's weekday (class_days, the same test as dashboard kelas_saya) and no session dated today gets one, numbered
+# after its last session, with one attendance line per registered or active student marked present. So the
+# instructor's roll screen (screens/absen_kelas.rk) has today's class ready and only the exceptions are marked.
+# A flow-made record runs no other flow, so the lines are filled here as session_fill_attendance does for a session
+# made by hand. session_key (batch|session_no) is unique: a second run the same day makes nothing new.
+# At most 200 batches per run.
+schedule: '10 0 * * *'
+steps:
+  - find_all: course_batch
+    where: "start_date <= today() && (end_date == '' || end_date >= today()) && class_days.contains(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][days_between('2024-01-01', today()) % 7])"
+    sort: name
+    limit: 200
+    as: batches
+  - for_each: batches
+    as: b
+    do:
+      - find_all: course_session
+        where: batch == b.name
+        as: past
+      - find_all: enrollment
+        where: batch == b.name && (status == 'registered' || status == 'active')
+        sort: student
+        as: list
+      - create: course_session
+        if: "past.map(x, x.session_date == today() ? 1 : 0).sum() == 0"
+        set:
+          batch: b.name
+          session_no: "past.size() == 0 ? 1 : max(past.map(x, x.session_no)) + 1"
+          session_date: today()
+          attendance: "list.map(e, {'enrollment': e.name, 'status': 'present'})"

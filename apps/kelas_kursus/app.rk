@@ -20,6 +20,9 @@ modules:
 dashboards: [kursus_ringkas, kelas_saya]
 roles: [course_admin, instructor, finance_manager]
 home: {dashboard: kursus_ringkas}
+# The instructor lands on the class roll (contract 0030 roll); Kelas saya stays their dashboard.
+work:
+  - {screen: absen_kelas, roles: [instructor], home: true}
 menu:
   - group: {id: Kelas}
     items: [course_batch, course_session, enrollment]
