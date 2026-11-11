@@ -2,22 +2,31 @@
 # Head office picked the outlet and the item of an unmapped Moka line: it becomes staged and goes into the next daily
 # recap (flow moka_daily_sales). The unmapped refund lines of the same Moka checkout (same transaction and checkout,
 # or for a line without checkout the same description) take the same outlet and item and are staged with it, so a
-# sale and its refund go into the recap together.
+# sale and its refund go into the recap together. A line dated before the outlet's moka_api_from (or while it is
+# empty) is held instead of staged (the export counts that day); flow moka_api_opened stages it later.
 name: moka_line_mapped
 label: {id: Baris Moka yang sudah dipetakan siap direkap}
 on: moka_sale_line.updated
 if: event.status == 'unmapped' && event.outlet != '' && event.item != ''
 steps:
+  # the outlet's API gate (outlet.moka_api_from): before it the line is held, the export counts that day
+  - find: outlet
+    where: "name == event.outlet && moka_api_from != '' && moka_api_from <= event.date"
+    as: open_for
   - find: moka_sale_line
     where: name == event.name
     as: rec
   - update: rec
     set:
-      status: "'staged'"
+      status: "open_for != null ? 'staged' : 'held'"
   - find_all: moka_sale_line
     if: event.qty > 0
     where: "name != event.name && transaction == event.transaction && qty < 0 && status == 'unmapped' && (event.checkout != '' ? checkout == event.checkout : (checkout == '' && description == 'Retur ' + event.description))"
     as: refunds
+  - find: outlet
+    if: event.qty > 0
+    where: name == event.outlet
+    as: outlet_gate
   - for_each: refunds
     if: event.qty > 0
     as: r
@@ -26,4 +35,4 @@ steps:
         set:
           outlet: event.outlet
           item: event.item
-          status: "'staged'"
+          status: "outlet_gate != null && outlet_gate.moka_api_from != '' && outlet_gate.moka_api_from <= r.date ? 'staged' : 'held'"
