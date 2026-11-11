@@ -11,6 +11,3 @@ plans:
     apps: [jasa_proyek]
     capabilities: [realtime, queue, scheduler, files, search, notify_email, notify_whatsapp, api, mcp, ai, sso]
     limits: {users: 15, outlets: 5, storage_mb: 10240, ai_credits_month: 2000}
-
-  - name: uji_day_one
-    label: {id: Uji day_one, en: day_one test}
