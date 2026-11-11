@@ -352,6 +352,11 @@ def scenario_moka_recap_resilience(api):
     run(api, "moka_transaction_staged", event(91000023, d[9], [line("Tahu goreng original", "TH-ORI", 3, 15000)], outlet_id=70001, outlet_name="Tahu Contoh - Dago"))
     l23 = lines_of(91000023)[1]
     check("Dago takes Moka lines by its Moka name", len(l23) == 1 and l23[0]["outlet"] == DAGO and l23[0]["status"] == "staged", l23)
+    # an item no longer sold is switched off (card t_5f7b3387): a linked one cannot be deleted on a current kernel
+    eq("items are active by default", (it or {}).get("active"), True)
+    st, resp = api.patch("item", bks, {"active": False}) if bks else (0, None)
+    check("the owner switches the item off (active false) -> 200", st == 200 and (resp.get("record", resp) or {}).get("active") is False, (st, resp))
+    eq("switched-off items are found by the active filter", [x["name"] for x in api.find("item", "active == false")], [bks])
     st, resp = api.call("DELETE", f"/api/v1/r/item/{bks}") if bks else (0, None)
     # a kernel that refuses to delete a record a live record still links (rangka-os card t_5a50f661) answers 409
     # linked: the item stays and the recap runs as usual; an older kernel deletes it and the recap must survive that

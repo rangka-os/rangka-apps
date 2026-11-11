@@ -524,6 +524,64 @@ def scenario_rental_handover(api):
     check("Kantor pusat opens alat_hari_ini -> 200", st == 200, (st, resp))
 
 
+def scenario_rental_correction_chain(api):
+    """Audit 8 Nov L1 and L2: after return R1 of booking B1, checkout C3 of booking B3 takes the same unit and is
+    cancelled, then R1 is cancelled: the original checkout C1 can still be cancelled (the unit's last checkout comes back
+    with R1's cancel). While a unit is out its item cannot be changed (the return would be locked)."""
+    sm, fm, gd = CTX.get("sm"), CTX.get("fm"), CTX.get("gd")
+    if not (sm and fm and gd):
+        fail("rental members signed in", CTX.get("login_error"))
+        return
+    b1 = book(sm, CAMERA, 1, d(40), 1, "chain B1 camera (day 40)", customer=FILM)
+    b3 = book(sm, CAMERA, 1, d(43), 1, "chain B3 camera (day 43)", customer=BUDI)
+    if not (b1 and b3):
+        return
+    st, c1 = handover_out(gd, b1["name"], [{"unit": KAM1}], d(0), signed_by="Sari Contoh")
+    st, c1 = submit(gd, "rental_checkout", c1.get("name", "x"))
+    if not check("chain: C1 takes KAM-A-01 out for B1 -> 200", st == 200, (st, c1)):
+        return
+    for who, cl in (("Staf gudang", gd), ("Keuangan", fm)):
+        st, r = cl.patch("rental_unit", KAM1, {"rental_item": SOUND})
+        check(f"{who} cannot move KAM-A-01 to another item while it is out (item_locked_while_out)",
+              st == 422 and "item_locked_while_out" in rules(r), (st, r))
+    eq("KAM-A-01 still a camera, out with B1", (unit(api, KAM1).get("rental_item"), unit(api, KAM1).get("state")), (CAMERA, "out"))
+    st, r = gd.patch("rental_unit", KAM1, {"notes": "tas hitam"})
+    check("other edits of a unit that is out still work -> 200", st == 200, (st, r))
+    st, r1 = gd.create("rental_return", {"booking": b1["name"], "return_date": d(40), "refund_method": "cash", "signed_by": "Sari Contoh", "units": [{"unit": KAM1}]})
+    st, r1 = submit(sm, "rental_return", rec(r1).get("name", "x"))
+    if not check("chain: R1 brings KAM-A-01 back -> 200", st == 200, (st, r1)):
+        return
+    st, c3 = handover_out(gd, b3["name"], [{"unit": KAM1}], d(0), signed_by="Budi Contoh")
+    st, c3 = submit(gd, "rental_checkout", c3.get("name", "x"))
+    if not check("chain: C3 takes KAM-A-01 out for B3 -> 200", st == 200, (st, c3)):
+        return
+    st, r = fm.verb("rental_return", r1["name"], "cancel")
+    check("chain: R1 cannot be cancelled while KAM-A-01 is out with B3 (unit_moved)", st == 422 and "unit_moved" in rules(r), (st, r))
+    st, r = sm.verb("rental_checkout", c3["name"], "cancel")
+    check("chain: C3 cancelled -> 200", st == 200, (st, r))
+    st, r = fm.verb("rental_return", r1["name"], "cancel")
+    check("chain: R1 cancelled -> 200", st == 200, (st, r))
+    eq("chain: KAM-A-01 out with B1 again, last checkout C1", (unit(api, KAM1).get("state"), unit(api, KAM1).get("booking"), unit(api, KAM1).get("last_checkout")),
+       ("out", b1["name"], c1["name"]))
+    st, r = sm.verb("rental_checkout", c1["name"], "cancel")
+    check("chain: the original checkout C1 can still be cancelled -> 200 (audit L1)", st == 200, (st, r))
+    eq("chain: KAM-A-01 back in the warehouse, B1 booked again",
+       (unit(api, KAM1).get("state"), unit(api, KAM1).get("booking"), schedule(api, b1["name"]).get("state")), ("in", "", "booked"))
+    st, r = sm.patch("rental_unit", KAM1, {"notes": ""})
+    check("in the warehouse the unit is editable again -> 200", st == 200, (st, r))
+    # a unit back in the warehouse moved to another item: cancelling its return names the move (audit apps-low F5)
+    st, c1b = handover_out(gd, b1["name"], [{"unit": KAM1}], d(0), signed_by="Sari Contoh")
+    st, c1b = submit(gd, "rental_checkout", c1b.get("name", "x"))
+    st, r1b = gd.create("rental_return", {"booking": b1["name"], "return_date": d(40), "refund_method": "cash", "signed_by": "Sari Contoh", "units": [{"unit": KAM1}]})
+    st, r1b = submit(sm, "rental_return", rec(r1b).get("name", "x"))
+    if check("chain: B1 out and back again -> 200", st == 200, (st, r1b)):
+        sm.patch("rental_unit", KAM1, {"rental_item": SOUND})
+        st, r = fm.verb("rental_return", r1b["name"], "cancel")
+        check("a return whose unit moved to another item since cannot be cancelled (unit_moved)", st == 422 and "unit_moved" in rules(r), (st, r))
+        sm.patch("rental_unit", KAM1, {"rental_item": CAMERA})
+        eq("KAM-A-01 a camera again, in the warehouse", (unit(api, KAM1).get("rental_item"), unit(api, KAM1).get("state")), (CAMERA, "in"))
+
+
 def scenario_rental_invoice_guards(api):
     """Audit finding 1 and 2: a rental invoice is submitted once, only for a live document, and its notes are locked."""
     sm = CTX.get("sm")
@@ -667,4 +725,4 @@ def _sum_by(rows, cond):
 
 
 SCENARIOS = [scenario_rental_fixtures, scenario_rental_booking_conflict, scenario_rental_race, scenario_rental_out_and_back,
-             scenario_rental_cancel, scenario_rental_still_out, scenario_rental_handover, scenario_rental_invoice_guards, scenario_rental_pkp, scenario_rental_roles, scenario_rental_dashboard]
+             scenario_rental_cancel, scenario_rental_still_out, scenario_rental_handover, scenario_rental_correction_chain, scenario_rental_invoice_guards, scenario_rental_pkp, scenario_rental_roles, scenario_rental_dashboard]

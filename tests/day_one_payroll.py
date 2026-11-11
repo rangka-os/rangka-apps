@@ -7,6 +7,7 @@ recomputes PPh 21 TER, BPJS, Pasal 17 and the client invoice from the research, 
 import importlib.util
 import os
 import sys
+import threading
 import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -22,7 +23,7 @@ ORACLE_KEY = {"base_pay": "base", "overtime_pay": "overtime", "holiday_overtime_
 
 
 def bind(m):
-    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "denied", "secrets", "import_commit", "submit_all"):
+    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "denied", "secrets", "import_commit", "submit_all", "messages"):
         H[k] = getattr(m, k)
     globals().update(H)
 
@@ -500,4 +501,98 @@ def scenario_payroll_status_change(api):
     check("MP-904 turning casual while October (permanent) was not the last month -> refused", st >= 400 and "masa pajak terakhir" in str(resp), (st, resp))
 
 
-SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale, scenario_payroll_status_change]
+def scenario_payroll_low_r2(api):
+    """Audit gelombang 3 r2: a deduction not linked to the worker's open kasbon is warned (R1); permanent, casual, then
+    permanent again in one year starts a new period of work (R2); two slips repaying one kasbon submitted at the same
+    moment never deduct more than it (R3); rest-day hours climb the tiers in order (R4)."""
+    fm, pa = CTX.get("fm"), CTX.get("pa")
+    if not (fm and pa):
+        fail("payroll r2: members", "missing")
+        return
+    g = gen()
+    st, prj = pa.create("project", {"project_name": "Alih daya gudang ekspedisi", "customer": g.CLIENT, "state": "running", "billing_model": "time_material"})
+    if not check("contract for the r2 checks", st == 201, (st, prj)):
+        return
+    runs = {}
+    for m in (6, 7, 8, 9):
+        st, runs[m] = fm.create("payroll_run", dict(g.RUN, project=prj["name"], period_from=f"2026-{m - 1:02d}-21", period_to=f"2026-{m:02d}-20", tax_month=m, billing_mode="none"))
+        if not check(f"run of tax month {m}", st == 201, (st, runs[m])):
+            return
+    people = {}
+    for no, emp, nik in (("MP-905", "permanent", "9999000000009905"), ("MP-906", "casual", "9999000000009906")):
+        st, w = fm.create("worker", {"worker_name": "Uji " + no, "employee_no": no, "cost_day_rate": 300_000, "active": True})
+        st2, prof = fm.create("payroll_profile", {"worker": (w or {}).get("name", ""), "ptkp_status": "tk0", "pay_basis": "daily", "employment": emp, "nik": nik})
+        if not check(f"{no}: worker and profile ({emp})", st == 201 and st2 == 201, (st, w, st2, prof)):
+            return
+        people[no] = dict(prof, worker=w["name"])
+
+    def draft(no, m, **over):
+        return fm.create("payslip", dict({"payroll_run": runs[m]["name"], "profile": people[no]["name"], "days": 22}, **over))
+
+    def sub(name, force=False):
+        st, resp = fm.verb("payslip", name, "submit", {"force": True} if force else None)
+        return st, (resp.get("record", resp) if st == 200 else resp)
+
+    # R4: tiers in order
+    st, sl = draft("MP-905", 6, holiday_overtime_days=1, holiday_hours_2x=3, holiday_hours_3x=1)
+    check("3x hours before a full day at 2x -> refused (R4)", st == 422 and any("3x baru setelah" in x for x in messages(sl)), (st, sl))
+    st, sl = draft("MP-905", 6, holiday_overtime_days=1, holiday_hours_2x=7, holiday_hours_4x=2)
+    check("4x hours without the hour at 3x -> refused (R4)", st == 422 and any("4x baru setelah" in x for x in messages(sl)), (st, sl))
+    # R2: permanent in June (left: last month), casual in July, permanent again from August
+    st, jun = draft("MP-905", 6, holiday_overtime_days=1, holiday_hours_2x=5, holiday_hours_3x=1, holiday_hours_4x=3, last_month=True)
+    check("the shortest day of a six-day week (5 h at 2x, 1 at 3x, 3 at 4x) is accepted (R4)", st == 201, (st, jun))
+    st, jun = sub(jun.get("name", "x"))
+    check("MP-905 June as permanent, the month the employment ends (last_month)", st == 200 and jun.get("last_month") is True, (st, jun))
+    st, jul = draft("MP-905", 7, employment="casual")
+    st, jul = sub(jul.get("name", "x"))
+    check("MP-905 July as casual (daily TER)", st == 200 and jul.get("ter_daily") is True, (st, jul))
+    st, aug = draft("MP-905", 8, employment="permanent")
+    check("MP-905 August permanent again: June's ended period is not in the year to date (R2)", st == 201 and (aug.get("ytd_months"), aug.get("ytd_gross")) == (0, 0), (st, aug))
+    st, aug = sub(aug.get("name", "x"))
+    check("and it submits (the year-to-date guard reads the same period)", st == 200, (st, aug))
+    st, sep = draft("MP-905", 9, employment="permanent")
+    eq("MP-905 September reads August only", (sep.get("ytd_months"), sep.get("ytd_gross")), (1, aug.get("gross_taxable")))
+    # a last_month ticked by mistake (the worker stays permanent, no casual month after it) does not cut the year (F1)
+    st, w = fm.create("worker", {"worker_name": "Uji MP-907", "employee_no": "MP-907", "cost_day_rate": 300_000, "active": True})
+    st2, prof = fm.create("payroll_profile", {"worker": (w or {}).get("name", ""), "ptkp_status": "tk0", "pay_basis": "daily", "employment": "permanent", "nik": "9999000000009907"})
+    people["MP-907"] = prof
+    st, j6 = draft("MP-907", 6, last_month=True)
+    st, j6 = sub(j6.get("name", "x"))
+    st, j7 = draft("MP-907", 7)
+    check("MP-907 June ticked last_month but July stays permanent: July still reads June (audit F1)",
+          st == 201 and (j7.get("ytd_months"), j7.get("ytd_gross")) == (1, j6.get("gross_taxable")), (st, j7, j6.get("gross_taxable")))
+    # R1 and R3: MP-906 (casual, so the months have no year to date) owes a kasbon of 300.000
+    st, kb = fm.create("cash_advance", {"worker": people["MP-906"]["worker"], "advance_date": "2026-06-25", "amount": 300_000})
+    st, kb = fm.verb("cash_advance", kb.get("name", "x"), "submit")
+    kb = (kb or {}).get("record", kb)
+    if not check("MP-906 kasbon 300.000 submitted", st == 200, (st, kb)):
+        return
+    st, s7 = draft("MP-906", 7, other_deduction=100_000)
+    eq("a slip made while the kasbon is open notes it", s7.get("open_advance"), kb["name"])
+    st, resp = sub(s7.get("name", "x"))
+    check("an unlinked deduction while a kasbon is open is warned at submit (R1)", st == 422 and resp.get("needs_force") is True
+          and [w.get("rule") for w in resp.get("warnings", [])] == ["deduction_not_linked"], (st, resp))
+    fm.patch("payslip", s7["name"], {"other_deduction": 0})
+    st, s7 = sub(s7["name"])
+    check("without the deduction July submits without a warning", st == 200, (st, s7))
+    slips = []
+    for m in (8, 9):
+        st, sl = draft("MP-906", m, other_deduction=200_000, cash_advance=kb["name"])
+        if not check(f"MP-906 month {m} repays 200.000 of the kasbon (draft)", st == 201, (st, sl)):
+            return
+        slips.append(sl["name"])
+    out, bar = [None, None], threading.Barrier(2)
+
+    def go(i):
+        bar.wait()
+        out[i] = fm.verb("payslip", slips[i], "submit")
+    th = [threading.Thread(target=go, args=(i,)) for i in range(2)]
+    [t.start() for t in th]
+    [t.join() for t in th]
+    eq("two slips repaying 400.000 of a 300.000 kasbon submitted at once: one goes through, one is refused (R3)",
+       sorted(st for st, _ in out), [200, 422])
+    live = fm.find("payslip", f"cash_advance == '{kb['name']}' && docstatus == 1")
+    check("the submitted slips never deduct more than the kasbon", sum(x["other_deduction"] for x in live) <= 300_000, live)
+
+
+SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale, scenario_payroll_status_change, scenario_payroll_low_r2]
