@@ -3,7 +3,8 @@
 # record, not a child table, so the daily flow can read every line of an outlet and day with one find_all.
 # status: staged (ready), unmapped (no outlet or no item matched: head office picks them here and the line becomes
 # staged, flow moka_line_mapped; head office may still correct them while staged), posted (in outlet_sales `sales`). A refunded quantity is its own line, as in the
-# export import: qty < 0, gross 0, refund = the refunded share of the line's net.
+# export import: qty < 0, gross 0, refund = the refunded share of the line's net. A refund Moka reports after the first
+# poll is a refund line of its own, dated the day of the refund (flow moka_transaction_staged).
 name: moka_sale_line
 label: {id: Baris penjualan Moka, en: Moka sales line}
 icon: store
@@ -16,6 +17,8 @@ permissions:
   - {role: head_office, read: true, export: true}
 fields:
   - {name: transaction, type: link, to: moka_transaction, label: {id: Transaksi Moka}, read_only: true, in_list: true}
+  # Moka's checkout id: the sale line and its refund lines share it, so a refund made later adds only what is new
+  - {name: checkout, type: data, label: {id: ID baris di Moka}, read_only: true}
   - {name: outlet, type: link, to: outlet, label: {id: Outlet}, in_list: true}
   - {name: date, type: date, label: {id: Tanggal}, read_only: true, in_list: true}
   - {name: item, type: link, to: item, label: {id: Barang}, in_list: true}
