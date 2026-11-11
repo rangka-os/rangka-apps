@@ -96,6 +96,10 @@ fields:
   # The kasbon this deduction repays (cash_advance of the same worker, submitted): its cancel is then refused, and the
   # live slips linking it never deduct more than it (payslip_advance_guard, audit gelombang 3 F5).
   - {name: cash_advance, type: link, to: cash_advance, label: {id: Kasbon yang dipotong}}
+  # A kasbon of this worker not yet repaid in full by the submitted slips linking it, found when the slip is made
+  # (payslip_ytd_on_create, payslip_from_recap). A deduction without a link while one is open is warned at submit
+  # (audit gelombang 3 r2 R1): linked, the kasbon cannot be cancelled after its repayment.
+  - {name: open_advance, type: link, to: cash_advance, label: {id: Kasbon belum lunas}, read_only: true}
   - name: ptkp_status
     type: select
     label: {id: Status PTKP}
@@ -291,6 +295,15 @@ rules:
       && holiday_hours_2x <= holiday_overtime_days * (payroll_run.workdays_per_week == 5 ? 8 : 7)
       && holiday_hours_3x <= holiday_overtime_days && holiday_hours_4x <= holiday_overtime_days * 3
     message: {id: 'Hari 0 sampai 31, jam hari libur per tarif tidak melebihi batas per hari (2x: 7 atau 8, 3x: 1, 4x: 3), tidak negatif'}
+  # Rest-day hours climb the tiers in order (PP 35/2021 Pasal 31; audit gelombang 3 r2 R4): an hour at 3x only after a
+  # full day at 2x (at least 5 hours, the shortest day of a six-day week; 8 hours in a five-day week), hours at 4x only
+  # after the hour at 3x (at most 3 per day that had one).
+  - name: holiday_tiers_in_order
+    on: save
+    check: >-
+      holiday_hours_2x >= holiday_hours_3x * (payroll_run.workdays_per_week == 5 ? 8 : 5)
+      && holiday_hours_4x <= holiday_hours_3x * 3
+    message: {id: 'Jam hari libur 3x baru setelah jam 2x penuh, dan 4x baru setelah jam 3x'}
   - name: pay_entered
     on: submit
     check: "pay_basis == 'monthly' ? monthly_salary > 0 : (days > 0 && day_rate > 0)"
@@ -311,6 +324,11 @@ rules:
     on: submit
     check: net_pay >= 0
     message: {id: 'Gaji bersih minus: kurangi potongan lain'}
+  - name: deduction_not_linked
+    on: submit
+    level: warn
+    check: other_deduction == 0 || cash_advance != '' || open_advance == ''
+    message: {id: 'Pekerja ini punya kasbon belum lunas, tapi potongannya tidak ditautkan ke kasbon itu'}
   - name: umk_warning
     on: submit
     level: warn
@@ -329,7 +347,7 @@ views:
       - section: {id: Kehadiran dan upah}
         columns:
           - [pay_basis, employment, days, day_rate, monthly_salary, fixed_allowance, daily_allowance]
-          - [overtime_hours, overtime_days, overtime_rate, thr_tenure_months, other_income, other_deduction, cash_advance]
+          - [overtime_hours, overtime_days, overtime_rate, thr_tenure_months, other_income, other_deduction, cash_advance, open_advance]
       - section: {id: Hari libur masuk kerja}
         columns:
           - [holiday_overtime_days]

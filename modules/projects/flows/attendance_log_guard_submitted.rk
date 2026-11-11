@@ -22,10 +22,14 @@ steps:
     set:
       reason: "'second_log'"
       document: other.name
-  # One photo, one day (audit r2 R2-3): a clock-in photo already used by another live log is refused. That the photo
-  # was uploaded to this very log is checked by the kernel only from WS6 (image fields).
+  # One photo, one day (audit r2 R2-3, r3 R3-2): a photo of this log already used as the clock-in or clock-out photo of
+  # another live log is refused. That the photo was uploaded to this very log is checked by the kernel only from WS6
+  # (image fields).
   - find: attendance_log
-    where: in_photo == event.in_photo && name != event.name && docstatus != 2
+    where: >-
+      name != event.name && docstatus != 2 && (
+        in_photo == event.in_photo || out_photo == event.in_photo
+        || (event.out_photo != '' && (in_photo == event.out_photo || out_photo == event.out_photo)))
     as: same_photo
   - if: same_photo != null
     create: attendance_guard

@@ -54,6 +54,13 @@ fields:
   - {name: last_return, type: link, to: rental_return, label: {id: Alat kembali terakhir}, read_only: true}
   - {name: active, type: check, label: {id: Masih dipakai}, default: 'true'}
   - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  # A unit out with a booking stays a unit of the booked item until it comes back (audit 8 Nov L2): moving it to another
+  # item's pool while out would lock the booking's return (units_of_item) and count it twice.
+  - name: item_locked_while_out
+    on: save
+    check: state != 'out' || booking == '' || rental_item == booking.rental_item
+    message: {id: 'Unit sedang keluar: alatnya tidak bisa diganti sampai unit kembali'}
 views:
   list:
     columns: [code, rental_item, serial_no, condition, state, booking]

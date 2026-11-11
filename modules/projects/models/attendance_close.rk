@@ -37,9 +37,13 @@ fields:
     label: {id: Sampai tanggal}
     required: true
     in_list: true
+  # Workers and supervisors keep read (the guards of their log submit read the close) and are not row scoped (no worker or
+  # work_site field, contract 0010 §5), so they can list every project's closes; the notes stay hidden from them
+  # (audit 8 Nov L7, accepted limit: project, period and status remain visible).
   - name: notes
     type: text
     label: {id: Catatan}
+    hidden_for: [field_worker, site_supervisor]
   # No unique key on the period: a cancelled close must not block its amendment or a new close of the same days. Two live
   # closes of overlapping days are refused by attendance_close_on_submit under the flow lock (contract 0025).
 rules:
