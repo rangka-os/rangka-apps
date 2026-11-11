@@ -1,8 +1,11 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # Runs inside a receipt's payment (pos_sale submitted), as the cashier: one ticket per active station of the outlet
-# with the receipt's lines whose item category is routed to that station (kitchen_route). An outlet without stations
-# (a shop) and a receipt without kitchen lines make nothing. A receipt paid again after a void (amend) sends its lines
-# again as a revision. A failure here rolls the payment back, so a paid receipt never misses its tickets.
+# with the receipt's lines whose item category (pos_sale_item.category, kept on the line) is routed to that station
+# (kitchen_route). An outlet without stations (a shop) and a receipt without kitchen lines make nothing. A failure here
+# rolls the payment back, so a paid receipt never misses its tickets.
+# A receipt paid again after a void (amend) is a revision: what the voided receipt's picked-up tickets of that station
+# already sent out is not cooked again. The rest goes to the kitchen as Baru, and the part already served is kept as a
+# ticket that is Diambil from the start, so a later revision knows it too.
 name: kitchen_ticket_on_sale
 label: {id: 'Struk dibayar: kirim tiket ke stasiun dapur'}
 on: pos_sale.submitted
@@ -11,13 +14,15 @@ steps:
   - if: stations.size() > 0
     then:
       - {find_all: kitchen_route, where: outlet == event.outlet, as: routes}
-      - find_all: item
-        where: name in event.items.map(l, l.item)
-        as: menu
+      - if: event.amended_from != ''
+        then:
+          - {find_all: kitchen_ticket, where: "sale == event.amended_from && status == 'picked_up'", as: served}
+        else:
+          - {find_all: kitchen_station, where: "false", as: served}
       - for_each: stations
         as: st
         do:
-          - if: "event.items.filter(l, menu.filter(m, m.name == l.item && routes.filter(r, r.station == st.name && r.category == m.category).size() > 0).size() > 0).size() > 0"
+          - if: "event.items.filter(l, routes.filter(r, r.station == st.name && r.category == l.category).size() > 0 && l.qty - min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum()) > 0).size() > 0"
             create: kitchen_ticket
             set:
               sale: event.name
@@ -26,4 +31,16 @@ steps:
               date: event.date
               buyer: event.buyer
               revision_of: event.amended_from
-              items: "event.items.filter(l, menu.filter(m, m.name == l.item && routes.filter(r, r.station == st.name && r.category == m.category).size() > 0).size() > 0).map(l, {'item': l.item, 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note})"
+              items: "event.items.filter(l, routes.filter(r, r.station == st.name && r.category == l.category).size() > 0 && l.qty - min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum()) > 0).map(l, {'item': l.item, 'description': l.description, 'qty': l.qty - min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum()), 'uom': l.uom, 'note': l.note})"
+          - if: "event.items.filter(l, routes.filter(r, r.station == st.name && r.category == l.category).size() > 0 && min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum()) > 0).size() > 0"
+            create: kitchen_ticket
+            set:
+              sale: event.name
+              outlet: event.outlet
+              station: st.name
+              date: event.date
+              buyer: event.buyer
+              revision_of: event.amended_from
+              status: "'picked_up'"
+              picked_up_at: now()
+              items: "event.items.filter(l, routes.filter(r, r.station == st.name && r.category == l.category).size() > 0 && min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum()) > 0).map(l, {'item': l.item, 'description': l.description, 'qty': min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum()), 'uom': l.uom, 'note': l.note})"

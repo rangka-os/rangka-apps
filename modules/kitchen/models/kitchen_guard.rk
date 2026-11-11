@@ -19,6 +19,7 @@ fields:
       - {value: ticket_void, label: {id: Tiket sudah batal}}
       - {value: void_by_receipt, label: {id: Batal hanya dari struk}}
       - {value: one_step, label: {id: Satu langkah}}
+      - {value: sale_void, label: {id: Struk sudah batal}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: ticket_void
@@ -33,3 +34,7 @@ rules:
     on: save
     check: reason != 'one_step'
     message: {id: 'Status tiket maju atau mundur satu langkah saja (Baru, Dimasak, Siap, Diambil)'}
+  - name: sale_void
+    on: save
+    check: reason != 'sale_void'
+    message: {id: 'Struk tiket ini sudah dibatalkan; tiket yang sudah diambil tidak bisa dikembalikan ke antrean'}

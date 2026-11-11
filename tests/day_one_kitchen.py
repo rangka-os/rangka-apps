@@ -209,6 +209,47 @@ def scenario_kitchen_void_and_revision(api):
     check("a ticket typed by hand is refused (its lines come only from a receipt)", st in (400, 422), (st, r))
 
 
+def scenario_kitchen_served_revision(api):
+    """Audit A4 L1/L2: Meja 12 (kopi susu aren, roti) is picked up, then voided and corrected (kopi susu aren kept, a kopi
+    hitam added, roti returned). The kitchen makes only the kopi hitam; the coffee already served is kept as a ticket
+    Diambil from the start, and a picked-up ticket of the voided receipt cannot be pulled back into the queue."""
+    sari, tono = CTX.get("sari"), CTX.get("tono")
+    shift = CTX.get("shift_riu_kitchen")
+    if not (sari and tono and shift):
+        return
+    s1 = pay(sari, shift, [{"item": KSA, "qty": 1}, {"item": ROTI, "qty": 1}], "Meja 12: kopi susu aren and roti", buyer="Meja 12")
+    if not s1:
+        return
+    ts = tickets(api, s1["name"])
+    for t in ts:
+        for step in ("cooking", "ready", "picked_up"):
+            st, r = tono.patch("kitchen_ticket", t["name"], {"status": step})
+            if st != 200:
+                check(f"Meja 12 {t['station']}: {step}", False, (st, r))
+    ts = tickets(api, s1["name"])
+    check("Meja 12: both tickets picked up", [t["status"] for t in ts] == ["picked_up", "picked_up"], ts)
+    st, r = sari.verb("pos_sale", s1["name"], "cancel")
+    if not check("Sari voids Meja 12 after the food went out -> 200", st == 200, (st, r)):
+        return
+    ts = tickets(api, s1["name"])
+    check("picked-up tickets stay picked up, marked as of a voided receipt", all(t["status"] == "picked_up" and t.get("sale_void") for t in ts), ts)
+    st, r = tono.patch("kitchen_ticket", ts[0]["name"], {"status": "ready"})
+    check("Urungkan on a picked-up ticket of a voided receipt -> 422 sale_void", st == 422 and "sale_void" in rules(r), (st, r))
+    st, am = sari.verb("pos_sale", s1["name"], "amend")
+    am = rec(am)
+    if not check("Sari amends Meja 12 -> a new draft", st in (200, 201) and am.get("name"), (st, am)):
+        return
+    st, r = sari.patch("pos_sale", am["name"], {"items": [{"item": KSA, "qty": 1}, {"item": KHT, "qty": 1}]})
+    check("the corrected Meja 12: kopi susu aren kept, kopi hitam added, roti returned", st == 200, (st, r))
+    st, r = sari.verb("pos_sale", am["name"], "submit")
+    check("the corrected Meja 12 is paid -> 200", st == 200, (st, r))
+    ts = tickets(api, rec(r).get("name"))
+    eq("revision: the kitchen makes only the kopi hitam; the served kopi susu aren is kept as Diambil; no Dapur ticket",
+       sorted((t["station"], t["status"], tuple(lines(t))) for t in ts),
+       sorted([(BAR, "new", ((KHT, 1, ""),)), (BAR, "picked_up", ((KSA, 1, ""),))]))
+    check("every revision ticket is marked REVISI", all(t["heading"] == "REVISI Meja 12" for t in ts), ts)
+
+
 def scenario_kitchen_scope(api):
     """A shop sells without tickets; once head office gives Toko Dago a station, Dago's tickets stay out of Tono's
     reach (row scope by outlet, contract 0010), and Wati (outlet staff, Kedai Riau) reads Riau's tickets only."""
@@ -282,5 +323,6 @@ def scenario_kitchen_dashboard_and_screen(api):
     check("Sari (cashier) gets the kitchen screen, not as home", {"screen": "dapur", "home": False} in ((m or {}).get("work") or []), (m or {}).get("work"))
 
 
-SCENARIOS = [scenario_kitchen_tickets, scenario_kitchen_steps, scenario_kitchen_void_and_revision, scenario_kitchen_scope,
+SCENARIOS = [scenario_kitchen_tickets, scenario_kitchen_steps, scenario_kitchen_void_and_revision, scenario_kitchen_served_revision,
+             scenario_kitchen_scope,
              scenario_kitchen_dashboard_and_screen]
