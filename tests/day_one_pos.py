@@ -318,6 +318,16 @@ def scenario_pos_guards(api):
         check("a daily form for a day the outlet already rang up in the cashier -> 422 cashier_same_day", st == 422 and "cashier_same_day" in rules(resp), (st, resp))
         hq.call("DELETE", f"/api/v1/r/outlet_sales/{Api.q(rec(f)['name'])}")
     hq.patch("outlet", DGO, {"sales_source": "kasir"})
+    # module pos installed: a new outlet sells through the cashier unless told otherwise (a build that adds kasir next
+    # to an outlet_sales app gets outlets the cashier can ring up in), an outlet on Moka keeps no source
+    st, o = hq.create("outlet", {"outlet_name": "Kios Contoh Sore", "code": "SRE"})
+    if check("a new outlet without a sales source (Kios Sore)", st == 201, (st, o)):
+        eq("its sales source defaults to the cashier", rec(o).get("sales_source"), "kasir")
+        hq.patch("outlet", rec(o)["name"], {"active": False})
+    st, o = hq.create("outlet", {"outlet_name": "Kios Contoh Moka", "code": "MKA", "moka_name": "Kios Contoh Moka"})
+    if check("a new outlet on Moka (Kios Moka)", st == 201, (st, o)):
+        eq("an outlet on Moka gets no default sales source", rec(o).get("sales_source") or "", "")
+        hq.patch("outlet", rec(o)["name"], {"active": False})
     # a cashier outlet that has not rung up yet today: a setoran first, then the receipts, would book the cash twice
     st, o = hq.create("outlet", {"outlet_name": "Kios Contoh Pagi", "code": "PGI", "sales_source": "kasir"})
     if check("a new cashier outlet (Kios Pagi)", st == 201, (st, o)):
