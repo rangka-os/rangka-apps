@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
 # One item of one Moka transaction, waiting to become a line of the outlet's daily sales (flow moka_daily_sales). A flat
 # record, not a child table, so the daily flow can read every line of an outlet and day with one find_all.
-# status: staged (ready), unmapped (no outlet or no item matched: head office picks them here and the line becomes
+# status: staged (ready), held (the outlet's API gate is closed for its day, see outlet.moka_api_from), unmapped (no outlet or no item matched: head office picks them here and the line becomes
 # staged, flow moka_line_mapped; head office may still correct them while staged), posted (in outlet_sales `sales`). A refunded quantity is its own line, as in the
 # export import: qty < 0, gross 0, refund = the refunded share of the line's net. A refund Moka reports after the first
 # poll is a refund line of its own, dated the day of the refund (flow moka_transaction_staged).
@@ -41,6 +41,9 @@ fields:
       - {value: staged, label: {id: Siap direkap}}
       - {value: unmapped, label: {id: Belum dipetakan}}
       - {value: posted, label: {id: Sudah direkap}}
+      # the outlet does not count Moka API sales for this day yet (outlet.moka_api_from empty or later): the export
+      # counts it; flow moka_api_opened stages it once head office opens the outlet's API from this day or earlier
+      - {value: held, label: {id: Ditahan (outlet masih ekspor)}}
   - {name: sales, type: link, to: outlet_sales, label: {id: Penjualan harian}, read_only: true, in_list: true}
 rules:
   - name: staged_has_outlet_and_item
@@ -52,6 +55,11 @@ rules:
     on: save
     check: status != 'staged' || outlet == '' || outlet.moka_name != ''
     message: {id: 'Pilih outlet yang memakai Moka (Nama outlet di Moka terisi)'}
+  # an API line counts only from the outlet's moka_api_from on: before it the export counts that day (audit R1)
+  - name: staged_outlet_api_open
+    on: save
+    check: status != 'staged' || outlet == '' || (outlet.moka_api_from != '' && outlet.moka_api_from <= date)
+    message: {id: 'Outlet ini belum memakai API Moka untuk tanggal baris ini. Isi Mulai pakai API Moka di outlet, atau catat lewat ekspor'}
 views:
   list:
     columns: [date, outlet, description, qty, status, item, sales]
