@@ -52,6 +52,11 @@ rules:
     on: save
     check: status != 'staged' || outlet == '' || outlet.moka_name != ''
     message: {id: 'Pilih outlet yang memakai Moka (Nama outlet di Moka terisi)'}
+  # an API line counts only from the outlet's moka_api_from on: before it the export counts that day (audit R1)
+  - name: staged_outlet_api_open
+    on: save
+    check: status != 'staged' || outlet == '' || (outlet.moka_api_from != '' && outlet.moka_api_from <= date)
+    message: {id: 'Outlet ini belum memakai API Moka untuk tanggal baris ini. Isi Mulai pakai API Moka di outlet, atau catat lewat ekspor'}
 views:
   list:
     columns: [date, outlet, description, qty, status, item, sales]

@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A Moka transaction without id (transaction_id missing, null or ""): flow moka_transaction_staged does not book it,
+# because the kernel does not dedupe an empty idempotency key and a repeated poll would count the sale twice
+# (audit kernel-gelombang1 Delta 2, t_34922edd). Head office is told to check it in Moka and book it by hand (or through
+# the export). The kernel's event dedupe (hash of the event, 30 days) keeps one notice per distinct event.
+name: moka_transaction_without_id
+label: {id: Transaksi Moka tanpa ID diberitahukan}
+on: moka.transaction_created
+if: "!('transaction_id' in event) || event.transaction_id == null || string(event.transaction_id) == ''"
+steps:
+  - notify: head_office
+    channel: email
+    template: {id: 'Moka {event.receipt_no} ({event.outlet_name}): transaksi tanpa ID dari Moka tidak dicatat, cek di Moka'}

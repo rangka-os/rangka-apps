@@ -21,11 +21,17 @@
 # new transaction (unmapped lines are told about line by line), two per checkout for a refund.
 # The day is the first 10 characters of created_at (Moka answers in the outlet's local time, +07:00); a time in UTC
 # (ending in Z) is taken as WIB (+7 hours) first. The same for refunded_date. To confirm once API access is granted.
-# Idempotency: the transaction and its refunded quantity, so a new refund is a new run and a repeat is not.
+# Idempotency: the transaction and its refunded quantity, so a new refund is a new run and a repeat is not. An event
+# without transaction_id (null or "") is not run: the kernel does not dedupe an empty key, so a repeated poll could book
+# it twice; flow moka_transaction_without_id tells head office instead.
+# Gate (audit sisa-1111 R1): a transaction of a known outlet whose day is before the outlet's moka_api_from (or while
+# it is empty) is kept as a moka_transaction only, without lines: the export counts that day. A transaction of an
+# unknown outlet stays unmapped as before; mapping its lines to an outlet checks the same gate (moka_sale_line rule
+# staged_outlet_api_open). refunded_quantity may be null in a checkout (Moka's spec does not list it): null is 0.
 name: moka_transaction_staged
 label: {id: Transaksi Moka masuk jadi baris penjualan}
 on: moka.transaction_created
-if: "'transaction_id' in event && 'created_at' in event && 'checkouts' in event && 'outlet_id' in event"
+if: "'transaction_id' in event && event.transaction_id != null && string(event.transaction_id) != '' && 'created_at' in event && 'checkouts' in event && 'outlet_id' in event"
 idempotency: "string(event.transaction_id) + ':' + string(event.checkouts.map(c, 'refunded_quantity' in c && c.refunded_quantity != null ? c.refunded_quantity : 0).sum())"
 steps:
   - find: moka_transaction
@@ -53,8 +59,13 @@ steps:
       total_collected: "'total_collected' in event ? event.total_collected : 0"
       refunded: "'is_refunded' in event && event.is_refunded == true"
     as: tx
-  - for_each: event.checkouts
+  # the outlet's gate: open on and after its moka_api_from
+  - find: outlet
     if: known == null
+    where: "tx.outlet != '' && name == tx.outlet && moka_api_from != '' && moka_api_from <= tx.date"
+    as: api_open
+  - for_each: event.checkouts
+    if: known == null && (tx.outlet == '' || api_open != null)
     as: c
     do:
       - find: item
@@ -83,7 +94,7 @@ steps:
       - create: moka_sale_line
         # a refund line only when it returns money: a refund of a free item (100% discount) changes nothing and a line of
         # qty < 0 without refund is refused by outlet_sales; never more than the quantity sold
-        if: "c.quantity > 0 && c.total_price >= 0 && 'refunded_quantity' in c && c.refunded_quantity > 0 && round((c.total_price - min('discount_amount' in c ? c.discount_amount : 0, c.total_price)) * min(c.refunded_quantity, c.quantity) / c.quantity) > 0"
+        if: "c.quantity > 0 && c.total_price >= 0 && 'refunded_quantity' in c && c.refunded_quantity != null && c.refunded_quantity > 0 && round((c.total_price - min('discount_amount' in c ? c.discount_amount : 0, c.total_price)) * min(c.refunded_quantity, c.quantity) / c.quantity) > 0"
         set:
           transaction: tx.name
           checkout: "('uuid' in c && c.uuid != null && string(c.uuid) != '' ? string(c.uuid) : ('id' in c && c.id != null ? string(c.id) : ''))"
@@ -102,7 +113,7 @@ steps:
         channel: email
         template: {id: 'Moka {tx.receipt_no} ({tx.moka_outlet}, {tx.date}): barang "{c.item_name}" belum dikenali, petakan di Baris penjualan Moka'}
   - notify: head_office
-    if: "known == null && event.checkouts.map(c, c.quantity > 0 && c.total_price >= 0 ? 0 : 1).sum() > 0"
+    if: "known == null && (tx.outlet == '' || api_open != null) && event.checkouts.map(c, c.quantity > 0 && c.total_price >= 0 ? 0 : 1).sum() > 0"
     channel: email
     template: {id: 'Moka {tx.receipt_no} ({tx.moka_outlet}, {tx.date}) punya barang dengan qty 0 atau minus, atau total minus, tidak direkap. Cek di Moka'}
   - notify: head_office
@@ -126,7 +137,7 @@ steps:
         where: "transaction == known.name && qty < 0 && checkout == sold.checkout && description == 'Retur ' + sold.description"
         as: returned
       - create: moka_sale_line
-        if: "sold != null && 'refunded_quantity' in c && min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum() > 0 && round((sold.gross - sold.discount) * (min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum()) / sold.qty) > 0"
+        if: "sold != null && 'refunded_quantity' in c && c.refunded_quantity != null && min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum() > 0 && round((sold.gross - sold.discount) * (min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum()) / sold.qty) > 0"
         set:
           transaction: known.name
           checkout: sold.checkout
@@ -142,7 +153,7 @@ steps:
           status: "sold.status == 'unmapped' || sold.outlet == '' || sold.item == '' ? 'unmapped' : 'staged'"
         as: late
       - notify: head_office
-        if: "sold != null && 'refunded_quantity' in c && min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum() > 0 && round((sold.gross - sold.discount) * (min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum()) / sold.qty) > 0"
+        if: "sold != null && 'refunded_quantity' in c && c.refunded_quantity != null && min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum() > 0 && round((sold.gross - sold.discount) * (min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum()) / sold.qty) > 0"
         channel: email
         template: {id: 'Moka {known.receipt_no} ({known.moka_outlet}): retur susulan {sold.description} dicatat di Baris penjualan Moka'}
   - update: known
