@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Head office set (or moved earlier) an outlet's moka_api_from: the outlet's held Moka lines dated on or after it become
+# staged and go into the next daily recap (flow moka_daily_sales). Held lines are what the API polled before the gate
+# opened (audit moka-guard H1): without this they would be counted by neither the API nor the export. Lines dated
+# before the date stay held (the export counts those days).
+name: moka_api_opened
+label: {id: Baris Moka yang ditahan dilepas saat outlet mulai pakai API}
+on: outlet.updated
+if: "event.moka_api_from != null && event.moka_api_from != ''"
+steps:
+  - find_all: moka_sale_line
+    where: "outlet == event.name && status == 'held' && date >= event.moka_api_from"
+    as: held
+  - for_each: held
+    as: l
+    do:
+      - update: l
+        set:
+          status: "'staged'"
