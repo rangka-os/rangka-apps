@@ -23,13 +23,13 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | outlet | r c w p | r c w p | r c w p | r c w p | r c w p | r | r |
 | item_category | r c w p | r c w p | r c w p | r c w p | r c w d p | r | r |
 | vendor, uom, uom_conversion, price_list, tax_code, currency, exchange_rate | r c w p | r c w p | r c w p | r c w p | r c w p | r | |
-| worker (carries pay; `hidden_for` is not enforced, so no access for sales and purchasing) | | r c w p | | r c w p | r c w p | r | |
+| worker (carries pay, `hidden_for` enforced since contract 0027; still no access for sales and purchasing) | | r c w p | | r c w p | r c w p | r | |
 | user | r | r | r | r | r | r | r |
 | quotation, customer_order | all | r p | | r c w s (submit held by `manager_approval`) | | | |
 | project (finance and sales write only for the invoice flows that keep `billed_amount`; contract terms freeze once billed) | r w | r w | | all | | | |
 | acceptance | r | r | | all | | | |
-| assignment (cost rates; field_worker r own, site_supervisor r own site, rates hidden from both) | | r | | all | | | |
-| timesheet (pay and cost) | | r | | all + i (`attendance_recap` import) | | | |
+| assignment (cost rates; field_worker r own, site_supervisor r own site, rates hidden from both; cost rates carry the worker's `hidden_for`) | | r | | all | | | |
+| timesheet (pay and cost; `cost_rate`, `overtime_cost_rate`, `cost_amount` carry the worker's `hidden_for`) | | r | | all + i (`attendance_recap` import) | | | |
 | billing_milestone (state written by flows; no delete; finance and sales write only through the invoice flows, an amount edit by them is refused) | r w | r w e | | r c w e i | | | |
 | project_expense (sales only `reimbursable` rows, billed on to the client; purchasing only rows linking a `vendor_bill`, for its cancel guard) | r | all but d | r | all | | | |
 | project_guard (never stored; a flow's refusal) | | c | c | | | | |

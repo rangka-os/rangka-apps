@@ -2627,8 +2627,8 @@ def scenario_manpower_recap(api):
 
 
 def scenario_cost_visibility(api):
-    """Audit re-pin L1 (t_9c6fc6d5): pay and labour cost are read only by owner, finance and project admin. hidden_for is
-    not enforced by the kernel, so the models carrying pay (worker, assignment, timesheet) are not readable by sales or
+    """Audit re-pin L1 (t_9c6fc6d5): pay and labour cost are read only by owner, finance and project admin. Besides hidden_for
+    (contract 0027) on the pay fields, the models carrying pay (worker, assignment, timesheet) are not readable by sales or
     purchasing, and the project ledger shows sales only revenue rows and purchasing only vendor rows (row-level `if`),
     which is what their submit and cancel flows need. No CSV export of the ledger for sales."""
     sm, pm, fm, pa = (CTX.get(x) for x in ("sm", "pm", "fm", "pa"))
@@ -2862,7 +2862,7 @@ _PIPE = dict({r: _R for r in ("finance_manager", "purchasing_manager", "project_
 _STOCK_DOC = {"head_office": _ALL, "outlet_staff": _RCWS}
 MATRIX = {
     **{m: _MASTER for m in ("vendor", "uom_conversion", "price_list", "tax_code", "currency", "exchange_rate")},
-    # worker carries pay (hidden_for is not enforced): not readable by sales or purchasing (audit L1)
+    # worker carries pay (hidden_for since 0027, and no model read): not readable by sales or purchasing (audit L1)
     "worker": {r: v for r, v in _MASTER.items() if r not in ("sales_manager", "purchasing_manager")},
     "uom": dict(_MASTER, field_sales=_R),
     # field_sales (distribution): a salesman reads his own customers (role scope salesman) and cannot change their credit
