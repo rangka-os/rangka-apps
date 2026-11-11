@@ -66,12 +66,14 @@ fields:
     depends_on: app_installed('outlet_sales') && moka_name != ''
   # The sales source of an outlet without Moka (moka_name empty): the daily form (default when empty), a file from
   # another POS in Juragan's template, a Loyverse export, or Juragan's own cashier (module pos). One source per outlet,
-  # so a day is never counted twice.
+  # so a day is never counted twice. With module pos installed a new outlet without Moka starts on the cashier (a site
+  # built with app kasir next to an outlet_sales app can ring up at once); head office switches it per outlet.
   - name: sales_source
     type: select
     label: {id: Sumber penjualan}
     help: {id: 'Untuk outlet yang tidak pakai Moka. Kosong berarti formulir harian'}
     depends_on: app_installed('outlet_sales') && moka_name == ''
+    default: "app_installed('pos') && moka_name == '' ? 'kasir' : ''"
     options:
       - {value: form, label: {id: Formulir harian}}
       - {value: file, label: {id: File POS (template Juragan)}}
