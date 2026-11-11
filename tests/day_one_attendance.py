@@ -304,9 +304,12 @@ def scenario_attendance_close(api):
     check("a period that has not ended cannot be closed", refused(st2, resp2, "belum selesai"), (st2, resp2))
     if st == 201:
         pa.call("DELETE", f"/api/v1/r/attendance_close/{Api.q(resp['name'])}")
-    st, c = pa.create("attendance_close", {"project": P, "period_from": str(pf), "period_to": str(pt)})
+    st, c = pa.create("attendance_close", {"project": P, "period_from": str(pf), "period_to": str(pt), "notes": "Klien minta rekap per shift"})
     if not check("project admin opens the field attendance close", st == 201, (st, c)):
         return
+    for who, cl in (("worker", w1), ("supervisor", sv1)):
+        st, got = cl.call("GET", f"/api/v1/r/attendance_close/{Api.q(c['name'])}")
+        check(f"the {who} reads the close (its guards need it) without its notes (audit L7)", st == 200 and "notes" not in rec(got) and rec(got).get("project") == P, (st, got))
     st, resp = pa.verb("attendance_close", c["name"], "submit")
     if not check("project admin submits the close", st == 200, (st, resp)):
         return
@@ -386,7 +389,7 @@ def scenario_attendance_close_edges(api):
     for key, no, start, end, extra in (("a1", "MP-111", D(10), D(6), {"day_rate": 300_000, "cost_rate": 200_000}),
                                        ("a2", "MP-111", D(5), t + datetime.timedelta(days=30), {"day_rate": 400_000, "cost_rate": 260_000}),
                                        ("c", "MP-112", D(10), t + datetime.timedelta(days=30), {}),
-                                       ("h", "MP-113", D(10), t + datetime.timedelta(days=30), {"rate_basis": "hour"})):
+                                       ("h", "MP-113", D(10), t + datetime.timedelta(days=30), {"rate_basis": "hour", "day_rate": 350_000})):
         st, a = api.create("assignment", dict({"project": P, "worker": ws[no], "work_site": SITE, "start_date": str(start), "end_date": str(end)}, **extra))
         if not check(f"assignment {key} of {no}", st == 201, (st, a)):
             return
@@ -404,8 +407,8 @@ def scenario_attendance_close_edges(api):
     eq("each assignment is paid and billed at its own rate (1 x 200.000/300.000; 2 x 260.000/400.000)",
        got, sorted([(asg["a1"], 1, 200_000, 300_000), (asg["a2"], 2, 520_000, 800_000)]))
     h = api.find("timesheet", f"project == '{P}' && worker == '{ws['MP-113']}'")
-    eq("an hourly assignment gets a per-day recap at the worker's day rates (audit r2: 1 x 200.000 pay, 300.000 billed)",
-       [(x["rate_basis"], x["days"], x["attendance_close"], x["cost_amount"], x["amount"]) for x in h], [("day", 1, C1, 200_000, 300_000)])
+    eq("an hourly assignment gets a per-day recap: the worker's day pay, the assignment's day rate (audit r2, r3: 200.000 pay, 350.000 billed)",
+       [(x["rate_basis"], x["days"], x["attendance_close"], x["cost_amount"], x["amount"]) for x in h], [("day", 1, C1, 200_000, 350_000)])
     # Reopen the second close: delete its draft recap, cancel, amend, submit again.
     for x in api.find("timesheet", f"attendance_close == '{C2}'"):
         api.call("DELETE", f"/api/v1/r/timesheet/{Api.q(x['name'])}")
@@ -443,6 +446,28 @@ def scenario_attendance_close_edges(api):
                                            "in_photo": used.get("in_photo", "")})
     st2, resp2 = api.verb("attendance_log", lg.get("name", "x"), "submit") if st == 201 else (st, lg)
     check("a clock-in photo already used by another log is refused", bool(used.get("in_photo")) and refused(st2, resp2, "foto"), (used, st2, resp2))
+    # The clock-out photo counts too (audit r3 R3-2): another log's photo as this log's clock-out photo, and this log's
+    # clock-out photo as a later log's clock-in photo.
+    lgn = lg.get("name", "x")
+    st, resp = api.patch("attendance_log", lgn, {"in_photo": photo(api, lgn), "out_photo": used.get("in_photo", "")})
+    st2, resp2 = api.verb("attendance_log", lgn, "submit") if st == 200 else (st, resp)
+    check("another log's clock-in photo as the clock-out photo is refused", refused(st2, resp2, "foto"), (st, st2, resp2))
+    own_out = photo(api, lgn)
+    st, resp = api.patch("attendance_log", lgn, {"out_photo": own_out})
+    st2, resp2 = api.verb("attendance_log", lgn, "submit") if st == 200 else (st, resp)
+    check("with its own clock-out photo the log submits", st2 == 200, (st, st2, resp2))
+    # Clock-in on the paid day (audit L9): another day is refused; 06:00 WIB (stored 23:00Z the day before) is that day.
+    base = {"worker": ws["MP-113"], "assignment": asg["h"], "work_date": str(t), "in_lat": lat, "in_lng": lng,
+            "clock_out": f"{t}T17:00:00+07:00", "out_lat": lat, "out_lng": lng}
+    st, resp = api.create("attendance_log", dict(base, clock_in=f"{D(2)}T08:00:00+07:00"))
+    check("a clock-in two days before the log's date is refused", refused(st, resp, "tanggal absen"), (st, resp))
+    st, lg3 = api.create("attendance_log", dict(base, clock_in=f"{t}T06:00:00+07:00"))
+    check("a clock-in at 06:00 WIB on the log's date is accepted", st == 201, (st, lg3))
+    if st == 201:
+        st, resp = api.patch("attendance_log", lg3["name"], {"in_photo": own_out})
+        check("the stored early clock-in (UTC, the day before) still passes on the next save", st == 200, (st, resp))
+        st2, resp2 = api.verb("attendance_log", lg3["name"], "submit") if st == 200 else (st, resp)
+        check("an earlier log's clock-out photo as the clock-in photo is refused", refused(st2, resp2, "foto"), (st2, resp2))
 
 
 SCENARIOS = [scenario_attendance_clock, scenario_attendance_supervisor, scenario_attendance_close, scenario_attendance_close_edges]

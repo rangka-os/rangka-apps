@@ -54,4 +54,4 @@ rules:
   - name: photo_reused
     on: save
     check: reason != 'photo_reused'
-    message: {id: 'Foto masuk ini sudah dipakai absen lain; ambil foto baru untuk absen hari ini'}
+    message: {id: 'Foto ini sudah dipakai absen lain; ambil foto baru untuk absen hari ini'}
