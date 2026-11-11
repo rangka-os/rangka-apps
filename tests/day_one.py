@@ -3322,6 +3322,10 @@ def scenario_coretax(api):
     check("a line quantity with 3 decimals is refused before export",
           st == 422 and any(p["name"] == q3 and "2 desimal" in p["message"] for p in resp["error"]["problems"]), (st, resp))
     api.verb("sales_invoice", q3, "cancel")
+    # audit 7 Nov D1: a quantity with decimals whose Price x Qty falls under the whole-rupiah line amount (0,29 x 333.333
+    # = 96.666,57, line 96.667): Price is raised, TotalDiscount is never negative
+    sen = inv(ca, may + "16", [(0.29, 333_333, {})])
+    got[sen] = api.get("sales_invoice", sen)
     # audit 7 Nov #9: a passport buyer needs a foreign country code
     st, cp = api.create("customer", {"customer_name": "Mr Contoh Asing", "address": "Jl. Contoh No. 5", "passport_no": "X1234567"})
     if check("customer with a passport only", st == 201, (st, cp)):
@@ -3338,7 +3342,13 @@ def scenario_coretax(api):
     eq("root TaxInvoiceBulk with the seller NPWP", (root.tag, root.findtext("TIN")), ("TaxInvoiceBulk", seller))
     tis = root.findall("ListOfTaxInvoice/TaxInvoice")
     by_ref = {t.findtext("RefDesc").split(";")[0]: t for t in tis}
-    eq("the period's PPN invoices, no cancelled, no 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin]))
+    eq("the period's PPN invoices, no cancelled, no 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin, sen]))
+    neg = [(t.findtext("RefDesc"), g.findtext("TotalDiscount")) for t in tis for g in t.iter("GoodService") if D(g.findtext("TotalDiscount")) < 0]
+    eq("no line has a negative TotalDiscount (audit D1)", neg, [])
+    if sen in by_ref:
+        g = by_ref[sen].find("ListOfGoodService/GoodService")
+        eq("0,29 x 333.333: Price raised to TaxBase / Qty (333.334,48), TotalDiscount 0", (g.findtext("Price"), g.findtext("TaxBase"), g.findtext("TotalDiscount")),
+           ("333334.48", "96667", "0"))
     for t in tis:
         ref = t.findtext("RefDesc").split(";")[0]
         eq(f"{ref}: elements in the DJP sample order", [c.tag for c in t], CORETAX_INVOICE_TAGS)
