@@ -8,8 +8,10 @@
 # waits in Baris penjualan Moka until someone picks them (flow moka_line_mapped) and goes into the recap after that,
 # as its own record for that day if the day was already recapped (an API line is posted exactly once).
 # A later event of a known transaction (Moka changed it: a refund made after the sale was polled, or anything else) adds
-# only refund lines for the quantity refunded since, per Moka checkout id (moka_sale_line.checkout), dated the day of
-# the refund (refunded_date), staged for the recap of that day; a change without a new refund adds nothing.
+# only refund lines for the quantity refunded since, per Moka checkout (moka_sale_line.checkout: the checkout's uuid,
+# else its id), dated the day of the refund (refunded_date), staged for the recap of that day (or unmapped with its
+# sale line, and mapped with it, flow moka_line_mapped); a change without a new refund adds nothing. A checkout without
+# uuid or id is not matched by name (two lines of one item would share a refund): head office is told to book it.
 # A refunded quantity counts at most the line's quantity. A checkout of qty <= 0 or a negative total is not staged:
 # head office is told to check it in Moka.
 # A transaction delivered twice records nothing: the kernel drops a repeated event and a known transaction only adds the
@@ -17,13 +19,14 @@
 # roll the second back whole.
 # Cost: one moka_transaction scan per event (the kernel reads a model whole for find); no moka_sale_line scan for a
 # new transaction (unmapped lines are told about line by line), two per checkout for a refund.
-# The day is the first 10 characters of created_at (Moka answers in the outlet's local time, +07:00; to confirm once
-# API access is granted).
+# The day is the first 10 characters of created_at (Moka answers in the outlet's local time, +07:00); a time in UTC
+# (ending in Z) is taken as WIB (+7 hours) first. The same for refunded_date. To confirm once API access is granted.
+# Idempotency: the transaction and its refunded quantity, so a new refund is a new run and a repeat is not.
 name: moka_transaction_staged
 label: {id: Transaksi Moka masuk jadi baris penjualan}
 on: moka.transaction_created
 if: "'transaction_id' in event && 'created_at' in event && 'checkouts' in event && 'outlet_id' in event"
-idempotency: string(event.transaction_id)
+idempotency: "string(event.transaction_id) + ':' + string(event.checkouts.map(c, 'refunded_quantity' in c && c.refunded_quantity != null ? c.refunded_quantity : 0).sum())"
 steps:
   - find: moka_transaction
     where: transaction_id == string(event.transaction_id)
@@ -45,7 +48,7 @@ steps:
       outlet: "by_id != null ? by_id.name : (by_name != null ? by_name.name : '')"
       moka_outlet: "'outlet_name' in event ? event.outlet_name : string(event.outlet_id)"
       sold_at: event.created_at
-      date: event.created_at
+      date: "string(event.created_at).matches('Z$') ? event.created_at + duration('7h') : event.created_at"
       payment_type: "'payment_type' in event ? event.payment_type : ''"
       total_collected: "'total_collected' in event ? event.total_collected : 0"
       refunded: "'is_refunded' in event && event.is_refunded == true"
@@ -66,7 +69,7 @@ steps:
         if: "c.quantity > 0 && c.total_price >= 0"
         set:
           transaction: tx.name
-          checkout: "'id' in c ? string(c.id) : ''"
+          checkout: "('uuid' in c && c.uuid != null && string(c.uuid) != '' ? string(c.uuid) : ('id' in c && c.id != null ? string(c.id) : ''))"
           outlet: tx.outlet
           date: tx.date
           item: "by_sku != null ? by_sku.name : (by_item_name != null ? by_item_name.name : '')"
@@ -83,7 +86,7 @@ steps:
         if: "c.quantity > 0 && c.total_price >= 0 && 'refunded_quantity' in c && c.refunded_quantity > 0 && round((c.total_price - min('discount_amount' in c ? c.discount_amount : 0, c.total_price)) * min(c.refunded_quantity, c.quantity) / c.quantity) > 0"
         set:
           transaction: tx.name
-          checkout: "'id' in c ? string(c.id) : ''"
+          checkout: "('uuid' in c && c.uuid != null && string(c.uuid) != '' ? string(c.uuid) : ('id' in c && c.id != null ? string(c.id) : ''))"
           outlet: tx.outlet
           date: tx.date
           item: "by_sku != null ? by_sku.name : (by_item_name != null ? by_item_name.name : '')"
@@ -112,8 +115,12 @@ steps:
     as: c
     do:
       - find: moka_sale_line
-        where: "transaction == known.name && qty > 0 && ('id' in c && string(c.id) != '' ? checkout == string(c.id) : (checkout == '' && sku == ('sku' in c ? c.sku : '') && description == c.item_name + ('item_variant_name' in c && c.item_variant_name != '' ? ' ' + c.item_variant_name : '')))"
+        where: "('uuid' in c && c.uuid != null && string(c.uuid) != '' ? string(c.uuid) : ('id' in c && c.id != null ? string(c.id) : '')) != '' && transaction == known.name && qty > 0 && checkout == ('uuid' in c && c.uuid != null && string(c.uuid) != '' ? string(c.uuid) : ('id' in c && c.id != null ? string(c.id) : ''))"
         as: sold
+      - notify: head_office
+        if: "('uuid' in c && c.uuid != null && string(c.uuid) != '' ? string(c.uuid) : ('id' in c && c.id != null ? string(c.id) : '')) == '' && 'refunded_quantity' in c && c.refunded_quantity != null && c.refunded_quantity > 0"
+        channel: email
+        template: {id: 'Moka {known.receipt_no} ({known.moka_outlet}): retur {c.item_name} tanpa ID baris Moka, catat manual'}
       - find_all: moka_sale_line
         if: sold != null
         where: "transaction == known.name && qty < 0 && checkout == sold.checkout && description == 'Retur ' + sold.description"
@@ -124,7 +131,7 @@ steps:
           transaction: known.name
           checkout: sold.checkout
           outlet: sold.outlet
-          date: "'refunded_date' in event && event.refunded_date != null && event.refunded_date != '' ? event.refunded_date : today()"
+          date: "'refunded_date' in event && event.refunded_date != null && event.refunded_date != '' ? (string(event.refunded_date).matches('Z$') ? event.refunded_date + duration('7h') : event.refunded_date) : today()"
           item: sold.item
           description: "'Retur ' + sold.description"
           sku: sold.sku
@@ -137,7 +144,7 @@ steps:
       - notify: head_office
         if: "sold != null && 'refunded_quantity' in c && min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum() > 0 && round((sold.gross - sold.discount) * (min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum()) / sold.qty) > 0"
         channel: email
-        template: {id: 'Moka {known.receipt_no} ({known.moka_outlet}): retur susulan {sold.description}, masuk rekap tanggal retur'}
+        template: {id: 'Moka {known.receipt_no} ({known.moka_outlet}): retur susulan {sold.description} dicatat di Baris penjualan Moka'}
   - update: known
     if: "known != null && 'is_refunded' in event && event.is_refunded == true && !known.refunded"
     set:

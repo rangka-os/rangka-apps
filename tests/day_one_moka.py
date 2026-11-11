@@ -28,7 +28,7 @@ def bind(m):
 def event(tid, day, checkouts, outlet_id=70002, outlet_name="Tahu Contoh - Braga", refunded=False, hour="11:42:10", refunded_at=None):
     """One transaction_created event, as the moka connector emits it (emit keys of moka/connector.rk)."""
     total = sum(c["total_price"] - c["discount_amount"] for c in checkouts)
-    return {"transaction_id": tid, "outlet_id": outlet_id, "outlet_name": outlet_name, "receipt_no": f"BRG-{tid % 100000:06d}",
+    return {"transaction_id": tid, "outlet_id": outlet_id, "outlet_name": outlet_name, "receipt_no": f"BRG-{tid % 100000:06d}" if isinstance(tid, int) else f"BRG-{str(tid)[-6:]}",
             "created_at": f"{day}T{hour}+07:00", "is_refunded": refunded, "checkouts": checkouts, "payment_type": "cash",
             "total_collected": total, "updated_at": refunded_at or f"{day}T{hour}+07:00", "refunded_date": refunded_at}
 
@@ -228,6 +228,39 @@ def scenario_moka_late_refund(api):
     eq("refunds go into the recap of the refund days (net minus the refund)",
        ([x["net_total"] for x in sales(BRAGA, d[7])], [x["net_total"] for x in sales(BRAGA, d[6])]), ([-15000], [-31000]))
     eq("the sale day keeps its one record", [x["net_total"] for x in sales(BRAGA, d[8])], [46000])
+
+    # checkouts as in Moka's spec: a uuid, no id; two lines of one item refunded later, a refund time in UTC
+    u1, u2 = dict(line("Tahu goreng original", "TH-ORI", 2, 15000), uuid="c0ffee00-0000-4000-8000-0000000000a1"), \
+        dict(line("Tahu goreng original", "TH-ORI", 1, 15000), uuid="c0ffee00-0000-4000-8000-0000000000a2")
+    for c in (u1, u2):
+        c.pop("id")
+    run(api, "moka_transaction_staged", event("4a3f6c1e-uuid-0026", d[5], [u1, u2]))
+    run(api, "moka_transaction_staged", event("4a3f6c1e-uuid-0026", d[5], [dict(u1, refunded_quantity=2), dict(u2, refunded_quantity=1)],
+                                              refunded=True, refunded_at=f"{d[5]}T18:30:00Z"))
+    eq("uuid checkouts, two lines of one item: each refund booked once (3 portions, Rp 45.000), a Z time taken as WIB (next day)",
+       sorted((r["qty"], r["refund"], r["date"]) for r in lines_of("4a3f6c1e-uuid-0026")[1] if r["qty"] < 0), [(-2, 30000, d[4]), (-1, 15000, d[4])])
+
+    # a checkout with neither uuid nor id: a later refund is not guessed by name, head office is told
+    n1 = line("Tahu goreng pedas", "TH-PDS", 1, 18000)
+    n1.pop("id")
+    run(api, "moka_transaction_staged", event(91000027, d[5], [n1]))
+    st, out = run(api, "moka_transaction_staged", event(91000027, d[5], [dict(n1, refunded_quantity=1)], refunded=True, refunded_at=f"{d[4]}T10:00:00+07:00"))
+    check("checkout without uuid or id: no refund line guessed, head office told to book it",
+          not [r for r in lines_of(91000027)[1] if r["qty"] < 0] and any("tanpa ID baris" in n.get("text", "") for n in out.get("notifications", [])),
+          (lines_of(91000027)[1], out.get("notifications")))
+
+    # a refund of a line still unmapped: mapped together with its sale line
+    hq = CTX.get("hq")
+    k = line("Es teh contoh", "MK-TEH", 2, 5000)
+    run(api, "moka_transaction_staged", event(91000028, d[5], [k]))
+    run(api, "moka_transaction_staged", event(91000028, d[5], [dict(k, refunded_quantity=1)], refunded=True, refunded_at=f"{d[4]}T11:00:00+07:00"))
+    l28 = lines_of(91000028)[1]
+    sale28 = [r for r in l28 if r["qty"] > 0]
+    if hq and sale28:
+        st, resp = hq.patch("moka_sale_line", sale28[0]["name"], {"item": PDS})
+        l28 = lines_of(91000028)[1]
+    eq("mapping the sale line maps its unmapped refund too (same item, staged)", sorted((r["qty"], r["item"], r["status"]) for r in l28),
+       [(-1, PDS, "staged"), (2, PDS, "staged")])
 
 
 def scenario_moka_recap_resilience(api):
