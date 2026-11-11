@@ -9,6 +9,14 @@
 # (legacy_key_overlap) and rule legacy_key_reviewed holds its submit until head office has removed what is counted
 # twice; an export imported after the API day is flagged by flow moka_legacy_key_overlap.
 # An unmapped line waits in Baris penjualan Moka and does not hold anything back; once mapped it joins the next recap.
+# One run is one unit of work: a refused create would roll back every outlet-day of the run, and the next run would
+# pick the same oldest day again. So before creating, the lines whose item was deleted, whose outlet was deleted or
+# whose outlet no longer uses Moka (Nama outlet di Moka emptied) go back to unmapped with that item or outlet emptied,
+# head office is told, and the other lines of the day are recapped. (The kernel lets a linked record be deleted; a
+# rangka-os card asks it to refuse.)
+# Cost: the kernel reads a whole model for every find, so each slot reads moka_sale_line once (the oldest staged lines,
+# the outlet-day taken from the first) and a slot runs only while the slot before found lines: a run with nothing to
+# recap reads the table once, a run with N outlet-days N + 1 times.
 name: moka_daily_sales
 label: {id: Rekap harian penjualan Moka per outlet}
 schedule: '15 * * * *'
@@ -16,42 +24,55 @@ steps:
   - for_each: "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]"
     as: slot
     do:
+      # the oldest staged lines; the outlet-day of this slot is the first one's (lines are sorted by date, then the
+      # slot keeps those of the same outlet and day)
       - find_all: moka_sale_line
+        if: slot == 1 || size(batch) > 0
         where: "status == 'staged' && outlet != '' && date < today()"
         sort: date
-        limit: 1
-        as: first
-      - find_all: moka_sale_line
-        if: size(first) > 0
-        where: "outlet == first[0].outlet && date == first[0].date && status == 'staged'"
-        sort: name
         limit: 1000
-        as: rows
+        as: batch
       - find: outlet
-        if: size(first) > 0
-        where: name == first[0].outlet
+        if: size(batch) > 0
+        where: name == batch[0].outlet
         as: o
+      - find_all: item
+        if: size(batch) > 0
+        where: "name in batch.filter(r, r.outlet == batch[0].outlet && r.date == batch[0].date).map(r, r.item)"
+        as: alive
       - find: outlet_sales
-        if: size(first) > 0
-        where: "outlet == first[0].outlet && date == first[0].date && source == 'moka' && docstatus != 2 && key_version != 3"
+        if: size(batch) > 0
+        where: "outlet == batch[0].outlet && date == batch[0].date && source == 'moka' && docstatus != 2 && key_version != 3"
         as: filed
       - create: outlet_sales
-        if: size(first) > 0
+        if: "size(batch) > 0 && o != null && o.moka_name != '' && size(batch.filter(r, r.outlet == batch[0].outlet && r.date == batch[0].date && r.item in alive.map(i, i.name))) > 0"
         set:
-          outlet: first[0].outlet
-          date: first[0].date
+          outlet: batch[0].outlet
+          date: batch[0].date
           source: "'moka'"
-          moka_outlet: "o != null ? o.moka_name : ''"
+          moka_outlet: o.moka_name
           key_version: "3"
           note: "'Dari Moka API'"
           legacy_key_overlap: filed != null
-          lines: "rows.map(r, {'item': r.item, 'description': r.description, 'qty': r.qty, 'gross': r.gross, 'discount': r.discount, 'refund': r.refund})"
+          lines: "batch.filter(r, r.outlet == batch[0].outlet && r.date == batch[0].date && r.item in alive.map(i, i.name)).map(r, {'item': r.item, 'description': r.description, 'qty': r.qty, 'gross': r.gross, 'discount': r.discount, 'refund': r.refund})"
         as: sales
-      - for_each: rows
-        if: size(first) > 0
+      - for_each: "size(batch) > 0 && o != null && o.moka_name != '' ? batch.filter(r, r.outlet == batch[0].outlet && r.date == batch[0].date && r.item in alive.map(i, i.name)) : []"
         as: r
         do:
           - update: r
             set:
               status: "'posted'"
               sales: sales.name
+      # lines that cannot go into a record: back to unmapped, the missing item or outlet emptied, head office told
+      - for_each: "size(batch) > 0 ? batch.filter(r, r.outlet == batch[0].outlet && r.date == batch[0].date && (o == null || o.moka_name == '' || !(r.item in alive.map(i, i.name)))) : []"
+        as: r
+        do:
+          - update: r
+            set:
+              status: "'unmapped'"
+              outlet: "o != null && o.moka_name != '' ? r.outlet : ''"
+              item: "r.item in alive.map(i, i.name) ? r.item : ''"
+      - notify: head_office
+        if: "size(batch) > 0 && size(batch.filter(r, r.outlet == batch[0].outlet && r.date == batch[0].date && (o == null || o.moka_name == '' || !(r.item in alive.map(i, i.name))))) > 0"
+        channel: email
+        template: {id: 'Rekap Moka {batch[0].outlet} {batch[0].date}: barang/outlet terhapus atau outlet tanpa Moka, baris kembali Belum dipetakan'}
