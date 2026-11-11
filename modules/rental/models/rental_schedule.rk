@@ -37,6 +37,14 @@ fields:
   - {name: returned_date, type: date, label: {id: Tanggal kembali aktual}, read_only: true}
   - {name: checkout, type: link, to: rental_checkout, label: {id: Bukti alat keluar}, read_only: true}
   - {name: rental_return, type: link, to: rental_return, label: {id: Bukti alat kembali}, read_only: true}
+  # For the warehouse's route of the day (screens/jadwal_alat.rk): what to do with this booking today.
+  - {name: item_title, type: data, label: {id: Nama alat}, read_only: true, compute: "rental_item.title"}
+  - {name: customer_name, type: data, label: {id: Nama pelanggan}, read_only: true, compute: "customer.customer_name"}
+  - name: todo
+    type: data
+    label: {id: Tugas hari ini}
+    read_only: true
+    compute: "state == 'booked' ? 'Serahkan ke ' + customer_name : (state == 'out' ? 'Terima kembali dari ' + customer_name : '')"
 rules:
   # Made by rental_booking_on_submit inside the booking's submit; a row for a draft booking (made by hand) would hold
   # units for a booking that was never confirmed, and would block that booking's own row (booking is unique).

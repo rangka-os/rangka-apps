@@ -63,8 +63,8 @@ fields:
       - {value: transfer, label: {id: Transfer bank}}
   - {name: signed_by, type: data, label: {id: Diserahkan kembali oleh (nama penyewa)}, in_list: true}
   - {name: received_by, type: data, label: {id: Diterima oleh (petugas)}}
-  - {name: photo, type: image, label: {id: Foto alat saat kembali}, help: {id: 'Id lampiran foto (att_...). Foto kerusakan lain cukup dilampirkan ke catatan ini'}}
-  - {name: signature, type: signature, label: {id: Tanda tangan penyewa}, help: {id: 'Id lampiran gambar tanda tangan (att_...)'}}
+  - {name: photo, type: image, label: {id: Foto alat saat kembali}, help: {id: 'Foto pertama dari layar serah terima; foto kerusakan lain ikut terlampir di catatan ini'}}
+  - {name: signature, type: signature, label: {id: Tanda tangan penyewa}, help: {id: 'Ditandatangani di layar serah terima'}}
 rules:
   - name: booking_submitted
     on: save
@@ -84,7 +84,7 @@ rules:
     check: "damage_fee >= 0 && units.map(r, r.fee < 0 ? 1 : 0).sum() == 0"
     message: {id: Biaya kerusakan tidak boleh minus}
   - name: units_match_qty
-    on: save
+    on: submit
     check: units.size() == 0 || units.size() == qty
     message: {id: 'Jumlah unit di checklist harus sama dengan jumlah unit pesanan (unit hilang tetap dicatat, kondisi Hilang)'}
   - name: units_of_item
@@ -108,14 +108,6 @@ rules:
     on: save
     check: signature == '' || signed_by != ''
     message: {id: Tanda tangan perlu nama penyewa yang menandatangani}
-  - name: photo_is_attachment
-    on: save
-    check: "photo == '' || photo.startsWith('att_')"
-    message: {id: 'Foto harus berupa lampiran catatan ini (id att_...)'}
-  - name: signature_is_attachment
-    on: save
-    check: "signature == '' || signature.startsWith('att_')"
-    message: {id: 'Tanda tangan harus berupa lampiran catatan ini (id att_...)'}
 views:
   list:
     columns: [name, booking, customer, return_date, late_days, signed_by, deposit_refund, extra_due, status]

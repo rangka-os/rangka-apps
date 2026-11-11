@@ -11,7 +11,7 @@ rangka: '>=0.5'
 # A piece (riset/desain/11-susunan-kepingan.md) for rental businesses (kamera, alat pesta, alat outdoor). The rent
 # invoices it drafts are collected through faktur_piutang (payments); the deposit journals need pembukuan. Staf gudang
 # (rental_staff) records equipment out and back per unit with a checklist and prints the BAST; their dashboard is
-# alat_hari_ini. The handover screens of contract 0030 (kernel WS8) bind here with work: once the renderer exists.
+# alat_hari_ini; their home is the work screen jadwal_alat (contract 0030), which opens the handover screens.
 modules:
   users: ^1.0
   contacts: ^1.0
@@ -21,6 +21,11 @@ modules:
 dashboards: [sewa_ringkas, alat_hari_ini]
 roles: [sales_manager, finance_manager, head_office, rental_staff]
 home: {dashboard: sewa_ringkas}
+work:
+  - {screen: jadwal_alat, roles: [rental_staff], home: true}
+  - {screen: jadwal_alat, roles: [sales_manager]}
+  - {screen: alat_keluar}
+  - {screen: alat_kembali}
 menu:
   - group: {id: Sewa alat}
     items: [rental_booking, rental_checkout, rental_return, rental_schedule]

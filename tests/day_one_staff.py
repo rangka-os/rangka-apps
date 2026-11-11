@@ -193,11 +193,13 @@ def scenario_staff_collector(api):
 
 
 def scenario_staff_rental(api):
-    """The rental warehouse (rental_staff) lands on Alat hari ini (rental handover, A6); the owner keeps Ringkasan sewa."""
+    """The rental warehouse (rental_staff) lands on the work screen Jadwal alat hari ini (contract 0030 route, which opens
+    the handover screens); Alat hari ini stays their dashboard; the owner keeps Ringkasan sewa."""
     gd = CTX.get("gd")
     if not gd:
         return
-    lands(gd, "the warehouse (rental_staff)", "#/d/alat_hari_ini")
+    m = lands(gd, "the warehouse (rental_staff)", "#/w/jadwal_alat")
+    check("Alat hari ini stays open to the warehouse", "alat_hari_ini" in (m.get("dashboards") or {}), sorted((m.get("dashboards") or {}).keys()))
     lands(api, "the owner", "#/d/sewa_ringkas")
 
 

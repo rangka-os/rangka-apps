@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+name: alat_keluar
+type: handover
+label: {id: Serah alat keluar, en: Equipment out}
+icon: truck
+# Equipment goes out with proof (contract 0030 §2 handover, WS8): scan each unit (rental_unit.code), mark its
+# condition, at least one photo, the renter signs, submit, print the BAST. Opened from jadwal_alat, the new draft gets
+# the booking of that stop; otherwise the warehouse's drafts are offered. Units, deposit and schedule move in
+# rental_checkout and its submit flow (audited there), not in the screen. Photos and the signature need the connection.
+roles: [rental_staff, sales_manager]
+device: tablet
+needs: [scan, photo, signature, print]
+handover:
+  document: {model: rental_checkout, find: "docstatus == 0", create: true, set: {booking: stop.booking}, title: item_title, subtitle: customer_name}
+  rows: {table: units, unit: unit, condition: condition, note: notes}
+  scan: {match: code}
+  photos: {field: photo, min: 1}
+  signature: {field: signature, by: signed_by}
+  print: rental_bast_out
