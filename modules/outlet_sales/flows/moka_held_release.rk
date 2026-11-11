@@ -3,23 +3,31 @@
 # outlet now counts the API for their day (outlet.moka_api_from set, on or before the line's date) become staged.
 # Flow moka_api_opened does this when head office saves the outlet; this run catches the rest (audit moka-guard D1): a
 # held line head office moved to an outlet already on the API, or a line a poll wrote while the outlet was being
-# saved. A held line without item or outlet (head office emptied it) goes back to unmapped instead (rule
-# staged_has_outlet_and_item, D2). Held lines of outlets still on the export are not read (outlet in the open list).
+# saved. A held line without item (head office emptied it) goes back to unmapped instead (rule
+# staged_has_outlet_and_item, D2). Only outlets whose API has started (moka_api_from <= today) are read, and only lines
+# from the earliest of their dates on (audit held-release A1: an outlet with a future date or a long export period
+# must not fill the 2000-line read); if 2000 lines still come back, head office is told and the next runs go on.
+# A held line without outlet is not read: it waits until head office gives it an outlet.
 name: moka_held_release
 label: {id: Baris Moka yang ditahan dilepas bila outlet sudah pakai API}
 schedule: '10 * * * *'
 steps:
   - find_all: outlet
-    where: "moka_api_from != '' && moka_name != ''"
+    where: "moka_api_from != '' && moka_name != '' && moka_api_from <= today()"
+    sort: moka_api_from
     as: open
   - find_all: moka_sale_line
     if: size(open) > 0
-    where: "status == 'held' && outlet in open.map(o, o.name)"
+    where: "status == 'held' && outlet in open.map(o, o.name) && date >= open[0].moka_api_from"
     limit: 2000
     as: held
-  - for_each: "size(open) > 0 ? held.filter(l, l.outlet == '' || l.item == '' || open.filter(o, o.name == l.outlet)[0].moka_api_from <= l.date) : []"
+  - for_each: "size(open) > 0 ? held.filter(l, open.filter(o, o.name == l.outlet)[0].moka_api_from <= l.date) : []"
     as: l
     do:
       - update: l
         set:
-          status: "l.outlet != '' && l.item != '' ? 'staged' : 'unmapped'"
+          status: "l.item != '' ? 'staged' : 'unmapped'"
+  - notify: head_office
+    if: size(open) > 0 && size(held) >= 2000
+    channel: email
+    template: {id: 'Lebih dari 2000 baris Moka masih ditahan; dilepas bertahap tiap jam. Cek tanggal Mulai pakai API Moka di outlet'}
