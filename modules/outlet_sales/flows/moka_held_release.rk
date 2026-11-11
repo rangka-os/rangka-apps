@@ -6,7 +6,9 @@
 # saved. A held line without item (head office emptied it) goes back to unmapped instead (rule
 # staged_has_outlet_and_item, D2). Only outlets whose API has started (moka_api_from <= today) are read, and only lines
 # from the earliest of their dates on (audit held-release A1: an outlet with a future date or a long export period
-# must not fill the 2000-line read); if 2000 lines still come back, head office is told and the next runs go on.
+# must not fill the 2000-line read), and each line against its own outlet's date in the read itself (A1': a held line
+# before a later gate is never released, so it must not take a place in the 2000); if 2000 lines still come back,
+# head office is told and the next runs go on with the rest.
 # A held line without outlet is not read: it waits until head office gives it an outlet.
 name: moka_held_release
 label: {id: Baris Moka yang ditahan dilepas bila outlet sudah pakai API}
@@ -18,10 +20,10 @@ steps:
     as: open
   - find_all: moka_sale_line
     if: size(open) > 0
-    where: "status == 'held' && outlet in open.map(o, o.name) && date >= open[0].moka_api_from"
+    where: "status == 'held' && outlet in open.map(o, o.name) && date >= open[0].moka_api_from && open.exists(o, o.name == outlet && o.moka_api_from <= date)"
     limit: 2000
     as: held
-  - for_each: "size(open) > 0 ? held.filter(l, open.filter(o, o.name == l.outlet)[0].moka_api_from <= l.date) : []"
+  - for_each: "size(open) > 0 ? held : []"
     as: l
     do:
       - update: l
