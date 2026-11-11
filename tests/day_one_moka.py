@@ -71,6 +71,9 @@ def scenario_moka_api(api):
     tx0 = api.find("moka_transaction", "transaction_id == '91000000'")
     l0 = api.find("moka_sale_line", f"transaction == '{tx0[0]['name']}'") if tx0 else []
     check("gate closed: Braga's line is held (the export counts the day)", st == 200 and [r["status"] for r in l0] == ["held"], (st, out, l0))
+    st, out = run(api, "moka_transaction_staged", event(91000046, d25, [line("Es contoh", "MK-ESC", 1, 7000), line("Tahu goreng original", "TH-ORI", 0, 15000)]))
+    check("outlet still on the export: no notice about unknown items or qty 0 (audit moka-guard D3)", st == 200
+          and not any("belum dikenali" in n.get("text", "") or "qty 0" in n.get("text", "") for n in out.get("notifications", [])), (st, out))
     sold40 = line("Tahu goreng original", "TH-ORI", 2, 15000)
     run(api, "moka_transaction_staged", event(91000040, old_day, [sold40]))
     run(api, "moka_daily_sales")
@@ -79,6 +82,11 @@ def scenario_moka_api(api):
     for o in (BRAGA, DAGO):
         st, resp = api.patch("outlet", o, {"moka_api_from": api_from})
         check(f"{o} counts Moka API sales from {api_from}", st == 200, (st, resp))
+    l46 = api.find("moka_sale_line", "description == 'Es contoh'")
+    eq("the unknown item polled on the export is unmapped and dated after the gate (head office told on opening)", [(r["status"], r["date"]) for r in l46], [("unmapped", d25)])
+    st, out = run(api, "moka_api_opened", api.get("outlet", BRAGA))
+    check("opening the gate tells head office about the unmapped lines from that day (audit held-release A2)", st == 200
+          and any("belum dipetakan" in n.get("text", "") for n in out.get("notifications", [])), (st, out.get("notifications")))
     l0 = api.find("moka_sale_line", f"transaction == '{tx0[0]['name']}'") if tx0 else []
     eq("gate opened: the line polled before it is staged now", [r["status"] for r in l0], ["staged"])
     tx40 = api.find("moka_transaction", "transaction_id == '91000040'")
@@ -160,6 +168,27 @@ def scenario_moka_api(api):
             check(f"mapping a line of {ls[0]['date']} to Braga (API from {api_from}): {want}", st == 200 and api.get("moka_sale_line", ls[0]["name"])["status"] == want, (st, resp))
         else:
             fail("gate mapping", ("no unmapped line", tid))
+
+    # D1: a held line moved to an outlet already on the API for its day is staged by the hourly release
+    t43 = api.find("moka_transaction", "transaction_id == '91000043'")
+    l43 = api.find("moka_sale_line", f"transaction == '{t43[0]['name']}'") if t43 else []
+    if l43:
+        api.patch("outlet", DAGO, {"moka_api_from": old_day})
+        st, resp = hq.patch("moka_sale_line", l43[0]["name"], {"outlet": DAGO})
+        check("a held line moved to Dago (API from its day): still held until the release", st == 200 and api.get("moka_sale_line", l43[0]["name"])["status"] == "held", (st, resp))
+        st, out = run(api, "moka_held_release")
+        check("hourly release: the line is staged", st == 200 and api.get("moka_sale_line", l43[0]["name"])["status"] == "staged", (st, out))
+    # D2: a held line whose item head office emptied does not block opening the gate: it goes back to unmapped
+    l40 = [r for r in api.find("moka_sale_line", f"transaction == '{tx40[0]['name']}'") if r["qty"] > 0] if tx40 else []
+    if l40:
+        st, resp = hq.patch("moka_sale_line", l40[0]["name"], {"item": ""})
+        check("head office empties the item of a held line", st == 200, (st, resp))
+        st, resp = api.patch("outlet", BRAGA, {"moka_api_from": old_day})
+        check("opening Braga from that day is not refused; the line is unmapped", st == 200 and api.get("moka_sale_line", l40[0]["name"])["status"] == "unmapped", (st, resp))
+        api.patch("outlet", BRAGA, {"moka_api_from": api_from})
+        api.patch("outlet", DAGO, {"moka_api_from": api_from})
+    else:
+        fail("held release", ("no held line", tx40))
 
     # an outlet Juragan does not know: unmapped without outlet
     run(api, "moka_transaction_staged", event(91000004, d1, [line("Tahu goreng original", "TH-ORI", 1, 15000)], outlet_id=88888, outlet_name="Outlet lain"))

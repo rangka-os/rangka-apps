@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every hour at :10 (before the recap at :15, flow moka_daily_sales) and from the flow list: held Moka lines whose
+# outlet now counts the API for their day (outlet.moka_api_from set, on or before the line's date) become staged.
+# Flow moka_api_opened does this when head office saves the outlet; this run catches the rest (audit moka-guard D1): a
+# held line head office moved to an outlet already on the API, or a line a poll wrote while the outlet was being
+# saved. A held line without item (head office emptied it) goes back to unmapped instead (rule
+# staged_has_outlet_and_item, D2). Only outlets whose API has started (moka_api_from <= today) are read, and only lines
+# from the earliest of their dates on (audit held-release A1: an outlet with a future date or a long export period
+# must not fill the 2000-line read), and each line against its own outlet's date in the read itself (A1': a held line
+# before a later gate is never released, so it must not take a place in the 2000); if 2000 lines still come back,
+# head office is told and the next runs go on with the rest.
+# A held line without outlet is not read: it waits until head office gives it an outlet.
+name: moka_held_release
+label: {id: Baris Moka yang ditahan dilepas bila outlet sudah pakai API}
+schedule: '10 * * * *'
+steps:
+  - find_all: outlet
+    where: "moka_api_from != '' && moka_name != '' && moka_api_from <= today()"
+    sort: moka_api_from
+    as: open
+  - find_all: moka_sale_line
+    if: size(open) > 0
+    where: "status == 'held' && outlet in open.map(o, o.name) && date >= open[0].moka_api_from && open.exists(o, o.name == outlet && o.moka_api_from <= date)"
+    limit: 2000
+    as: held
+  - for_each: "size(open) > 0 ? held : []"
+    as: l
+    do:
+      - update: l
+        set:
+          status: "l.item != '' ? 'staged' : 'unmapped'"
+  - notify: head_office
+    if: size(open) > 0 && size(held) >= 2000
+    channel: email
+    template: {id: 'Lebih dari 2000 baris Moka masih ditahan; dilepas bertahap tiap jam. Cek tanggal Mulai pakai API Moka di outlet'}
