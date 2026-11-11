@@ -122,6 +122,15 @@ fields:
     label: {id: Kode barang/jasa Coretax}
     help: {id: '6 angka dari referensi kode barang/jasa Coretax. Kosongkan bila tidak tahu (000000)'}
     depends_on: app_installed('coretax')
+  # Records already linked by documents cannot be deleted (kernel: 409 linked); one no longer used is switched off
+  # instead and kept for its history. Hiding it from link pickers is a kernel follow-up (web).
+  - name: active
+    type: check
+    label: {id: Aktif}
+    help: {id: 'Matikan bila barang tidak dijual atau dibeli lagi. Barang yang sudah dipakai transaksi tidak bisa dihapus'}
+    default: 'true'
+    in_list: true
+    in_filter: true
 rules:
   - name: coretax_code_6
     on: save

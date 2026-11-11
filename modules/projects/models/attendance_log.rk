@@ -198,6 +198,17 @@ rules:
     on: save
     check: (in_photo == '' || in_photo.startsWith('att_')) && (out_photo == '' || out_photo.startsWith('att_'))
     message: {id: 'Foto diisi dengan id lampiran (unggah fotonya dulu)'}
+  # The clock-in falls on the day being paid (audit 8 Nov L9). A clock-in with a local offset (+07:00) starts with the
+  # local date. A UTC one (Z or +00:00, how the store keeps it) falls between 00:00 WIT and 24:00 WIB of that date:
+  # 15:00 UTC the day before up to 17:00 UTC (audit apps-low F3). The org timezone is not readable in CEL.
+  - name: clock_in_on_work_date
+    on: save
+    check: >-
+      ((clock_in.endsWith('Z') || clock_in.endsWith('+00:00'))
+        ? ((clock_in.startsWith(work_date) && clock_in < work_date + 'T17:00:00')
+           || (clock_in.startsWith(work_date - duration(1)) && clock_in >= (work_date - duration(1)) + 'T15:00:00'))
+        : clock_in.startsWith(work_date))
+    message: {id: 'Jam masuk harus di tanggal absen'}
   - name: out_after_in
     on: save
     check: clock_out == '' || clock_out > clock_in

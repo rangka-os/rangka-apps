@@ -8,8 +8,25 @@ label: {id: Slip gaji dengan penghasilan sebelumnya yang basi tidak bisa diajuka
 # months as a permanent employee only (PMK 168/2023; audit gelombang 3 F1).
 on: payslip.submitted
 steps:
+  # A permanent employment that ended earlier this year (a submitted last_month slip) and was followed by casual months
+  # paid per day starts a new period of work: only the slips after it count (audit gelombang 3 r2 R2). A last_month
+  # ticked without a casual month after it (a mistake, the worker stayed) does not cut the year (audit apps-low F1).
   - find_all: payslip
-    where: worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && !(employment == 'casual' && pay_basis == 'daily')
+    where: worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && employment == 'casual' && pay_basis == 'daily'
+    sort: -tax_month
+    limit: 1
+    as: lastcas
+  - find_all: payslip
+    where: >-
+      worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && last_month && !(employment == 'casual' && pay_basis == 'daily')
+      && tax_month < (size(lastcas) > 0 ? lastcas[0].tax_month : 0)
+    sort: -tax_month
+    limit: 1
+    as: ended
+  - find_all: payslip
+    where: >-
+      worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && !(employment == 'casual' && pay_basis == 'daily')
+      && tax_month > (size(ended) > 0 ? ended[0].tax_month : 0)
     as: prev
   - if: size(prev) != event.ytd_months || prev.map(p, p.gross_taxable).sum() != event.ytd_gross || prev.map(p, p.pph21).sum() != event.ytd_pph21 || prev.map(p, p.jht_employee + p.jp_employee).sum() != event.ytd_pension
     create: payroll_guard

@@ -52,9 +52,13 @@ steps:
         set:
           project: event.project
           worker: a.worker
-          # An hourly assignment's rates are per hour: its per-day recap takes the worker's day rates instead (no
-          # assignment), as an imported recap does (audit r2 R2-1).
+          # An hourly assignment's cost rate is per hour: its per-day recap keeps the worker's day pay (no assignment,
+          # audit r2 R2-1) and takes the assignment's day and overtime rates, as an imported recap does (audit r3 R3-1).
           assignment: "a.rate_basis == 'hour' ? '' : a.name"
+          day_rate: a.day_rate
+          hour_rate: a.hour_rate
+          overtime_rate: a.overtime_rate
+          overtime_cost_rate: a.overtime_cost_rate
           work_date: event.period_from
           period_to: event.period_to
           rate_basis: "'day'"

@@ -140,6 +140,15 @@ fields:
     type: table
     of: contact_person
     label: {id: Kontak person}
+  # Records already linked by documents cannot be deleted (kernel: 409 linked); one no longer used is switched off
+  # instead and kept for its history. Hiding it from link pickers is a kernel follow-up (web).
+  - name: active
+    type: check
+    label: {id: Aktif}
+    help: {id: 'Matikan bila pelanggan tidak aktif lagi. Pelanggan yang sudah punya transaksi tidak bisa dihapus'}
+    default: 'true'
+    in_list: true
+    in_filter: true
 rules:
   - name: npwp_16
     on: save
@@ -162,7 +171,7 @@ views:
     layout:
       - section: {id: Identitas}
         columns:
-          - [customer_name, city, address]
+          - [customer_name, city, address, active]
           - [npwp, phone, email]
       - section: {id: Data pajak (e-Faktur)}
         columns:
