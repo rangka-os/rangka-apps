@@ -28,9 +28,28 @@ steps:
       reason: "'second_slip'"
       document: other.name
   - if: prof != null && run != null
+    find_all: cash_advance
+    where: worker == event.worker && docstatus == 1
+    sort: advance_date
+    as: kas
+  # A permanent employment ended earlier this year (a submitted last_month slip, then for example casual months) starts a
+  # new period of work: only the slips after it count (audit gelombang 3 r2 R2).
+  - if: prof != null && run != null
     find_all: payslip
-    where: worker == event.worker && tax_year == run.tax_year && tax_month < run.tax_month && docstatus == 1 && !(employment == 'casual' && pay_basis == 'daily')
+    where: worker == event.worker && tax_year == run.tax_year && tax_month < run.tax_month && docstatus == 1 && last_month && !(employment == 'casual' && pay_basis == 'daily')
+    sort: -tax_month
+    limit: 1
+    as: ended
+  - if: prof != null && run != null
+    find_all: payslip
+    where: >-
+      worker == event.worker && tax_year == run.tax_year && tax_month < run.tax_month && docstatus == 1 && !(employment == 'casual' && pay_basis == 'daily')
+      && tax_month > (size(ended) > 0 ? ended[0].tax_month : 0)
     as: prev
+  - if: prof != null && run != null
+    find_all: payslip
+    where: worker == event.worker && cash_advance != '' && docstatus == 1
+    as: repaid
   - if: prof != null && run != null
     create: payslip
     set:
@@ -45,3 +64,4 @@ steps:
       ytd_pph21: "prev.map(p, p.pph21).sum()"
       ytd_pension: "prev.map(p, p.jht_employee + p.jp_employee).sum()"
       ytd_months: "size(prev)"
+      open_advance: "kas.exists(k, repaid.map(p, p.cash_advance == k.name ? p.other_deduction : 0).sum() < k.amount) ? kas.filter(k, repaid.map(p, p.cash_advance == k.name ? p.other_deduction : 0).sum() < k.amount)[0].name : ''"

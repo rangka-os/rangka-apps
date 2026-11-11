@@ -31,10 +31,13 @@ of the client contract and the client invoice. Installed with `jasa_proyek`; dem
   the gross paid (Pasal 16 ayat 2 huruf c, per payment, not cumulative). These slips are not in the year to date, so
   December recomputes the permanent months only. A permanent worker who turns casual leaves that employment: their
   last permanent slip is the recomputed one (last_month), else the first casual slip is refused. Paid monthly, the
-  same worker takes the monthly TER (keep `permanent`).
+  same worker takes the monthly TER (keep `permanent`). Permanent again later in the year starts a new period of work:
+  the year to date counts only the slips after the last `last_month` slip.
 - Kasbon (`cash_advance`, finance): Dr Piutang karyawan / Cr Kas or Bank. The slip that repays it names it
   (`cash_advance`, with `other_deduction`): the live slips never deduct more than the kasbon, and it cannot be cancelled
-  while a submitted slip repays it.
+  while a submitted slip repays it. Two such slips submitted at the same moment run one after the other (flow read
+  locks, contract 0025). A slip made while the worker has a kasbon not yet repaid notes it (`open_advance`); a
+  deduction that does not link it is a warning at submit.
 - BPJS wage = basic pay + fixed allowance, never below the UMK. JKK 0,24-1,74%, JKM 0,3%, JHT 3,7% + 2%, JP 2% + 1%
   up to the JP cap, BPJS Kesehatan 4% + 1% up to 12.000.000. Rounded half up to the rupiah.
 - Overtime: the weighted pay rate per hour when set (worker or assignment), else PP 35/2021 on working days
@@ -42,6 +45,7 @@ of the client contract and the client invoice. Installed with `jasa_proyek`; dem
 - Rest day or public holiday (PP 35/2021 Pasal 31), always at 1/173 of the monthly wage, entered as the days and the
   hours per multiplier summed over them: 6-day week, hours 1-7 of each day 2x, the 8th 3x, the 9th-11th 4x; 5-day week,
   1-8 2x, the 9th 3x, the 10th-12th 4x; a holiday on the shortest day of a 6-day week, 1-5 2x, the 6th 3x, the 7th-9th 4x.
+  The tiers are checked in order: 3x hours need at least 5 (8 in a 5-day week) hours at 2x each, 4x at most 3 per 3x hour.
 - THR: months of service, 12 or more = one month's wage, fewer pro rata.
 - Invoice: wages on their own line outside the PPh 23 base (PMK 141/2015), employer BPJS and fee inside it; PPN on the
   whole invoice (the invoice has no per-line PPN; fee-only PPN under PMK 83/2012 is a follow-up). Fee: percent of

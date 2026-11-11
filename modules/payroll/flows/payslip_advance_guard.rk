@@ -3,6 +3,9 @@ name: payslip_advance_guard
 label: {id: Potongan kasbon tidak melebihi kasbonnya}
 # Inside a payslip submit: the live slips that repay one kasbon (this one included) never deduct more than the kasbon
 # (audit gelombang 3 F5). The kasbon's own cancel is refused while one of them is submitted (cash_advance_cancel_guard).
+# Two slips repaying one kasbon submitted at the same moment run one after the other: the find steps take the flow
+# read locks of cash_advance and payslip (contract 0025), so the second one reads the first one's deduction and is
+# refused (audit gelombang 3 r2 R3; day_one scenario_payroll_advance_race).
 on: payslip.submitted
 steps:
   - if: event.cash_advance != ''
