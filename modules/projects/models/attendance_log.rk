@@ -15,15 +15,17 @@ title_field: worker_name
 # the distance and the photo; a rejected log stays a draft and is not counted. Nothing is refused for being far away
 # (contract 0030 §4, as Talenta and Gadjian do).
 #
-# Distance: the kernel has no distance_m yet (it comes with WS6, the `geo` field type). Until then the phone sends lat/lng
-# and its own distance (in_distance_m, kept for the record only), and the kernel decides inside/outside itself from lat/lng
-# with a flat-earth formula (equirectangular; cos(lat) by its Taylor series, enough for |lat| < 30): squared metres against
-# the squared radius, so no square root is needed. A faked position (fake GPS) is not detected; the supervisor checks the
-# photo (contract 0030 §4).
+# Distance: the phone sends its position as a `geo` value {lat, lng, accuracy_m, at} (contract 0030 §4, WS6) and the
+# kernel measures it against the site's point with distance_m (haversine). What the phone shows is only an estimate; the
+# computes below decide. A faked position (fake GPS) is not detected; the supervisor checks the photo (contract 0030 §4).
 #
-# Photos are attachments of the record (contract 0011, POST /api/v1/r/attendance_log/{name}/attachments); in_photo and
-# out_photo (type image, contract 0030 §4) hold the attachment id. The kernel does not check yet that the id belongs to this
-# record, nor gives the field a camera widget (WS6).
+# Photos are attachments of the record (contract 0011); in_photo and out_photo (type image) hold the attachment id, and
+# the kernel accepts only an image attachment of this same log (contract 0030 §4). The clock screen (screens/absen.rk)
+# creates the log with the position, attaches the photo, then sets the photo and the clock-in time together.
+#
+# The clock-in and clock-out time, position and photo are set_once (contract 0030 §4): a worker fills them once and can
+# never move a clock-in the kernel measured as outside. A wrong value is corrected by the project admin cancelling the
+# log and entering the day again (attendance_close counts only submitted logs).
 #
 # Not linked to by any record while it is a draft (contract 0030 §10), so it can be submittable.
 permissions:
@@ -72,28 +74,22 @@ fields:
     default: today()
     in_list: true
   # Clock-in
+  # Set by the clock screen together with the photo (a default would block that write: set_once). Required at submit.
   - name: clock_in
     type: datetime
     label: {id: Jam masuk}
-    required: true
-    default: now()
+    set_once: true
     in_list: true
-  - {name: in_lat, type: float, label: {id: Lintang masuk}}
-  - {name: in_lng, type: float, label: {id: Bujur masuk}}
-  - {name: in_accuracy_m, type: float, label: {id: Akurasi GPS masuk (m)}}
-  # What the phone computed, kept for the record; the kernel decides with its own measure (in_inside, in_site_m).
-  - {name: in_distance_m, type: float, label: {id: Jarak masuk menurut HP (m)}}
-  - {name: in_photo, type: image, label: {id: Foto masuk (lampiran)}}
+  - {name: in_pos, type: geo, label: {id: Posisi masuk}, set_once: true}
+  - {name: in_photo, type: image, label: {id: Foto masuk}, set_once: true}
   # Clock-out
   - name: clock_out
     type: datetime
     label: {id: Jam keluar}
+    set_once: true
     in_list: true
-  - {name: out_lat, type: float, label: {id: Lintang keluar}}
-  - {name: out_lng, type: float, label: {id: Bujur keluar}}
-  - {name: out_accuracy_m, type: float, label: {id: Akurasi GPS keluar (m)}}
-  - {name: out_distance_m, type: float, label: {id: Jarak keluar menurut HP (m)}}
-  - {name: out_photo, type: image, label: {id: Foto keluar (lampiran)}}
+  - {name: out_pos, type: geo, label: {id: Posisi keluar}, set_once: true}
+  - {name: out_photo, type: image, label: {id: Foto keluar}, set_once: true}
   - name: overtime_hours
     type: float
     label: {id: Jam lembur}
@@ -106,54 +102,33 @@ fields:
   - {name: site_lat, type: float, label: {id: Lintang lokasi}, read_only: true, compute: "work_site != '' ? work_site.lat : 0"}
   - {name: site_lng, type: float, label: {id: Bujur lokasi}, read_only: true, compute: "work_site != '' ? work_site.lng : 0"}
   - {name: site_radius_m, type: int, label: {id: Radius lokasi (m)}, read_only: true, compute: "work_site != '' ? work_site.radius_m : 0"}
-  # Metres per degree of longitude at the site: 111320 x cos(lat), cos by 1 - x^2/2 + x^4/24 - x^6/720 (x in radians).
-  - name: site_m_per_lng
-    type: float
-    label: {id: Meter per derajat bujur}
-    hidden: true
-    read_only: true
-    compute: "111320.0 * (1.0 - (site_lat * 0.0174532925) * (site_lat * 0.0174532925) / 2.0 + (site_lat * 0.0174532925) * (site_lat * 0.0174532925) * (site_lat * 0.0174532925) * (site_lat * 0.0174532925) / 24.0 - (site_lat * 0.0174532925) * (site_lat * 0.0174532925) * (site_lat * 0.0174532925) * (site_lat * 0.0174532925) * (site_lat * 0.0174532925) * (site_lat * 0.0174532925) / 720.0)"
-  - {name: in_located, type: check, label: {id: Lokasi masuk ada}, read_only: true, compute: "in_lat != 0 || in_lng != 0"}
-  - {name: in_dx, type: float, label: {id: Selisih timur masuk (m)}, hidden: true, read_only: true, compute: "(in_lng - site_lng) * site_m_per_lng"}
-  - {name: in_ax, type: float, label: {id: Selisih timur masuk mutlak}, hidden: true, read_only: true, compute: "in_dx < 0 ? -in_dx : in_dx"}
-  - {name: in_ay, type: float, label: {id: Selisih utara masuk mutlak}, hidden: true, read_only: true, compute: "in_dy < 0 ? -in_dy : in_dy"}
-  # Square root of dx^2 + dy^2 by two Newton steps from the octagonal estimate (max + 0.4 min, within 4%): within
-  # 0.01% of the flat-earth distance.
-  - {name: in_r0, type: float, label: {id: Jarak awal masuk}, hidden: true, read_only: true, compute: "(in_ax > in_ay ? in_ax : in_ay) + 0.4 * (in_ax > in_ay ? in_ay : in_ax)"}
-  - {name: in_r1, type: float, label: {id: Jarak langkah 1 masuk}, hidden: true, read_only: true, compute: "in_r0 == 0 ? 0.0 : (in_r0 + (in_dx * in_dx + in_dy * in_dy) / in_r0) / 2.0"}
-  - {name: in_r2, type: float, label: {id: Jarak langkah 2 masuk}, hidden: true, read_only: true, compute: "in_r1 == 0 ? 0.0 : (in_r1 + (in_dx * in_dx + in_dy * in_dy) / in_r1) / 2.0"}
-  - {name: in_dy, type: float, label: {id: Selisih utara masuk (m)}, hidden: true, read_only: true, compute: "(in_lat - site_lat) * 110574.0"}
+  - {name: site_point, type: geo, label: {id: Titik lokasi}, hidden: true, read_only: true, compute: "work_site != '' ? {'lat': site_lat, 'lng': site_lng} : ''"}
+  # distance_m is 1e9 without a position (contract 0030 §4): "no position" counts as far.
+  - {name: in_m, type: float, label: {id: Jarak masuk dari titik (m)}, hidden: true, read_only: true, compute: "distance_m(in_pos, site_point)"}
+  - {name: in_located, type: check, label: {id: Lokasi masuk ada}, read_only: true, compute: "in_m < 100000000.0"}
   - name: in_inside
     type: check
     label: {id: Masuk di dalam radius}
     read_only: true
-    compute: "in_located && work_site != '' && in_dx * in_dx + in_dy * in_dy <= site_radius_m * site_radius_m"
-  # Distance in metres for people to read (the decision above does not depend on it).
+    compute: "in_located && work_site != '' && in_m <= site_radius_m"
+  # Distance in metres for people to read (0 without a position).
   - name: in_site_m
     type: int
     label: {id: Jarak masuk dari lokasi (m)}
     read_only: true
-    compute: "!in_located || work_site == '' ? 0 : round(in_r2)"
-  - {name: out_located, type: check, label: {id: Lokasi keluar ada}, read_only: true, compute: "out_lat != 0 || out_lng != 0"}
-  - {name: out_dx, type: float, label: {id: Selisih timur keluar (m)}, hidden: true, read_only: true, compute: "(out_lng - site_lng) * site_m_per_lng"}
-  - {name: out_ax, type: float, label: {id: Selisih timur keluar mutlak}, hidden: true, read_only: true, compute: "out_dx < 0 ? -out_dx : out_dx"}
-  - {name: out_ay, type: float, label: {id: Selisih utara keluar mutlak}, hidden: true, read_only: true, compute: "out_dy < 0 ? -out_dy : out_dy"}
-  # Square root of dx^2 + dy^2 by two Newton steps from the octagonal estimate (max + 0.4 min, within 4%): within
-  # 0.01% of the flat-earth distance.
-  - {name: out_r0, type: float, label: {id: Jarak awal keluar}, hidden: true, read_only: true, compute: "(out_ax > out_ay ? out_ax : out_ay) + 0.4 * (out_ax > out_ay ? out_ay : out_ax)"}
-  - {name: out_r1, type: float, label: {id: Jarak langkah 1 keluar}, hidden: true, read_only: true, compute: "out_r0 == 0 ? 0.0 : (out_r0 + (out_dx * out_dx + out_dy * out_dy) / out_r0) / 2.0"}
-  - {name: out_r2, type: float, label: {id: Jarak langkah 2 keluar}, hidden: true, read_only: true, compute: "out_r1 == 0 ? 0.0 : (out_r1 + (out_dx * out_dx + out_dy * out_dy) / out_r1) / 2.0"}
-  - {name: out_dy, type: float, label: {id: Selisih utara keluar (m)}, hidden: true, read_only: true, compute: "(out_lat - site_lat) * 110574.0"}
+    compute: "!in_located || work_site == '' ? 0 : round(in_m)"
+  - {name: out_m, type: float, label: {id: Jarak keluar dari titik (m)}, hidden: true, read_only: true, compute: "distance_m(out_pos, site_point)"}
+  - {name: out_located, type: check, label: {id: Lokasi keluar ada}, read_only: true, compute: "out_m < 100000000.0"}
   - name: out_inside
     type: check
     label: {id: Keluar di dalam radius}
     read_only: true
-    compute: "out_located && work_site != '' && out_dx * out_dx + out_dy * out_dy <= site_radius_m * site_radius_m"
+    compute: "out_located && work_site != '' && out_m <= site_radius_m"
   - name: out_site_m
     type: int
     label: {id: Jarak keluar dari lokasi (m)}
     read_only: true
-    compute: "!out_located || work_site == '' ? 0 : round(out_r2)"
+    compute: "!out_located || work_site == '' ? 0 : round(out_m)"
   # Outside: clock-in not inside the radius (or no position), or a clock-out entered and not inside.
   - name: outside_site
     type: check
@@ -190,28 +165,20 @@ rules:
     on: save
     check: work_date <= today()
     message: {id: 'Tidak bisa absen untuk tanggal yang belum datang'}
-  - name: position_valid
-    on: save
-    check: in_lat >= -90 && in_lat <= 90 && in_lng >= -180 && in_lng <= 180 && out_lat >= -90 && out_lat <= 90 && out_lng >= -180 && out_lng <= 180 && in_accuracy_m >= 0 && out_accuracy_m >= 0 && in_distance_m >= 0 && out_distance_m >= 0
-    message: {id: 'Posisi GPS tidak valid'}
-  - name: photo_is_attachment
-    on: save
-    check: (in_photo == '' || in_photo.startsWith('att_')) && (out_photo == '' || out_photo.startsWith('att_'))
-    message: {id: 'Foto diisi dengan id lampiran (unggah fotonya dulu)'}
   # The clock-in falls on the day being paid (audit 8 Nov L9). A clock-in with a local offset (+07:00) starts with the
   # local date. A UTC one (Z or +00:00, how the store keeps it) falls between 00:00 WIT and 24:00 WIB of that date:
   # 15:00 UTC the day before up to 17:00 UTC (audit apps-low F3). The org timezone is not readable in CEL.
   - name: clock_in_on_work_date
     on: save
     check: >-
-      ((clock_in.endsWith('Z') || clock_in.endsWith('+00:00'))
+      clock_in == '' || ((clock_in.endsWith('Z') || clock_in.endsWith('+00:00'))
         ? ((clock_in.startsWith(work_date) && clock_in < work_date + 'T17:00:00')
            || (clock_in.startsWith(work_date - duration(1)) && clock_in >= (work_date - duration(1)) + 'T15:00:00'))
         : clock_in.startsWith(work_date))
     message: {id: 'Jam masuk harus di tanggal absen'}
   - name: out_after_in
     on: save
-    check: clock_out == '' || clock_out > clock_in
+    check: clock_out == '' || (clock_in != '' && clock_out > clock_in)
     message: {id: 'Jam keluar harus sesudah jam masuk'}
   - name: overtime_range
     on: save
@@ -225,6 +192,10 @@ rules:
     on: save
     check: overtime_hours == 0 || size(reason) >= 5
     message: {id: 'Tulis alasan atau pekerjaan lemburnya'}
+  - name: clocked_in
+    on: submit
+    check: clock_in != ''
+    message: {id: 'Isi jam masuk dulu (absen masuk) sebelum diajukan'}
   - name: clocked_out
     on: submit
     check: clock_out != ''
@@ -264,12 +235,12 @@ views:
           - [work_date, overtime_hours, outside_site]
       - section: {id: Masuk}
         columns:
-          - [clock_in, in_photo, in_site_m, in_inside]
-          - [in_lat, in_lng, in_accuracy_m, in_distance_m]
+          - [clock_in, in_photo]
+          - [in_pos, in_site_m, in_inside]
       - section: {id: Keluar}
         columns:
-          - [clock_out, out_photo, out_site_m, out_inside]
-          - [out_lat, out_lng, out_accuracy_m, out_distance_m]
+          - [clock_out, out_photo]
+          - [out_pos, out_site_m, out_inside]
       - section: {id: Alasan}
         fields: [reason]
       - section: {id: Lokasi kerja}

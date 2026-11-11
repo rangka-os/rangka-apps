@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+name: absen
+type: clock
+label: {id: Absen, en: Clock in}
+icon: clock
+# A worker clocks in and out at the client's site from their phone (plans/layar-kerja.md §3 #2, contract 0030 §2 clock).
+# The site is today's assignment (the worker cannot read the firm's list of client sites, only their own assignments),
+# its point and radius come from the work site. A clock-in outside the radius or without a position is saved with the
+# reason and waits for the site supervisor (attendance_log approvals); the record's own computes decide, not the phone.
+# No offline queue: every clock-in carries a photo, which needs the connection (contract 0030 §7).
+roles: [field_worker]
+device: phone
+needs: [location, photo]
+clock:
+  # The worker's own logs (row scope worker); the open one is the newest with a clock-in and no clock-out.
+  record: {model: attendance_log, filter: "docstatus == 0", set: {worker: user.name}}
+  in: {field: clock_in, location: in_pos, photo: in_photo}
+  out: {field: clock_out, location: out_pos, photo: out_photo}
+  site: {model: assignment, link: assignment, filter: "start_date <= today() && end_date >= today() && work_site != ''", title: site_name, location: site_point, radius_m: site_radius_m}
+  reason: reason
+  submit: true

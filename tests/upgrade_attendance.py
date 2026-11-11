@@ -35,7 +35,7 @@ def after(api, s, d1):
     d1.check("the old assignment gets the work site and its point", st == 200 and a.get("site_radius_m") == 100 and a.get("site_lat") == -6.2, (st, a))
     t = d1.kernel_today()
     st, lg = api.create("attendance_log", {"worker": s["worker"], "assignment": s["assignment"], "work_date": str(t), "clock_in": f"{t}T08:00:00+07:00",
-                                           "in_lat": -6.2, "in_lng": 106.8, "clock_out": f"{t}T17:00:00+07:00", "out_lat": -6.2, "out_lng": 106.8})
+                                           "in_pos": {"lat": -6.2, "lng": 106.8}, "clock_out": f"{t}T17:00:00+07:00", "out_pos": {"lat": -6.2, "lng": 106.8}})
     d1.check("a log at the site of the old assignment is inside", st == 201 and lg.get("outside_site") is False, (st, lg))
     import secrets
     st, att = api.upload(f"/api/v1/r/attendance_log/{d1.Api.q(lg.get('name', 'x'))}/attachments", {}, "selfie.jpg", b"\xff\xd8\xff\xe0" + secrets.token_bytes(32) + b"\xff\xd9")

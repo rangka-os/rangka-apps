@@ -37,6 +37,8 @@ fields:
     type: float
     label: {id: Bujur (lng)}
     required: true
+  # The point as a position (contract 0030 §4 geo) for distance_m and the clock screen's site slot.
+  - {name: point, type: geo, label: {id: Titik lokasi}, read_only: true, compute: "{'lat': lat, 'lng': lng}"}
   - name: radius_m
     type: int
     label: {id: Radius absen (meter)}
@@ -55,7 +57,6 @@ rules:
     on: save
     check: lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && (lat != 0 || lng != 0)
     message: {id: 'Titik lokasi tidak valid: lintang -90 sampai 90, bujur -180 sampai 180'}
-  # The distance check (attendance_log) is a flat-earth approximation, good to well under a metre for these distances.
   - name: radius_range
     on: save
     check: radius_m >= 20 && radius_m <= 5000

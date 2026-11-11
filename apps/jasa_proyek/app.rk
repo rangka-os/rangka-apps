@@ -30,6 +30,10 @@ dashboards: [jasa_overview, ar_aging, project_margin, absen_saya, rekap_absen]
 # field_worker and site_supervisor (field attendance, A2) have their role files in the projects module.
 roles: [sales_manager, finance_manager, purchasing_manager, project_admin, field_worker, site_supervisor]
 home: {dashboard: jasa_overview}
+# Work screens (contract 0030 §3): the field worker lands on the clock; the site supervisor keeps the rekap_absen
+# dashboard as home (first dashboard of their role) and decides held logs in Persetujuan.
+work:
+  - {screen: absen, roles: [field_worker], home: true}
 menu:
   - group: {id: Penjualan}
     items: [quotation, customer_order, sales_invoice]
