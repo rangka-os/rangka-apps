@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every hour at :10 (before the recap at :15, flow moka_daily_sales) and from the flow list: held Moka lines whose
+# outlet now counts the API for their day (outlet.moka_api_from set, on or before the line's date) become staged.
+# Flow moka_api_opened does this when head office saves the outlet; this run catches the rest (audit moka-guard D1): a
+# held line head office moved to an outlet already on the API, or a line a poll wrote while the outlet was being
+# saved. A held line without item or outlet (head office emptied it) goes back to unmapped instead (rule
+# staged_has_outlet_and_item, D2). Held lines of outlets still on the export are not read (outlet in the open list).
+name: moka_held_release
+label: {id: Baris Moka yang ditahan dilepas bila outlet sudah pakai API}
+schedule: '10 * * * *'
+steps:
+  - find_all: outlet
+    where: "moka_api_from != '' && moka_name != ''"
+    as: open
+  - find_all: moka_sale_line
+    if: size(open) > 0
+    where: "status == 'held' && outlet in open.map(o, o.name)"
+    limit: 2000
+    as: held
+  - for_each: "size(open) > 0 ? held.filter(l, l.outlet == '' || l.item == '' || open.filter(o, o.name == l.outlet)[0].moka_api_from <= l.date) : []"
+    as: l
+    do:
+      - update: l
+        set:
+          status: "l.outlet != '' && l.item != '' ? 'staged' : 'unmapped'"

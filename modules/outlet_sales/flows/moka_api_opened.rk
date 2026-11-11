@@ -2,7 +2,9 @@
 # Head office set (or moved earlier) an outlet's moka_api_from: the outlet's held Moka lines dated on or after it become
 # staged and go into the next daily recap (flow moka_daily_sales). Held lines are what the API polled before the gate
 # opened (audit moka-guard H1): without this they would be counted by neither the API nor the export. Lines dated
-# before the date stay held (the export counts those days).
+# before the date stay held (the export counts those days). A held line without item (head office emptied it) goes back
+# to unmapped instead of staged, so saving the outlet is never refused by rule staged_has_outlet_and_item (audit
+# moka-guard D2); flow moka_held_release catches held lines this run did not see (D1).
 name: moka_api_opened
 label: {id: Baris Moka yang ditahan dilepas saat outlet mulai pakai API}
 on: outlet.updated
@@ -16,4 +18,4 @@ steps:
     do:
       - update: l
         set:
-          status: "'staged'"
+          status: "l.item != '' ? 'staged' : 'unmapped'"
