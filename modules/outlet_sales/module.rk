@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: outlet_sales
-version: 1.3.0
+version: 1.4.0
 title: {id: Penjualan outlet, en: Outlet sales}
 summary:
   id: Rekap penjualan harian per outlet, setoran kas dan retur di kasir.

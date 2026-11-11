@@ -60,6 +60,16 @@ fields:
     options:
       - {value: daily, label: {id: Harian (upah x hari hadir)}}
       - {value: monthly, label: {id: Bulanan (gaji pokok tetap)}}
+  # PMK 168/2023: a pegawai tidak tetap (tenaga kerja lepas, paid only for the days worked) who is paid per day or per
+  # week has PPh 21 by the daily TER (bruto sehari x TER harian; above 2.500.000 a day, 50% x Pasal 17), not the monthly
+  # TER, and no December recomputation. Paid monthly, the same worker takes the monthly TER: keep Tetap.
+  - name: employment
+    type: select
+    label: {id: Status pegawai (PPh 21)}
+    default: "'permanent'"
+    options:
+      - {value: permanent, label: {id: Tetap atau dibayar bulanan (TER bulanan)}}
+      - {value: casual, label: {id: 'Tidak tetap, dibayar harian atau mingguan (TER harian)'}}
   - name: monthly_salary
     type: currency
     label: {id: Gaji pokok per bulan}
@@ -128,7 +138,7 @@ views:
           - [ptkp_status, ter_category, active]
       - section: {id: Gaji}
         columns:
-          - [pay_basis, monthly_salary]
+          - [pay_basis, employment, monthly_salary]
           - [fixed_allowance, daily_allowance]
       - section: {id: BPJS dan rekening}
         columns:

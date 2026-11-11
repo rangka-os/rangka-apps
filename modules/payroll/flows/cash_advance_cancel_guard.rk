@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: cash_advance_cancel_guard
+label: {id: Kasbon yang sudah dipotong dari gaji tidak bisa dibatalkan}
+# Inside a cash_advance cancel: refused while a submitted slip repays it, since its cancel would put the cash back
+# that the slip already took off the wages (Piutang karyawan below 0; audit gelombang 3 F5).
+on: cash_advance.cancelled
+steps:
+  - find: payslip
+    where: cash_advance == event.name && docstatus == 1
+    as: slip
+  - if: slip != null
+    create: payroll_guard
+    set:
+      reason: "'advance_repaid'"
+      document: slip.name

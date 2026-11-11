@@ -4,10 +4,12 @@ label: {id: Slip gaji membaca penghasilan sebelumnya tahun ini}
 # Year to date for the December (last) recomputation: the sums of this worker's submitted slips of the same tax year in
 # earlier tax months (submitted = paid, whether or not the run is closed yet). Filled on every slip made by hand; the
 # slips a recap makes get them from payslip_from_recap (a flow's writes start no flows).
+# Slips under the daily TER (casual, paid per day) are not part of the year: the December recomputation covers the
+# months as a permanent employee only (PMK 168/2023; audit gelombang 3 F1).
 on: payslip.created
 steps:
   - find_all: payslip
-    where: worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1
+    where: worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && !(employment == 'casual' && pay_basis == 'daily')
     as: prev
   - find: payslip
     where: name == event.name

@@ -2627,8 +2627,8 @@ def scenario_manpower_recap(api):
 
 
 def scenario_cost_visibility(api):
-    """Audit re-pin L1 (t_9c6fc6d5): pay and labour cost are read only by owner, finance and project admin. hidden_for is
-    not enforced by the kernel, so the models carrying pay (worker, assignment, timesheet) are not readable by sales or
+    """Audit re-pin L1 (t_9c6fc6d5): pay and labour cost are read only by owner, finance and project admin. Besides hidden_for
+    (contract 0027) on the pay fields, the models carrying pay (worker, assignment, timesheet) are not readable by sales or
     purchasing, and the project ledger shows sales only revenue rows and purchasing only vendor rows (row-level `if`),
     which is what their submit and cancel flows need. No CSV export of the ledger for sales."""
     sm, pm, fm, pa = (CTX.get(x) for x in ("sm", "pm", "fm", "pa"))
@@ -2862,7 +2862,7 @@ _PIPE = dict({r: _R for r in ("finance_manager", "purchasing_manager", "project_
 _STOCK_DOC = {"head_office": _ALL, "outlet_staff": _RCWS}
 MATRIX = {
     **{m: _MASTER for m in ("vendor", "uom_conversion", "price_list", "tax_code", "currency", "exchange_rate")},
-    # worker carries pay (hidden_for is not enforced): not readable by sales or purchasing (audit L1)
+    # worker carries pay (hidden_for since 0027, and no model read): not readable by sales or purchasing (audit L1)
     "worker": {r: v for r, v in _MASTER.items() if r not in ("sales_manager", "purchasing_manager")},
     "uom": dict(_MASTER, field_sales=_R),
     # field_sales (distribution): a salesman reads his own customers (role scope salesman) and cannot change their credit
@@ -2952,6 +2952,7 @@ MATRIX = {
     "payroll_profile": {"finance_manager": {"read", "create", "write", "export", "import", "print"}, "project_admin": _R},
     "payroll_run": {"finance_manager": {"read", "create", "write", "export", "print"}, "project_admin": _R},   # no delete: slips point at it
     "payroll_close": {"finance_manager": _ALL, "project_admin": _R},
+    "cash_advance": {"finance_manager": _ALL, "project_admin": _R},   # kasbon: finance gives it
     "payslip": {"finance_manager": _ALL, "project_admin": {"read", "create"}},
     "payroll_guard": {"finance_manager": {"create"}, "project_admin": {"create"}, "sales_manager": {"create"}},   # never stored (a flow's refusal; recaps are cancelled by the project admin)
 }
@@ -3322,6 +3323,10 @@ def scenario_coretax(api):
     check("a line quantity with 3 decimals is refused before export",
           st == 422 and any(p["name"] == q3 and "2 desimal" in p["message"] for p in resp["error"]["problems"]), (st, resp))
     api.verb("sales_invoice", q3, "cancel")
+    # audit 7 Nov D1: a quantity with decimals whose Price x Qty falls under the whole-rupiah line amount (0,29 x 333.333
+    # = 96.666,57, line 96.667): Price is raised, TotalDiscount is never negative
+    sen = inv(ca, may + "16", [(0.29, 333_333, {})])
+    got[sen] = api.get("sales_invoice", sen)
     # audit 7 Nov #9: a passport buyer needs a foreign country code
     st, cp = api.create("customer", {"customer_name": "Mr Contoh Asing", "address": "Jl. Contoh No. 5", "passport_no": "X1234567"})
     if check("customer with a passport only", st == 201, (st, cp)):
@@ -3338,7 +3343,13 @@ def scenario_coretax(api):
     eq("root TaxInvoiceBulk with the seller NPWP", (root.tag, root.findtext("TIN")), ("TaxInvoiceBulk", seller))
     tis = root.findall("ListOfTaxInvoice/TaxInvoice")
     by_ref = {t.findtext("RefDesc").split(";")[0]: t for t in tis}
-    eq("the period's PPN invoices, no cancelled, no 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin]))
+    eq("the period's PPN invoices, no cancelled, no 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin, sen]))
+    neg = [(t.findtext("RefDesc"), g.findtext("TotalDiscount")) for t in tis for g in t.iter("GoodService") if D(g.findtext("TotalDiscount")) < 0]
+    eq("no line has a negative TotalDiscount (audit D1)", neg, [])
+    if sen in by_ref:
+        g = by_ref[sen].find("ListOfGoodService/GoodService")
+        eq("0,29 x 333.333: Price raised to TaxBase / Qty (333.334,48), TotalDiscount 0", (g.findtext("Price"), g.findtext("TaxBase"), g.findtext("TotalDiscount")),
+           ("333334.48", "96667", "0"))
     for t in tis:
         ref = t.findtext("RefDesc").split(";")[0]
         eq(f"{ref}: elements in the DJP sample order", [c.tag for c in t], CORETAX_INVOICE_TAGS)

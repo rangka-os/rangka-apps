@@ -67,6 +67,19 @@ jobs:
             echo "this rangka-os has no rangka skills command yet; skipped"
           fi
 
+      # Every site tests/day_one.py has scenarios for must have its own step below (a new demo site cannot slip out of CI).
+      - name: Every day_one site has a CI step
+        working-directory: rangka-apps
+        run: |
+          python - <<'PY'
+          import re, sys
+          sys.argv = ["day_one"]; sys.path.insert(0, "tests")
+          import day_one
+          wf = open(".github/workflows/day-one.yml").read()
+          missing = [s for s in day_one.SCENARIOS if f"tests/day_one.py --site {s}\n" not in wf]
+          sys.exit(f"no CI step for: {missing}" if missing else 0)
+          PY
+
       # day_one.py exits 1 on any failed check (gaps are genuine kernel limitations and do not fail the job).
       - name: day_one kopi-senja
         working-directory: rangka-apps
@@ -95,3 +108,9 @@ jobs:
       - name: day_one demo-sewa
         working-directory: rangka-apps
         run: python tests/day_one.py --site demo-sewa
+      - name: day_one demo-kursus
+        working-directory: rangka-apps
+        run: python tests/day_one.py --site demo-kursus
+      - name: day_one demo-kasir
+        working-directory: rangka-apps
+        run: python tests/day_one.py --site demo-kasir

@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payslip_advance_guard
+label: {id: Potongan kasbon tidak melebihi kasbonnya}
+# Inside a payslip submit: the live slips that repay one kasbon (this one included) never deduct more than the kasbon
+# (audit gelombang 3 F5). The kasbon's own cancel is refused while one of them is submitted (cash_advance_cancel_guard).
+on: payslip.submitted
+steps:
+  - if: event.cash_advance != ''
+    find: cash_advance
+    where: name == event.cash_advance && docstatus == 1
+    as: ka
+  - if: event.cash_advance != ''
+    find_all: payslip
+    where: cash_advance == event.cash_advance && docstatus == 1 && name != event.name
+    as: others
+  - if: event.cash_advance != '' && (ka == null || others.map(p, p.other_deduction).sum() + event.other_deduction > ka.amount)
+    create: payroll_guard
+    set:
+      reason: "'advance_exceeded'"
+      document: event.name

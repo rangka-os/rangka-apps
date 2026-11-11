@@ -21,14 +21,27 @@ of the client contract and the client invoice. Installed with `jasa_proyek`; dem
    book goes on the project ledger (kind `payroll`), and the client invoice is made as a draft.
 
 ## Rules (sources: reports/keputusan-riset/payroll-manpower.md in the project folder)
-- PPh 21: TER monthly (PP 58/2023, tables in `payslip.ter_bp`) on gross = cash pay + JKK + JKM + BPJS Kesehatan 4%;
+- PPh 21 (permanent workers and anyone paid monthly): TER monthly (PP 58/2023, tables in `payslip.ter_bp`) on gross = cash pay + JKK + JKM + BPJS Kesehatan 4%;
   120% without a tax number; truncated to the rupiah. December (or `last_month`): Pasal 17 on the year (biaya jabatan
   5%, at most 500.000 per month; JHT 2% + JP 1% of the worker; PTKP; PKP rounded down to thousands) minus the earlier
   slips of the year in closed runs; negative = refund on the slip.
+- Pegawai tidak tetap paid per day or per week (profile `employment` = casual, daily pay basis; PMK 168/2023, DJP
+  leaflet "Simplifikasi penghitungan PPh Pasal 21"): bruto sehari (the slip's gross / days worked, present + rest days
+  worked) x TER harian, 0% up to 450.000 and 0,5% up to 2.500.000; above 2.500.000 a day, the Pasal 17 layers on 50% of
+  the gross paid (Pasal 16 ayat 2 huruf c, per payment, not cumulative). These slips are not in the year to date, so
+  December recomputes the permanent months only. A permanent worker who turns casual leaves that employment: their
+  last permanent slip is the recomputed one (last_month), else the first casual slip is refused. Paid monthly, the
+  same worker takes the monthly TER (keep `permanent`).
+- Kasbon (`cash_advance`, finance): Dr Piutang karyawan / Cr Kas or Bank. The slip that repays it names it
+  (`cash_advance`, with `other_deduction`): the live slips never deduct more than the kasbon, and it cannot be cancelled
+  while a submitted slip repays it.
 - BPJS wage = basic pay + fixed allowance, never below the UMK. JKK 0,24-1,74%, JKM 0,3%, JHT 3,7% + 2%, JP 2% + 1%
   up to the JP cap, BPJS Kesehatan 4% + 1% up to 12.000.000. Rounded half up to the rupiah.
 - Overtime: the weighted pay rate per hour when set (worker or assignment), else PP 35/2021 on working days
   (1/173 of the monthly wage, first hour of each overtime day 1,5x, the rest 2x).
+- Rest day or public holiday (PP 35/2021 Pasal 31), always at 1/173 of the monthly wage, entered as the days and the
+  hours per multiplier summed over them: 6-day week, hours 1-7 of each day 2x, the 8th 3x, the 9th-11th 4x; 5-day week,
+  1-8 2x, the 9th 3x, the 10th-12th 4x; a holiday on the shortest day of a 6-day week, 1-5 2x, the 6th 3x, the 7th-9th 4x.
 - THR: months of service, 12 or more = one month's wage, fewer pro rata.
 - Invoice: wages on their own line outside the PPh 23 base (PMK 141/2015), employer BPJS and fee inside it; PPN on the
   whole invoice (the invoice has no per-line PPN; fee-only PPN under PMK 83/2012 is a follow-up). Fee: percent of
@@ -58,4 +71,5 @@ of the client contract and the client invoice. Installed with `jasa_proyek`; dem
 - A flow cannot loop or submit: one slip per recap, slips submitted one by one, the invoice is a draft.
 - Submittable records are renamed from DRAFT- at submit without their links following, so the run (linked by slips)
   is not submittable and is closed by its own document.
-- No daily TER for casual workers, no holiday overtime multipliers, no extra BPJS family members, no gross-up.
+- No extra BPJS family members, no gross-up. Slips are submitted one by one (a bulk submit needs the web app: card in the
+  board).
