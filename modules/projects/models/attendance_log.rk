@@ -198,14 +198,16 @@ rules:
     on: save
     check: (in_photo == '' || in_photo.startsWith('att_')) && (out_photo == '' || out_photo.startsWith('att_'))
     message: {id: 'Foto diisi dengan id lampiran (unggah fotonya dulu)'}
-  # The clock-in falls on the day being paid (audit 8 Nov L9). A typed clock-in carries its offset (+07:00) and its
-  # first ten characters are the local date; a stored one is UTC (Z), so a WIB/WITA/WIT morning before 07:00/08:00/09:00
-  # shows the day before, from 15:00Z. The org timezone is not readable in CEL, so the window covers the Indonesian zones.
+  # The clock-in falls on the day being paid (audit 8 Nov L9). A clock-in with a local offset (+07:00) starts with the
+  # local date. A UTC one (Z or +00:00, how the store keeps it) falls between 00:00 WIT and 24:00 WIB of that date:
+  # 15:00 UTC the day before up to 17:00 UTC (audit apps-low F3). The org timezone is not readable in CEL.
   - name: clock_in_on_work_date
     on: save
     check: >-
-      clock_in.startsWith(work_date)
-      || (clock_in.endsWith('Z') && clock_in.startsWith(work_date - duration(1)) && clock_in >= (work_date - duration(1)) + 'T15:00:00Z')
+      ((clock_in.endsWith('Z') || clock_in.endsWith('+00:00'))
+        ? ((clock_in.startsWith(work_date) && clock_in < work_date + 'T17:00:00')
+           || (clock_in.startsWith(work_date - duration(1)) && clock_in >= (work_date - duration(1)) + 'T15:00:00'))
+        : clock_in.startsWith(work_date))
     message: {id: 'Jam masuk harus di tanggal absen'}
   - name: out_after_in
     on: save

@@ -569,6 +569,17 @@ def scenario_rental_correction_chain(api):
        (unit(api, KAM1).get("state"), unit(api, KAM1).get("booking"), schedule(api, b1["name"]).get("state")), ("in", "", "booked"))
     st, r = sm.patch("rental_unit", KAM1, {"notes": ""})
     check("in the warehouse the unit is editable again -> 200", st == 200, (st, r))
+    # a unit back in the warehouse moved to another item: cancelling its return names the move (audit apps-low F5)
+    st, c1b = handover_out(gd, b1["name"], [{"unit": KAM1}], d(0), signed_by="Sari Contoh")
+    st, c1b = submit(gd, "rental_checkout", c1b.get("name", "x"))
+    st, r1b = gd.create("rental_return", {"booking": b1["name"], "return_date": d(40), "refund_method": "cash", "signed_by": "Sari Contoh", "units": [{"unit": KAM1}]})
+    st, r1b = submit(sm, "rental_return", rec(r1b).get("name", "x"))
+    if check("chain: B1 out and back again -> 200", st == 200, (st, r1b)):
+        sm.patch("rental_unit", KAM1, {"rental_item": SOUND})
+        st, r = fm.verb("rental_return", r1b["name"], "cancel")
+        check("a return whose unit moved to another item since cannot be cancelled (unit_moved)", st == 422 and "unit_moved" in rules(r), (st, r))
+        sm.patch("rental_unit", KAM1, {"rental_item": CAMERA})
+        eq("KAM-A-01 a camera again, in the warehouse", (unit(api, KAM1).get("rental_item"), unit(api, KAM1).get("state")), (CAMERA, "in"))
 
 
 def scenario_rental_invoice_guards(api):

@@ -461,6 +461,12 @@ def scenario_attendance_close_edges(api):
             "clock_out": f"{t}T17:00:00+07:00", "out_lat": lat, "out_lng": lng}
     st, resp = api.create("attendance_log", dict(base, clock_in=f"{D(2)}T08:00:00+07:00"))
     check("a clock-in two days before the log's date is refused", refused(st, resp, "tanggal absen"), (st, resp))
+    st, resp = api.create("attendance_log", dict(base, clock_in=f"{t}T17:30:00Z"))
+    check("a UTC clock-in past 24:00 WIB of the log's date is refused", refused(st, resp, "tanggal absen"), (st, resp))
+    st, lgu = api.create("attendance_log", dict(base, clock_in=f"{t - datetime.timedelta(days=1)}T23:00:00.000+00:00"))
+    check("a UTC clock-in written +00:00 with milliseconds (06:00 WIB) is accepted (audit F3)", st == 201, (st, lgu))
+    if st == 201:
+        api.call("DELETE", f"/api/v1/r/attendance_log/{Api.q(lgu['name'])}")
     st, lg3 = api.create("attendance_log", dict(base, clock_in=f"{t}T06:00:00+07:00"))
     check("a clock-in at 06:00 WIB on the log's date is accepted", st == 201, (st, lg3))
     if st == 201:

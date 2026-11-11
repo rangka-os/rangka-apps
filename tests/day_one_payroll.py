@@ -552,6 +552,15 @@ def scenario_payroll_low_r2(api):
     check("and it submits (the year-to-date guard reads the same period)", st == 200, (st, aug))
     st, sep = draft("MP-905", 9, employment="permanent")
     eq("MP-905 September reads August only", (sep.get("ytd_months"), sep.get("ytd_gross")), (1, aug.get("gross_taxable")))
+    # a last_month ticked by mistake (the worker stays permanent, no casual month after it) does not cut the year (F1)
+    st, w = fm.create("worker", {"worker_name": "Uji MP-907", "employee_no": "MP-907", "cost_day_rate": 300_000, "active": True})
+    st2, prof = fm.create("payroll_profile", {"worker": (w or {}).get("name", ""), "ptkp_status": "tk0", "pay_basis": "daily", "employment": "permanent", "nik": "9999000000009907"})
+    people["MP-907"] = prof
+    st, j6 = draft("MP-907", 6, last_month=True)
+    st, j6 = sub(j6.get("name", "x"))
+    st, j7 = draft("MP-907", 7)
+    check("MP-907 June ticked last_month but July stays permanent: July still reads June (audit F1)",
+          st == 201 and (j7.get("ytd_months"), j7.get("ytd_gross")) == (1, j6.get("gross_taxable")), (st, j7, j6.get("gross_taxable")))
     # R1 and R3: MP-906 (casual, so the months have no year to date) owes a kasbon of 300.000
     st, kb = fm.create("cash_advance", {"worker": people["MP-906"]["worker"], "advance_date": "2026-06-25", "amount": 300_000})
     st, kb = fm.verb("cash_advance", kb.get("name", "x"), "submit")

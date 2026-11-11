@@ -32,12 +32,14 @@ of the client contract and the client invoice. Installed with `jasa_proyek`; dem
   December recomputes the permanent months only. A permanent worker who turns casual leaves that employment: their
   last permanent slip is the recomputed one (last_month), else the first casual slip is refused. Paid monthly, the
   same worker takes the monthly TER (keep `permanent`). Permanent again later in the year starts a new period of work:
-  the year to date counts only the slips after the last `last_month` slip.
+  the year to date counts only the slips after the last `last_month` slip that casual months followed (a `last_month`
+  ticked by mistake while the worker stayed permanent does not cut the year).
 - Kasbon (`cash_advance`, finance): Dr Piutang karyawan / Cr Kas or Bank. The slip that repays it names it
   (`cash_advance`, with `other_deduction`): the live slips never deduct more than the kasbon, and it cannot be cancelled
   while a submitted slip repays it. Two such slips submitted at the same moment run one after the other (flow read
   locks, contract 0025). A slip made while the worker has a kasbon not yet repaid notes it (`open_advance`); a
-  deduction that does not link it is a warning at submit.
+  deduction that does not link it is a warning at submit. It is read when the slip is made: a kasbon given after the
+  draft (or a draft from before the upgrade) is not noted; make the slip again to check.
 - BPJS wage = basic pay + fixed allowance, never below the UMK. JKK 0,24-1,74%, JKM 0,3%, JHT 3,7% + 2%, JP 2% + 1%
   up to the JP cap, BPJS Kesehatan 4% + 1% up to 12.000.000. Rounded half up to the rupiah.
 - Overtime: the weighted pay rate per hour when set (worker or assignment), else PP 35/2021 on working days
