@@ -14,13 +14,18 @@ related:
     sort: name
     limit: 1000
     require:
-      - check: origin_bill_date != '' && origin_bill_date >= doc.period_start
+      # A bill submitted before this module was installed (or amended from one whose own origin is unknown) froze
+      # without its Coretax fields (origin_bill_date, recipient_*): only this message is shown for it, since filling
+      # in the vendor's tax data cannot change a submitted bill (audit pajak 7 Nov #8, D2).
+      - check: origin_bill_date != ''
+        message: {id: 'Tagihan ini (atau tagihan yang digantinya) diajukan sebelum ekspor Coretax dipasang: buat bukti potongnya langsung di Coretax'}
+      - check: origin_bill_date == '' || origin_bill_date >= doc.period_start
         message: {id: 'Tagihan ini mengganti tagihan masa sebelumnya yang bukti potongnya sudah dilaporkan: buat pembetulan bukti potong di Coretax'}
-      - check: "size(recipient_tin) == 16 && recipient_tin.matches('^[0-9]+$')"
+      - check: "origin_bill_date == '' || (size(recipient_tin) == 16 && recipient_tin.matches('^[0-9]+$'))"
         message: {id: 'Pemasok belum punya NPWP atau NIK 16 angka: lengkapi Data pajak pemasok'}
-      - check: "size(recipient_idtku) == 22 && recipient_idtku.startsWith(recipient_tin)"
+      - check: "origin_bill_date == '' || (size(recipient_idtku) == 22 && recipient_idtku.startsWith(recipient_tin))"
         message: {id: 'NITKU pemasok harus 22 angka dan diawali NPWP/NIK-nya'}
-      - check: "pph23_object_code.matches('^24-10[0-6]-[0-9]{2}$')"
+      - check: "origin_bill_date == '' || pph23_object_code.matches('^24-10[0-6]-[0-9]{2}$')"
         message: {id: 'Kode objek PPh 23 belum diisi di tagihan (misalnya 24-104-17 jasa tenaga kerja)'}
-      - check: "pph23_rate > 0 && pph23_amount == round(pph23_base * pph23_rate / 100)"
+      - check: "origin_bill_date == '' || (pph23_rate > 0 && pph23_amount == round(pph23_base * pph23_rate / 100))"
         message: {id: 'PPh 23 di tagihan tidak sama dengan DPP PPh 23 x tarif'}

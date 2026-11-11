@@ -5,8 +5,8 @@ icon: user
 naming: WRK-{####}
 title_field: worker_name
 permissions:
-  # Pay (cost_*_rate, overtime_cost_rate) lives on the worker and hidden_for is not enforced by the kernel, so sales and
-  # purchasing have no access at all (audit L1): workers are managed by finance and the project admin.
+  # Pay (cost_*_rate, overtime_cost_rate) lives on the worker. The kernel enforces hidden_for (contract 0027), and sales
+  # and purchasing still have no access at all (audit L1): workers are managed by finance and the project admin.
   - {role: finance_manager, read: true, create: true, write: true, print: true}
   - {role: project_admin, read: true, create: true, write: true, print: true}
   - {role: head_office, read: true, create: true, write: true, print: true}
@@ -39,8 +39,8 @@ fields:
     type: currency
     label: {id: Tarif per jam}
     default: '0'
-  # Pay per person: hidden in forms and lists for roles that do not need it (hidden_for is not enforced by the kernel
-  # yet; the REST API still returns it to anyone who may read worker).
+  # Pay per person: hidden_for removes it from every read of these roles (API, lists, prints, exports; contract 0027).
+  # assignment and timesheet copy it into cost_rate, overtime_cost_rate and cost_amount, which carry the same hidden_for.
   # Pay per day (upah harian). 0 means not entered yet: timesheets of this person are then flagged cost_missing and
   # the project margin dashboard counts them, so a margin without labour cost is never read as complete.
   - name: cost_day_rate

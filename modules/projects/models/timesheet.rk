@@ -82,9 +82,12 @@ fields:
     type: currency
     label: {id: Tarif per jam}
     default: "assignment != '' ? assignment.hour_rate : worker.hour_rate"
+  # The pay copied from the worker (cost_*) keeps the worker's hidden_for (contract 0027 enforces it; a copy without
+  # hidden_for would show the pay here).
   - name: cost_rate
     type: currency
     label: {id: Biaya per satuan}
+    hidden_for: [sales_manager, purchasing_manager, head_office, outlet_staff, sales_rep, field_worker, site_supervisor]
     default: "assignment != '' ? assignment.cost_rate : (rate_basis == 'hour' ? worker.cost_hour_rate : worker.cost_day_rate)"
   - name: overtime_rate
     type: currency
@@ -93,6 +96,7 @@ fields:
   - name: overtime_cost_rate
     type: currency
     label: {id: Upah lembur per jam}
+    hidden_for: [sales_manager, purchasing_manager, head_office, outlet_staff, sales_rep, field_worker, site_supervisor]
     default: "assignment != '' ? assignment.overtime_cost_rate : worker.overtime_cost_rate"
   - name: amount
     type: currency
@@ -102,6 +106,7 @@ fields:
   - name: cost_amount
     type: currency
     label: {id: Biaya}
+    hidden_for: [sales_manager, purchasing_manager, head_office, outlet_staff, sales_rep, field_worker, site_supervisor]
     compute: "round((rate_basis == 'hour' ? hours : days) * cost_rate) + round(overtime_hours * overtime_cost_rate)"
   # No pay entered for this work (G5): the cost is not 0, it is unknown. The project margin dashboard counts these so
   # a margin without labour cost is read as incomplete; fix the pay on the worker, then cancel and amend.

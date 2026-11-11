@@ -188,6 +188,9 @@ def expected_balances(api, d1):
     for b in docs(api, "vendor_bill"):
         if upto(b["bill_date"]):
             pay += b["amount_due"] - (b["dpp"] if bill_kind(b, stock) == "stock" else 0)
+    for k in docs(api, "cash_advance"):                  # kasbon given to a worker: Piutang karyawan
+        if upto(k["advance_date"]):
+            recv += k["amount"]
     for c in docs(api, "payroll_close"):                 # kasbon repaid from wages; fee_only: the client funds the wages
         if upto(c["period_to"]):
             recv -= c["total_other_deduction"]

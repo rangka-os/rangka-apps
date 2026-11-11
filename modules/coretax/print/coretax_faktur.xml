@@ -35,6 +35,10 @@
 {{- $q := round $l.qty 2}}
 {{- $tb := round (sub $b (div (mul $r $b) $s)) 2}}{{if eq (add $i 1) (add $n)}}{{$tb = sub $inv.dpp $acc}}{{end}}{{$acc = add $acc $tb}}
 {{- $otb := round (div (mul $tb $inv.dpp_num) $inv.dpp_den) 2}}
+{{- /* Line amounts are whole rupiah while Price x Qty has 2 decimals, so Price x Qty can fall a few sen under TaxBase:
+  then Price is raised to TaxBase / Qty (rounded up to the sen) and TotalDiscount stays 0 or a few sen, never negative
+  (audit pajak 7 Nov D1). */}}
+{{- if eq (slice (dec (sub (round (mul $p $q) 2) $tb) 2) 0 1) "-"}}{{$p = round (div $tb $q) 2}}{{if eq (slice (dec (sub (round (mul $p $q) 2) $tb) 2) 0 1) "-"}}{{$p = add $p "0.01"}}{{end}}{{end}}
 				<GoodService>
 					<Opt>{{$l.coretax_opt}}</Opt>
 					<Code>{{$l.coretax_code}}</Code>

@@ -286,12 +286,13 @@ fields:
     hidden: true
     compute: amended_from
   # The posting date of the first invoice of the amend chain (A -> B -> C keeps A's date), frozen at submit: an
-  # invoice whose chain started in an earlier period is a Faktur Pengganti in Coretax, however many amends later.
+  # invoice whose chain started in an earlier period is a Faktur Pengganti in Coretax, however many amends later. Empty
+  # when the invoice it amends froze before the coretax module and was itself an amend (its origin is unknown).
   - name: origin_posting_date
     type: data
     label: {id: Tanggal faktur asal}
     hidden: true
-    compute: "replaces == '' ? posting_date : (replaces.origin_posting_date != '' ? replaces.origin_posting_date : replaces.posting_date)"
+    compute: "replaces == '' ? posting_date : (replaces.origin_posting_date != '' ? replaces.origin_posting_date : (replaces.replaces == '' ? replaces.posting_date : ''))"
   # Whether rule credit_limit warned on this submit (the same expression, computed in the same step from the same
   # customer row). The rule runs before any flow lock (contract 0025 §5); flow sales_invoice_credit_recheck reads the customer
   # again after the ledger hook has locked and updated it, and refuses an invoice that is over the limit only because

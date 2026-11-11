@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payslip_casual_guard
+label: {id: Pindah dari pegawai tetap ke tidak tetap menutup tahun pajaknya dulu}
+# Inside a payslip submit under the daily TER (casual, paid per day): a worker who was a permanent employee earlier in
+# the tax year has left that employment, so their last permanent slip must be the recomputed one (last_month,
+# PMK 168/2023 masa pajak terakhir); otherwise the TER withheld on those months is never settled (audit gelombang 3 F1).
+on: payslip.submitted
+steps:
+  - if: event.employment == 'casual' && event.pay_basis == 'daily'
+    find_all: payslip
+    where: worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && !(employment == 'casual' && pay_basis == 'daily')
+    sort: -tax_month
+    limit: 1
+    as: perm
+  - if: event.employment == 'casual' && event.pay_basis == 'daily' && size(perm) > 0 && !perm[0].last_month
+    create: payroll_guard
+    set:
+      reason: "'casual_after_permanent'"
+      document: perm[0].name

@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # Inside an outlet_sales cancel: refused while a live Retur ke stok comes from it. The return's goods came in at this
-# sale's cost; cancelling the sale would put its goods back as well, so they would be counted back twice.
+# sale's cost; cancelling the sale would put its goods back as well, so they would be counted back twice. A cancel
+# that goes through marks the Retur di kasir, whose open qty is then 0 (QA stock-returns N3).
 name: sales_cancel_guard
 label: {id: Penjualan yang sudah dikembalikan ke stok tidak bisa dibatalkan}
 on: outlet_sales.cancelled
@@ -12,3 +13,6 @@ steps:
   - if: ret != null
     create: outlet_sales_guard
     set: {reason: "'sales_returned'", document: ret.name}
+  - update: rf
+    if: rf != null && ret == null
+    set: {sales_cancelled: true}
