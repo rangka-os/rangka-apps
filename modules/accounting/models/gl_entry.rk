@@ -146,7 +146,7 @@ rules:
   - name: bill_cost_left
     on: save
     check: against == '' || entry == 'reverse' || bill_left >= 0
-    message: {id: 'Biaya proyek atas tagihan ini melebihi sisa nilai tagihannya. Kurangi nilainya, atau catat tanpa tagihan.'}
+    message: {id: 'Biaya proyek atas tagihan ini melebihi sisa nilai tagihannya. Kurangi nilainya sampai sisa tagihan.'}
   - name: reverse_matches_post
     on: save
     check: >-

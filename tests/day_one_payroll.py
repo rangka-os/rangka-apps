@@ -115,9 +115,28 @@ def scenario_payroll_month(api):
     check("the project admin cannot submit a payslip (403)", denied(st, resp), (st, resp))
     st, resp = sm.call("GET", f"/api/v1/r/payslip?limit=5")
     check("a sales manager cannot read payslips (403)", st == 403, (st, resp))
+    # MP-001's kasbon of 300.000 (taken back from this slip, g.EDITS) given in cash earlier in the period: Dr Piutang
+    # karyawan / Cr Kas, so the payroll close's Cr 11330 brings the receivable back to 0 (audit akuntansi r4 L-i)
+    mp1 = (by_no.get("MP-001") or {}).get("worker", "x")
+    st, resp = pa.create("cash_advance", {"worker": mp1, "advance_date": g.RUN["period_from"], "amount": 300_000})
+    check("the project admin cannot give a kasbon (403)", denied(st, resp), (st, resp))
+    st, resp = fm.create("cash_advance", {"worker": mp1, "advance_date": g.RUN["period_from"], "amount": 0})
+    check("a kasbon of 0 -> 422", st == 422, (st, resp))
+    st, kb = fm.create("cash_advance", {"worker": mp1, "advance_date": g.RUN["period_from"], "amount": 300_000, "notes": "Biaya sekolah"})
+    if check("finance records MP-001's kasbon (201)", st == 201, (st, kb)):
+        st, resp = fm.verb("cash_advance", kb["name"], "submit")
+        if check("and submits it", st == 200, (st, resp)):
+            kbn = (resp.get("record") or resp).get("name", kb["name"])
+            CTX["cash_advance"] = kbn
+            st, gl = fm.call("GET", "/api/v1/r/gl_entry?limit=10&filter=" + urllib.parse.quote(f"voucher_type == 'cash_advance' && voucher == '{kbn}'"))
+            if st != 403:   # sites without the accounting module have no gl_entry
+                eq("jurnal kasbon: Dr Piutang karyawan 11330 / Cr Kas 11100", sorted((x["account"], x["amount"]) for x in (gl or {}).get("data", [])),
+                   [("11100", -300_000), ("11330", 300_000)])
     for no, body in g.EDITS.items():
         st, resp = fm.patch("payslip", by_no[no]["name"], body)
         check(f"finance edits the draft slip of {no} ({', '.join(body)})", st == 200, (st, resp))
+    st, resp = fm.patch("payslip", by_no["MP-005"]["name"], {"holiday_overtime_hours": 23})
+    check("rest-day hours above 11 a day (6-day week) -> refused", st == 422, (st, resp))
     bad = []
     for no, s in list(by_no.items()):
         st, resp = fm.verb("payslip", s["name"], "submit", {"force": True} if no == "MP-015" else None)

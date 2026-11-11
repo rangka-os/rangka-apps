@@ -124,6 +124,7 @@ Sales and purchasing have no access.
 | payroll_run (not submittable: payslips link to it; `closed`, locks and totals written by flows; no delete) | | r c w e p | | r |
 | payslip | | all | | r c (draft from the recap's flow) |
 | payroll_close (Tutup periode gaji: freezes totals, margin row, client invoice) | | all | | r |
+| cash_advance (kasbon: Dr Piutang karyawan / Cr Kas or Bank; repaid through payslip other_deduction) | | all | | r |
 | payroll_guard (never stored; a flow's refusal, also inside a recap cancel and an invoice save) | c | c | | c |
 
 ### Field attendance (module projects, in jasa_proyek)

@@ -2952,6 +2952,7 @@ MATRIX = {
     "payroll_profile": {"finance_manager": {"read", "create", "write", "export", "import", "print"}, "project_admin": _R},
     "payroll_run": {"finance_manager": {"read", "create", "write", "export", "print"}, "project_admin": _R},   # no delete: slips point at it
     "payroll_close": {"finance_manager": _ALL, "project_admin": _R},
+    "cash_advance": {"finance_manager": _ALL, "project_admin": _R},   # kasbon: finance gives it
     "payslip": {"finance_manager": _ALL, "project_admin": {"read", "create"}},
     "payroll_guard": {"finance_manager": {"create"}, "project_admin": {"create"}, "sales_manager": {"create"}},   # never stored (a flow's refusal; recaps are cancelled by the project admin)
 }
