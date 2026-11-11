@@ -63,32 +63,49 @@ def scenario_moka_api(api):
     st, resp = api.patch("outlet", BRAGA, {"moka_outlet_id": "70002"})
     check("Braga gets its Moka outlet id", st == 200, (st, resp))
 
-    # the gate (audit sisa-1111 R1): until an outlet's moka_api_from is set, its API transactions are kept without lines,
-    # so the export alone counts the day; from that date on the API counts, never a day before it
-    st, out = run(api, "moka_transaction_staged", event(91000000, d1, [line("Tahu goreng original", "TH-ORI", 1, 15000)]))
+    # the gate (audit sisa-1111 R1, moka-guard H1/M1): until an outlet's moka_api_from is set its API lines are held
+    # (the export counts the day, the recap leaves them); setting the date stages the held lines from it on
+    d25 = (today - datetime.timedelta(days=25)).isoformat()
+    old_day = (today - datetime.timedelta(days=40)).isoformat()
+    st, out = run(api, "moka_transaction_staged", event(91000000, d25, [line("Tahu goreng original", "TH-ORI", 1, 15000)]))
     tx0 = api.find("moka_transaction", "transaction_id == '91000000'")
-    check("gate closed: the transaction is kept for Braga, no line (the export counts the day)", st == 200 and len(tx0) == 1 and tx0[0]["outlet"] == BRAGA
-          and not api.find("moka_sale_line", f"transaction == '{tx0[0]['name']}'"), (st, out, tx0))
+    l0 = api.find("moka_sale_line", f"transaction == '{tx0[0]['name']}'") if tx0 else []
+    check("gate closed: Braga's line is held (the export counts the day)", st == 200 and [r["status"] for r in l0] == ["held"], (st, out, l0))
+    sold40 = line("Tahu goreng original", "TH-ORI", 2, 15000)
+    run(api, "moka_transaction_staged", event(91000040, old_day, [sold40]))
+    run(api, "moka_daily_sales")
+    eq("held lines are not recapped", [r["status"] for r in api.find("moka_sale_line", "status == 'held'")], ["held", "held"])
     api_from = (today - datetime.timedelta(days=30)).isoformat()
     for o in (BRAGA, DAGO):
         st, resp = api.patch("outlet", o, {"moka_api_from": api_from})
         check(f"{o} counts Moka API sales from {api_from}", st == 200, (st, resp))
-    old_day = (today - datetime.timedelta(days=40)).isoformat()
-    run(api, "moka_transaction_staged", event(91000040, old_day, [line("Tahu goreng original", "TH-ORI", 1, 15000)]))
+    l0 = api.find("moka_sale_line", f"transaction == '{tx0[0]['name']}'") if tx0 else []
+    eq("gate opened: the line polled before it is staged now", [r["status"] for r in l0], ["staged"])
     tx40 = api.find("moka_transaction", "transaction_id == '91000040'")
-    check("gate open from a date: a sale of a day before it gets no line", len(tx40) == 1
-          and not api.find("moka_sale_line", f"transaction == '{tx40[0]['name']}'"), tx40)
+    eq("a sale of a day before the gate stays held", [r["status"] for r in api.find("moka_sale_line", f"transaction == '{tx40[0]['name']}'")] if tx40 else None, ["held"])
+    # that sale refunded after the switch: the refund is booked by the API on its own day
+    st, out = run(api, "moka_transaction_staged", event(91000040, old_day, [dict(sold40, refunded_quantity=1)], refunded=True, refunded_at=f"{d25}T10:00:00+07:00"))
+    r40 = [r for r in api.find("moka_sale_line", f"transaction == '{tx40[0]['name']}'") if r["qty"] < 0] if tx40 else []
+    eq("refund after the switch of a sale before it: staged on the refund day", [(r["qty"], r["refund"], r["date"], r["status"]) for r in r40], [(-1, 15000, d25, "staged")])
 
     # a transaction without id is not booked (the kernel does not dedupe an empty key); head office is told
     for tid in ("", None):
         ev = event(tid, d1, [line("Tahu goreng original", "TH-ORI", 1, 15000)])
         st, out = run(api, "moka_transaction_staged", ev)
         check(f"transaction_id {tid!r}: the staging flow does not run", st == 200 and out.get("skipped"), (st, out))
-        st, out = run(api, "moka_transaction_without_id", ev)
-        check(f"transaction_id {tid!r}: head office told", st == 200 and any("tanpa ID dari Moka" in n.get("text", "") for n in out.get("notifications", [])), (st, out))
+        st, out = run(api, "moka_transaction_refused", ev)
+        check(f"transaction_id {tid!r}: head office told", st == 200 and any("tanpa ID atau jumlah/harga" in n.get("text", "") for n in out.get("notifications", [])), (st, out))
     eq("no moka_transaction without id", len(api.find("moka_transaction", "transaction_id == ''")), 0)
-    st, out = run(api, "moka_transaction_without_id", event(91000041, d1, [line("Tahu goreng original", "TH-ORI", 1, 15000)]))
+    st, out = run(api, "moka_transaction_refused", event(91000041, d1, [line("Tahu goreng original", "TH-ORI", 1, 15000)]))
     check("a transaction with id: the notice flow does not run", st == 200 and out.get("skipped"), (st, out))
+    # a checkout without quantity (or total_price): not booked as a guess, head office told (audit moka-guard L1)
+    nq = line("Tahu goreng original", "TH-ORI", 1, 15000)
+    nq["quantity"] = None
+    evq = event(91000044, d1, [nq])
+    st, out = run(api, "moka_transaction_staged", evq)
+    check("quantity null: the staging flow does not run", st == 200 and out.get("skipped"), (st, out))
+    st, out = run(api, "moka_transaction_refused", evq)
+    check("quantity null: head office told", st == 200 and any("jumlah/harga" in n.get("text", "") for n in out.get("notifications", [])), (st, out))
 
     # refunded_quantity null in a checkout (Moka's spec does not list it): read as 0, the sale is booked (audit R2)
     d20 = (today - datetime.timedelta(days=20)).isoformat()
@@ -132,15 +149,17 @@ def scenario_moka_api(api):
     um = api.find("moka_sale_line", f"transaction == '{tx3[0]['name']}'") if tx3 else []
     check("unknown item: the line is unmapped", len(um) == 1 and um[0]["status"] == "unmapped" and um[0]["item"] in ("", None), um)
 
-    # a line of an unknown outlet, dated before the gate, cannot be mapped to Braga (rule staged_outlet_api_open)
+    # a line of an unknown outlet mapped by head office to Braga: held before the gate, staged from it on
     run(api, "moka_transaction_staged", event(91000043, old_day, [line("Tahu goreng original", "TH-ORI", 1, 15000)], outlet_id=88889, outlet_name="Outlet lama"))
-    tx43 = api.find("moka_transaction", "transaction_id == '91000043'")
-    l43 = api.find("moka_sale_line", f"transaction == '{tx43[0]['name']}'") if tx43 else []
-    if l43:
-        st, resp = hq.patch("moka_sale_line", l43[0]["name"], {"outlet": BRAGA})
-        check("mapping a line dated before Braga's API start -> 422 staged_outlet_api_open", st == 422 and "staged_outlet_api_open" in str(resp), (st, resp))
-    else:
-        fail("gate mapping", ("no unmapped line", tx43))
+    run(api, "moka_transaction_staged", event(91000045, d25, [line("Tahu goreng original", "TH-ORI", 1, 15000)], outlet_id=88889, outlet_name="Outlet lama"))
+    for tid, want in ((91000043, "held"), (91000045, "staged")):
+        t = api.find("moka_transaction", f"transaction_id == '{tid}'")
+        ls = api.find("moka_sale_line", f"transaction == '{t[0]['name']}'") if t else []
+        if ls:
+            st, resp = hq.patch("moka_sale_line", ls[0]["name"], {"outlet": BRAGA})
+            check(f"mapping a line of {ls[0]['date']} to Braga (API from {api_from}): {want}", st == 200 and api.get("moka_sale_line", ls[0]["name"])["status"] == want, (st, resp))
+        else:
+            fail("gate mapping", ("no unmapped line", tid))
 
     # an outlet Juragan does not know: unmapped without outlet
     run(api, "moka_transaction_staged", event(91000004, d1, [line("Tahu goreng original", "TH-ORI", 1, 15000)], outlet_id=88888, outlet_name="Outlet lain"))

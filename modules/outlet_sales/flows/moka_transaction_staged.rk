@@ -24,14 +24,18 @@
 # Idempotency: the transaction and its refunded quantity, so a new refund is a new run and a repeat is not. An event
 # without transaction_id (null or "") is not run: the kernel does not dedupe an empty key, so a repeated poll could book
 # it twice; flow moka_transaction_without_id tells head office instead.
-# Gate (audit sisa-1111 R1): a transaction of a known outlet whose day is before the outlet's moka_api_from (or while
-# it is empty) is kept as a moka_transaction only, without lines: the export counts that day. A transaction of an
-# unknown outlet stays unmapped as before; mapping its lines to an outlet checks the same gate (moka_sale_line rule
-# staged_outlet_api_open). refunded_quantity may be null in a checkout (Moka's spec does not list it): null is 0.
+# Gate (audit sisa-1111 R1): a line of a known outlet whose day is before the outlet's moka_api_from (or while it is
+# empty) is recorded as held, not staged: the export counts that day and the recap leaves it alone. When head office
+# sets moka_api_from, flow moka_api_opened stages the held lines from that day on, so transactions polled before the
+# gate opened are not lost (audit moka-guard H1). A late refund is gated by its own day (a sale counted by the export,
+# refunded after the switch, is booked by the API: M1). Lines of an unknown outlet stay unmapped; mapping them checks
+# the gate (flow moka_line_mapped, rule staged_outlet_api_open). refunded_quantity may be null in a checkout (Moka's
+# spec does not list it): null is 0. A checkout with quantity or total_price null is not booked (flow
+# moka_transaction_refused tells head office).
 name: moka_transaction_staged
 label: {id: Transaksi Moka masuk jadi baris penjualan}
 on: moka.transaction_created
-if: "'transaction_id' in event && event.transaction_id != null && string(event.transaction_id) != '' && 'created_at' in event && 'checkouts' in event && 'outlet_id' in event"
+if: "'transaction_id' in event && event.transaction_id != null && string(event.transaction_id) != '' && 'created_at' in event && 'checkouts' in event && 'outlet_id' in event && event.checkouts.map(c, 'quantity' in c && c.quantity != null && 'total_price' in c && c.total_price != null ? 0 : 1).sum() == 0"
 idempotency: "string(event.transaction_id) + ':' + string(event.checkouts.map(c, 'refunded_quantity' in c && c.refunded_quantity != null ? c.refunded_quantity : 0).sum())"
 steps:
   - find: moka_transaction
@@ -65,7 +69,7 @@ steps:
     where: "tx.outlet != '' && name == tx.outlet && moka_api_from != '' && moka_api_from <= tx.date"
     as: api_open
   - for_each: event.checkouts
-    if: known == null && (tx.outlet == '' || api_open != null)
+    if: known == null
     as: c
     do:
       - find: item
@@ -90,7 +94,7 @@ steps:
           gross: c.total_price
           discount: "min('discount_amount' in c ? c.discount_amount : 0, c.total_price)"
           refund: "0"
-          status: "tx.outlet == '' || (by_sku == null && by_item_name == null) ? 'unmapped' : 'staged'"
+          status: "tx.outlet == '' || (by_sku == null && by_item_name == null) ? 'unmapped' : (api_open != null ? 'staged' : 'held')"
       - create: moka_sale_line
         # a refund line only when it returns money: a refund of a free item (100% discount) changes nothing and a line of
         # qty < 0 without refund is refused by outlet_sales; never more than the quantity sold
@@ -107,20 +111,24 @@ steps:
           gross: "0"
           discount: "0"
           refund: "round((c.total_price - min('discount_amount' in c ? c.discount_amount : 0, c.total_price)) * min(c.refunded_quantity, c.quantity) / c.quantity)"
-          status: "tx.outlet == '' || (by_sku == null && by_item_name == null) ? 'unmapped' : 'staged'"
+          status: "tx.outlet == '' || (by_sku == null && by_item_name == null) ? 'unmapped' : (api_open != null ? 'staged' : 'held')"
       - notify: head_office
         if: "tx.outlet != '' && c.quantity > 0 && c.total_price >= 0 && by_sku == null && by_item_name == null"
         channel: email
         template: {id: 'Moka {tx.receipt_no} ({tx.moka_outlet}, {tx.date}): barang "{c.item_name}" belum dikenali, petakan di Baris penjualan Moka'}
   - notify: head_office
-    if: "known == null && (tx.outlet == '' || api_open != null) && event.checkouts.map(c, c.quantity > 0 && c.total_price >= 0 ? 0 : 1).sum() > 0"
+    if: "known == null && event.checkouts.map(c, c.quantity > 0 && c.total_price >= 0 ? 0 : 1).sum() > 0"
     channel: email
     template: {id: 'Moka {tx.receipt_no} ({tx.moka_outlet}, {tx.date}) punya barang dengan qty 0 atau minus, atau total minus, tidak direkap. Cek di Moka'}
   - notify: head_office
     if: "known == null && tx.outlet == ''"
     channel: email
     template: {id: 'Moka {tx.receipt_no} ({tx.moka_outlet}, {tx.date}): outlet belum dikenali, petakan barisnya di Baris penjualan Moka'}
-  # a known transaction that changed in Moka: refunds made after the first poll
+  # a known transaction that changed in Moka: refunds made after the first poll, gated by the refund's own day
+  - find: outlet
+    if: known != null
+    where: "known.outlet != '' && name == known.outlet"
+    as: ko
   - for_each: event.checkouts
     if: known != null
     as: c
@@ -150,7 +158,7 @@ steps:
           gross: "0"
           discount: "0"
           refund: "round((sold.gross - sold.discount) * (min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum()) / sold.qty)"
-          status: "sold.status == 'unmapped' || sold.outlet == '' || sold.item == '' ? 'unmapped' : 'staged'"
+          status: "sold.status == 'unmapped' || sold.outlet == '' || sold.item == '' ? 'unmapped' : (ko != null && ko.name == sold.outlet && ko.moka_api_from != '' && ko.moka_api_from <= ('refunded_date' in event && event.refunded_date != null && event.refunded_date != '' ? (string(event.refunded_date).matches('Z$') ? event.refunded_date + duration('7h') : event.refunded_date) : today()) ? 'staged' : 'held')"
         as: late
       - notify: head_office
         if: "sold != null && 'refunded_quantity' in c && c.refunded_quantity != null && min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum() > 0 && round((sold.gross - sold.discount) * (min(c.refunded_quantity, sold.qty) + returned.map(l, l.qty).sum()) / sold.qty) > 0"
