@@ -248,6 +248,21 @@ def scenario_kitchen_served_revision(api):
        sorted((t["station"], t["status"], tuple(lines(t))) for t in ts),
        sorted([(BAR, "new", ((KHT, 1, ""),)), (BAR, "picked_up", ((KSA, 1, ""),))]))
     check("every revision ticket is marked REVISI", all(t["heading"] == "REVISI Meja 12" for t in ts), ts)
+    # audit K1: one served coffee, a revision with two lines of that coffee: one is served, the other is cooked
+    s3 = pay(sari, shift, [{"item": KSA, "qty": 1}], "Meja 15: one kopi susu aren", buyer="Meja 15")
+    if not s3:
+        return
+    t3 = tickets(api, s3["name"])
+    for step in ("cooking", "ready", "picked_up"):
+        tono.patch("kitchen_ticket", t3[0]["name"], {"status": step})
+    sari.verb("pos_sale", s3["name"], "cancel")
+    st, am = sari.verb("pos_sale", s3["name"], "amend")
+    am = rec(am)
+    sari.patch("pos_sale", am["name"], {"items": [{"item": KSA, "qty": 1, "note": "panas"}, {"item": KSA, "qty": 1, "note": "dingin"}]})
+    st, r = sari.verb("pos_sale", am["name"], "submit")
+    eq("revision with two lines of a served item: the first line counts as served, the second is cooked",
+       sorted((t["status"], tuple(lines(t))) for t in tickets(api, rec(r).get("name"))),
+       sorted([("new", ((KSA, 1, "dingin"),)), ("picked_up", ((KSA, 1, "panas"),))]))
 
 
 def scenario_kitchen_scope(api):
