@@ -638,6 +638,24 @@ def scenario_pos_head_office(api):
         check("head office closes the empty Cimahi shift", st == 200, (st, resp))
 
 
+def scenario_pos_catalogue_hides_inactive(api):
+    """An item switched off (active false: it cannot be deleted once sold) leaves the cashier's catalogue; the screen's
+    own catalogue filter, read from /meta as the cashier's web app does, decides (rangka-os card t_542e70e1)."""
+    dika = CTX.get("dika")
+    if not dika:
+        return
+    st, it = api.create("item", {"item_name": "Teh kotak lama contoh", "kind": "good", "stock_uom": "UOM-001", "sku": "TEH-LAMA", "rate": 5000, "active": False})
+    if not check("an item switched off -> 201", st == 201 and it, (st, it)):
+        return
+    st, mm = dika.call("GET", "/api/v1/meta")
+    flt = (((((mm or {}).get("screens") or {}).get("kasir") or {}).get("counter") or {}).get("catalogue") or {}).get("filter")
+    if not check("Dika's /meta carries the kasir catalogue filter", st == 200 and flt, (st, flt)):
+        return
+    names = [r["name"] for r in dika.find("item", flt)]
+    check("the cashier's catalogue leaves out the item switched off, keeps the others",
+          it["name"] not in names and AIR in names and MI in names, (flt, it["name"], names))
+
+
 SCENARIOS = [scenario_pos_opening_stock, scenario_pos_shift, scenario_pos_retail_sale, scenario_pos_fnb_sale, scenario_pos_guards,
              scenario_pos_daily_form_next_door, scenario_pos_void_and_return, scenario_pos_race, scenario_pos_close, scenario_pos_close_race, scenario_pos_print,
-             scenario_pos_dashboard, scenario_pos_head_office]
+             scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive]
