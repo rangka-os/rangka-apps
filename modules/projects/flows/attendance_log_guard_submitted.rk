@@ -15,7 +15,7 @@ steps:
       reason: "'period_closed'"
       document: closed.name
   - find: attendance_log
-    where: day_key == event.day_key && name != event.name && docstatus != 2
+    where: day_key == event.day_key && name != event.name && docstatus != 2 && (docstatus == 1 || clock_in != '')
     as: other
   - if: other != null
     create: attendance_guard

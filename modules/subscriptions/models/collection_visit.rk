@@ -8,17 +8,17 @@ title_field: customer_name
 # the phone stood (geo) and a photo of the place. It moves no money: cash taken is a field_collection, deposited
 # through collector_deposit. The distance from the subscriber's point is measured by the kernel (distance_m) so the
 # finance team can see a visit made far from the house; a subscription without a point shows 0. Position and photo
-# are set_once (a check-in cannot be moved afterwards); the photo must be an attachment of this visit.
+# are set_once, and so are the subscriber and the time (a check-in cannot be moved afterwards, audit 2026-11-12 F6); the photo must be an attachment of this visit.
 permissions:
   - {role: collector, read: true, create: true, write: true}
   - {role: finance_manager, read: true, export: true, print: true}
   - {role: sales_manager, read: true}
 fields:
-  - {name: subscription, type: link, to: subscription, label: {id: Langganan}, required: true, in_list: true}
+  - {name: subscription, type: link, to: subscription, label: {id: Langganan}, required: true, set_once: true, in_list: true}
   - {name: customer_name, type: data, label: {id: Nama pelanggan}, compute: subscription.customer_name, in_list: true}
   # Row scope of the collector role (roles/collector.rk): the member's own user record.
   - {name: collector, type: link, to: user, label: {id: Penagih}, default: user.name, required: true, in_list: true}
-  - {name: visited_at, type: datetime, label: {id: Waktu kunjungan}, default: now(), required: true, in_list: true}
+  - {name: visited_at, type: datetime, label: {id: Waktu kunjungan}, default: now(), required: true, set_once: true, in_list: true}
   - {name: pos, type: geo, label: {id: Posisi saat kunjungan}, set_once: true}
   - {name: photo, type: image, label: {id: Foto tempat}, set_once: true}
   - {name: unpaid_amount, type: currency, label: {id: Belum dibayar saat kunjungan}, read_only: true, compute: subscription.unpaid_amount}

@@ -3,9 +3,10 @@ name: attendance_log_guard_updated
 label: {id: Satu absen per orang per hari (diubah)}
 # The same check when the worker or the date of a draft changes.
 on: attendance_log.updated
+# Drafts without a clock-in time do not hold the day (audit 2026-11-12 F2).
 steps:
   - find: attendance_log
-    where: day_key == event.day_key && name != event.name && docstatus != 2
+    where: day_key == event.day_key && name != event.name && docstatus != 2 && (docstatus == 1 || clock_in != '')
     as: other
   - if: other != null
     create: attendance_guard

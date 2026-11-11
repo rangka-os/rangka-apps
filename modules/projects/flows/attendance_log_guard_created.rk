@@ -4,9 +4,11 @@ label: {id: Satu absen per orang per hari (baru)}
 # A second live log of the same worker and day would count the day twice in the recap. The read takes the flow lock of
 # contract 0025, so two clock-ins sent at the same moment run one after the other and the second is refused.
 on: attendance_log.created
+# A draft left without its clock-in time (the clock screen's second write failed) does not hold the day: the next
+# clock-in may go ahead (audit 2026-11-12 F2). The submit guard still allows one counted log per day.
 steps:
   - find: attendance_log
-    where: day_key == event.day_key && name != event.name && docstatus != 2
+    where: day_key == event.day_key && name != event.name && docstatus != 2 && (docstatus == 1 || clock_in != '')
     as: other
   - if: other != null
     create: attendance_guard

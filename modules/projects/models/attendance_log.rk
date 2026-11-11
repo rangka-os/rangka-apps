@@ -24,8 +24,9 @@ title_field: worker_name
 # creates the log with the position, attaches the photo, then sets the photo and the clock-in time together.
 #
 # The clock-in and clock-out time, position and photo are set_once (contract 0030 §4): a worker fills them once and can
-# never move a clock-in the kernel measured as outside. A wrong value is corrected by the project admin cancelling the
-# log and entering the day again (attendance_close counts only submitted logs).
+# never move a clock-in the kernel measured as outside, and nobody else can either: amend copies them, locked. A wrong
+# value is corrected by the project admin cancelling the log and making a new one for the day (not an amendment; the
+# cancelled log stays as the trail, attendance_close counts only submitted logs). Audit 2026-11-12 F5.
 #
 # Not linked to by any record while it is a draft (contract 0030 §10), so it can be submittable.
 permissions:
@@ -81,6 +82,10 @@ fields:
     set_once: true
     in_list: true
   - {name: in_pos, type: geo, label: {id: Posisi masuk}, set_once: true}
+  # Before the geo fields (projects 1.1) the position was two numbers. Kept read-only so a log made before the upgrade
+  # is still measured from where it was taken (audit 2026-11-12 F1); new logs leave them 0.
+  - {name: in_lat, type: float, label: {id: Lintang masuk (lama)}, hidden: true, read_only: true}
+  - {name: in_lng, type: float, label: {id: Bujur masuk (lama)}, hidden: true, read_only: true}
   - {name: in_photo, type: image, label: {id: Foto masuk}, set_once: true}
   # Clock-out
   - name: clock_out
@@ -89,6 +94,8 @@ fields:
     set_once: true
     in_list: true
   - {name: out_pos, type: geo, label: {id: Posisi keluar}, set_once: true}
+  - {name: out_lat, type: float, label: {id: Lintang keluar (lama)}, hidden: true, read_only: true}
+  - {name: out_lng, type: float, label: {id: Bujur keluar (lama)}, hidden: true, read_only: true}
   - {name: out_photo, type: image, label: {id: Foto keluar}, set_once: true}
   - name: overtime_hours
     type: float
@@ -104,7 +111,7 @@ fields:
   - {name: site_radius_m, type: int, label: {id: Radius lokasi (m)}, read_only: true, compute: "work_site != '' ? work_site.radius_m : 0"}
   - {name: site_point, type: geo, label: {id: Titik lokasi}, hidden: true, read_only: true, compute: "work_site != '' ? {'lat': site_lat, 'lng': site_lng} : ''"}
   # distance_m is 1e9 without a position (contract 0030 §4): "no position" counts as far.
-  - {name: in_m, type: float, label: {id: Jarak masuk dari titik (m)}, hidden: true, read_only: true, compute: "distance_m(in_pos, site_point)"}
+  - {name: in_m, type: float, label: {id: Jarak masuk dari titik (m)}, hidden: true, read_only: true, compute: "distance_m(in_pos, site_point) < 100000000.0 ? distance_m(in_pos, site_point) : (in_lat != 0 || in_lng != 0 ? distance_m({'lat': in_lat, 'lng': in_lng}, site_point) : distance_m(in_pos, site_point))"}
   - {name: in_located, type: check, label: {id: Lokasi masuk ada}, read_only: true, compute: "in_m < 100000000.0"}
   - name: in_inside
     type: check
@@ -117,7 +124,7 @@ fields:
     label: {id: Jarak masuk dari lokasi (m)}
     read_only: true
     compute: "!in_located || work_site == '' ? 0 : round(in_m)"
-  - {name: out_m, type: float, label: {id: Jarak keluar dari titik (m)}, hidden: true, read_only: true, compute: "distance_m(out_pos, site_point)"}
+  - {name: out_m, type: float, label: {id: Jarak keluar dari titik (m)}, hidden: true, read_only: true, compute: "distance_m(out_pos, site_point) < 100000000.0 ? distance_m(out_pos, site_point) : (out_lat != 0 || out_lng != 0 ? distance_m({'lat': out_lat, 'lng': out_lng}, site_point) : distance_m(out_pos, site_point))"}
   - {name: out_located, type: check, label: {id: Lokasi keluar ada}, read_only: true, compute: "out_m < 100000000.0"}
   - name: out_inside
     type: check
@@ -199,6 +206,11 @@ rules:
     on: submit
     check: clock_in != ''
     message: {id: 'Isi jam masuk dulu (absen masuk) sebelum diajukan'}
+  # The clock-out photo is its own evidence, not the clock-in photo again (audit 2026-11-12 F4).
+  - name: out_photo_own
+    on: save
+    check: out_photo == '' || out_photo != in_photo
+    message: {id: 'Foto keluar harus foto baru, bukan foto masuk'}
   - name: clocked_out
     on: submit
     check: clock_out != ''

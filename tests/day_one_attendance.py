@@ -532,16 +532,26 @@ def scenario_attendance_screen(api):
     st, r = w3.call("GET", "/api/v1/screens/absen")
     body = dict(((r or {}).get("sets") or {}).get("record") or {})
     body.update({"assignment": a3["name"], "in_pos": pos(SITE2, 15, 10)})
+    # First press: the log is made but the second write fails (the phone's clock is a day off) -> a draft without time.
+    st, orphan = w3.create("attendance_log", body)
+    bad = f"{t - datetime.timedelta(days=2)}T08:00:00+07:00"
+    st2, resp = w3.patch("attendance_log", orphan.get("name", "x"), {"clock_in": bad}) if st == 201 else (st, orphan)
+    check("a clock-in time off by days is refused, leaving a draft without time", st == 201 and refused(st2, resp, "tanggal absen"), (st, st2, resp))
     st, lg = w3.create("attendance_log", body)
+    check("that draft does not hold the day: pressing Absen masuk again makes a new log (audit F2)", st == 201, (st, lg))
     if not check("the screen's clock-in creates the log with the position and no time yet", st == 201 and lg.get("in_inside") is True and not lg.get("clock_in"), (st, lg)):
         return
     name = lg["name"]
     now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     st, resp = w3.patch("attendance_log", name, {"in_photo": photo(w3, name), "clock_in": now})
     check("then the photo and the clock-in time are set together", st == 200 and rec(resp).get("clock_in"), (st, resp))
+    st, resp = w3.patch("attendance_log", orphan.get("name", "x"), {"clock_in": now})
+    check("the old draft cannot take a time now that the day has a log with one", refused(st, resp, "sudah punya absen"), (st, resp))
     st, resp = w3.verb("attendance_log", name, "submit")
     check("the open log cannot be submitted before the clock-out", refused(st, resp, "jam keluar"), (st, resp))
     out_now = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=5)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    st, resp = w3.patch("attendance_log", name, {"clock_out": out_now, "out_pos": pos(SITE2, 600, 0), "out_photo": (w3.get("attendance_log", name) or {}).get("in_photo")})
+    check("the clock-in photo cannot be the clock-out photo (audit F4)", refused(st, resp, "Foto keluar"), (st, resp))
     st, resp = w3.patch("attendance_log", name, {"clock_out": out_now, "out_pos": pos(SITE2, 600, 0), "out_photo": photo(w3, name)})
     check("a clock-out 600 m away needs no reason (the screen asks only at clock-in) but marks the log outside",
           st == 200 and rec(resp).get("out_inside") is False and rec(resp).get("outside_site") is True, (st, resp))
