@@ -1,6 +1,8 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # Head office picked the outlet and the item of an unmapped Moka line: it becomes staged and goes into the next daily
-# recap (flow moka_daily_sales).
+# recap (flow moka_daily_sales). The unmapped refund lines of the same Moka checkout (same transaction and checkout,
+# or for a line without checkout the same description) take the same outlet and item and are staged with it, so a
+# sale and its refund go into the recap together.
 name: moka_line_mapped
 label: {id: Baris Moka yang sudah dipetakan siap direkap}
 on: moka_sale_line.updated
@@ -12,3 +14,16 @@ steps:
   - update: rec
     set:
       status: "'staged'"
+  - find_all: moka_sale_line
+    if: event.qty > 0
+    where: "name != event.name && transaction == event.transaction && qty < 0 && status == 'unmapped' && (event.checkout != '' ? checkout == event.checkout : (checkout == '' && description == 'Retur ' + event.description))"
+    as: refunds
+  - for_each: refunds
+    if: event.qty > 0
+    as: r
+    do:
+      - update: r
+        set:
+          outlet: event.outlet
+          item: event.item
+          status: "'staged'"

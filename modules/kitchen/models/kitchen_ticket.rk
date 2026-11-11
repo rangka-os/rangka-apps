@@ -36,6 +36,11 @@ fields:
     in_list: true
   - {name: items, type: table, of: kitchen_ticket_item, label: {id: Menu}, read_only: true, min_rows: 1}
   - {name: item_count, type: float, label: {id: Jumlah porsi}, compute: "items.map(l, l.qty).sum()"}
+  # the lines as a list a flow can read (a flow's find does not load table rows): a revision of the receipt does not
+  # cook again what a picked-up ticket already sent out (flow kitchen_ticket_on_sale)
+  - {name: served, type: json, label: {id: Menu (data)}, hidden: true, compute: "items.map(l, {'item': l.item, 'qty': l.qty})"}
+  # set by flow kitchen_ticket_on_void on a ticket already picked up when its receipt is voided: it stays Diambil
+  - {name: sale_void, type: check, label: {id: Struk dibatalkan}, read_only: true}
   - name: status
     type: select
     label: {id: Status}

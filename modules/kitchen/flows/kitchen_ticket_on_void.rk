@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # A voided receipt (pos_sale cancelled, same day, open shift) voids its tickets that are not picked up yet, as the
-# cashier who voided it; the kitchen screen drops them. A ticket already picked up stays as it was (the food went out).
+# cashier who voided it; the kitchen screen drops them. A ticket already picked up stays Diambil (the food went out)
+# and is marked sale_void, so it cannot be pulled back into the queue (flow kitchen_ticket_on_update).
 name: kitchen_ticket_on_void
 label: {id: 'Struk dibatalkan: tiket dapurnya batal'}
 on: pos_sale.cancelled
@@ -13,3 +14,10 @@ steps:
         set:
           status: "'void'"
           void_at: now()
+  - {find_all: kitchen_ticket, where: "sale == event.name && status == 'picked_up' && !sale_void", as: served}
+  - for_each: served
+    as: t
+    do:
+      - update: t
+        set:
+          sale_void: "true"

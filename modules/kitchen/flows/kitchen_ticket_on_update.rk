@@ -2,7 +2,7 @@
 # A ticket's status moves one step at a time, forward or back (Baru -> Dimasak -> Siap -> Diambil; back is the work
 # screen's "Urungkan"), and each step is stamped with its time; a step back clears the stamp of the step undone. Batal
 # is set only by flow kitchen_ticket_on_void (writes by flows start no flow), so a person cannot void a ticket, and a
-# void ticket does not come back. Runs inside the write, as the writer; kitchen_guard refuses the write.
+# void ticket does not come back, nor does a picked-up ticket of a voided receipt (sale_void). Runs inside the write, as the writer; kitchen_guard refuses the write.
 name: kitchen_ticket_on_update
 label: {id: 'Tiket dapur diubah: satu langkah, catat waktunya'}
 on: kitchen_ticket.updated
@@ -14,6 +14,10 @@ steps:
   - if: event.status == 'void'
     create: kitchen_guard
     set: {reason: "'void_by_receipt'", document: event.name}
+  # a picked-up ticket of a voided receipt stays picked up: its receipt no longer exists to cook for
+  - if: event.before.status == 'picked_up' && event.sale_void
+    create: kitchen_guard
+    set: {reason: "'sale_void'", document: event.name}
   # positions 0..3; a jump of more than one step is refused
   - if: "event.status != 'void' && event.before.status != 'void' && ({'new': 0, 'cooking': 1, 'ready': 2, 'picked_up': 3}[event.status] - {'new': 0, 'cooking': 1, 'ready': 2, 'picked_up': 3}[event.before.status]) * ({'new': 0, 'cooking': 1, 'ready': 2, 'picked_up': 3}[event.status] - {'new': 0, 'cooking': 1, 'ready': 2, 'picked_up': 3}[event.before.status]) > 1"
     create: kitchen_guard

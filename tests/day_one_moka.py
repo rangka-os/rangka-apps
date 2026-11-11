@@ -13,6 +13,7 @@ import datetime
 H = {}
 BRAGA, DAGO = "OUT-03", "OUT-02"
 ORI, PDS = "BRG-0007", "BRG-0008"
+PORSI_UOM = "UOM-006"
 
 
 def bind(m):
@@ -24,16 +25,23 @@ def bind(m):
     m.MATRIX["moka_sale_line"] = {"head_office": {"read", "write", "export"}}
 
 
-def event(tid, day, checkouts, outlet_id=70002, outlet_name="Tahu Contoh - Braga", refunded=False, hour="11:42:10"):
+def event(tid, day, checkouts, outlet_id=70002, outlet_name="Tahu Contoh - Braga", refunded=False, hour="11:42:10", refunded_at=None):
     """One transaction_created event, as the moka connector emits it (emit keys of moka/connector.rk)."""
     total = sum(c["total_price"] - c["discount_amount"] for c in checkouts)
-    return {"transaction_id": tid, "outlet_id": outlet_id, "outlet_name": outlet_name, "receipt_no": f"BRG-{tid % 100000:06d}",
+    return {"transaction_id": tid, "outlet_id": outlet_id, "outlet_name": outlet_name, "receipt_no": f"BRG-{tid % 100000:06d}" if isinstance(tid, int) else f"BRG-{str(tid)[-6:]}",
             "created_at": f"{day}T{hour}+07:00", "is_refunded": refunded, "checkouts": checkouts, "payment_type": "cash",
-            "total_collected": total}
+            "total_collected": total, "updated_at": refunded_at or f"{day}T{hour}+07:00", "refunded_date": refunded_at}
 
 
-def line(name, sku, qty, price, discount=0, refunded=0, variant=""):
-    return {"item_id": 0, "item_name": name, "item_variant_name": variant, "sku": sku, "quantity": qty, "item_price": price,
+CHECKOUT = [66000000]
+
+
+def line(name, sku, qty, price, discount=0, refunded=0, variant="", cid=None):
+    """One checkout; every checkout gets its own Moka id (cid to repeat one in a later event of the same transaction)."""
+    if cid is None:
+        CHECKOUT[0] += 1
+        cid = CHECKOUT[0]
+    return {"id": cid, "item_id": 0, "item_name": name, "item_variant_name": variant, "sku": sku, "quantity": qty, "item_price": price,
             "total_price": qty * price, "discount_amount": discount, "refunded_quantity": refunded}
 
 
@@ -178,4 +186,137 @@ def scenario_moka_api(api):
         check("the flagged draft cannot be submitted before head office checks it", st in (409, 422) and "legacy_key_reviewed" in str(resp), (st, resp))
 
 
-SCENARIOS = [scenario_moka_api]
+def scenario_moka_late_refund(api):
+    """Audit moka H3: a refund Moka reports after the transaction was polled."""
+    today = kernel_today()
+    d = [(today - datetime.timedelta(days=k)).isoformat() for k in range(0, 12)]
+
+    def lines_of(tid):
+        tx = api.find("moka_transaction", f"transaction_id == '{tid}'")
+        return tx, (api.find("moka_sale_line", f"transaction == '{tx[0]['name']}'") if tx else [])
+
+    def sales(outlet, day):
+        return api.find("outlet_sales", f"outlet == '{outlet}' && date == '{day}' && source == 'moka' && key_version == 3 && docstatus != 2")
+
+    # a sale polled before its refund: two of ORI, one of PDS with a discount
+    ori, pds = line("Tahu goreng original", "TH-ORI", 2, 15000), line("Tahu goreng pedas", "TH-PDS", 1, 18000, discount=2000)
+    run(api, "moka_transaction_staged", event(91000021, d[8], [ori, pds]))
+    run(api, "moka_daily_sales")
+    eq("sale before its refund: recapped once, net Rp 46.000", [x["net_total"] for x in sales(BRAGA, d[8])], [46000])
+
+    # Moka changes the transaction: one ORI refunded on d[7] (the connector polls changed transactions again)
+    later = lambda r_ori, r_pds, at: event(91000021, d[8], [dict(ori, refunded_quantity=r_ori), dict(pds, refunded_quantity=r_pds)],
+                                           refunded=True, refunded_at=at)
+    st, out = run(api, "moka_transaction_staged", later(1, 0, f"{d[7]}T09:15:30+07:00"))
+    tx, ls = lines_of(91000021)
+    check("late refund: the known transaction runs without error", st == 200, (st, out))
+    eq("late refund: one refund line of the refunded quantity, dated the refund day, staged, same checkout",
+       sorted((r["qty"], r["refund"], r["date"], r["status"], r["checkout"]) for r in ls if r["qty"] < 0),
+       [(-1, 15000, d[7], "staged", str(ori["id"]))])
+    check("late refund: the transaction is marked refunded, head office told", tx and tx[0]["refunded"] is True
+          and any("retur susulan" in n.get("text", "") for n in out.get("notifications", [])), (tx, out.get("notifications")))
+    # the same change again (a repeated poll, or Moka touching the transaction): nothing new
+    run(api, "moka_transaction_staged", later(1, 0, f"{d[7]}T09:15:30+07:00"))
+    eq("the same change again: still one refund line", len([r for r in lines_of(91000021)[1] if r["qty"] < 0]), 1)
+    # the second ORI and the PDS refunded later: only the new quantity, PDS net of its discount, never above the quantity
+    run(api, "moka_transaction_staged", later(5, 1, f"{d[6]}T10:00:00+07:00"))
+    eq("second refund: only what is new (ORI 1 more, PDS 1 at net Rp 16.000), quantity capped at what was sold",
+       sorted((r["description"], r["qty"], r["refund"], r["date"]) for r in lines_of(91000021)[1] if r["qty"] < 0),
+       sorted([("Retur Tahu goreng original", -1, 15000, d[7]), ("Retur Tahu goreng original", -1, 15000, d[6]),
+               ("Retur Tahu goreng pedas", -1, 16000, d[6])]))
+    run(api, "moka_daily_sales")
+    eq("refunds go into the recap of the refund days (net minus the refund)",
+       ([x["net_total"] for x in sales(BRAGA, d[7])], [x["net_total"] for x in sales(BRAGA, d[6])]), ([-15000], [-31000]))
+    eq("the sale day keeps its one record", [x["net_total"] for x in sales(BRAGA, d[8])], [46000])
+
+    # checkouts as in Moka's spec: a uuid, no id; two lines of one item refunded later, a refund time in UTC
+    u1, u2 = dict(line("Tahu goreng original", "TH-ORI", 2, 15000), uuid="c0ffee00-0000-4000-8000-0000000000a1"), \
+        dict(line("Tahu goreng original", "TH-ORI", 1, 15000), uuid="c0ffee00-0000-4000-8000-0000000000a2")
+    for c in (u1, u2):
+        c.pop("id")
+    run(api, "moka_transaction_staged", event("4a3f6c1e-uuid-0026", d[5], [u1, u2]))
+    run(api, "moka_transaction_staged", event("4a3f6c1e-uuid-0026", d[5], [dict(u1, refunded_quantity=2), dict(u2, refunded_quantity=1)],
+                                              refunded=True, refunded_at=f"{d[5]}T18:30:00Z"))
+    eq("uuid checkouts, two lines of one item: each refund booked once (3 portions, Rp 45.000), a Z time taken as WIB (next day)",
+       sorted((r["qty"], r["refund"], r["date"]) for r in lines_of("4a3f6c1e-uuid-0026")[1] if r["qty"] < 0), [(-2, 30000, d[4]), (-1, 15000, d[4])])
+
+    # a checkout with neither uuid nor id: a later refund is not guessed by name, head office is told
+    n1 = line("Tahu goreng pedas", "TH-PDS", 1, 18000)
+    n1.pop("id")
+    run(api, "moka_transaction_staged", event(91000027, d[5], [n1]))
+    st, out = run(api, "moka_transaction_staged", event(91000027, d[5], [dict(n1, refunded_quantity=1)], refunded=True, refunded_at=f"{d[4]}T10:00:00+07:00"))
+    check("checkout without uuid or id: no refund line guessed, head office told to book it",
+          not [r for r in lines_of(91000027)[1] if r["qty"] < 0] and any("tanpa ID baris" in n.get("text", "") for n in out.get("notifications", [])),
+          (lines_of(91000027)[1], out.get("notifications")))
+
+    # a refund of a line still unmapped: mapped together with its sale line
+    hq = CTX.get("hq")
+    k = line("Es teh contoh", "MK-TEH", 2, 5000)
+    run(api, "moka_transaction_staged", event(91000028, d[5], [k]))
+    run(api, "moka_transaction_staged", event(91000028, d[5], [dict(k, refunded_quantity=1)], refunded=True, refunded_at=f"{d[4]}T11:00:00+07:00"))
+    l28 = lines_of(91000028)[1]
+    sale28 = [r for r in l28 if r["qty"] > 0]
+    if hq and sale28:
+        st, resp = hq.patch("moka_sale_line", sale28[0]["name"], {"item": PDS})
+        l28 = lines_of(91000028)[1]
+    eq("mapping the sale line maps its unmapped refund too (same item, staged)", sorted((r["qty"], r["item"], r["status"]) for r in l28),
+       [(-1, PDS, "staged"), (2, PDS, "staged")])
+
+
+def scenario_moka_recap_resilience(api):
+    """Audit moka N3/L6 (a deleted item or an outlet without Moka stops nothing) and M6 (scans of moka_sale_line)."""
+    hq = CTX.get("hq")
+    today = kernel_today()
+    d = [(today - datetime.timedelta(days=k)).isoformat() for k in range(0, 12)]
+
+    def lines_of(tid):
+        tx = api.find("moka_transaction", f"transaction_id == '{tid}'")
+        return tx, (api.find("moka_sale_line", f"transaction == '{tx[0]['name']}'") if tx else [])
+
+    def sales(outlet, day):
+        return api.find("outlet_sales", f"outlet == '{outlet}' && date == '{day}' && source == 'moka' && key_version == 3 && docstatus != 2")
+
+    # a staged line whose item the owner deleted, and an outlet that stopped using Moka: the recap of the other outlet
+    # and days goes on, those lines go back to unmapped, head office is told
+    st, it = api.create("item", {"item_name": "Tahu bakso contoh", "sku": "TH-BKS", "kind": "good", "stock_uom": PORSI_UOM, "rate": 20000})
+    bks = (it or {}).get("name")
+    check("an item to delete later", st == 201 and bks, (st, it))
+    run(api, "moka_transaction_staged", event(91000022, d[10], [line("Tahu bakso contoh", "TH-BKS", 1, 20000), line("Tahu goreng original", "TH-ORI", 1, 15000)]))
+    run(api, "moka_transaction_staged", event(91000023, d[9], [line("Tahu goreng original", "TH-ORI", 3, 15000)], outlet_id=70001, outlet_name="Tahu Contoh - Dago"))
+    l23 = lines_of(91000023)[1]
+    check("Dago takes Moka lines by its Moka name", len(l23) == 1 and l23[0]["outlet"] == DAGO and l23[0]["status"] == "staged", l23)
+    st, resp = api.call("DELETE", f"/api/v1/r/item/{bks}") if bks else (0, None)
+    check("the owner deletes the item while its Moka line is staged (the kernel allows it)", st in (200, 204), (st, resp))
+    st, out = run(api, "moka_daily_sales")
+    check("recap with a deleted item: runs", st == 200, (st, out))
+    eq("recap with a deleted item: the day is recapped without it", [x["net_total"] for x in sales(BRAGA, d[10])], [15000])
+    eq("recap with a deleted item: Dago, a later day, recapped too", [x["net_total"] for x in sales(DAGO, d[9])], [45000])
+    gone = [r for r in lines_of(91000022)[1] if r["description"] == "Tahu bakso contoh"]
+    check("the line of the deleted item is unmapped again, item emptied, head office told",
+          len(gone) == 1 and gone[0]["status"] == "unmapped" and gone[0]["item"] in ("", None)
+          and any("Belum dipetakan" in n.get("text", "") for n in out.get("notifications", [])), (gone, out.get("notifications")))
+    if gone:
+        st, resp = hq.patch("moka_sale_line", gone[0]["name"], {"item": PDS})
+        run(api, "moka_daily_sales")
+        eq("mapped again: its own record for that day", sorted(x["net_total"] for x in sales(BRAGA, d[10])), [15000, 20000])
+
+    # Dago stops using Moka (its Moka name emptied) with a staged line: back to unmapped without outlet, nothing stops
+    run(api, "moka_transaction_staged", event(91000024, d[11], [line("Tahu goreng original", "TH-ORI", 1, 15000)], outlet_id=70001, outlet_name="Tahu Contoh - Dago"))
+    run(api, "moka_transaction_staged", event(91000025, d[11], [line("Tahu goreng pedas", "TH-PDS", 1, 18000)]))
+    o = api.get("outlet", DAGO)
+    st, resp = api.patch("outlet", DAGO, {"moka_name": ""})
+    check("Dago's Moka name emptied", st == 200, (st, resp))
+    run(api, "moka_daily_sales")
+    l24 = lines_of(91000024)[1]
+    check("a line of an outlet without Moka: unmapped, outlet emptied, no source-moka record there",
+          len(l24) == 1 and l24[0]["status"] == "unmapped" and l24[0]["outlet"] in ("", None) and not sales(DAGO, d[11]), (l24, sales(DAGO, d[11])))
+    eq("Braga, same day: recapped", [x["net_total"] for x in sales(BRAGA, d[11])], [18000])
+    api.patch("outlet", DAGO, {"moka_name": o.get("moka_name") or "Tahu Contoh - Dago"})
+
+    # cost: a recap with nothing to do reads moka_sale_line once (the kernel reads a whole model per find)
+    st, out = run(api, "moka_daily_sales")
+    scans = [x for x in out.get("steps", []) if "moka_sale_line" in x and "find" in x]
+    check("an idle recap reads moka_sale_line once", st == 200 and len(scans) == 1, (st, scans, out.get("steps", [])[:5]))
+
+
+SCENARIOS = [scenario_moka_api, scenario_moka_late_refund, scenario_moka_recap_resilience]
