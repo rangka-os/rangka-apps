@@ -73,7 +73,7 @@ fields:
   - name: cost_rate
     type: currency
     label: {id: Biaya per satuan}
-    hidden_for: [field_worker, site_supervisor]
+    hidden_for: [sales_manager, purchasing_manager, head_office, outlet_staff, sales_rep, field_worker, site_supervisor]
     default: "rate_basis == 'hour' ? worker.cost_hour_rate : worker.cost_day_rate"
   # Overtime per hour on this project, from the worker unless the client agreed another rate.
   - name: overtime_rate
@@ -84,7 +84,7 @@ fields:
   - name: overtime_cost_rate
     type: currency
     label: {id: Upah lembur per jam}
-    hidden_for: [field_worker, site_supervisor]
+    hidden_for: [sales_manager, purchasing_manager, head_office, outlet_staff, sales_rep, field_worker, site_supervisor]
     default: worker.overtime_cost_rate
   - name: notes
     type: text

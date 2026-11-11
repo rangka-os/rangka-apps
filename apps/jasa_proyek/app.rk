@@ -40,7 +40,7 @@ menu:
   - group: {id: Tenaga kerja}
     items: [worker]
   - group: {id: Penggajian}
-    items: [payroll_run, payslip, payroll_close, payroll_profile]
+    items: [payroll_run, payslip, payroll_close, payroll_profile, cash_advance]
   - group: {id: Keuangan}
     items: [payment, bank_transaction, invoice_reminder, withholding, vendor_bill, bank_account]
   - group: {id: Pembelian}

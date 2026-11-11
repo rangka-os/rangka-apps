@@ -29,7 +29,7 @@ steps:
       document: other.name
   - if: prof != null && run != null
     find_all: payslip
-    where: worker == event.worker && tax_year == run.tax_year && tax_month < run.tax_month && docstatus == 1
+    where: worker == event.worker && tax_year == run.tax_year && tax_month < run.tax_month && docstatus == 1 && !(employment == 'casual' && pay_basis == 'daily')
     as: prev
   - if: prof != null && run != null
     create: payslip

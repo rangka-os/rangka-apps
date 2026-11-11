@@ -4,10 +4,12 @@ label: {id: Slip gaji dengan penghasilan sebelumnya yang basi tidak bisa diajuka
 # Inside the submit: when the earlier submitted months of this worker and year no longer match the slip's year-to-date
 # fields (an earlier slip was submitted or cancelled after this one was made), the submit is refused: delete the draft and make it
 # again. The December recomputation never runs on stale sums.
+# Slips under the daily TER (casual, paid per day) are not part of the year: the December recomputation covers the
+# months as a permanent employee only (PMK 168/2023; audit gelombang 3 F1).
 on: payslip.submitted
 steps:
   - find_all: payslip
-    where: worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1
+    where: worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && !(employment == 'casual' && pay_basis == 'daily')
     as: prev
   - if: size(prev) != event.ytd_months || prev.map(p, p.gross_taxable).sum() != event.ytd_gross || prev.map(p, p.pph21).sum() != event.ytd_pph21 || prev.map(p, p.jht_employee + p.jp_employee).sum() != event.ytd_pension
     create: payroll_guard

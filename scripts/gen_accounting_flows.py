@@ -227,6 +227,11 @@ POSTINGS = {
                ("'21600'", "0 - (event.total_employer_bpjs + event.total_employee_bpjs)"),
                ("'11330'", "0 - event.total_other_deduction"),
                ("'11340'", "event.billing_mode == 'fee_only' ? event.total_employer_cost : 0")]),
+    "cash_advance": dict(
+        label="Jurnal kasbon", date="event.advance_date",
+        # Kasbon given to a worker: a receivable, repaid from wages by the payroll close (Cr 11330 there).
+        lines=[("'11330'", "event.amount"),
+               ("event.method == 'cash' ? '11100' : '11200'", "0 - event.amount")]),
     "rental_booking": dict(
         label="Jurnal deposit sewa", date="event.booking_date", party="event.customer",
         # The deposit received when the booking is made is the customer's money held (uang muka pelanggan), not revenue.

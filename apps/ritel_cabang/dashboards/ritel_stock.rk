@@ -50,12 +50,12 @@ widgets:
     type: chart
     chart: bar
     label: {id: Barang laku (qty)}
-    description: {id: 'Qty terjual per barang pada periode, semua cabang'}
+    description: {id: 'Qty terjual per barang pada periode, semua cabang, dikurangi yang kembali ke stok'}
     model: stock_move
     group_by: item
     aggregate: sum
     field: sold_qty
-    filter: voucher_type == 'outlet_sales'
+    filter: "voucher_type == 'outlet_sales' || voucher_type == 'outlet_return'"
     period: posting_date
     sort: -value
     limit: 10
@@ -64,12 +64,12 @@ widgets:
     type: chart
     chart: bar
     label: {id: Barang laku (harga pokok)}
-    description: {id: 'Nilai harga pokok yang keluar karena penjualan'}
+    description: {id: 'Nilai harga pokok yang keluar karena penjualan, dikurangi yang kembali ke stok'}
     model: stock_move
     group_by: item
     aggregate: sum
     field: sold_cost
-    filter: voucher_type == 'outlet_sales'
+    filter: "voucher_type == 'outlet_sales' || voucher_type == 'outlet_return'"
     period: posting_date
     sort: -value
     limit: 10

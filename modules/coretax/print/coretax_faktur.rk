@@ -15,20 +15,25 @@ related:
     sort: name
     children: true
     limit: 1000
+    # An invoice submitted before this module froze without its Coretax fields (efaktur_code, buyer_*): the
+    # efaktur_code check below names it once, the other checks skip it (audit pajak 7 Nov #8).
     require:
-      - check: buyer_id_type != ''
+      - check: efaktur_code == '' || buyer_id_type != ''
         message: {id: 'Pelanggan belum punya NPWP, NIK, atau nomor paspor: lengkapi Data pajak pelanggan. Penjualan eceran tanpa identitas dilaporkan sebagai digunggung, bukan lewat file ini'}
-      - check: "buyer_id_type != 'TIN' || (size(buyer_tin) == 16 && size(buyer_idtku) == 22 && buyer_idtku.startsWith(buyer_tin))"
+      - check: "efaktur_code == '' || buyer_id_type != 'TIN' || (size(buyer_tin) == 16 && size(buyer_idtku) == 22 && buyer_idtku.startsWith(buyer_tin))"
         message: {id: 'NPWP (16 angka) atau NITKU (22 angka) pelanggan belum benar'}
-      - check: "buyer_id_type != 'National ID' || (size(buyer_doc_no) == 16 && buyer_doc_no.matches('^[0-9]+$'))"
+      - check: "efaktur_code == '' || buyer_id_type != 'National ID' || (size(buyer_doc_no) == 16 && buyer_doc_no.matches('^[0-9]+$'))"
         message: {id: 'NIK pelanggan harus 16 angka'}
-      - check: buyer_name != '' && buyer_address != ''
+      - check: efaktur_code == '' || (buyer_name != '' && buyer_address != '')
         message: {id: 'Nama dan alamat pelanggan wajib diisi untuk faktur pajak'}
       - check: "efaktur_code != '' && items.map(i, i.coretax_unit == '' ? 1 : 0).sum() == 0"
         message: {id: 'Faktur ini diajukan sebelum ekspor Coretax dipasang: buat faktur pajaknya langsung di Coretax'}
-      - check: origin_posting_date != '' && origin_posting_date >= doc.period_start
+      # an amend chain whose middle invoice froze before this module (its origin unknown): audit pajak 7 Nov D2
+      - check: efaktur_code == '' || origin_posting_date != ''
+        message: {id: 'Faktur ini mengganti faktur yang diajukan sebelum ekspor Coretax dipasang: buat faktur pajaknya langsung di Coretax'}
+      - check: origin_posting_date == '' || origin_posting_date >= doc.period_start
         message: {id: 'Faktur ini mengganti faktur masa sebelumnya: buat Faktur Pengganti di Coretax, jangan diimpor'}
-      - check: "items.map(i, i.qty * 100 - round(i.qty * 100) > 0.000001 || round(i.qty * 100) - i.qty * 100 > 0.000001 ? 1 : 0).sum() == 0"
+      - check: "efaktur_code == '' || items.map(i, i.qty * 100 - round(i.qty * 100) > 0.000001 || round(i.qty * 100) - i.qty * 100 > 0.000001 ? 1 : 0).sum() == 0"
         message: {id: 'Jumlah barang di faktur pajak maksimal 2 desimal: pakai satuan yang lebih kecil (misalnya gram)'}
-      - check: buyer_id_type != 'Passport' || buyer_country != 'IDN'
+      - check: efaktur_code == '' || buyer_id_type != 'Passport' || buyer_country != 'IDN'
         message: {id: 'Pembeli dengan paspor harus punya kode negara selain IDN di Data pajak pelanggan'}

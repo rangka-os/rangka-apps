@@ -126,7 +126,8 @@ fields:
     depends_on: app_installed('coretax')
     compute: "vendor.nitku != '' ? vendor.nitku : (vendor.npwp != '' ? vendor.npwp + '000000' : (vendor.nik != '' ? vendor.nik + '000000' : ''))"
   # The first bill of the amend chain and its date (frozen at submit): a bill whose chain started in an earlier period
-  # had its withholding slip reported there; the correction is a pembetulan in Coretax, not a new slip.
+  # had its withholding slip reported there; the correction is a pembetulan in Coretax, not a new slip. Empty when the
+  # bill it amends froze before the coretax module and was itself an amend (its origin is unknown).
   - name: replaces
     type: link
     to: vendor_bill
@@ -137,7 +138,7 @@ fields:
     type: data
     label: {id: Tanggal tagihan asal}
     hidden: true
-    compute: "replaces == '' ? bill_date : (replaces.origin_bill_date != '' ? replaces.origin_bill_date : replaces.bill_date)"
+    compute: "replaces == '' ? bill_date : (replaces.origin_bill_date != '' ? replaces.origin_bill_date : (replaces.replaces == '' ? replaces.bill_date : ''))"
   - name: amount_due
     type: currency
     label: {id: Tagihan bersih}
