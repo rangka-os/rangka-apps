@@ -54,6 +54,16 @@ fields:
     label: {id: ID outlet di Moka}
     help: {id: 'Diisi saat Moka tersambung lewat API. Selama connector Moka aktif, outlet juga dicocokkan lewat Nama outlet di Moka'}
     depends_on: app_installed('outlet_sales') && moka_name != ''
+  # The gate from the export to the API (audit sisa-1111 R1): flow moka_transaction_staged books a transaction of this
+  # outlet only when its day is on or after this date; before it (or while empty) the outlet's Moka sales come from
+  # the Item Details export alone, so a day is never counted from both. Set it to the first day the API should count,
+  # after the last exported day. The kernel follows Moka's next_url since rangka-os t_277ba9bf, so the API reads the
+  # whole two-day window of every poll.
+  - name: moka_api_from
+    type: date
+    label: {id: Mulai pakai API Moka}
+    help: {id: 'Hari pertama penjualan diambil lewat API Moka (sesudah ekspor terakhir). Kosong = tetap ekspor'}
+    depends_on: app_installed('outlet_sales') && moka_name != ''
   # The sales source of an outlet without Moka (moka_name empty): the daily form (default when empty), a file from
   # another POS in Juragan's template, a Loyverse export, or Juragan's own cashier (module pos). One source per outlet,
   # so a day is never counted twice.
