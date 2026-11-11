@@ -56,10 +56,15 @@ SITES = [{"name": "LOK-001", "site_name": "Pabrik PT Contoh Garmen Sejahtera", "
           "lat": -6.4050, "lng": 107.4560, "radius_m": 200, "active": True}]
 # Edits finance makes on the draft slips before submitting them.
 # MP-002 and MP-004 are casual workers paid per day (daily TER, PMK 168/2023): MP-002 under 450.000 a day (0%), MP-004
-# at 600.000 a day (0,5%); MP-005 worked two rest days, 9 hours each (PP 35/2021 Pasal 31: 7 x 2 + 1 x 3 + 1 x 4).
+# at 600.000 a day (0,5%); MP-005 worked two rest days, 9 and 3 hours (PP 35/2021 Pasal 31, entered per multiplier:
+# 2x 7 + 3 = 10 h, 3x 1 h, 4x 1 h); MP-006 is casual at 380.000 a day with one rest day of 8 hours: over 22 days its
+# day is above 450.000, over the 23 days worked it is under (0%).
 EDITS = {"MP-001": {"other_deduction": 300_000}, "MP-017": {"overtime_days": 5}, "MP-019": {"thr_tenure_months": 7},
          "MP-002": {"employment": "casual"}, "MP-004": {"employment": "casual", "day_rate": 600_000},
-         "MP-005": {"holiday_overtime_days": 2, "holiday_overtime_hours": 18}}
+         "MP-005": {"holiday_overtime_days": 2, "holiday_hours_2x": 10, "holiday_hours_3x": 1, "holiday_hours_4x": 1},
+         "MP-006": {"employment": "casual", "day_rate": 380_000, "holiday_overtime_days": 1, "holiday_hours_2x": 7, "holiday_hours_3x": 1}}
+# the hours of each rest day worked, for the oracle (the slip takes them per multiplier, above)
+HOLIDAY_DAYS = {"MP-005": [9, 3], "MP-006": [8]}
 
 
 def profile_input(w):
@@ -70,8 +75,7 @@ def profile_input(w):
          "daily_allowance": daily, "overtime_hours": oh, "overtime_rate": ot_pay, "ptkp": ptkp, "has_tax_id": tax_id, "jp": jp}
     e = EDITS.get(no, {})
     p.update(overtime_days=e.get("overtime_days", 0), thr_months=e.get("thr_tenure_months", 0), other_deduction=e.get("other_deduction", 0),
-             employment=e.get("employment", "permanent"), day_rate=e.get("day_rate", pay), holiday_days=e.get("holiday_overtime_days", 0),
-             holiday_hours=e.get("holiday_overtime_hours", 0))
+             employment=e.get("employment", "permanent"), day_rate=e.get("day_rate", pay), holiday_hours_per_day=HOLIDAY_DAYS.get(no, []))
     return p
 
 

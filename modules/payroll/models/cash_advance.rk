@@ -7,7 +7,9 @@ naming: KSB-{YYYY}-{#####}
 title_field: worker
 # Money lent to a worker ahead of their pay (kasbon). Submitting it books Dr Piutang karyawan (1-1330) / Cr Kas or Bank
 # (accounting module), so the repayment taken from wages (payslip other_deduction, Cr 1-1330 in the payroll close)
-# brings the receivable back to 0 instead of below it (audit akuntansi r4 L-i). Finance gives and records it.
+# brings the receivable back to 0 instead of below it (audit akuntansi r4 L-i). Finance gives and records it. A slip
+# links the kasbon it repays (payslip.cash_advance): the kasbon cannot be cancelled while a submitted slip repays it,
+# and the live slips never deduct more than its amount (payslip_advance_guard, cash_advance_cancel_guard).
 permissions:
   - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: project_admin, read: true}
@@ -42,8 +44,8 @@ fields:
 rules:
   - name: amount_positive
     on: save
-    check: amount > 0
-    message: {id: Jumlah kasbon harus lebih dari 0}
+    check: amount > 0 && amount == round(amount)
+    message: {id: Jumlah kasbon harus rupiah bulat lebih dari 0}
 views:
   list:
     columns: [name, advance_date, worker, amount, method]

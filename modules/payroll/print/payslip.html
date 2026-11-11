@@ -27,6 +27,7 @@
   <tr><td>Gaji pokok</td><td class="num">{{rupiah .Doc.base_pay}}</td></tr>
   {{if .Doc.allowance_pay}}<tr><td>Tunjangan</td><td class="num">{{rupiah .Doc.allowance_pay}}</td></tr>{{end}}
   {{if .Doc.overtime_pay}}<tr><td>Lembur</td><td class="num">{{rupiah .Doc.overtime_pay}}</td></tr>{{end}}
+  {{if .Doc.holiday_overtime_pay}}<tr><td>Lembur hari libur ({{.Doc.holiday_overtime_days}} hari)</td><td class="num">{{rupiah .Doc.holiday_overtime_pay}}</td></tr>{{end}}
   {{if .Doc.thr_pay}}<tr><td>THR</td><td class="num">{{rupiah .Doc.thr_pay}}</td></tr>{{end}}
   {{if .Doc.other_income}}<tr><td>Insentif</td><td class="num">{{rupiah .Doc.other_income}}</td></tr>{{end}}
   <tr class="total"><td>Jumlah penghasilan</td><td class="num">{{rupiah .Doc.cash_gross}}</td></tr>
@@ -40,8 +41,8 @@
   <tr><td>JHT 2%</td><td class="num">{{rupiah .Doc.jht_employee}}</td></tr>
   {{if .Doc.jp_employee}}<tr><td>Jaminan Pensiun 1%</td><td class="num">{{rupiah .Doc.jp_employee}}</td></tr>{{end}}
   {{if .Doc.kes_employee}}<tr><td>BPJS Kesehatan 1%</td><td class="num">{{rupiah .Doc.kes_employee}}</td></tr>{{end}}
-  <tr><td>PPh 21{{if .Doc.last_month}} (hitung tahunan){{end}}</td><td class="num">{{rupiah .Doc.pph21}}</td></tr>
-  {{if .Doc.other_deduction}}<tr><td>Potongan lain</td><td class="num">{{rupiah .Doc.other_deduction}}</td></tr>{{end}}
+  <tr><td>PPh 21{{if .Doc.ter_daily}} (TER harian){{else if .Doc.last_month}} (hitung tahunan){{end}}</td><td class="num">{{rupiah .Doc.pph21}}</td></tr>
+  {{if .Doc.other_deduction}}<tr><td>Potongan lain{{if .Doc.cash_advance}} (kasbon {{.Doc.cash_advance}}){{end}}</td><td class="num">{{rupiah .Doc.other_deduction}}</td></tr>{{end}}
   <tr class="total"><td>Jumlah potongan</td><td class="num">{{rupiah (sub .Doc.cash_gross .Doc.net_pay)}}</td></tr>
   </tbody>
 </table>
@@ -49,5 +50,5 @@
 </div>
 <div class="net"><span>Gaji bersih diterima</span><span>{{rupiah .Doc.net_pay}}</span></div>
 <p class="note">Ditanggung perusahaan, tidak dipotong dari gaji: JKK {{rupiah .Doc.jkk}}, JKM {{rupiah .Doc.jkm}}, JHT 3,7% {{rupiah .Doc.jht_employer}}, JP 2% {{rupiah .Doc.jp_employer}}, BPJS Kesehatan 4% {{rupiah .Doc.kes_employer}}.
-Dasar upah BPJS {{rupiah .Doc.bpjs_base}}. PPh 21 kategori TER {{.Doc.ter_category}}, bruto {{rupiah .Doc.gross_taxable}}.</p>
+Dasar upah BPJS {{rupiah .Doc.bpjs_base}}. {{if .Doc.ter_daily}}PPh 21 TER harian, bruto sehari {{rupiah .Doc.daily_gross}}{{else}}PPh 21 kategori TER {{.Doc.ter_category}}{{end}}, bruto {{rupiah .Doc.gross_taxable}}.</p>
 {{if .Links.profile.bank_account}}<p class="note">Ditransfer ke {{.Links.profile.bank_name}} {{.Links.profile.bank_account}}.</p>{{end}}

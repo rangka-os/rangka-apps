@@ -135,8 +135,14 @@ def scenario_payroll_month(api):
     for no, body in g.EDITS.items():
         st, resp = fm.patch("payslip", by_no[no]["name"], body)
         check(f"finance edits the draft slip of {no} ({', '.join(body)})", st == 200, (st, resp))
-    st, resp = fm.patch("payslip", by_no["MP-005"]["name"], {"holiday_overtime_hours": 23})
-    check("rest-day hours above 11 a day (6-day week) -> refused", st == 422, (st, resp))
+    st, resp = fm.patch("payslip", by_no["MP-005"]["name"], {"holiday_hours_3x": 3})
+    check("rest-day hours at 3x above one a day -> refused", st == 422, (st, resp))
+    # MP-001's kasbon repaid by this slip: linked, so it cannot be cancelled once the slip is submitted (audit F5)
+    if CTX.get("cash_advance"):
+        st, resp = fm.patch("payslip", by_no["MP-001"]["name"], {"cash_advance": CTX["cash_advance"]})
+        check("the MP-001 slip names the kasbon it repays", st == 200, (st, resp))
+        st, resp = fm.patch("payslip", by_no["MP-002"]["name"], {"cash_advance": CTX["cash_advance"]})
+        check("another worker's slip cannot name MP-001's kasbon -> 422", st == 422, (st, resp))
     bad = []
     for no, s in list(by_no.items()):
         st, resp = fm.verb("payslip", s["name"], "submit", {"force": True} if no == "MP-015" else None)
@@ -163,8 +169,14 @@ def scenario_payroll_month(api):
     s2, s4, s5 = by_no["MP-002"], by_no["MP-004"], by_no["MP-005"]
     check("MP-002 casual, under 450.000 a day: daily TER 0%, no PPh 21", s2.get("employment") == "casual" and 0 < s2.get("daily_gross", 0) <= 450_000 and s2.get("pph21") == 0, s2)
     check("MP-004 casual at 600.000 a day: daily TER 0,5% of the gross", s4.get("daily_gross", 0) > 450_000 and s4.get("pph21") == oracle.floor(oracle.Decimal(s4["gross_taxable"]) * oracle.Decimal("0.005")), s4)
-    eq("MP-005 two rest days of 9 hours: (7 x 2 + 3 + 4) x 2 hours of 1/173 of the month wage", s5.get("holiday_overtime_pay"),
-       oracle.rnd(oracle.Decimal(235_000 * 25) / 173 * 42))
+    eq("MP-005 two rest days of 9 and 3 hours: (10 x 2 + 1 x 3 + 1 x 4) hours of 1/173 of the month wage", s5.get("holiday_overtime_pay"),
+       oracle.rnd(oracle.Decimal(235_000 * 25) / 173 * 27))
+    s6 = by_no["MP-006"]
+    eq("MP-006 casual: bruto sehari over 23 days worked (22 present + 1 rest day), under 450.000 -> 0%",
+       (s6.get("daily_gross"), s6.get("pph21")), (oracle.rnd(oracle.Decimal(s6.get("gross_taxable", 0)) / 23), 0))
+    if CTX.get("cash_advance"):
+        st, resp = fm.verb("cash_advance", CTX["cash_advance"], "cancel")
+        check("the kasbon repaid by a submitted slip cannot be cancelled", st >= 400 and "batalkan slip gajinya" in str(resp), (st, resp))
     ws = list(want.values())
     tot = {k: sum(x[k] for x in ws) for k in ("cash_gross", "employer_bpjs", "pph21", "net_pay", "employer_cost", "bpjs_tk", "bpjs_kes")}
     run = fm.get("payroll_run", R)
@@ -443,4 +455,49 @@ def scenario_payroll_refund_and_stale(api):
     check("December pays back the TER withheld in October and November (PKP under PTKP)", want["pph21"] == -ytd["pph21"] and d.get("pph21") == -ytd["pph21"] and ytd["pph21"] > 0, (d.get("pph21"), ytd))
 
 
-SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale]
+def scenario_payroll_status_change(api):
+    """Audit gelombang 3 F1: a casual worker paid per day (daily TER) who becomes permanent: the casual months are not in
+    the permanent year to date; and a permanent worker who turns casual must first close the permanent year
+    (last_month on the last permanent slip)."""
+    fm, pa = CTX.get("fm"), CTX.get("pa")
+    if not (fm and pa):
+        fail("payroll status change: members", "missing")
+        return
+    g = gen()
+    st, prj = pa.create("project", {"project_name": "Alih daya gudang musiman", "customer": g.CLIENT, "state": "running", "billing_model": "time_material"})
+    if not check("contract for the status changes", st == 201, (st, prj)):
+        return
+    runs = {}
+    for m, (f, t) in ((10, ("2026-09-21", "2026-10-20")), (11, ("2026-10-21", "2026-11-20")), (12, ("2026-11-21", "2026-12-20"))):
+        st, runs[m] = fm.create("payroll_run", dict(g.RUN, project=prj["name"], period_from=f, period_to=t, tax_month=m, billing_mode="none"))
+    people = {}
+    for no, emp, nik in (("MP-903", "casual", "9999000000009903"), ("MP-904", "permanent", "9999000000009904")):
+        st, w = fm.create("worker", {"worker_name": "Status " + no, "employee_no": no, "cost_day_rate": 600_000, "active": True})
+        st2, prof = fm.create("payroll_profile", {"worker": (w or {}).get("name", ""), "ptkp_status": "tk0", "pay_basis": "daily", "employment": emp, "nik": nik})
+        if not check(f"{no}: worker and profile ({emp})", st == 201 and st2 == 201, (st, w, st2, prof)):
+            return
+        people[no] = prof
+    def slip(no, m, **over):
+        st, sl = fm.create("payslip", dict({"payroll_run": runs[m]["name"], "profile": people[no]["name"], "days": 22}, **over))
+        if st != 201:
+            return st, sl
+        st, resp = fm.verb("payslip", sl["name"], "submit")
+        return st, (resp.get("record", resp) if st == 200 else resp)
+    # casual in October, permanent from November: November's year to date leaves October out
+    st, oct_ = slip("MP-903", 10)
+    check("MP-903 October as casual: daily TER (600.000 a day, 0,5%)", st == 200 and oct_.get("ter_daily") is True and oct_.get("pph21") > 0, (st, oct_))
+    st, nov = slip("MP-903", 11, employment="permanent")
+    check("MP-903 November as permanent: the casual October is not in the year to date", st == 200 and (nov.get("ytd_months"), nov.get("ytd_gross")) == (0, 0), (st, nov))
+    st, dec = slip("MP-903", 12, employment="permanent")
+    want = oracle.slip({"pay_basis": "daily", "days": 22, "day_rate": 600_000, "ptkp": "tk0", "last_month": True}, oracle_run(runs[12]),
+                       {"gross": nov.get("gross_taxable", 0), "pph21": nov.get("pph21", 0), "pension": nov.get("jht_employee", 0) + nov.get("jp_employee", 0), "months": 1})
+    if check("MP-903 December recomputes the permanent months only", st == 200 and dec.get("ytd_months") == 1, (st, dec)):
+        compare_slip("MP-903 December (Pasal 17 over November and December)", dec, want)
+    # permanent in October without closing the year, casual in November: refused
+    st, _ = slip("MP-904", 10)
+    check("MP-904 October as permanent", st == 200, (st, _))
+    st, resp = slip("MP-904", 11, employment="casual")
+    check("MP-904 turning casual while October (permanent) was not the last month -> refused", st >= 400 and "masa pajak terakhir" in str(resp), (st, resp))
+
+
+SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale, scenario_payroll_status_change]

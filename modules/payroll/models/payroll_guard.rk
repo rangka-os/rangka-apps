@@ -28,6 +28,9 @@ fields:
       - {value: invoice_tag, label: {id: Catatan faktur tenaga kerja}}
       - {value: invoice_twice, label: {id: Faktur kedua periode gaji}}
       - {value: pay_overlap, label: {id: Hari kerja dibayar dua kali}}
+      - {value: advance_exceeded, label: {id: Potongan melebihi kasbon}}
+      - {value: advance_repaid, label: {id: Kasbon sudah dipotong}}
+      - {value: casual_after_permanent, label: {id: Slip tetap terakhir belum dihitung ulang}}
   - name: document
     type: data
     label: {id: Dokumen}
@@ -72,3 +75,15 @@ rules:
     on: save
     check: reason != 'pay_overlap'
     message: {id: 'Pekerja ini sudah dibayar untuk sebagian hari periode ini di periode gaji lain'}
+  - name: advance_exceeded
+    on: save
+    check: reason != 'advance_exceeded'
+    message: {id: 'Potongan kasbon di slip-slip yang diajukan melebihi kasbonnya, atau kasbonnya belum diajukan: kurangi potongannya'}
+  - name: advance_repaid
+    on: save
+    check: reason != 'advance_repaid'
+    message: {id: 'Kasbon ini sudah dipotong dari slip gaji yang diajukan; batalkan slip gajinya dulu'}
+  - name: casual_after_permanent
+    on: save
+    check: reason != 'casual_after_permanent'
+    message: {id: 'Pekerja ini pegawai tetap di bulan sebelumnya tahun ini: tandai slip tetap terakhirnya sebagai masa pajak terakhir (hitung tahunan) dulu'}

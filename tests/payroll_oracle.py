@@ -81,13 +81,15 @@ def slip(p, run, ytd=None):
     else:
         first = min(od, oh)
         ot = rnd(Decimal(month_wage) / 173 * (Decimal("1.5") * Decimal(str(first)) + 2 * Decimal(str(oh - first))))
-    # rest day / public holiday (PP 35/2021 Pasal 31): per day, hours up to W at 2x, the next at 3x, the rest at 4x
-    hd, hh = Decimal(str(p.get("holiday_days", 0))), Decimal(str(p.get("holiday_hours", 0)))
+    # rest day / public holiday (PP 35/2021 Pasal 31): the hours of each day split into 2x (up to 7 or 8), 3x (the next
+    # one) and 4x (the rest), given here per day and summed
     w = 8 if run.get("workdays", 6) == 5 else 7
-    t1 = min(hh, w * hd)
-    t2 = min(max(hh - w * hd, 0), hd)
-    t3 = max(hh - (w + 1) * hd, 0)
-    hot = rnd(Decimal(month_wage) / 173 * (2 * t1 + 3 * t2 + 4 * t3))
+    t = [0, 0, 0]
+    for h in p.get("holiday_hours_per_day", []):
+        h = Decimal(str(h))
+        t[0] += min(h, w); t[1] += min(max(h - w, 0), 1); t[2] += max(h - w - 1, 0)
+    hot = rnd(Decimal(month_wage) / 173 * (2 * t[0] + 3 * t[1] + 4 * t[2]))
+    hdays = len(p.get("holiday_hours_per_day", []))
     allow = fixed + rnd(days * p.get("daily_allowance", 0))
     thr_m = p.get("thr_months", 0)
     thr = rnd(Decimal(month_wage) * min(thr_m, 12) / 12) if thr_m >= 1 else 0
@@ -110,13 +112,14 @@ def slip(p, run, ytd=None):
     status = p.get("ptkp", "tk0")
     casual = p.get("employment") == "casual" and not monthly
     if casual:   # pegawai tidak tetap paid per day: daily TER (PP 58/2023), above 2.500.000 a day 50% x Pasal 17
-        daily = Decimal(gross) / days if days else Decimal(0)
+        worked = days + hdays     # rest days worked count as days (audit F2)
+        daily = Decimal(gross) / Decimal(str(worked)) if worked else Decimal(0)
         if daily <= 450_000:
             pph = 0
         elif daily <= 2_500_000:
             pph = floor(Decimal(gross) * Decimal("0.5") / 100 * surcharge)
         else:
-            pph = floor(days * pasal17(daily / 2) * surcharge)
+            pph = floor(pasal17(Decimal(gross) / 2) * surcharge)   # 50% of the gross paid, per payment (PMK 168/2023 Pasal 16(2)c)
     elif p.get("last_month"):
         year_gross = ytd["gross"] + gross
         months = ytd["months"] + 1
