@@ -64,6 +64,13 @@ fields:
     options:
       - {value: daily, label: {id: Harian}}
       - {value: monthly, label: {id: Bulanan}}
+  - name: employment
+    type: select
+    label: {id: Status pegawai (PPh 21)}
+    default: profile.employment
+    options:
+      - {value: permanent, label: {id: Tetap atau dibayar bulanan}}
+      - {value: casual, label: {id: 'Tidak tetap, dibayar harian'}}
   - {name: days, type: float, label: {id: Hari hadir}, default: '0', in_list: true}
   - {name: day_rate, type: currency, label: {id: Upah per hari}, default: profile.worker.cost_day_rate}
   - {name: monthly_salary, type: currency, label: {id: Gaji pokok per bulan}, default: profile.monthly_salary}
@@ -74,6 +81,12 @@ fields:
   # overtime rate is set.
   - {name: overtime_days, type: float, label: {id: Hari ada lembur}, default: '0'}
   - {name: overtime_rate, type: currency, label: {id: Upah lembur per jam (sudah ditimbang)}, default: profile.worker.overtime_cost_rate}
+  # Work on a rest day or a public holiday (PP 35/2021 Pasal 31), always at the PP 35 multipliers of 1/173 of the monthly
+  # wage: 6-day week, hours 1-7 2x, the 8th 3x, the 9th-11th 4x; 5-day week, hours 1-8 2x, the 9th 3x, the 10th-12th
+  # 4x. Entered as days and total hours; the tiers count per day, so the hours of each day must be the same or the
+  # slip is made per day. (A holiday on the shortest day of a 6-day week, 1-5 2x, is not covered: enter it by hand.)
+  - {name: holiday_overtime_days, type: float, label: {id: Hari libur masuk kerja}, default: '0'}
+  - {name: holiday_overtime_hours, type: float, label: {id: Jam kerja di hari libur}, default: '0'}
   # THR: months of service (12 or more = one month's wage, fewer = pro rata; under 1 = none). 0 = no THR this month.
   - {name: thr_tenure_months, type: float, label: {id: Masa kerja untuk THR (bulan)}, default: '0'}
   - {name: other_income, type: currency, label: {id: Insentif lain}, default: '0'}
@@ -118,6 +131,13 @@ fields:
     type: currency
     label: {id: Lembur}
     compute: "overtime_rate > 0 ? round(overtime_hours * overtime_rate) : round(month_wage * 1.0 / 173 * (1.5 * (overtime_days < overtime_hours ? overtime_days : overtime_hours) + 2.0 * (overtime_hours - (overtime_days < overtime_hours ? overtime_days : overtime_hours))))"
+  - name: holiday_overtime_pay
+    type: currency
+    label: {id: Lembur hari libur}
+    compute: >-
+      round(month_wage * 1.0 / 173 * (2.0 * (holiday_overtime_hours < holiday_overtime_days * (payroll_run.workdays_per_week == 5 ? 8 : 7) ? holiday_overtime_hours : holiday_overtime_days * (payroll_run.workdays_per_week == 5 ? 8 : 7))
+      + 3.0 * (holiday_overtime_hours - holiday_overtime_days * (payroll_run.workdays_per_week == 5 ? 8 : 7) <= 0 ? 0.0 : (holiday_overtime_hours - holiday_overtime_days * (payroll_run.workdays_per_week == 5 ? 8 : 7) < holiday_overtime_days ? holiday_overtime_hours - holiday_overtime_days * (payroll_run.workdays_per_week == 5 ? 8 : 7) : holiday_overtime_days))
+      + 4.0 * (holiday_overtime_hours - holiday_overtime_days * (payroll_run.workdays_per_week == 5 ? 9 : 8) > 0 ? holiday_overtime_hours - holiday_overtime_days * (payroll_run.workdays_per_week == 5 ? 9 : 8) : 0.0)))
   - name: allowance_pay
     type: currency
     label: {id: Tunjangan}
@@ -129,7 +149,7 @@ fields:
   - name: cash_gross
     type: currency
     label: {id: 'Penghasilan (gaji, tunjangan, lembur, THR)'}
-    compute: base_pay + overtime_pay + allowance_pay + thr_pay + other_income
+    compute: base_pay + overtime_pay + holiday_overtime_pay + allowance_pay + thr_pay + other_income
     in_list: true
   # BPJS wage: pokok + tunjangan tetap, never below the UMK of the site.
   - name: bpjs_base
@@ -173,6 +193,26 @@ fields:
     label: {id: PPh 21 TER bulan ini}
     hidden: true
     compute: "round(gross_taxable * ter_bp * (has_tax_id ? 100 : 120) / 1000000.0 - 0.5)"
+  # Daily TER (PP 58/2023, PMK 168/2023) for a pegawai tidak tetap paid per day: bruto sehari = this slip's gross over
+  # the days present; up to 450.000 0%, up to 2.500.000 0,5%; above that 50% of the day's gross at the Pasal 17 layers.
+  # x 120% without a tax number; truncated to the rupiah.
+  - name: daily_gross
+    type: currency
+    label: {id: Bruto sehari (TER harian)}
+    depends_on: employment == 'casual' && pay_basis == 'daily'
+    compute: "days > 0 ? round(gross_taxable * 1.0 / days) : 0"
+  - name: daily_pph21
+    type: currency
+    label: {id: PPh 21 TER harian}
+    hidden: true
+    compute: >-
+      days <= 0 || gross_taxable * 1.0 / days <= 450000 ? 0
+      : (gross_taxable * 1.0 / days <= 2500000 ? round(gross_taxable * 0.5 * (has_tax_id ? 100 : 120) / 10000.0 - 0.5)
+      : round(days * ((gross_taxable * 0.5 / days > 60000000 ? 60000000 : gross_taxable * 0.5 / days) * 5
+      + (gross_taxable * 0.5 / days > 250000000 ? 190000000 : (gross_taxable * 0.5 / days > 60000000 ? gross_taxable * 0.5 / days - 60000000 : 0)) * 15
+      + (gross_taxable * 0.5 / days > 500000000 ? 250000000 : (gross_taxable * 0.5 / days > 250000000 ? gross_taxable * 0.5 / days - 250000000 : 0)) * 25
+      + (gross_taxable * 0.5 / days > 5000000000 ? 4500000000 : (gross_taxable * 0.5 / days > 500000000 ? gross_taxable * 0.5 / days - 500000000 : 0)) * 30
+      + (gross_taxable * 0.5 / days > 5000000000 ? gross_taxable * 0.5 / days - 5000000000 : 0) * 35) * (has_tax_id ? 100 : 120) / 10000.0 - 0.5))
   # Annual recomputation (last_month).
   - name: ptkp
     type: currency
@@ -208,7 +248,7 @@ fields:
   - name: pph21
     type: currency
     label: {id: PPh 21 dipotong}
-    compute: "last_month ? year_pph21 - ytd_pph21 : ter_pph21"
+    compute: "employment == 'casual' && pay_basis == 'daily' ? daily_pph21 : (last_month ? year_pph21 - ytd_pph21 : ter_pph21)"
   - name: employee_bpjs
     type: currency
     label: {id: BPJS dipotong dari pekerja}
@@ -239,7 +279,9 @@ rules:
       days >= 0 && days <= 31 && day_rate >= 0 && monthly_salary >= 0 && fixed_allowance >= 0 && daily_allowance >= 0
       && overtime_hours >= 0 && overtime_hours <= 744 && overtime_days >= 0 && overtime_days <= days + 0.0001 && overtime_rate >= 0
       && thr_tenure_months >= 0 && other_income >= 0 && other_deduction >= 0
-    message: {id: 'Hari 0 sampai 31, hari lembur tidak melebihi hari hadir, angka tidak boleh negatif'}
+      && holiday_overtime_days >= 0 && holiday_overtime_days <= 31 && holiday_overtime_hours >= 0
+      && holiday_overtime_hours <= holiday_overtime_days * (payroll_run.workdays_per_week == 5 ? 12 : 11)
+    message: {id: 'Hari 0 sampai 31, hari lembur tidak melebihi hari hadir, jam hari libur maks 11 (atau 12) per hari, tidak negatif'}
   - name: pay_entered
     on: submit
     check: "pay_basis == 'monthly' ? monthly_salary > 0 : (days > 0 && day_rate > 0)"
@@ -273,11 +315,11 @@ views:
           - [tax_year, tax_month, last_month, ptkp_status, has_tax_id]
       - section: {id: Kehadiran dan upah}
         columns:
-          - [pay_basis, days, day_rate, monthly_salary, fixed_allowance, daily_allowance]
-          - [overtime_hours, overtime_days, overtime_rate, thr_tenure_months, other_income, other_deduction]
+          - [pay_basis, employment, days, day_rate, monthly_salary, fixed_allowance, daily_allowance]
+          - [overtime_hours, overtime_days, overtime_rate, holiday_overtime_days, holiday_overtime_hours, thr_tenure_months, other_income, other_deduction]
       - section: {id: Penghasilan}
         columns:
-          - [base_pay, overtime_pay, allowance_pay]
+          - [base_pay, overtime_pay, holiday_overtime_pay, allowance_pay]
           - [thr_pay, cash_gross]
       - section: {id: BPJS}
         columns:
@@ -285,7 +327,7 @@ views:
           - [bpjs_tk, bpjs_jp, bpjs_kes, jht_employee, jp_employee, kes_employee, employee_bpjs]
       - section: {id: PPh 21}
         columns:
-          - [gross_taxable, ter_category, ter_bp, pph21]
+          - [gross_taxable, ter_category, ter_bp, daily_gross, pph21]
           - [ytd_gross, ytd_pph21, year_gross, job_cost, year_net, year_pkp, year_pph21]
       - section: {id: Bersih}
         columns:

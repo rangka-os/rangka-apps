@@ -81,10 +81,17 @@ def slip(p, run, ytd=None):
     else:
         first = min(od, oh)
         ot = rnd(Decimal(month_wage) / 173 * (Decimal("1.5") * Decimal(str(first)) + 2 * Decimal(str(oh - first))))
+    # rest day / public holiday (PP 35/2021 Pasal 31): per day, hours up to W at 2x, the next at 3x, the rest at 4x
+    hd, hh = Decimal(str(p.get("holiday_days", 0))), Decimal(str(p.get("holiday_hours", 0)))
+    w = 8 if run.get("workdays", 6) == 5 else 7
+    t1 = min(hh, w * hd)
+    t2 = min(max(hh - w * hd, 0), hd)
+    t3 = max(hh - (w + 1) * hd, 0)
+    hot = rnd(Decimal(month_wage) / 173 * (2 * t1 + 3 * t2 + 4 * t3))
     allow = fixed + rnd(days * p.get("daily_allowance", 0))
     thr_m = p.get("thr_months", 0)
     thr = rnd(Decimal(month_wage) * min(thr_m, 12) / 12) if thr_m >= 1 else 0
-    cash = base + ot + allow + thr + p.get("other_income", 0)
+    cash = base + ot + hot + allow + thr + p.get("other_income", 0)
     bpjs_base = max(base + fixed, run["umk"])
     jp_base, kes_base = min(bpjs_base, run["jp_cap"]), min(bpjs_base, run["kes_cap"])
     tk, jp, kes = p.get("tk", True), p.get("jp", True), p.get("kes", True)
@@ -101,7 +108,16 @@ def slip(p, run, ytd=None):
     gross = cash + c["jkk"] + c["jkm"] + c["kes_er"]
     surcharge = Decimal(1) if p.get("has_tax_id", True) else Decimal("1.2")
     status = p.get("ptkp", "tk0")
-    if p.get("last_month"):
+    casual = p.get("employment") == "casual" and not monthly
+    if casual:   # pegawai tidak tetap paid per day: daily TER (PP 58/2023), above 2.500.000 a day 50% x Pasal 17
+        daily = Decimal(gross) / days if days else Decimal(0)
+        if daily <= 450_000:
+            pph = 0
+        elif daily <= 2_500_000:
+            pph = floor(Decimal(gross) * Decimal("0.5") / 100 * surcharge)
+        else:
+            pph = floor(days * pasal17(daily / 2) * surcharge)
+    elif p.get("last_month"):
         year_gross = ytd["gross"] + gross
         months = ytd["months"] + 1
         job = min(floor(Decimal(year_gross) * 5 / 100), 500_000 * months)
@@ -112,7 +128,7 @@ def slip(p, run, ytd=None):
         pph = floor(Decimal(gross) * ter_rate(status, gross) / 100 * surcharge)
     ee = c["jht_ee"] + c["jp_ee"] + c["kes_ee"]
     er = c["jkk"] + c["jkm"] + c["jht_er"] + c["jp_er"] + c["kes_er"]
-    return dict(c, base=base, overtime=ot, allowance=allow, thr=thr, cash_gross=cash, bpjs_base=bpjs_base, gross_taxable=gross,
+    return dict(c, base=base, overtime=ot, holiday_overtime=hot, allowance=allow, thr=thr, cash_gross=cash, bpjs_base=bpjs_base, gross_taxable=gross,
                 pph21=pph, net_pay=cash - ee - pph - p.get("other_deduction", 0), employer_bpjs=er, employer_cost=cash + er,
                 bpjs_tk=c["jkk"] + c["jkm"] + c["jht_er"] + c["jht_ee"] + c["jp_er"] + c["jp_ee"], bpjs_kes=c["kes_er"] + c["kes_ee"],
                 pension=c["jht_ee"] + c["jp_ee"])

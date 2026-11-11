@@ -7,15 +7,16 @@ recomputes PPh 21 TER, BPJS, Pasal 17 and the client invoice from the research, 
 import importlib.util
 import os
 import sys
+import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import payroll_oracle as oracle  # noqa: E402
 
 H = {}
-SLIP_FIELDS = ["base_pay", "overtime_pay", "allowance_pay", "thr_pay", "cash_gross", "bpjs_base", "jkk", "jkm", "jht_employer",
+SLIP_FIELDS = ["base_pay", "overtime_pay", "holiday_overtime_pay", "allowance_pay", "thr_pay", "cash_gross", "bpjs_base", "jkk", "jkm", "jht_employer",
                "jht_employee", "jp_employer", "jp_employee", "kes_employer", "kes_employee", "gross_taxable", "pph21", "net_pay",
                "employer_cost"]
-ORACLE_KEY = {"base_pay": "base", "overtime_pay": "overtime", "allowance_pay": "allowance", "thr_pay": "thr",
+ORACLE_KEY = {"base_pay": "base", "overtime_pay": "overtime", "holiday_overtime_pay": "holiday_overtime", "allowance_pay": "allowance", "thr_pay": "thr",
               "jht_employer": "jht_er", "jht_employee": "jht_ee", "jp_employer": "jp_er", "jp_employee": "jp_ee",
               "kes_employer": "kes_er", "kes_employee": "kes_ee"}
 
@@ -139,6 +140,12 @@ def scenario_payroll_month(api):
     eq("MP-020 JP stops at the JP cap and BPJS Kesehatan at 12.000.000",
        (s20.get("jp_employer"), s20.get("jp_employee"), s20.get("kes_employer"), s20.get("kes_employee")), (221_726, 110_863, 480_000, 120_000))
     eq("MP-019 THR 7/12 of a month (8.500.000) in this month's gross", by_no["MP-019"].get("thr_pay"), oracle.rnd(oracle.Decimal(8_500_000) * 7 / 12))
+    # daily TER (PMK 168/2023) for casual workers paid per day, and rest-day work (PP 35/2021 Pasal 31)
+    s2, s4, s5 = by_no["MP-002"], by_no["MP-004"], by_no["MP-005"]
+    check("MP-002 casual, under 450.000 a day: daily TER 0%, no PPh 21", s2.get("employment") == "casual" and 0 < s2.get("daily_gross", 0) <= 450_000 and s2.get("pph21") == 0, s2)
+    check("MP-004 casual at 600.000 a day: daily TER 0,5% of the gross", s4.get("daily_gross", 0) > 450_000 and s4.get("pph21") == oracle.floor(oracle.Decimal(s4["gross_taxable"]) * oracle.Decimal("0.005")), s4)
+    eq("MP-005 two rest days of 9 hours: (7 x 2 + 3 + 4) x 2 hours of 1/173 of the month wage", s5.get("holiday_overtime_pay"),
+       oracle.rnd(oracle.Decimal(235_000 * 25) / 173 * 42))
     ws = list(want.values())
     tot = {k: sum(x[k] for x in ws) for k in ("cash_gross", "employer_bpjs", "pph21", "net_pay", "employer_cost", "bpjs_tk", "bpjs_kes")}
     run = fm.get("payroll_run", R)
