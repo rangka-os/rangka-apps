@@ -5,6 +5,8 @@
 # staged, flow moka_line_mapped; head office may still correct them while staged), posted (in outlet_sales `sales`). A refunded quantity is its own line, as in the
 # export import: qty < 0, gross 0, refund = the refunded share of the line's net. A refund Moka reports after the first
 # poll is a refund line of its own, dated the day of the refund (flow moka_transaction_staged).
+# The recap sends a staged line back to unmapped (item or outlet emptied, head office told) when its item or outlet was
+# deleted or the outlet no longer uses Moka, so one such line never stops the recap of other outlets and days.
 name: moka_sale_line
 label: {id: Baris penjualan Moka, en: Moka sales line}
 icon: store

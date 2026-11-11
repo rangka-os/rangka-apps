@@ -230,4 +230,60 @@ def scenario_moka_late_refund(api):
     eq("the sale day keeps its one record", [x["net_total"] for x in sales(BRAGA, d[8])], [46000])
 
 
-SCENARIOS = [scenario_moka_api, scenario_moka_late_refund]
+def scenario_moka_recap_resilience(api):
+    """Audit moka N3/L6 (a deleted item or an outlet without Moka stops nothing) and M6 (scans of moka_sale_line)."""
+    hq = CTX.get("hq")
+    today = kernel_today()
+    d = [(today - datetime.timedelta(days=k)).isoformat() for k in range(0, 12)]
+
+    def lines_of(tid):
+        tx = api.find("moka_transaction", f"transaction_id == '{tid}'")
+        return tx, (api.find("moka_sale_line", f"transaction == '{tx[0]['name']}'") if tx else [])
+
+    def sales(outlet, day):
+        return api.find("outlet_sales", f"outlet == '{outlet}' && date == '{day}' && source == 'moka' && key_version == 3 && docstatus != 2")
+
+    # a staged line whose item the owner deleted, and an outlet that stopped using Moka: the recap of the other outlet
+    # and days goes on, those lines go back to unmapped, head office is told
+    st, it = api.create("item", {"item_name": "Tahu bakso contoh", "sku": "TH-BKS", "kind": "good", "stock_uom": PORSI_UOM, "rate": 20000})
+    bks = (it or {}).get("name")
+    check("an item to delete later", st == 201 and bks, (st, it))
+    run(api, "moka_transaction_staged", event(91000022, d[10], [line("Tahu bakso contoh", "TH-BKS", 1, 20000), line("Tahu goreng original", "TH-ORI", 1, 15000)]))
+    run(api, "moka_transaction_staged", event(91000023, d[9], [line("Tahu goreng original", "TH-ORI", 3, 15000)], outlet_id=70001, outlet_name="Tahu Contoh - Dago"))
+    l23 = lines_of(91000023)[1]
+    check("Dago takes Moka lines by its Moka name", len(l23) == 1 and l23[0]["outlet"] == DAGO and l23[0]["status"] == "staged", l23)
+    st, resp = api.call("DELETE", f"/api/v1/r/item/{bks}") if bks else (0, None)
+    check("the owner deletes the item while its Moka line is staged (the kernel allows it)", st in (200, 204), (st, resp))
+    st, out = run(api, "moka_daily_sales")
+    check("recap with a deleted item: runs", st == 200, (st, out))
+    eq("recap with a deleted item: the day is recapped without it", [x["net_total"] for x in sales(BRAGA, d[10])], [15000])
+    eq("recap with a deleted item: Dago, a later day, recapped too", [x["net_total"] for x in sales(DAGO, d[9])], [45000])
+    gone = [r for r in lines_of(91000022)[1] if r["description"] == "Tahu bakso contoh"]
+    check("the line of the deleted item is unmapped again, item emptied, head office told",
+          len(gone) == 1 and gone[0]["status"] == "unmapped" and gone[0]["item"] in ("", None)
+          and any("Belum dipetakan" in n.get("text", "") for n in out.get("notifications", [])), (gone, out.get("notifications")))
+    if gone:
+        st, resp = hq.patch("moka_sale_line", gone[0]["name"], {"item": PDS})
+        run(api, "moka_daily_sales")
+        eq("mapped again: its own record for that day", sorted(x["net_total"] for x in sales(BRAGA, d[10])), [15000, 20000])
+
+    # Dago stops using Moka (its Moka name emptied) with a staged line: back to unmapped without outlet, nothing stops
+    run(api, "moka_transaction_staged", event(91000024, d[11], [line("Tahu goreng original", "TH-ORI", 1, 15000)], outlet_id=70001, outlet_name="Tahu Contoh - Dago"))
+    run(api, "moka_transaction_staged", event(91000025, d[11], [line("Tahu goreng pedas", "TH-PDS", 1, 18000)]))
+    o = api.get("outlet", DAGO)
+    st, resp = api.patch("outlet", DAGO, {"moka_name": ""})
+    check("Dago's Moka name emptied", st == 200, (st, resp))
+    run(api, "moka_daily_sales")
+    l24 = lines_of(91000024)[1]
+    check("a line of an outlet without Moka: unmapped, outlet emptied, no source-moka record there",
+          len(l24) == 1 and l24[0]["status"] == "unmapped" and l24[0]["outlet"] in ("", None) and not sales(DAGO, d[11]), (l24, sales(DAGO, d[11])))
+    eq("Braga, same day: recapped", [x["net_total"] for x in sales(BRAGA, d[11])], [18000])
+    api.patch("outlet", DAGO, {"moka_name": o.get("moka_name") or "Tahu Contoh - Dago"})
+
+    # cost: a recap with nothing to do reads moka_sale_line once (the kernel reads a whole model per find)
+    st, out = run(api, "moka_daily_sales")
+    scans = [x for x in out.get("steps", []) if "moka_sale_line" in x and "find" in x]
+    check("an idle recap reads moka_sale_line once", st == 200 and len(scans) == 1, (st, scans, out.get("steps", [])[:5]))
+
+
+SCENARIOS = [scenario_moka_api, scenario_moka_late_refund, scenario_moka_recap_resilience]
