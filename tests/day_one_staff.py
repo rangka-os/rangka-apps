@@ -190,7 +190,8 @@ def scenario_staff_collector(api):
     col, fm = CTX.get("col1"), CTX.get("fm")
     if not (col and fm):
         return
-    lands(col, "Dodi (collector)", "#/d/penagihan_saya")
+    m = lands(col, "Dodi (collector)", "#/w/rute_tagih")
+    check("Penagihan saya stays open to Dodi", "penagihan_saya" in (m.get("dashboards") or {}), sorted((m.get("dashboards") or {}).keys()))
     lands(fm, "finance", "#/d/langganan_ringkas")
     st, r = col.call("GET", "/api/v1/dashboards/langganan_ringkas")
     check("Dodi cannot open the subscriptions summary -> 403", st == 403, (st, r))

@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: collection_visit
+label: {id: Kunjungan penagih, en: Collection visit}
+icon: map
+naming: KPG-{YYYY}-{#####}
+title_field: customer_name
+# The collector checked in at a subscriber's place (contract 0030 §2 route visit, screens/rute_tagih.rk): when, where
+# the phone stood (geo) and a photo of the place. It moves no money: cash taken is a field_collection, deposited
+# through collector_deposit. The distance from the subscriber's point is measured by the kernel (distance_m) so the
+# finance team can see a visit made far from the house; a subscription without a point shows 0. Position and photo
+# are set_once (a check-in cannot be moved afterwards); the photo must be an attachment of this visit.
+permissions:
+  - {role: collector, read: true, create: true, write: true}
+  - {role: finance_manager, read: true, export: true, print: true}
+  - {role: sales_manager, read: true}
+fields:
+  - {name: subscription, type: link, to: subscription, label: {id: Langganan}, required: true, in_list: true}
+  - {name: customer_name, type: data, label: {id: Nama pelanggan}, compute: subscription.customer_name, in_list: true}
+  # Row scope of the collector role (roles/collector.rk): the member's own user record.
+  - {name: collector, type: link, to: user, label: {id: Penagih}, default: user.name, required: true, in_list: true}
+  - {name: visited_at, type: datetime, label: {id: Waktu kunjungan}, default: now(), required: true, in_list: true}
+  - {name: pos, type: geo, label: {id: Posisi saat kunjungan}, set_once: true}
+  - {name: photo, type: image, label: {id: Foto tempat}, set_once: true}
+  - {name: unpaid_amount, type: currency, label: {id: Belum dibayar saat kunjungan}, read_only: true, compute: subscription.unpaid_amount}
+  - {name: away_m, type: float, label: {id: Jarak dari titik pelanggan (m)}, hidden: true, read_only: true, compute: "distance_m(pos, subscription.location)"}
+  - name: distance_m
+    type: int
+    label: {id: Jarak dari titik pelanggan (m)}
+    read_only: true
+    in_list: true
+    compute: "away_m < 100000000.0 ? round(away_m) : 0"
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  # The same area check as field_collection (flow field_collection_cap_*): a collector visits their own area's subscribers.
+  - name: own_area
+    on: save
+    check: subscription.collector == collector
+    message: {id: 'Langganan ini bukan di area penagih ini'}
+  - name: not_future
+    on: save
+    check: visited_at <= now()
+    message: {id: 'Waktu kunjungan tidak boleh sesudah sekarang'}
+views:
+  list:
+    columns: [name, visited_at, customer_name, collector, distance_m, unpaid_amount]
+    filters: [collector, subscription]
+    sort: -visited_at

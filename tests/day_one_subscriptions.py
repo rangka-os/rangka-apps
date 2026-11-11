@@ -30,6 +30,7 @@ MATRIX = {
     "field_collection": {"collector": {"read", "create", "write", "delete"}, "finance_manager": _RCWEP | {"delete"}, "sales_manager": _R},
     "collector_deposit": {"finance_manager": {"read", "create", "write", "submit", "export", "print"}, "collector": _R},
     "subscription_guard": {"finance_manager": {"create"}, "sales_manager": {"create"}, "collector": {"create"}},   # never stored
+    "collection_visit": {"collector": {"read", "create", "write"}, "finance_manager": {"read", "export", "print"}, "sales_manager": _R},
 }
 
 
@@ -581,5 +582,57 @@ def scenario_subs_dashboards(api):
         check("and cannot open the owner's overview (403)", st == 403, (st, resp))
 
 
+def scenario_subs_route(api):
+    """The collector's route (screens/rute_tagih.rk, contract 0030 route): his home; the stops are his area's subscribers
+    who still owe more than what waits in a deposit, with their point; a check-in is a collection_visit with position and
+    photo (set_once, an attachment of the visit), measured by the kernel; the cash is recorded through catat_tagih
+    (entry, prefilled from the stop) as a field_collection, capped as before."""
+    col1, col2, fm = CTX.get("col1"), CTX.get("col2"), CTX.get("fm")
+    if not (col1 and col2 and fm):
+        fail("route: collectors", "missing")
+        return
+    st, m = col1.call("GET", "/api/v1/meta")
+    work = (m or {}).get("work") or []
+    check("Dodi (collector) lands on rute_tagih and also gets catat_tagih", work[:1] == [{"screen": "rute_tagih", "home": True}]
+          and {"screen": "catat_tagih", "home": False} in work, work)
+    st, r = fm.call("GET", "/api/v1/screens/rute_tagih")
+    check("finance is not offered the route (404)", st == 404, (st, r))
+    sc = ((m or {}).get("screens") or {}).get("rute_tagih") or {}
+    flt = sc.get("route", {}).get("stops", {}).get("filter", "false")
+    stops = col1.find("subscription", flt)
+    want = sorted(x["name"] for x in rows_all(api, "subscription", "area == 'ARE-001'") if (x.get("unpaid_amount") or 0) > (x.get("deposit_waiting") or 0))
+    eq("the stops: Dodi's area (ARE-001) only, those still owing more than what waits in a deposit", sorted(x["name"] for x in stops), want)
+    if not stops:
+        return
+    S = stops[0]
+    check("a stop carries its point for the distance and the map link", isinstance(S.get("location"), dict) and "lat" in S["location"], S.get("location"))
+    st, r = col1.call("GET", "/api/v1/screens/rute_tagih")
+    vset = ((r or {}).get("sets") or {}).get("visit") or {}
+    check("the visit set fills the collector (user.name)", vset.get("collector") == "USR-002", r)
+    here = {"lat": S["location"]["lat"] + 0.0002, "lng": S["location"]["lng"], "accuracy_m": 8}
+    st, v = col1.create("collection_visit", dict(vset, subscription=S["name"], pos=here))
+    if not check("Dodi checks in at the subscriber (201): about 22 m from the point", st == 201 and 15 <= (v.get("distance_m") or 0) <= 30, (st, v)):
+        return
+    jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" + b"\x00" * 64 + b"\xff\xd9"
+    st, a = col1.upload(f"/api/v1/r/collection_visit/{Api.q(v['name'])}/attachments", {}, "rumah.jpg", jpeg)
+    st, r = col1.patch("collection_visit", v["name"], {"photo": (a or {}).get("id", "")})
+    check("the photo of the place is set (attachment of the visit)", st == 200, (st, r))
+    st, r = col1.patch("collection_visit", v["name"], {"pos": S["location"]})
+    check("the check-in position cannot be moved afterwards (set_once)", st == 422 and any(e.get("code") == "set_once" for e in (r or {}).get("errors", [])), (st, r))
+    st, r = col2.create("collection_visit", {"subscription": S["name"], "pos": here})
+    check("Eka (other area) cannot check in at Dodi's subscriber", st in (403, 404, 422), (st, r))
+    st, r = col1.call("GET", f"/api/v1/screens/catat_tagih?stop={Api.q('subscription/' + S['name'])}")
+    eset = (r or {}).get("set") or {}
+    check("catat_tagih opened from the stop fills the subscription and the collector", st == 200 and eset.get("subscription") == S["name"] and eset.get("collector") == "USR-002", (st, r))
+    owe = (S.get("unpaid_amount") or 0) - (S.get("deposit_waiting") or 0)
+    waiting = sum(c["amount"] for c in col1.find("field_collection", f"subscription == '{S['name']}' && deposit == ''"))
+    room = owe - waiting
+    st, r = col1.create("field_collection", dict(eset, amount=room + 1000))
+    check("more cash than the subscriber owes is refused (cap flow)", st in (409, 422), (st, r))
+    if room > 0:
+        st, c = col1.create("field_collection", dict(eset, amount=room, notes="Tunai di rumah"))
+        check("Dodi records the cash collected from the route (201)", st == 201 and c.get("collector") == "USR-002", (st, c))
+
+
 SCENARIOS = [setup_demo_langganan, scenario_subs_fixtures, scenario_subs_schedules, scenario_subs_billing, scenario_subs_new_and_change, scenario_subs_end_dates, scenario_subs_invoice_guard,
-             scenario_subs_dunning, scenario_subs_payment_lifts, scenario_subs_stopped_arrears, scenario_subs_collectors, scenario_subs_dashboards]
+             scenario_subs_dunning, scenario_subs_payment_lifts, scenario_subs_stopped_arrears, scenario_subs_collectors, scenario_subs_dashboards, scenario_subs_route]
