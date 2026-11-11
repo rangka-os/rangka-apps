@@ -3,7 +3,9 @@ name: rental_return_on_cancel
 label: {id: Alat kembali dibatalkan}
 # A return entered by mistake: the schedule goes back to out (the deposit journal is reversed by gl_rental_return_reverse),
 # refused while the invoice for what the deposit did not cover is submitted (cancel that first). Its units go back out
-# with the booking in the condition they left in, refused for a unit that went out again since.
+# with the booking in the condition they left in, refused for a unit that went out again since. Each unit's last checkout
+# becomes this booking's checkout again (the schedule keeps it), so that checkout can still be cancelled after a
+# checkout of another booking took the unit and was cancelled in between (audit 8 Nov L1).
 on: rental_return.cancelled
 steps:
   - {find: rental_schedule, where: booking == event.booking, as: s}
@@ -23,4 +25,4 @@ steps:
         set: {reason: "'unit_moved'", document: event.name}
       - update: u
         if: u != null
-        set: {state: "'out'", booking: event.booking, condition: u.out_condition, last_return: "''"}
+        set: {state: "'out'", booking: event.booking, condition: u.out_condition, last_return: "''", last_checkout: "s != null ? s.checkout : ''"}
