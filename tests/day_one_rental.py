@@ -362,10 +362,16 @@ def scenario_rental_handover(api):
     b = book(sm, CAMERA, 2, d(-3), 2, "cameras x2 (days -3 to -1)", customer=FILM)
     if not b:
         return
-    st, r = handover_out(gd, b["name"], [])
-    check("checkout of a tracked item without a checklist: refused (units_required)", st == 422 and "units_required" in rules(r), (st, r))
-    st, r = handover_out(gd, b["name"], [{"unit": KAM1}])
-    check("checklist with 1 unit for a booking of 2: refused (units_match_qty)", st == 422 and "units_match_qty" in rules(r), (st, r))
+    # The handover screen creates the draft first and saves the checklist one scan at a time: counts are checked at submit.
+    st, dr = handover_out(gd, b["name"], [], signed_by="Uji")
+    check("an empty checklist is a draft the screen fills scan by scan -> 201", st == 201, (st, dr))
+    st, r = submit(gd, "rental_checkout", dr.get("name", "x"))
+    check("submit of a tracked item without a checklist: refused (units_required)", st == 422 and "units_required" in rules(r), (st, r))
+    st, r = gd.patch("rental_checkout", dr.get("name", "x"), {"units": [{"unit": KAM1}]})
+    check("one scanned unit of two is saved on the draft -> 200", st == 200, (st, r))
+    st, r = submit(gd, "rental_checkout", dr.get("name", "x"))
+    check("submit with 1 unit for a booking of 2: refused (units_match_qty)", st == 422 and "units_match_qty" in rules(r), (st, r))
+    gd.call("DELETE", f"/api/v1/r/rental_checkout/{Api.q(dr.get('name', 'x'))}")
     st, r = handover_out(gd, b["name"], [{"unit": KAM1}, {"unit": SND1}])
     check("a sound system on a camera checklist: refused (units_of_item)", st == 422 and "units_of_item" in rules(r), (st, r))
     st, r = handover_out(gd, b["name"], [{"unit": KAM1}, {"unit": KAM1}])
@@ -381,7 +387,7 @@ def scenario_rental_handover(api):
     st, r = submit(gd, "rental_checkout", c["name"])
     check("submit without the customer's name: refused (signed_by_required)", st == 422 and "signed_by_required" in rules(r), (st, r))
     st, r = gd.patch("rental_checkout", c["name"], {"photo": "foto-kamera.jpg"})
-    check("a photo that is not an attachment id: refused (photo_is_attachment)", st == 422 and "photo_is_attachment" in rules(r), (st, r))
+    check("a photo that is not an attachment id: refused (kernel attachment check)", st == 422 and any(e.get("code") == "attachment" for e in r.get("errors", [])), (st, r))
     photo, sig = attach(gd, "rental_checkout", c["name"], "kamera-keluar.png"), attach(gd, "rental_checkout", c["name"], "ttd-penyewa.png")
     st, r = gd.patch("rental_checkout", c["name"], {"photo": photo, "signature": sig})
     check("a signature without the signer's name: refused (signature_needs_name)", st == 422 and "signature_needs_name" in rules(r), (st, r))
@@ -421,10 +427,13 @@ def scenario_rental_handover(api):
 
     # cameras back on day 0 (1 day late): KAM-A-02 broken, 250.000 repair on the checklist
     st, rt = gd.create("rental_return", {"booking": b["name"], "return_date": d(0), "units": [{"unit": KAM1}]})
-    check("return checklist with 1 of 2 units: refused (units_match_qty)", st == 422 and "units_match_qty" in rules(rt), (st, rt))
-    st, rt = gd.create("rental_return", {"booking": b["name"], "return_date": d(0), "received_by": "Agus Contoh",
-                                         "units": [{"unit": KAM1}, {"unit": KAM2, "condition": "rusak", "fee": 250_000, "notes": "layar retak"}]})
-    if not check("Staf gudang drafts the camera return with the checklist -> 201", st == 201, (st, rt)):
+    if not check("Staf gudang drafts the camera return, first unit scanned -> 201", st == 201, (st, rt)):
+        return
+    st, r = submit(sm, "rental_return", rec(rt)["name"])
+    check("return checklist with 1 of 2 units: refused at submit (units_match_qty)", st == 422 and "units_match_qty" in rules(r), (st, r))
+    st, rt = gd.patch("rental_return", rec(rt)["name"], {"received_by": "Agus Contoh",
+                                                       "units": [{"unit": KAM1}, {"unit": KAM2, "condition": "rusak", "fee": 250_000, "notes": "layar retak"}]})
+    if not check("Staf gudang completes the camera return checklist -> 200", st == 200, (st, rt)):
         return
     rt = rec(rt)
     eq("return rows show the condition at checkout and now", [(x.get("unit_code"), x.get("out_condition"), x.get("condition"), x.get("fee")) for x in rt.get("units", [])],
@@ -724,5 +733,71 @@ def _sum_by(rows, cond):
     return out
 
 
+def scenario_rental_screens(api):
+    """The warehouse's work screens (contract 0030): jadwal_alat (route) is the staff's home and lists today's bookings to
+    hand out or take back; each opens a handover screen whose new draft gets the booking (?stop=); the screen's writes
+    (create, scan rows, photo and signature as attachments of the record, submit) go through the same rules as a form."""
+    sm, fm, gd = CTX.get("sm"), CTX.get("fm"), CTX.get("gd")
+    if not (sm and fm and gd):
+        fail("rental screens: members", CTX.get("login_error"))
+        return
+    st, m = gd.call("GET", "/api/v1/meta")
+    work = (m or {}).get("work") or []
+    check("Staf gudang lands on jadwal_alat and also gets both handover screens", work[:1] == [{"screen": "jadwal_alat", "home": True}]
+          and {"screen": "alat_keluar", "home": False} in work and {"screen": "alat_kembali", "home": False} in work, work)
+    st, m = sm.call("GET", "/api/v1/meta")
+    check("Admin sewa gets the screens, none as home", not any(w.get("home") for w in (m or {}).get("work") or []) and "jadwal_alat" in ((m or {}).get("screens") or {}), (m or {}).get("work"))
+    st, r = fm.call("GET", "/api/v1/screens/alat_keluar")
+    check("Finance is not offered the handover screen (404)", st == 404, (st, r))
+    b = book(sm, CAMERA, 1, d(0), 1, "camera via the screens (day 0)", customer=BUDI)
+    if not b:
+        return
+    sc = (((m or {}).get("screens") or {}).get("jadwal_alat") or {}).get("route", {}).get("stops", {})
+    stops = gd.find("rental_schedule", sc.get("filter", "false"))
+    mine = [x for x in stops if x.get("booking") == b["name"]]
+    check("today's booking is a stop of jadwal_alat, titled with the item and the task", len(mine) == 1 and mine[0].get("item_title")
+          and mine[0].get("todo", "").startswith("Serahkan ke "), mine)
+    if not mine:
+        return
+    stop = "rental_schedule/" + mine[0]["name"]
+    st, sk = gd.call("GET", f"/api/v1/screens/alat_keluar?stop={Api.q(stop)}")
+    body = ((sk or {}).get("sets") or {}).get("document") or {}
+    check("alat_keluar opened from the stop prefills the booking", st == 200 and body.get("booking") == b["name"], (st, sk))
+    st, c = gd.create("rental_checkout", body)
+    if not check("the screen creates the checkout draft with no units yet -> 201", st == 201, (st, c)):
+        return
+    cn = rec(c)["name"]
+    hit = gd.find("rental_unit", "code == 'KAM-A-01'")
+    check("a scanned code finds its unit (match: code)", [u["name"] for u in hit] == [KAM1], hit)
+    st, r = gd.patch("rental_checkout", cn, {"units": [{"unit": KAM1, "condition": "lengkap"}]})
+    check("the scanned unit is saved on the draft -> 200", st == 200, (st, r))
+    pid = attach(gd, "rental_checkout", cn, "keluar-layar.png")
+    st, r = gd.patch("rental_checkout", cn, {"photo": pid})
+    check("the first photo fills the image field -> 200", st == 200 and rec(r).get("photo") == pid, (st, r))
+    sig = attach(gd, "rental_checkout", cn, "ttd-layar.png")
+    st, r = gd.patch("rental_checkout", cn, {"signature": sig, "signed_by": "Budi Contoh"})
+    check("signature and signer saved -> 200", st == 200, (st, r))
+    st, out = submit(gd, "rental_checkout", cn)
+    check("the screen submits the checkout: unit out, schedule out", st == 200 and unit(api, KAM1).get("state") == "out" and schedule(api, b["name"]).get("state") == "out", (st, out))
+    st, html, _ = gd.print_html("rental_checkout", out.get("name", cn))
+    check("BAST keluar prints after the screen's submit", st == 200 and "Budi Contoh" in html, st)
+    # Back the same day through alat_kembali: the warehouse saves the checklist, the admin submits.
+    st, sk = gd.call("GET", f"/api/v1/screens/alat_kembali?stop={Api.q(stop)}")
+    body = ((sk or {}).get("sets") or {}).get("document") or {}
+    st, rt = gd.create("rental_return", body)
+    if not check("alat_kembali creates the return draft for the booking -> 201", st == 201 and rec(rt).get("booking") == b["name"], (st, rt)):
+        return
+    rn = rec(rt)["name"]
+    st, r = gd.patch("rental_return", rn, {"photo": pid})
+    check("the checkout's photo cannot be the return's photo (attachment of another record)", st == 422 and any(e.get("code") == "attachment" for e in r.get("errors", [])), (st, r))
+    p2, s2 = attach(gd, "rental_return", rn, "kembali.png"), attach(gd, "rental_return", rn, "ttd-kembali.png")
+    st, r = gd.patch("rental_return", rn, {"units": [{"unit": KAM1, "condition": "lengkap"}], "photo": p2, "signature": s2, "signed_by": "Budi Contoh"})
+    check("the warehouse saves the return checklist, photo and signature -> 200", st == 200, (st, r))
+    st, r = submit(gd, "rental_return", rn)
+    check("the warehouse cannot submit the return from the screen (403; alat_kembali has submit: false)", denied(st, r), (st, r))
+    st, ret = submit(sm, "rental_return", rn)
+    check("the admin submits it: deposit back in full, camera in the warehouse", st == 200 and ret.get("deposit_refund") == ret.get("deposit") and unit(api, KAM1).get("state") == "in", (st, ret))
+
+
 SCENARIOS = [scenario_rental_fixtures, scenario_rental_booking_conflict, scenario_rental_race, scenario_rental_out_and_back,
-             scenario_rental_cancel, scenario_rental_still_out, scenario_rental_handover, scenario_rental_correction_chain, scenario_rental_invoice_guards, scenario_rental_pkp, scenario_rental_roles, scenario_rental_dashboard]
+             scenario_rental_cancel, scenario_rental_still_out, scenario_rental_handover, scenario_rental_correction_chain, scenario_rental_invoice_guards, scenario_rental_pkp, scenario_rental_roles, scenario_rental_dashboard, scenario_rental_screens]

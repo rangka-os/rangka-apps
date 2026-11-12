@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+name: jadwal_alat
+type: route
+label: {id: Jadwal alat hari ini, en: Today's equipment}
+icon: calendar
+# The warehouse's list of the day (plans/layar-kerja.md §3 #6-7): bookings whose equipment goes out today (or is
+# overdue to go out) and those due back today or late. Each opens the handover screen with the booking prefilled
+# (contract 0030 §2 route actions, ?stop=rental_schedule/<name>). No visit record and no position: the stops are at
+# the counter, not places to drive to.
+roles: [rental_staff, sales_manager]
+device: tablet
+route:
+  stops:
+    model: rental_schedule
+    filter: "(state == 'booked' && start_date <= today()) || (state == 'out' && end_date <= today())"
+    sort: start_date
+    title: item_title
+    subtitle: todo
+  actions:
+    - {label: {id: Serah keluar, en: Hand out}, screen: alat_keluar}
+    - {label: {id: Terima kembali, en: Take back}, screen: alat_kembali}

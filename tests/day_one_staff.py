@@ -147,8 +147,8 @@ def scenario_staff_instructor(api):
     ins, ins2, ca = CTX.get("ins"), CTX.get("ins2"), CTX.get("ca")
     if not (ins and ins2):
         return
-    lands(ins, "Maya (instructor)", "#/d/kelas_saya")
-    lands(ins2, "Nanda (instructor)", "#/d/kelas_saya")
+    lands(ins, "Maya (instructor)", "#/w/absen_kelas")
+    lands(ins2, "Nanda (instructor)", "#/w/absen_kelas")
     if ca:
         lands(ca, "the course admin", "#/d/kursus_ringkas")
     today = kernel_today()
@@ -167,6 +167,10 @@ def scenario_staff_instructor(api):
         eq(f"{who}: active students = own batches' registered and active", num(ws["my_students"]), len(mine))
         check(f"{who}: the student list holds no fee", not any(k in r for r in rows(ws["students"]) for k in ("total", "price", "monthly_fee")), rows(ws["students"])[:2])
     maya_open = [r.get("name") for r in rows(dashboard(ins, "kelas_saya").get("attendance_list"))]
+    if not maya_open and ca:   # her own saves tick the check (flow session_attendance_checked): the admin opens one for today
+        st, s = ca.create("course_session", {"batch": "ANG-2026-001", "session_no": 70, "session_date": today.isoformat()})
+        check("the course admin opens a session of Maya's batch for today (201)", st == 201, (st, s))
+        maya_open = [r.get("name") for r in rows(dashboard(ins, "kelas_saya").get("attendance_list"))] if st == 201 else []
     if maya_open:
         st, r = ins.patch("course_session", maya_open[0], {"attendance_taken": True})
         check("Maya ticks Absen sudah dicek -> 200", st == 200, (st, r))
@@ -186,18 +190,21 @@ def scenario_staff_collector(api):
     col, fm = CTX.get("col1"), CTX.get("fm")
     if not (col and fm):
         return
-    lands(col, "Dodi (collector)", "#/d/penagihan_saya")
+    m = lands(col, "Dodi (collector)", "#/w/rute_tagih")
+    check("Penagihan saya stays open to Dodi", "penagihan_saya" in (m.get("dashboards") or {}), sorted((m.get("dashboards") or {}).keys()))
     lands(fm, "finance", "#/d/langganan_ringkas")
     st, r = col.call("GET", "/api/v1/dashboards/langganan_ringkas")
     check("Dodi cannot open the subscriptions summary -> 403", st == 403, (st, r))
 
 
 def scenario_staff_rental(api):
-    """The rental warehouse (rental_staff) lands on Alat hari ini (rental handover, A6); the owner keeps Ringkasan sewa."""
+    """The rental warehouse (rental_staff) lands on the work screen Jadwal alat hari ini (contract 0030 route, which opens
+    the handover screens); Alat hari ini stays their dashboard; the owner keeps Ringkasan sewa."""
     gd = CTX.get("gd")
     if not gd:
         return
-    lands(gd, "the warehouse (rental_staff)", "#/d/alat_hari_ini")
+    m = lands(gd, "the warehouse (rental_staff)", "#/w/jadwal_alat")
+    check("Alat hari ini stays open to the warehouse", "alat_hari_ini" in (m.get("dashboards") or {}), sorted((m.get("dashboards") or {}).keys()))
     lands(api, "the owner", "#/d/sewa_ringkas")
 
 

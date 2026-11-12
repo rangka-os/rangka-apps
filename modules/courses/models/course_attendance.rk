@@ -9,6 +9,8 @@ fields:
     required: true
   - {name: student, type: link, to: student, label: {id: Peserta}, compute: enrollment.student}
   - {name: batch, type: link, to: course_batch, label: {id: Angkatan}, compute: enrollment.batch}
+  # the name the roll screen shows on each line (screens/absen_kelas.rk)
+  - {name: student_name, type: data, label: {id: Nama peserta}, compute: enrollment.student.student_name}
   - name: status
     type: select
     label: {id: Kehadiran}

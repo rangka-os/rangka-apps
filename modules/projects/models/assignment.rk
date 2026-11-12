@@ -41,6 +41,9 @@ fields:
   - {name: site_lat, type: float, label: {id: Lintang lokasi absen}, read_only: true, compute: "work_site != '' ? work_site.lat : 0"}
   - {name: site_lng, type: float, label: {id: Bujur lokasi absen}, read_only: true, compute: "work_site != '' ? work_site.lng : 0"}
   - {name: site_radius_m, type: int, label: {id: Radius absen (m)}, read_only: true, compute: "work_site != '' ? work_site.radius_m : 0"}
+  # For the clock screen (screens/absen.rk): the worker picks today's assignment as the place to clock in.
+  - {name: site_name, type: data, label: {id: Nama lokasi absen}, read_only: true, compute: "work_site != '' ? work_site.site_name : ''"}
+  - {name: site_point, type: geo, label: {id: Titik lokasi absen}, read_only: true, hidden: true, compute: "work_site != '' ? {'lat': site_lat, 'lng': site_lng} : ''"}
   - name: start_date
     type: date
     label: {id: Mulai}

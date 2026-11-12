@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+name: alat_kembali
+type: handover
+label: {id: Terima alat kembali, en: Equipment back}
+icon: undo
+# Equipment comes back with proof (contract 0030 §2 handover): scan each unit, mark its condition (Hilang for a lost
+# one), photos of the damage, the renter signs. The warehouse only saves the checklist (submit: false): the damage
+# fees and the submit, which pays the deposit back, stay with the admin (rental_return permissions). Opened from
+# jadwal_alat the new draft gets the booking; return_date defaults to today, the actual day.
+roles: [rental_staff, sales_manager]
+device: tablet
+needs: [scan, photo, signature]
+handover:
+  document: {model: rental_return, find: "docstatus == 0", create: true, set: {booking: stop.booking}, title: item_title, subtitle: customer_name}
+  rows: {table: units, unit: unit, condition: condition, note: notes}
+  scan: {match: code}
+  photos: {field: photo, min: 1}
+  signature: {field: signature, by: signed_by}
+  submit: false

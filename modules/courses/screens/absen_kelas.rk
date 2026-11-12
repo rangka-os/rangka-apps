@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+name: absen_kelas
+type: roll
+label: {id: Absen kelas, en: Class roll}
+icon: users
+# The instructor marks today's class from the phone (plans/layar-kerja.md §3 #5, contract 0030 §2 roll): every
+# student starts present (flow session_of_the_day or session_fill_attendance), the instructor marks only who is
+# excused, sick or absent, and saves; saving ticks "Absen sudah dicek" (flow session_attendance_checked). The
+# meetings offered are the instructor's own (row scope) up to today whose attendance is not checked yet, newest
+# first; one opens by itself. No submit: course_session is not a submittable document.
+roles: [instructor]
+device: phone
+offline: queue
+roll:
+  document: {model: course_session, find: "session_date <= today() && !attendance_taken", sort: "-session_date", title: batch_title, subtitle: session_date}
+  rows: {table: attendance, label: student_name, mark: {field: status, values: [present, excused, sick, absent], default: present}, note: note}
+  submit: false

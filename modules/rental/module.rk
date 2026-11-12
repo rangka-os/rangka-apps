@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: rental
-version: 1.1.0
+version: 1.2.0
 title: {id: Sewa alat, en: Equipment rental}
 summary:
   id: Sewa alat dengan jadwal tanpa bentrok, alat keluar dan kembali.

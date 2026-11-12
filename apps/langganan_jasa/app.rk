@@ -23,10 +23,14 @@ modules:
 dashboards: [langganan_ringkas, penagihan_saya]
 roles: [finance_manager, collector]
 home: {dashboard: langganan_ringkas}
+# The collector lands on the route of the day (contract 0030 route); Penagihan saya stays their dashboard.
+work:
+  - {screen: rute_tagih, roles: [collector], home: true}
+  - {screen: catat_tagih, roles: [collector]}
 menu:
   - group: {id: Langganan}
     items: [subscription, subscription_bill, subscription_extra, subscription_status_log]
   - group: {id: Penagihan lapangan}
-    items: [field_collection, collector_deposit, service_area]
+    items: [field_collection, collection_visit, collector_deposit, service_area]
   - group: {id: Pengaturan langganan}
     items: [subscription_plan, subscription_month]

@@ -2,7 +2,7 @@
 
 Loaded by tests/day_one.py (bind() hands over its helpers and adds the permission rows): `python3 tests/day_one.py --site
 demo-manpower --only attendance`. Workers clock in and out at the client's factory (work_site LOK-001) with a position and a
-photo; the kernel decides inside/outside the radius from lat/lng; a far, late or overtime log waits for the site supervisor
+photo; the kernel decides inside/outside the radius from the geo position (distance_m, contract 0030 §4); a far, late or overtime log waits for the site supervisor
 (contract 0007), who sees only their own site (row scope work_site from the member's outlets); a worker sees only their own
 logs (row scope worker). The project admin closes the period: the submitted logs become monthly recap timesheets, and
 payroll makes the payslips from them as from an imported recap. Dates follow today (Asia/Jakarta), as the kernel does.
@@ -57,19 +57,22 @@ def photo(cl, name):
     return (resp or {}).get("id", "") if st == 201 else ""
 
 
+def pos(site, north_m=0.0, east_m=0.0, acc=10):
+    """A geo value (contract 0030 §4) `north_m` and `east_m` metres from the site's point."""
+    lat, lng = near(site, north_m, east_m)
+    return {"lat": lat, "lng": lng, "accuracy_m": acc, "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+
+
 def clock_in(cl, worker, assignment, day, north=30.0, east=20.0, **extra):
-    lat, lng = near(SITE_POINT_OF[assignment], north, east)
     body = {"worker": worker, "assignment": assignment, "work_date": str(day), "clock_in": f"{day}T07:58:00+07:00",
-            "in_lat": lat, "in_lng": lng, "in_accuracy_m": 12, "in_distance_m": round((north ** 2 + east ** 2) ** 0.5)}
+            "in_pos": pos(SITE_POINT_OF[assignment], north, east, 12)}
     body.update(extra)
     return cl.create("attendance_log", body)
 
 
 def clock_out(cl, name, day, north=10.0, east=-15.0, with_photo=True, **extra):
     """Clock-out; with_photo also uploads the clock-in photo first (every log needs one to be submitted)."""
-    lat, lng = near(SITE_POINT_OF[CTX["att_asg_of"][name]], north, east)
-    body = {"clock_out": f"{day}T17:02:00+07:00", "out_lat": lat, "out_lng": lng, "out_accuracy_m": 9,
-            "out_distance_m": round((north ** 2 + east ** 2) ** 0.5)}
+    body = {"clock_out": f"{day}T17:02:00+07:00", "out_pos": pos(SITE_POINT_OF[CTX["att_asg_of"][name]], north, east, 9)}
     if with_photo:
         body["in_photo"] = photo(cl, name)
     body.update(extra)
@@ -168,23 +171,31 @@ def scenario_attendance_clock(api):
     check("worker Yudi clocks out at the factory", st == 200 and rec(resp).get("out_inside") is True, (st, resp))
     st, resp = w1.verb("attendance_log", L1, "submit")
     check("a log inside the radius without a clock-in photo cannot be submitted (audit H2)", refused(st, resp, "foto"), (st, resp))
-    st, resp = w1.patch("attendance_log", L1, {"in_photo": photo(w1, L1)})
+    p1 = photo(w1, L1)
+    CTX["att_L1_photo"] = p1
+    st, resp = w1.patch("attendance_log", L1, {"in_photo": p1})
     check("Yudi adds his clock-in photo", st == 200, (st, resp))
+    st, resp = w1.patch("attendance_log", L1, {"clock_in": f"{t}T07:30:00+07:00"})
+    check("the clock-in time cannot be moved once set (set_once, 422)", refused(st, resp, "tidak bisa diubah"), (st, resp))
+    st, resp = w1.patch("attendance_log", L1, {"in_pos": pos(SITE, 0, 0)})
+    check("the clock-in position cannot be moved once set (set_once)", refused(st, resp, "tidak bisa diubah"), (st, resp))
+    st, resp = w1.patch("attendance_log", L1, {"in_photo": photo(w1, L1)})
+    check("the clock-in photo cannot be swapped once set (set_once)", refused(st, resp, "tidak bisa diubah"), (st, resp))
     st, resp = w1.verb("attendance_log", L1, "submit")
     check("inside the radius the log submits at once (no approval)", st == 200 and rec(resp).get("docstatus") == 1, (st, resp))
     CTX["att_L1"] = rec(resp).get("name", L1)
     st, resp = w1.verb("attendance_log", CTX["att_L1"], "cancel")
     check("the worker cannot cancel a submitted day (403)", denied(st, resp), (st, resp))
-    # The client sends a distance of 5 m but stands 400 m away: the kernel's own measure decides.
-    st, log2 = clock_in(w2, W["MP-102"], A["MP-102"], t, north=400, east=0, in_distance_m=5)
+    # The phone only sends its position; it stands 400 m away and the kernel's own measure decides.
+    st, log2 = clock_in(w2, W["MP-102"], A["MP-102"], t, north=400, east=0)
     check("a far clock-in without a reason is refused", refused(st, log2, "alasan"), (st, log2))
-    st, log2 = clock_in(w2, W["MP-102"], A["MP-102"], t, north=400, east=0, in_distance_m=5, reason="Antar barang ke gudang depan dulu")
-    if not check("worker Zahra clocks in 400 m away (phone claims 5 m) with a reason", st == 201, (st, log2)):
+    st, log2 = clock_in(w2, W["MP-102"], A["MP-102"], t, north=400, east=0, reason="Antar barang ke gudang depan dulu")
+    if not check("worker Zahra clocks in 400 m away with a reason", st == 201, (st, log2)):
         return
     L2 = log2["name"]
     CTX["att_asg_of"][L2] = A["MP-102"]
-    check("the kernel ignores the phone's 5 m: outside the radius, 400 m",
-          log2.get("in_inside") is False and log2.get("outside_site") is True and log2.get("in_site_m") == 400, log2)
+    check("the kernel measures 400 m: outside the radius",
+          log2.get("in_inside") is False and log2.get("outside_site") is True and 395 <= (log2.get("in_site_m") or 0) <= 405, log2)
     eq("worker Yudi lists only his own logs", sorted({x["worker"] for x in w1.list("attendance_log")}), [W["MP-101"]])
     st, resp = w1.call("GET", f"/api/v1/r/attendance_log/{Api.q(L2)}")
     check("worker Yudi cannot open Zahra's log (403)", denied(st, resp), (st, resp))
@@ -197,7 +208,9 @@ def scenario_attendance_clock(api):
     pid = photo(w2, L2)
     check("Zahra uploads her clock-in photo as an attachment of the log (contract 0011)", pid.startswith("att_"), pid)
     st, resp = w2.patch("attendance_log", L2, {"in_photo": "foto.jpg"})
-    check("a photo field holds an attachment id, not a file name", refused(st, resp, "lampiran"), (st, resp))
+    check("a photo field holds an attachment id, not a file name", refused(st, resp, "Lampiran"), (st, resp))
+    st, resp = w2.patch("attendance_log", L2, {"in_photo": CTX.get("att_L1_photo", "att_x")})
+    check("another log's photo is refused: a photo must be an attachment of this log (WS6)", refused(st, resp, "bukan milik catatan ini"), (st, resp))
     st, resp = w2.patch("attendance_log", L2, {"in_photo": pid})
     check("the photo is set on the log", st == 200, (st, resp))
     st, resp = w2.verb("attendance_log", L2, "submit")
@@ -348,9 +361,9 @@ def scenario_attendance_close(api):
 
 def owner_log(api, worker, asg, day, ot=0):
     """A log at the factory made and submitted by the owner (who approves its own late entry), with photo."""
-    lat, lng = near(SITE, 20, 10)
-    body = {"worker": worker, "assignment": asg, "work_date": str(day), "clock_in": f"{day}T08:00:00+07:00", "in_lat": lat, "in_lng": lng,
-            "clock_out": f"{day}T17:00:00+07:00", "out_lat": lat, "out_lng": lng}
+    p = pos(SITE, 20, 10)
+    body = {"worker": worker, "assignment": asg, "work_date": str(day), "clock_in": f"{day}T08:00:00+07:00", "in_pos": p,
+            "clock_out": f"{day}T17:00:00+07:00", "out_pos": p}
     if ot:
         body.update(overtime_hours=ot, reason="Lembur stok opname")
     st, lg = api.create("attendance_log", body)
@@ -440,25 +453,25 @@ def scenario_attendance_close_edges(api):
     check("a recap over days already in an older close is refused too", refused(st2, resp2, "timesheet lain"), (st2, resp2))
     # One photo, one day (audit r2 R2-3).
     used = next((x for x in api.find("attendance_log", f"worker == '{ws['MP-112']}' && docstatus == 1")), {})
-    lat, lng = near(SITE, 5, 5)
+    p5 = pos(SITE, 5, 5)
+    st, resp = api.create("attendance_log", {"worker": ws["MP-112"], "assignment": asg["c"], "work_date": str(t), "clock_in": f"{t}T08:00:00+07:00",
+                                             "in_pos": p5, "clock_out": f"{t}T17:00:00+07:00", "out_pos": p5, "in_photo": used.get("in_photo", "")})
+    check("a clock-in photo already used by another log is refused (not an attachment of the new log)", bool(used.get("in_photo")) and st == 422 and any(e.get("code") == "attachment" for e in (resp or {}).get("errors", [])), (used, st, resp))
     st, lg = api.create("attendance_log", {"worker": ws["MP-112"], "assignment": asg["c"], "work_date": str(t), "clock_in": f"{t}T08:00:00+07:00",
-                                           "in_lat": lat, "in_lng": lng, "clock_out": f"{t}T17:00:00+07:00", "out_lat": lat, "out_lng": lng,
-                                           "in_photo": used.get("in_photo", "")})
-    st2, resp2 = api.verb("attendance_log", lg.get("name", "x"), "submit") if st == 201 else (st, lg)
-    check("a clock-in photo already used by another log is refused", bool(used.get("in_photo")) and refused(st2, resp2, "foto"), (used, st2, resp2))
+                                           "in_pos": p5, "clock_out": f"{t}T17:00:00+07:00", "out_pos": p5})
     # The clock-out photo counts too (audit r3 R3-2): another log's photo as this log's clock-out photo, and this log's
     # clock-out photo as a later log's clock-in photo.
     lgn = lg.get("name", "x")
     st, resp = api.patch("attendance_log", lgn, {"in_photo": photo(api, lgn), "out_photo": used.get("in_photo", "")})
-    st2, resp2 = api.verb("attendance_log", lgn, "submit") if st == 200 else (st, resp)
-    check("another log's clock-in photo as the clock-out photo is refused", refused(st2, resp2, "foto"), (st, st2, resp2))
+    check("another log's clock-in photo as the clock-out photo is refused", refused(st, resp, "bukan milik catatan ini"), (st, resp))
+    st, resp = api.patch("attendance_log", lgn, {"in_photo": photo(api, lgn)})
     own_out = photo(api, lgn)
     st, resp = api.patch("attendance_log", lgn, {"out_photo": own_out})
     st2, resp2 = api.verb("attendance_log", lgn, "submit") if st == 200 else (st, resp)
     check("with its own clock-out photo the log submits", st2 == 200, (st, st2, resp2))
     # Clock-in on the paid day (audit L9): another day is refused; 06:00 WIB (stored 23:00Z the day before) is that day.
-    base = {"worker": ws["MP-113"], "assignment": asg["h"], "work_date": str(t), "in_lat": lat, "in_lng": lng,
-            "clock_out": f"{t}T17:00:00+07:00", "out_lat": lat, "out_lng": lng}
+    base = {"worker": ws["MP-113"], "assignment": asg["h"], "work_date": str(t), "in_pos": p5,
+            "clock_out": f"{t}T17:00:00+07:00", "out_pos": p5}
     st, resp = api.create("attendance_log", dict(base, clock_in=f"{D(2)}T08:00:00+07:00"))
     check("a clock-in two days before the log's date is refused", refused(st, resp, "tanggal absen"), (st, resp))
     st, resp = api.create("attendance_log", dict(base, clock_in=f"{t}T17:30:00Z"))
@@ -471,9 +484,83 @@ def scenario_attendance_close_edges(api):
     check("a clock-in at 06:00 WIB on the log's date is accepted", st == 201, (st, lg3))
     if st == 201:
         st, resp = api.patch("attendance_log", lg3["name"], {"in_photo": own_out})
+        check("an earlier log's clock-out photo as the clock-in photo is refused (not this log's attachment)", refused(st, resp, "bukan milik catatan ini"), (st, resp))
+        st, resp = api.patch("attendance_log", lg3["name"], {"in_photo": photo(api, lg3["name"])})
         check("the stored early clock-in (UTC, the day before) still passes on the next save", st == 200, (st, resp))
-        st2, resp2 = api.verb("attendance_log", lg3["name"], "submit") if st == 200 else (st, resp)
-        check("an earlier log's clock-out photo as the clock-in photo is refused", refused(st2, resp2, "foto"), (st2, resp2))
 
 
-SCENARIOS = [scenario_attendance_clock, scenario_attendance_supervisor, scenario_attendance_close, scenario_attendance_close_edges]
+def scenario_attendance_screen(api):
+    """The clock work screen (screens/absen.rk, contract 0030 §2 clock) as the web app drives it: the worker lands on it,
+    its record set fills their worker, the site is today's assignment with a geo point; clock-in creates the log with the
+    position, attaches the photo, then sets the photo and the time together; clock-out sets the out side and submits.
+    The supervisor and the project admin are not offered it."""
+    w1, sv1, pa = CTX.get("att_w1"), CTX.get("att_sv1"), CTX.get("pa")
+    if not (w1 and sv1):
+        fail("attendance screen: members", "no members")
+        return
+    W, A = CTX["att_workers"], CTX["att_asg"]
+    st, m = w1.call("GET", "/api/v1/meta")
+    work = (m or {}).get("work") or []
+    check("the field worker's home is the clock screen (meta.work: absen, home)", work[:1] == [{"screen": "absen", "home": True}], work)
+    sc = ((m or {}).get("screens") or {}).get("absen") or {}
+    check("absen is a clock over attendance_log, site = assignment", sc.get("type") == "clock" and (sc.get("clock") or {}).get("site", {}).get("model") == "assignment", sc)
+    st, r = w1.call("GET", "/api/v1/screens/absen")
+    check("the screen's record set fills the worker's own record (user.name)", st == 200 and ((r or {}).get("sets") or {}).get("record", {}).get("worker") == W["MP-101"], (st, r))
+    site = (sc.get("clock") or {}).get("site") or {}
+    rows = w1.list("assignment")
+    today_rows = [a for a in rows if a.get("start_date", "") <= str(CTX["att_today"]) <= a.get("end_date", "") and a.get("work_site")]
+    a1 = today_rows[0] if today_rows else {}
+    sp = a1.get(site.get("location", "")) or {}
+    check("the site slot reads the assignment's site name, point and radius", a1.get("site_name") and abs(float(sp.get("lat", 0)) - SITE_POINT[SITE][0]) < 1e-9
+          and a1.get(site.get("radius_m", "")) == 150, a1)
+    for who, cl in (("the site supervisor", sv1), ("the project admin", pa)):
+        st, r = cl.call("GET", "/api/v1/screens/absen")
+        check(f"{who} is not offered the clock screen (404)", st == 404, (st, r))
+    # Aldi (MP-103, warehouse LOK-002) clocks in through the screen: create without time, attach, then photo + time. His
+    # assignment is in a project of its own, so the field project's close (next scenario) counts the same days as before.
+    t = CTX["att_today"]
+    st, prj = pa.create("project", {"project_name": "Gudang layar absen", "customer": "CUST-0001", "state": "running", "billing_model": "time_material"})
+    st, a3 = pa.create("assignment", {"project": prj.get("name", "x"), "worker": W["MP-103"], "work_site": SITE2,
+                                      "start_date": str(t), "end_date": str(t + datetime.timedelta(days=30))}) if st == 201 else (st, prj)
+    if not check("project admin assigns Aldi to the warehouse in a project of its own", st == 201, (st, a3)):
+        return
+    k, pw = CTX.get("kernel"), secrets.token_urlsafe(18)
+    code, out = k.user_add("aldi@contohtenaga.test", "field_worker", CTX["org"], "Aldi Contoh", record=W["MP-103"], password=pw)
+    w3 = Api.login(k.base, "aldi@contohtenaga.test", pw) if code == 0 else None
+    if not check("add and sign in field worker aldi@contohtenaga.test", w3 is not None, out):
+        return
+    st, r = w3.call("GET", "/api/v1/screens/absen")
+    body = dict(((r or {}).get("sets") or {}).get("record") or {})
+    body.update({"assignment": a3["name"], "in_pos": pos(SITE2, 15, 10)})
+    # First press: the log is made but the second write fails (the phone's clock is a day off) -> a draft without time.
+    st, orphan = w3.create("attendance_log", body)
+    bad = f"{t - datetime.timedelta(days=2)}T08:00:00+07:00"
+    st2, resp = w3.patch("attendance_log", orphan.get("name", "x"), {"clock_in": bad}) if st == 201 else (st, orphan)
+    check("a clock-in time off by days is refused, leaving a draft without time", st == 201 and refused(st2, resp, "tanggal absen"), (st, st2, resp))
+    st, lg = w3.create("attendance_log", body)
+    check("that draft does not hold the day: pressing Absen masuk again makes a new log (audit F2)", st == 201, (st, lg))
+    if not check("the screen's clock-in creates the log with the position and no time yet", st == 201 and lg.get("in_inside") is True and not lg.get("clock_in"), (st, lg)):
+        return
+    name = lg["name"]
+    now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    st, resp = w3.patch("attendance_log", name, {"in_photo": photo(w3, name), "clock_in": now})
+    check("then the photo and the clock-in time are set together", st == 200 and rec(resp).get("clock_in"), (st, resp))
+    st, resp = w3.patch("attendance_log", orphan.get("name", "x"), {"clock_in": now})
+    check("the old draft cannot take a time now that the day has a log with one", refused(st, resp, "sudah punya absen"), (st, resp))
+    st, resp = w3.verb("attendance_log", name, "submit")
+    check("the open log cannot be submitted before the clock-out", refused(st, resp, "jam keluar"), (st, resp))
+    out_now = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=5)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    st, resp = w3.patch("attendance_log", name, {"clock_out": out_now, "out_pos": pos(SITE2, 600, 0), "out_photo": (w3.get("attendance_log", name) or {}).get("in_photo")})
+    check("the clock-in photo cannot be the clock-out photo (audit F4)", refused(st, resp, "Foto keluar"), (st, resp))
+    st, resp = w3.patch("attendance_log", name, {"clock_out": out_now, "out_pos": pos(SITE2, 600, 0), "out_photo": photo(w3, name)})
+    check("a clock-out 600 m away needs no reason (the screen asks only at clock-in) but marks the log outside",
+          st == 200 and rec(resp).get("out_inside") is False and rec(resp).get("outside_site") is True, (st, resp))
+    st, resp = w3.verb("attendance_log", name, "submit")
+    pend = [a for a in (resp or {}).get("approvals", []) if a.get("state") == "pending"] if isinstance(resp, dict) else []
+    check("so the screen's submit waits for the site supervisor (202, outside_site)", st == 202 and [a.get("policy") for a in pend] == ["outside_site"], (st, resp))
+    # Without a position: saved, outside, and the reason is required.
+    st, resp = w3.create("attendance_log", dict(body, in_pos=None))
+    check("a clock-in without a position needs a reason (counts as outside)", refused(st, resp, "alasan"), (st, resp))
+
+
+SCENARIOS = [scenario_attendance_clock, scenario_attendance_supervisor, scenario_attendance_screen, scenario_attendance_close, scenario_attendance_close_edges]

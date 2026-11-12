@@ -21,7 +21,17 @@ def before(api):
     assert st == 201, (st, ts)
     st, r = api.verb("timesheet", ts["name"], "submit")
     assert st == 200, (st, r)
-    return {"worker": w["name"], "project": prj["name"], "assignment": asg["name"], "timesheet": r["name"]}
+    # A worker at a site, clocked in before the upgrade (position as lat/lng numbers), not yet clocked out (audit F1).
+    st, w2 = api.create("worker", {"worker_name": "Lama Masih Kerja", "employee_no": "OLD-A2B", "day_rate": 250_000, "cost_day_rate": 180_000})
+    st, site = api.create("work_site", {"site_name": "Lokasi lama", "lat": -6.25, "lng": 106.9, "radius_m": 100})
+    assert st == 201, (st, site)
+    st, a2 = api.create("assignment", {"project": prj["name"], "worker": w2["name"], "work_site": site["name"], "start_date": str(t - datetime.timedelta(days=30)),
+                                       "end_date": str(t + datetime.timedelta(days=30))})
+    assert st == 201, (st, a2)
+    st, lg = api.create("attendance_log", {"worker": w2["name"], "assignment": a2["name"], "work_date": str(t), "clock_in": f"{t}T08:00:00+07:00",
+                                           "in_lat": -6.2501, "in_lng": 106.9001})
+    assert st == 201 and lg.get("in_inside") is True, (st, lg)
+    return {"worker": w["name"], "project": prj["name"], "assignment": asg["name"], "timesheet": r["name"], "open_log": lg["name"]}
 
 
 def after(api, s, d1):
@@ -35,7 +45,7 @@ def after(api, s, d1):
     d1.check("the old assignment gets the work site and its point", st == 200 and a.get("site_radius_m") == 100 and a.get("site_lat") == -6.2, (st, a))
     t = d1.kernel_today()
     st, lg = api.create("attendance_log", {"worker": s["worker"], "assignment": s["assignment"], "work_date": str(t), "clock_in": f"{t}T08:00:00+07:00",
-                                           "in_lat": -6.2, "in_lng": 106.8, "clock_out": f"{t}T17:00:00+07:00", "out_lat": -6.2, "out_lng": 106.8})
+                                           "in_pos": {"lat": -6.2, "lng": 106.8}, "clock_out": f"{t}T17:00:00+07:00", "out_pos": {"lat": -6.2, "lng": 106.8}})
     d1.check("a log at the site of the old assignment is inside", st == 201 and lg.get("outside_site") is False, (st, lg))
     import secrets
     st, att = api.upload(f"/api/v1/r/attendance_log/{d1.Api.q(lg.get('name', 'x'))}/attachments", {}, "selfie.jpg", b"\xff\xd8\xff\xe0" + secrets.token_bytes(32) + b"\xff\xd9")
@@ -47,3 +57,10 @@ def after(api, s, d1):
     d1.check("a close of today submits", st == 200, (st, r))
     rows = api.find("timesheet", "attendance_close == '%s'" % (r or {}).get("name", "x"))
     d1.eq("the close made one draft recap of 1 day for the old worker", [(x["worker"], x["days"], x["docstatus"]) for x in rows], [(s["worker"], 1, 0)])
+    # The draft clocked in before the upgrade is still measured from its old position and clocks out without a reason.
+    q = d1.Api.q(s["open_log"])
+    lg = api.get("attendance_log", s["open_log"])
+    d1.check("an open log from before the upgrade keeps its clock-in inside the radius (old lat/lng read back)",
+             lg.get("in_inside") is True and lg.get("outside_site") is False and 0 < (lg.get("in_site_m") or 0) < 100, lg)
+    st, r = api.call("PATCH", f"/api/v1/r/attendance_log/{q}", {"clock_out": f"{t}T17:00:00+07:00", "out_pos": {"lat": -6.25, "lng": 106.9}})
+    d1.check("and clocks out at the site without a reason, still inside", st == 200 and (r or {}).get("outside_site") is False, (st, r))

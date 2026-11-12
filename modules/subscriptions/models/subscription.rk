@@ -40,6 +40,8 @@ fields:
     label: {id: ID layanan}
     help: {id: 'Nomor pelanggan, user PPPoE, domain, atau nomor lisensi'}
   - {name: area, type: link, to: service_area, label: {id: Area}, in_list: true}
+  # Where the service is (the house, the shop): the collector's route sorts and measures by it (screens/rute_tagih.rk).
+  - {name: location, type: geo, label: {id: Titik lokasi pelanggan}}
   - {name: collector, type: link, to: user, label: {id: Penagih}, compute: area.collector}
   - name: cycle
     type: select
@@ -215,7 +217,7 @@ views:
     layout:
       - section: {id: Pelanggan}
         columns:
-          - [customer, customer_name, phone, address]
+          - [customer, customer_name, phone, address, location]
           - [service_id, area, collector, status]
       - section: {id: Paket dan siklus}
         columns:

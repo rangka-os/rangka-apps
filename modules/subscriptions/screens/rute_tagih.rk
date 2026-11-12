@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+name: rute_tagih
+type: route
+label: {id: Rute tagih, en: Collection route}
+icon: map
+# The collector's day (plans/layar-kerja.md §3 #3, contract 0030 §2 route): subscribers of their area (row scope)
+# who still owe more than what is already deposited and waiting, with the distance from the phone; check in at the
+# place (collection_visit with position and photo), then record the cash taken (catat_tagih, prefilled with the
+# subscription). Money moves only through field_collection and the deposit, as before; the screen writes nothing else.
+# A stop stays on the list until its cash is deposited (unpaid_amount and deposit_waiting change at the deposit).
+roles: [collector]
+device: phone
+needs: [location, photo]
+route:
+  stops:
+    model: subscription
+    filter: "unpaid_amount > deposit_waiting"
+    sort: area
+    title: customer_name
+    subtitle: unpaid_amount
+    address: address
+    location: location
+  visit: {model: collection_visit, link: subscription, set: {collector: user.name}, location: pos, photo: photo}
+  actions:
+    - {label: {id: Catat uang tertagih, en: Record cash}, screen: catat_tagih}
