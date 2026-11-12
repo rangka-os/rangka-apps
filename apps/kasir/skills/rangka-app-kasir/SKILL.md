@@ -1,6 +1,6 @@
 ---
 name: rangka-app-kasir
-description: "Rangka Kasir (app kasir): the browser cashier for shops and F&B outlets, with shifts per outlet, numbered receipts, cash and QRIS, stock and recipes taken out automatically. Use when an owner asks for a cashier or POS (\"mau pakai kasir\", \"tambahin POS\", \"jualan langsung di outlet\"), to explain what it shares with apps they already run, and for what to set up after it is added."
+description: "Rangka Kasir (app kasir): the browser cashier for shops and F&B outlets, with shifts per outlet, numbered receipts, cash and QRIS, stock and recipes taken out automatically. Use when an owner asks for a cashier or POS (\"mau pakai kasir\", \"tambahin POS\", \"jualan langsung di outlet\"), to explain what it shares with apps they already run, for what to set up after it is added, and in the studio interview to decide whether a counter business gets the cashier on its map."
 metadata: {rangka: {version: 1.0.0, app: kasir, requires: [rangka-compose, rangka-changesets]}}
 ---
 
@@ -29,6 +29,22 @@ specific to the cashier.
   Kasir does not show a dynamic QR or confirm the payment itself.
 - **Not GoFood, GrabFood or ShopeeFood.** Orders from those apps are not rung up here; see `rangka-compose`, "When
   nothing fits".
+
+## In the studio interview: when the cashier goes on the map
+
+For Raka's consultant interview (`rangka-consult`, contract 0042). The deciding fact is the tools the owner uses
+today and whether Juragan replaces them:
+
+- A business that serves buyers at a counter (kedai, kafe, restoran, toko) and has **no cashier app yet**, or chose
+  **ganti penuh**, gets a piece `{kind: catalogue, ref: kasir}` at the payment stage. Tell the owner the cashier
+  screen runs on a tablet or a phone:
+
+  > Untuk meja kasir aku pasang Kasir. Layarnya jalan di tablet atau HP, jadi tidak perlu mesin kasir khusus.
+
+- If the owner keeps their current cashier (**pendamping**, for example Moka or another POS), do not place kasir. Their
+  sales come in through the imports from the cashier they already use (check which imports exist with
+  `rangka_catalogue` / `rangka_meta` before naming one).
+- If you do not know yet, ask what they use at the counter today before placing anything.
 
 ## Explaining it to an owner who already runs an app
 
