@@ -16,6 +16,16 @@ orgs:
       tax: {pkp: true}
       numbering:
         invoice: {pattern: "INV/{ORG}/{YY}/{####}", reset: yearly}
+  # A second PT that charges PPN on its fee only (tax.ppn_fee_only, PMK 83/2012): the workers' wages billed on their
+  # own line stay out of the PPN base. The setting is off by default; this org shows it switched on.
+  tenaga_fee:
+    name: PT Contoh Tenaga Fee
+    code: CTF
+    config:
+      org: {legal_name: PT Contoh Tenaga Fee}
+      tax: {pkp: true, ppn_fee_only: true}
+      numbering:
+        invoice: {pattern: "INV/{ORG}/{YY}/{####}", reset: yearly}
 apps: [jasa_proyek]
 plan: tumbuh
 sso: {domains: [contohtenaga.test], required: false}

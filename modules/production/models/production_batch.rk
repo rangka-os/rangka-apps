@@ -36,6 +36,9 @@ fields:
   - {name: reject_qty, type: float, label: {id: Qty reject}}
   - {name: labour, type: table, of: production_labour, label: {id: Upah borongan}}
   - {name: good_qty, type: float, label: {id: Hasil baik (produk utama)}, compute: "outputs.map(o, o.item == item ? o.qty : 0).sum()", in_list: true}
+  # the unit good_qty is counted in (the product's stock unit), so a list of batches of different products never reads
+  # 100 pak and 30 kg as the same kind of number (gladi G10)
+  - {name: uom, type: link, to: uom, label: {id: Satuan}, compute: item.stock_uom, in_list: true}
   - {name: yield_percent, type: float, label: {id: Rendemen aktual (%)}, compute: "planned_qty > 0 ? round(good_qty * 10000 / planned_qty) / 100 : 0"}
   - {name: share_total, type: float, label: {id: Total porsi biaya (%)}, compute: "outputs.map(o, o.cost_share).sum()"}
   - {name: main_share, type: float, label: {id: Porsi biaya produk utama (%)}, compute: "outputs.map(o, o.item == item ? o.cost_share : 0).sum()"}

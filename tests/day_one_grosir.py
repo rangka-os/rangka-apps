@@ -15,7 +15,7 @@ H = {}
 
 def bind(m):
     """Take the helpers of tests/day_one.py (ok, fail, gap, check, eq, CTX, Api, denied, ...)."""
-    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "denied", "approvals_of", "dashboard", "secrets", "messages", "qris_payload", "check_print"):
+    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "denied", "approvals_of", "dashboard", "secrets", "messages", "qris_payload", "check_print", "installed"):
         H[k] = getattr(m, k)
     globals().update(H)
 
@@ -593,6 +593,65 @@ def scenario_grosir_invoice_prints(api):
         check("the test rekening is no longer the default -> 200", st == 200, (st, resp))
 
 
+# Element order of the DJP sample "Sample Faktur PK Template v.1.4.xml" (pajak.go.id Coretax templates).
+CORETAX_LINE = ["Opt", "Code", "Name", "Unit", "Price", "Qty", "TotalDiscount", "TaxBase", "OtherTaxBase", "VATRate", "VAT", "STLGRate", "STLG"]
+
+
+def scenario_grosir_coretax(api):
+    """A PKP distributor reports its sales of the month to Coretax: every submitted invoice with PPN, goods (Opt A),
+    the units' Coretax codes, the shops' NIK as buyer document; and the books carry the same PPN keluaran (21200) and
+    PPN masukan (11500) as the invoices and the PKP suppliers' bills."""
+    import xml.etree.ElementTree as ET
+    from collections import defaultdict
+    from decimal import Decimal
+    invs = [i for i in api.find("sales_invoice", "docstatus == 1 && ppn > 0") if i.get("kind") != "retention"]
+    if not check("grosir PKP: the scenarios submitted invoices with PPN", invs, invs):
+        return
+    by_month = defaultdict(list)
+    for i in invs:
+        by_month[i["posting_date"][:7]].append(i)
+    seller = "9" + "0" * 13 + "55"   # a made-up NPWP
+    uoms = {u["name"]: u.get("coretax_unit") for u in api.list("uom", limit=200)}
+    for month, rows in sorted(by_month.items()):
+        y, m = month.split("-")
+        st, tp = api.create("tax_period", {"year": y, "month": m, "seller_tin": seller, "seller_nitku": seller + "000000"})
+        if not check(f"grosir PKP: tax period {month}", st == 201, (st, tp)):
+            continue
+        st, body, ct = api.html(f"/api/v1/r/tax_period/{Api.q(tp['name'])}/print?format=coretax_faktur")
+        if not check(f"grosir PKP: faktur XML of {month} downloads (no invoice refused)", st == 200, (st, body[:600])):
+            continue
+        root = ET.fromstring(body.encode())
+        got = {t.findtext("RefDesc").split(";")[0]: t for t in root.findall("ListOfTaxInvoice/TaxInvoice")}
+        eq(f"grosir PKP {month}: every invoice with PPN is in the file", sorted(got), sorted(i["name"] for i in rows))
+        for i in rows:
+            t, doc = got.get(i["name"]), api.get("sales_invoice", i["name"])
+            if t is None:
+                continue
+            lines = t.findall("ListOfGoodService/GoodService")
+            check(f"{i['name']}: code 04, buyer by NIK (National ID, 16 zeros as TIN)",
+                  (t.findtext("TrxCode"), t.findtext("BuyerDocument"), t.findtext("BuyerTin"), t.findtext("BuyerDocumentNumber")) ==
+                  ("04", "National ID", "0" * 16, doc.get("buyer_doc_no")) and len(doc.get("buyer_doc_no") or "") == 16, (t.findtext("TrxCode"), t.findtext("BuyerDocument")))
+            check(f"{i['name']}: lines in the DJP order, goods (Opt A), the unit's Coretax code",
+                  all([c.tag for c in g] == CORETAX_LINE and g.findtext("Opt") == "A" for g in lines)
+                  and [g.findtext("Unit") for g in lines] == [uoms.get(x.get("uom")) or "UM.0033" for x in doc["items"]], [(g.findtext("Opt"), g.findtext("Unit")) for g in lines])
+            eq(f"{i['name']}: the lines add up to the invoice DPP", sum(Decimal(g.findtext("TaxBase")) for g in lines), Decimal(doc["dpp"]))
+            check(f"{i['name']}: faktur PPN within Rp1 of the booked PPN", abs(sum(Decimal(g.findtext("VAT")) for g in lines) - Decimal(doc["ppn"])) <= 1,
+                  (sum(Decimal(g.findtext("VAT")) for g in lines), doc["ppn"]))
+    if not installed(api, "gl_entry"):
+        return
+    def gl(account, voucher_type):
+        total, offset = 0, 0
+        while True:
+            page = api.list("gl_entry", filter=f"account == '{account}' && voucher_type == '{voucher_type}'", limit=500, offset=offset)
+            total += sum(r["amount"] for r in page)
+            if len(page) < 500:
+                return total
+            offset += 500
+    eq("books: PPN keluaran (21200) = the PPN of the submitted invoices", -gl("21200", "sales_invoice"), sum(i["ppn"] for i in invs))
+    bills = api.find("vendor_bill", "docstatus == 1")
+    eq("books: PPN masukan (11500) = the PPN of the submitted bills of PKP suppliers", gl("11500", "vendor_bill"), sum(b.get("ppn") or 0 for b in bills))
+
+
 SCENARIOS = [scenario_grosir_fixtures, scenario_grosir_tier_price, scenario_grosir_salesman_scope, scenario_grosir_credit_hold,
              scenario_grosir_giro, scenario_grosir_ar_by_salesman, scenario_grosir_delivery, scenario_grosir_credit_at_delivery, scenario_grosir_credit_race, scenario_grosir_return,
-             scenario_grosir_invoice_prints, scenario_dashboards_grosir]
+             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_coretax]
