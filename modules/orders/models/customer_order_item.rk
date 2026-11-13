@@ -47,3 +47,13 @@ fields:
     type: currency
     label: {id: Jumlah}
     compute: round(qty * rate)
+  # The workers' wages line, carried from the quotation and on to the invoice by the kernel conversions: outside the
+  # PPh 23 base and, with config tax.ppn_fee_only, outside the PPN base (PMK 83/2012).
+  - name: pph23_exclude
+    type: check
+    label: {id: Bukan dasar PPh 23}
+    default: 'false'
+  - name: ppn_exclude
+    type: check
+    label: {id: Upah tenaga kerja (di luar dasar PPN)}
+    default: 'false'

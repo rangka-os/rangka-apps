@@ -120,8 +120,19 @@
   <tr><td>Subtotal</td><td class="num">{{rupiah .Doc.subtotal}}</td></tr>
   {{if .Doc.discount_amount}}<tr><td>Diskon</td><td class="num">-{{rupiah .Doc.discount_amount}}</td></tr>{{end}}
   {{if .Doc.down_payment}}<tr><td>Uang muka</td><td class="num">-{{rupiah .Doc.down_payment}}</td></tr>{{end}}
-  {{if taxrate .Doc .Tax}}<tr class="small"><td>DPP</td><td class="num">{{rupiah .Doc.dpp}}</td></tr>{{end}}
-  {{if taxrate .Doc .Tax}}<tr class="small"><td>PPN {{number (taxrate .Doc .Tax)}}% (DPP nilai lain {{.Doc.dpp_num}}/{{.Doc.dpp_den}})</td><td class="num">{{rupiah .Doc.ppn}}</td></tr>{{end}}
+  {{if taxrate .Doc .Tax}}<tr class="small"><td>DPP</td><td class="num">{{rupiah .Doc.dpp}}</td></tr>
+  {{- /* As on the faktur pajak (Coretax, PMK 131/2024): the base, then DPP nilai lain, then PPN = rate x DPP nilai lain.
+    An invoice of an org with PPN on the fee only (tax.ppn_fee_only, PMK 83/2012) shows the wages left out first; an
+    invoice from before ppn_base existed was taxed on its whole DPP. */}}
+  {{- $pb := .Doc.dpp}}{{if .Doc.ppn_base}}{{$pb = .Doc.ppn_base}}{{end}}
+  {{- if ne (dec $pb) (dec .Doc.dpp)}}
+  <tr class="small"><td>Upah tenaga kerja di luar dasar PPN (PMK 83/2012)</td><td class="num">-{{rupiah (sub .Doc.dpp $pb)}}</td></tr>
+  <tr class="small"><td>Dasar PPN</td><td class="num">{{rupiah $pb}}</td></tr>
+  {{- end}}
+  {{- if ne .Doc.dpp_num .Doc.dpp_den}}
+  <tr class="small"><td>DPP nilai lain {{.Doc.dpp_num}}/{{.Doc.dpp_den}}</td><td class="num">{{rupiah (round (div (mul $pb .Doc.dpp_num) .Doc.dpp_den))}}</td></tr>
+  {{- end}}
+  <tr class="small"><td>PPN {{number (taxrate .Doc .Tax)}}%</td><td class="num">{{rupiah .Doc.ppn}}</td></tr>{{end}}
   <tr class="grand"><td>Total</td><td class="num">{{rupiah .Doc.grand_total}}</td></tr>
   {{if .Doc.retention_amount}}<tr class="small"><td>Retensi {{number .Doc.retention_percent}}% ditahan</td><td class="num">-{{rupiah .Doc.retention_amount}}</td></tr>{{end}}
   {{if .Doc.pph23_amount}}<tr class="small"><td>PPh 23 dipotong pelanggan{{if .Doc.pph23_dpp}} (dasar {{rupiah .Doc.pph23_dpp}}){{end}}</td><td class="num">-{{rupiah .Doc.pph23_amount}}</td></tr>{{end}}
