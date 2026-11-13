@@ -7,8 +7,12 @@
 #    another open invoice of the same amount and paid it twice).
 # 2. An open invoice whose number is in the transfer note (written loosely, see below).
 # 3. Exactly one open invoice whose remaining amount equals the line, only when the note is not a clearing or a
-#    settlement (KLIRING, SETORAN, SETTLEMENT, QRIS, DOKU, XENDIT, MIDTRANS) and no booked payment of that amount is
-#    still waiting for its statement line.
+#    settlement (KLIRING, SETORAN, SETTLEMENT, QRIS, DOKU, XENDIT, MIDTRANS), no booked payment of that amount is
+#    still waiting for its statement line, and the business has no money that reaches the bank without a payment
+#    (modules outlet_sales, pos, rental: a shop's QRIS or card takings, a cashier shift, a rental deposit). There the
+#    bank settles takings in sums of its own (per channel, per shift, several days or outlets at once, before or after
+#    the takings are entered), so no amount can be told apart from a customer's transfer (audit rel-uang-e2e r3 H4,
+#    r4 H6, M2): the invoice is suggested only when its number is in the note, else the owner picks.
 # 4. Else exactly one booked payment of that amount waiting for its line -> that payment.
 # Anything else: no suggestion (the owner picks). outstanding is already net of PPh 23, so a customer who withheld tax
 # still matches.
@@ -51,6 +55,7 @@ steps:
   - update: line
     if: >-
       size(booked_ref) != 1 && size(by_number) != 1 && size(by_amount) == 1 && size(booked) == 0 &&
+      !app_installed('outlet_sales') && !app_installed('pos') && !app_installed('rental') &&
       ['KLIRING', 'SETORAN', 'SETTLEMENT', 'QRIS', 'DOKU', 'XENDIT', 'MIDTRANS'].map(w, event.description.upperAscii().contains(w) ? 1 : 0).sum() == 0
     set: {suggested_invoice: "by_amount[0].name", status: "'suggested'"}
   - update: line

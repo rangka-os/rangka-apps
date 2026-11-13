@@ -1389,11 +1389,10 @@ def statement_csv(rows, seq=True):
 
 
 def scenario_bank_takings(api):
-    """Audit rel-uang-e2e H3/H4/H5: a shop's takings by QRIS or card are on the bank (1-1200) from the day they are
-    submitted, one journal amount for every non-cash channel. A statement line of the same amount as an open invoice,
-    in the days after such takings, is not suggested to that invoice by the amount alone (it may be the settlement):
-    it stays Belum cocok for the owner. A transfer naming the invoice is still suggested to it."""
-    if not (installed(api, "bank_transaction") and installed(api, "outlet_takings") and installed(api, "gl_entry")):
+    """Audit rel-uang-e2e H3/H4/H6/M2: a shop's takings by QRIS or card reach the bank in sums of the bank's own (per
+    channel, per shift, days or outlets together, before or after the takings are entered). In a business with takings
+    a statement line is never suggested to an invoice by its amount alone; a transfer naming the invoice is."""
+    if not (installed(api, "bank_transaction") and installed(api, "outlet_takings")):
         return
     outlet = api.list("outlet")[0]["name"]
     st, c = api.create("customer", {"customer_name": "Kantor Contoh Setoran"})
@@ -1409,28 +1408,23 @@ def scenario_bank_takings(api):
         st, cm = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
         return api.get("bank_transaction", (cm.get("records") or [""])[0])
 
-    def bank():
-        return sum(r["amount"] for r in api.find("gl_entry", "account == '11200'"))
-    X = invoice(1_234_000)
+    X = invoice(1_357_000)
     a = X["grand_total"]
-    # takings of the 12th: QRIS a (settled on its own) and debit 600.000, one 1-1200 amount in the books
-    st, t = api.create("outlet_takings", {"outlet": outlet, "date": "2026-11-12", "lines": [
-        {"method": "qris", "expected": a, "received": a, "fee": 0, "bank_ref": "STL-9981"},
-        {"method": "debit", "expected": 600_000, "received": 600_000, "fee": 0, "bank_ref": "EDC-12"}]})
-    st, t = api.verb("outlet_takings", t.get("name", ""), "submit")
-    check("QRIS and debit takings submitted", st == 200, (st, t))
-    bank0, pays0 = bank(), len(api.find("payment", "docstatus != 2"))
-    l1 = line("13/11/2026", "KR OTOMATIS MCP 0012", a, 90_000_000)
-    check("the QRIS settlement of the takings (same amount as the open invoice): no suggestion, Belum cocok",
-          l1.get("status") == "unmatched" and not l1.get("suggested_invoice") and not l1.get("booked_payment"), l1)
-    st, r = api.patch("bank_transaction", l1["name"], {"status": "ignored"})
-    eq("the owner sets it aside as money already on the books (Abaikan)", (st, api.get("bank_transaction", l1["name"])["status"]), (200, "ignored"))
-    eq("the invoice still owes everything; bank and payments unchanged", (api.get("sales_invoice", X["name"])["outstanding"], bank(), len(api.find("payment", "docstatus != 2"))), (a, bank0, pays0))
-    l2 = line("14/11/2026", "TRSF CR " + X["name"] + " KANTOR CONTOH", a, 91_234_000)
-    eq("a transfer naming the invoice is suggested to it, takings or not", (l2.get("status"), l2.get("suggested_invoice")), ("suggested", X["name"]))
-    l3 = line("30/11/2026", "TRSF CR KANTOR CONTOH", a, 92_468_000)
-    st, r = api.patch("bank_transaction", l2["name"], {"status": "ignored"})
-    eq("weeks after the takings, the amount alone suggests the invoice again", (l3.get("status"), l3.get("suggested_invoice")), ("suggested", X["name"]))
+    pays0 = len(api.find("payment", "docstatus != 2"))
+    # the statement comes in before the takings are entered (audit r4 M2)
+    l0 = line("13/11/2026", "KR OTOMATIS MCP 0011", a, 89_000_000)
+    for amt, ref in ((600_000, "STL-1"), (a - 600_000, "STL-2")):
+        st, t = api.create("outlet_takings", {"outlet": outlet, "date": "2026-11-12", "lines": [{"method": "qris", "expected": amt, "received": amt, "fee": 0, "bank_ref": ref}]})
+        st, t = api.verb("outlet_takings", t.get("name", ""), "submit")
+    # two takings settled together (audit r4 H6)
+    l1 = line("14/11/2026", "KR OTOMATIS MCP 0012", a, 90_357_000)
+    check("statement lines of the open invoice's amount, before and after the takings: no suggestion by amount, Belum cocok",
+          all(l.get("status") == "unmatched" and not l.get("suggested_invoice") for l in (l0, l1)), (l0, l1))
+    eq("nothing paid: the invoice owes everything, no new payment", (api.get("sales_invoice", X["name"])["outstanding"], len(api.find("payment", "docstatus != 2"))), (a, pays0))
+    l2 = line("15/11/2026", "TRSF CR " + X["name"] + " KANTOR CONTOH", a, 91_714_000)
+    eq("a transfer naming the invoice is suggested to it", (l2.get("status"), l2.get("suggested_invoice")), ("suggested", X["name"]))
+    st, r = api.patch("bank_transaction", l1["name"], {"suggested_invoice": X["name"], "status": "confirmed"})
+    check("the owner can still pick the invoice for a line by hand", st == 200 and bool(api.get("bank_transaction", l1["name"]).get("draft_payment")), (st, r))
 
 
 def scenario_bank_booked(api):
