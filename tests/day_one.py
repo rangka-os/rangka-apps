@@ -1793,8 +1793,8 @@ def scenario_payment_instruction(api):
                         statement_csv([("21/11/2026", note8, 5_000_002, 0, 70_000_000)]))
     st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
     l8 = (api.find("bank_transaction", "date == '2026-11-21' && amount == 5000002") or [{}])[0]
-    eq("a number in the note whose invoice owes less than the line: the invoice of that exact amount instead",
-       (l8.get("status"), l8.get("suggested_invoice")), ("suggested", inv9))
+    eq("a number in the note whose invoice owes less than the line: no suggestion (never by the amount alone)",
+       (l8.get("status"), l8.get("suggested_invoice") or ""), ("unmatched", ""))
     st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-sebagian.csv",
                         statement_csv([("22/11/2026", "CICIL " + inv8, 1_000_000, 0, 71_000_000)]))
     st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
@@ -1925,8 +1925,8 @@ def scenario_money_rail(api):
     eq("money out is negative", lf["amount"], -15_000)
     check("line with the invoice number in the note: suggested that invoice",
           la["status"] == "suggested" and la["suggested_invoice"] == inv_a, la)
-    check("line with a unique amount: suggested the invoice of that amount",
-          lb["status"] == "suggested" and lb["suggested_invoice"] == inv_b, lb)
+    check("line with a unique amount and no invoice number: no suggestion, the owner picks (never by the amount alone)",
+          lb["status"] == "unmatched" and not lb["suggested_invoice"], lb)
     check("line whose amount fits two invoices: no suggestion", ld["status"] == "unmatched" and not ld["suggested_invoice"], ld)
     eq("money out: no suggestion", lf["status"], "unmatched")
 
