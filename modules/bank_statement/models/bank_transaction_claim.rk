@@ -43,7 +43,7 @@ rules:
   - name: own_payment_only
     on: save
     check: valid
-    message: {id: 'Mutasi bank hanya bisa dibayar oleh draf dari mutasi itu (atau amend-nya) sebesar nilai mutasi, dan tidak bisa diubah'}
+    message: {id: 'Mutasi ini hanya dibayar oleh drafnya sendiri sebesar nilainya. Kalau pembayaran pelanggan ini sudah tercatat, pilih Sudah tercatat.'}
 views:
   list:
     columns: [bank_transaction, payment, released_line]

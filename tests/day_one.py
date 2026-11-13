@@ -1537,6 +1537,40 @@ def scenario_bank_booked(api):
     lk2 = api.get("bank_transaction", lk2["name"])
     check("the owner confirms an invoice for a line while another customer's payment of that amount waits: drafted", st == 200 and bool(lk2.get("draft_payment")), (st, lk2))
 
+    # audit r8 H11. S1: line confirmed (draft made), finance books the instalment, then the line's draft is submitted:
+    # refused, the invoice owes the rest once. S3: the line confirmed again turns Sudah tercatat and its old draft is
+    # dead. S2: finance's own unsubmitted draft of that amount stops the line's draft at confirmation.
+    inv_s = submitted(5_550_000)
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-s1.csv", statement_csv([("27/11/2026", "TRSF CR CICIL " + inv_s, 2_000_000, 0, 94_000_000)]))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    ls = api.get("bank_transaction", (c.get("records") or [""])[0])
+    api.patch("bank_transaction", ls["name"], {"status": "confirmed"})
+    old_draft = api.get("bank_transaction", ls["name"]).get("draft_payment")
+    st, pf = api.create("payment", {"direction": "receive", "customer": customer, "method": "transfer", "amount": 2_000_000,
+                                    "allocations": [{"sales_invoice": inv_s, "amount": 2_000_000}]})
+    st, rf = api.verb("payment", pf["name"], "submit")
+    fin = rf.get("name", pf["name"])
+    st, r = api.verb("payment", old_draft or "x", "submit")
+    check("S1: the line's draft submitted after finance booked that instalment: refused", bool(old_draft) and st in (409, 422), (old_draft, st, r))
+    eq("S1: the invoice owes 5.550.000 - 2.000.000 once", api.get("sales_invoice", inv_s)["outstanding"], 3_550_000)
+    api.patch("bank_transaction", ls["name"], {"status": "unmatched"})
+    st, r = api.patch("bank_transaction", ls["name"], {"suggested_invoice": inv_s, "status": "confirmed"})
+    ls = api.get("bank_transaction", ls["name"])
+    eq("S3: confirmed again, the line is a Sudah tercatat suggestion against finance's payment, no draft kept",
+       (ls["status"], ls.get("booked_payment"), ls.get("draft_payment") or ""), ("suggested", fin, ""))
+    st, r = api.verb("payment", old_draft or "x", "submit")
+    check("S3: the old draft can no longer be submitted", st in (409, 422), (st, r))
+    inv_t = submitted(3_400_000)
+    st, pd = api.create("payment", {"direction": "receive", "customer": customer, "method": "transfer", "amount": 1_700_000,
+                                    "allocations": [{"sales_invoice": inv_t, "amount": 1_700_000}]})
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-s2.csv", statement_csv([("28/11/2026", "TRSF CR " + inv_t, 1_700_000, 0, 95_700_000)]))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    lt = api.get("bank_transaction", (c.get("records") or [""])[0])
+    api.patch("bank_transaction", lt["name"], {"suggested_invoice": inv_t, "status": "confirmed"})
+    lt = api.get("bank_transaction", lt["name"])
+    check("S2: finance's unsubmitted draft of that amount: confirming drafts nothing, the line is Belum cocok",
+          lt["status"] == "unmatched" and not lt.get("draft_payment"), lt)
+
 
 def scenario_xendit_callbacks(api):
     """Rel uang U13/U17 (ready, not active): synthetic Xendit callbacks, as the xendit connector's triggers emit them,

@@ -20,17 +20,19 @@ steps:
   # suggestion was made, which no statement line holds yet, may be this very money. Then nothing is drafted: a non-cash
   # one becomes the line's Sudah tercatat suggestion, a cash one leaves the line Belum cocok for the owner.
   - {find_all: bank_transaction, where: "booked_payment != ''", as: held}
+  # (a draft finance made for it and has not submitted yet counts too: audit r8 H11 S2)
   - find_all: payment
     where: >-
-      inv != null && docstatus == 1 && direction == 'receive' && method != 'sales_return' && amount == event.amount &&
+      inv != null && docstatus != 2 && direction == 'receive' && method != 'sales_return' && amount == event.amount &&
       customer == inv.customer && bank_transaction == '' && !(name in held.map(l, l.booked_payment))
     as: same
   - update: line
     if: "inv != null && size(same) > 0"
     set:
       suggested_invoice: "''"
-      booked_payment: "size(same) == 1 && same[0].method != 'cash' ? same[0].name : ''"
-      status: "size(same) == 1 && same[0].method != 'cash' ? 'suggested' : 'unmatched'"
+      booked_payment: "size(same) == 1 && same[0].docstatus == 1 && same[0].method != 'cash' ? same[0].name : ''"
+      draft_payment: "''"
+      status: "size(same) == 1 && same[0].docstatus == 1 && same[0].method != 'cash' ? 'suggested' : 'unmatched'"
   - update: draft
     if: inv != null && draft != null && size(same) == 0
     set:
