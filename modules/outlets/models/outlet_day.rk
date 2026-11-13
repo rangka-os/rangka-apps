@@ -3,7 +3,9 @@
 # pos and outlet_sales read and write this record, which lives in outlets: it stays installed with either source, so
 # the day keeps its source when one of the two apps is removed mid-day (audit rangka-apps#74 L1: removing
 # outlet_sales let the cashier record a day that already had a daily sales record). Written by flows only; source ''
-# means every document of that day was cancelled, the day is free again.
+# means every document of that day was cancelled, the day is free again. Every field is read_only: a person cannot
+# create, clear or duplicate a marker through the API (the kernel drops read_only input), flows still write them
+# (audit #77 F1/F2); create/write stay granted because a flow's step runs with its caller's permissions.
 name: outlet_day
 label: {id: Sumber penjualan harian outlet, en: Outlet day sales source}
 icon: calendar-check
@@ -14,14 +16,15 @@ permissions:
   - {role: outlet_staff, read: true, create: true, write: true}
   - {role: cashier, read: true, create: true, write: true}
 fields:
-  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true}
-  - {name: date, type: date, label: {id: Tanggal}, required: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, read_only: true}
+  - {name: date, type: date, label: {id: Tanggal}, required: true, read_only: true}
   - name: source
     type: select
     label: {id: Sumber}
+    read_only: true
     options:
       - {value: harian, label: {id: 'Penjualan harian (form, Moka, file) atau setoran'}}
       - {value: kasir, label: {id: Kasir}}
-  - {name: document, type: data, label: {id: Dokumen pertama}}
+  - {name: document, type: data, label: {id: Dokumen pertama}, read_only: true}
   # outlet|date, once per outlet and day (two sources at the same moment: the second write fails and rolls back)
-  - {name: day_key, type: data, label: {id: Kunci hari}, required: true, unique: true}
+  - {name: day_key, type: data, label: {id: Kunci hari}, required: true, unique: true, read_only: true}

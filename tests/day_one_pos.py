@@ -225,6 +225,14 @@ def scenario_pos_day_source_kept_after_removal(api):
         check("day source: Cimahi's daily form submitted", st == 200, (st, r))
         day = owner.find("outlet_day", f"outlet == '{CMH}' && date == '{today}'")
         eq("day source: the day is marked 'harian' with the form", [(x.get("source"), x.get("document")) for x in day], [("harian", rec(r).get("name") or rec(f)["name"])])
+        # nobody writes the marker by hand (audit #77 F1/F2): a new one is refused, a change is dropped
+        st, resp = owner.create("outlet_day", {"outlet": CMH, "date": today, "source": "", "day_key": "x"})
+        check("day source: a marker cannot be made through the API (read_only fields)", st in (400, 403, 422), (st, resp))
+        if day:
+            owner.patch("outlet_day", day[0]["name"], {"source": "", "day_key": "y"})
+            again = owner.find("outlet_day", f"outlet == '{CMH}' && date == '{today}'")
+            eq("day source: an edit through the API leaves the marker as it was", [(x.get("source"), x.get("day_key")) for x in again],
+               [("harian", day[0].get("day_key"))])
         owner.patch("outlet", CMH, {"sales_source": "kasir"})
         # the owner removes the daily sales app (penjualan_harian) the same day
         k.stop_serve()
