@@ -15,6 +15,8 @@ permissions:
   - {role: outlet_staff, read: true}
   - {role: sales_rep, read: true}
   - {role: field_sales, read: true}
+  # the cashier's catalogue groups by category: without read the tabs show codes (KTG-001), not names
+  - {role: cashier, read: true}
 fields:
   - name: category_name
     type: data
