@@ -133,7 +133,7 @@ def shift_of(api, name):
     return api.get("pos_shift", name) or {}
 
 
-KASIR_ONLY_FIXTURES = """# Synthetic: the smallest site of the kasir piece alone, one outlet and one service item.
+KASIR_ONLY_FIXTURES = """# Synthetic: the smallest site of the kasir piece alone, one outlet, one service and one stocked good.
 uom:
   - {name: UOM-001, uom_name: Pcs}
 outlet:
@@ -141,6 +141,7 @@ outlet:
   - {name: OUT-02, outlet_name: Laundry Contoh, code: LDR, city: Depok, sales_source: kasir, active: true}
 item:
   - {name: BRG-0001, item_name: Cuci kiloan, kind: service, stock_uom: UOM-001, rate: 8000}
+  - {name: BRG-0002, item_name: Deterjen sachet, kind: good, stock_uom: UOM-001, rate: 3000, standard_cost: 1800}
 """
 
 
@@ -179,6 +180,18 @@ def scenario_pos_kasir_only_site(api):
         got = shift_of(owner, s["name"])
         eq("kasir-only site: the shift counts the receipt (1 sale, net 24.000, cash 24.000)",
            (got.get("sales_count"), got.get("net_total"), got.get("cash_total")), (1, 24_000, 24_000))
+        # a stocked good (audit #74 I1): the opening count, then the sale takes it out of the outlet at standard cost
+        st, c = owner.create("stock_count", {"outlet": "OUT-02", "items": [{"item": "BRG-0002", "counted_qty": 10}]})
+        if check("kasir-only site: opening count of the good -> 201", st == 201, (st, c)):
+            st, r = owner.verb("stock_count", rec(c)["name"], "submit")
+            check("kasir-only site: opening count submitted", st == 200, (st, r))
+        eq("kasir-only site: the outlet holds 10 sachets", bal(owner, "OUT-02", "BRG-0002"), 10)
+        st, r = sale(owner, s["name"], [{"item": "BRG-0002", "qty": 2}], "", payments=[{"method": "cash", "amount": 10_000}])
+        check("kasir-only site: a receipt of a stocked good submits -> 200", st == 200, (st, r))
+        eq("kasir-only site: the sale takes 2 out of the outlet's stock", bal(owner, "OUT-02", "BRG-0002"), 8)
+        got = shift_of(owner, s["name"])
+        eq("kasir-only site: the shift counts both receipts and the good's cost (2 sales, net 30.000, cogs 3.600)",
+           (got.get("sales_count"), got.get("net_total"), got.get("cogs_total")), (2, 30_000, 3_600))
     finally:
         if k is not None:
             k.stop()
