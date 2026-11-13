@@ -88,7 +88,7 @@ widgets:
     filter: docstatus == 1
     sort: -production_date
     limit: 10
-    columns: [name, item, good_qty, hpp_per_unit, standard_unit_cost, expiry_date]
+    columns: [name, item, good_qty, uom, hpp_per_unit, standard_unit_cost]
     span: 12
   - name: open_work_orders
     type: list

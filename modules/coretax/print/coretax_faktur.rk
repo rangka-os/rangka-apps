@@ -11,7 +11,7 @@ related:
   invoices:
     model: sales_invoice
     range: {posting_date: [period_start, period_end]}
-    filter: docstatus == 1 && tax_rate > 0 && kind != 'retention'
+    filter: docstatus == 1 && tax_rate > 0 && ppn > 0 && kind != 'retention'
     sort: name
     children: true
     limit: 1000

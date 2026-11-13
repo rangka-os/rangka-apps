@@ -206,14 +206,15 @@ def scenario_payroll_month(api):
         return
     want_inv = oracle.invoice(ws, {"fee_mode": "percent", "fee_percent": 10})
     i = fm.get("sales_invoice", inv[0]["name"])
-    eq("invoice lines: wages (outside PPh 23), employer BPJS, 10% fee",
-       [(x["item"], x["rate"], bool(x.get("pph23_exclude"))) for x in i["items"]],
-       [(g.WAGES, tot["cash_gross"], True), (g.BPJS, tot["employer_bpjs"], False), (g.FEE, want_inv["fee"], False)])
+    eq("invoice lines: wages (outside PPh 23, marked as wages for PPN), employer BPJS, 10% fee",
+       [(x["item"], x["rate"], bool(x.get("pph23_exclude")), bool(x.get("ppn_exclude"))) for x in i["items"]],
+       [(g.WAGES, tot["cash_gross"], True, True), (g.BPJS, tot["employer_bpjs"], False, False), (g.FEE, want_inv["fee"], False, False)])
     st, resp = sm.patch("sales_invoice", i["name"], {"notes": "catatan lain"})
     check("the payroll invoice's notes (its link to the close) cannot be edited", st >= 400 and "penanda" in str(resp).lower(), (st, resp))
     st, resp = fm.verb("sales_invoice", i["name"], "submit")
     check("finance submits the client invoice", st == 200, (st, resp))
     i = (resp or {}).get("record", resp) if st == 200 else i
+    eq("fee-only PPN is off in this PT (default): the PPN base is the whole DPP", i.get("ppn_base"), i.get("dpp"))
     eq("invoice: subtotal, PPN 11/12 x 12% on the whole invoice, PPh 23 2% on BPJS + fee, net due",
        (i.get("dpp"), i.get("ppn"), i.get("pph23_dpp"), i.get("pph23_amount"), i.get("amount_due")),
        (want_inv["subtotal"], want_inv["ppn"], want_inv["pph23_base"], want_inv["pph23"], want_inv["amount_due"]))
@@ -595,4 +596,83 @@ def scenario_payroll_low_r2(api):
     check("the submitted slips never deduct more than the kasbon", sum(x["other_deduction"] for x in live) <= 300_000, live)
 
 
-SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale, scenario_payroll_status_change, scenario_payroll_low_r2]
+def scenario_ppn_fee_only(api):
+    """tax.ppn_fee_only (PMK 83/2012, kernel contract 0010 §8): in the PT that switched it on, an outsourcing invoice
+    charges PPN on BPJS + fee only, the wage line stays out of the PPN base, and its Coretax faktur leaves the wage line
+    off with the fee lines carrying the PPN base. The same invoice in the PT without the setting taxes everything."""
+    import xml.etree.ElementTree as ET
+    from decimal import Decimal, ROUND_HALF_UP
+    k = CTX.get("kernel")
+    fee = Api.login(k.base, k.owner_email, k.owner_pw, org="tenaga_fee") if k else None
+    if not check("owner signs in to the fee-only PT", fee is not None, "login refused"):
+        return
+    g = gen()
+    npwp_buyer = "9" + "0" * 13 + "77"
+    lines = [{"item": g.WAGES, "qty": 1, "rate": 100_000_000, "pph23_exclude": True, "ppn_exclude": True},
+             {"item": g.BPJS, "qty": 1, "rate": 5_000_000},
+             {"item": g.FEE, "qty": 1, "rate": 10_500_000}]
+    out = {}
+    for label, cl in (("fee-only PT", fee), ("default PT", api)):
+        st, cu = cl.create("customer", {"customer_name": "PT Klien Alih Daya Contoh", "address": "Jl. Contoh No. 7", "city": "Bekasi", "npwp": npwp_buyer})
+        if not check(f"{label}: customer with NPWP", st == 201, (st, cu)):
+            return
+        st, inv = cl.create("sales_invoice", {"customer": cu["name"], "posting_date": "2031-07-10", "due_date": "2031-07-10", "items": lines})
+        if not check(f"{label}: outsourcing invoice (wages + BPJS + fee)", st == 201, (st, inv)):
+            return
+        st, resp = cl.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        check(f"{label}: submit", st == 200, (st, resp))
+        out[label] = cl.get("sales_invoice", (resp or {}).get("name", inv["name"]))
+    f, d = out["fee-only PT"], out["default PT"]
+    eq("fee-only PT: DPP 115.500.000, PPN base 15.500.000 (BPJS + fee), PPN round(15.500.000 x 11/12 x 12%) = 1.705.000",
+       (f.get("dpp"), f.get("ppn_base"), f.get("ppn"), f.get("grand_total")), (115_500_000, 15_500_000, 1_705_000, 117_205_000))
+    eq("default PT: PPN on the whole DPP, round(115.500.000 x 11/12 x 12%) = 12.705.000",
+       (d.get("dpp"), d.get("ppn_base"), d.get("ppn")), (115_500_000, 115_500_000, 12_705_000))
+    eq("PPh 23 is unchanged by the PPN setting (2% of BPJS + fee)", (f.get("pph23_dpp"), d.get("pph23_dpp")), (15_500_000, 15_500_000))
+    # a quotation of the same lines totals what the invoice will (t_a15f1dba)
+    for label, cl, want in (("fee-only PT", fee, (15_500_000, 1_705_000, 117_205_000)), ("default PT", api, (115_500_000, 12_705_000, 128_205_000))):
+        cu = cl.find("customer", "customer_name == 'PT Klien Alih Daya Contoh'")[0]["name"]
+        st, q = cl.create("quotation", {"customer": cu, "subject": "Alih daya operator", "items": lines})
+        if check(f"{label}: quotation with the wage line marked", st == 201, (st, q)):
+            eq(f"{label}: quotation PPN base, PPN and total equal the invoice's", (q.get("ppn_base"), q.get("ppn"), q.get("grand_total")), want)
+    # Coretax: the fee-only faktur carries BPJS + fee only
+    seller = "9" + "0" * 13 + "99"   # a made-up NPWP
+    st, tp = fee.create("tax_period", {"year": "2031", "month": "07", "seller_tin": seller, "seller_nitku": seller + "000000"})
+    if not check("fee-only PT: tax period July 2031", st == 201, (st, tp)):
+        return
+    st, body, ct = fee.html(f"/api/v1/r/tax_period/{Api.q(tp['name'])}/print?format=coretax_faktur")
+    if not check("fee-only PT: faktur XML downloads", st == 200, (st, body[:300])):
+        return
+    ti = [t for t in ET.fromstring(body.encode()).findall("ListOfTaxInvoice/TaxInvoice") if t.findtext("RefDesc").startswith(f["name"])]
+    if not check("the fee-only invoice is in the file", len(ti) == 1, body[:500]):
+        return
+    t = ti[0]
+    gs = t.findall("ListOfGoodService/GoodService")
+    r2 = lambda v: Decimal(v).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    eq("the wage line is not on the faktur pajak; BPJS and fee are, with their own amounts as TaxBase",
+       [(g_.findtext("Price"), g_.findtext("TaxBase")) for g_ in gs], [("5000000", "5000000"), ("10500000", "10500000")])
+    vat = sum(Decimal(g_.findtext("VAT")) for g_ in gs)
+    check("faktur PPN = the invoice's PPN (within Rp1)", abs(vat - Decimal(f["ppn"])) <= 1, (vat, f["ppn"]))
+    for g_ in gs:
+        check("OtherTaxBase = TaxBase x 11/12, VAT = OtherTaxBase x 12%", r2(Decimal(g_.findtext("TaxBase")) * 11 / 12) == Decimal(g_.findtext("OtherTaxBase"))
+              and r2(Decimal(g_.findtext("OtherTaxBase")) * 12 / 100) == Decimal(g_.findtext("VAT")), [(c.tag, c.text) for c in g_])
+    check("RefDesc says the wages are outside the DPP (PMK 83/2012)", "PMK 83/2012" in t.findtext("RefDesc"), t.findtext("RefDesc"))
+    # audit C1-3 H2: a settlement deducting a down payment subtracts the PPN base the DP invoice already taxed (its own
+    # ppn_base in proportion), like PPh 23. Contract: wages 100.000.000 + fee 10.000.000; DP 55.000.000 billed as
+    # wages 50.000.000 + fee 5.000.000. PPN base over both invoices = the fee 10.000.000.
+    cu = fee.find("customer", "customer_name == 'PT Klien Alih Daya Contoh'")[0]["name"]
+    dp = fee.create("sales_invoice", {"customer": cu, "kind": "down_payment", "posting_date": "2031-07-12", "due_date": "2031-07-12",
+                                      "items": [dict(lines[0], rate=50_000_000), dict(lines[2], rate=5_000_000)]})[1]
+    st, resp = fee.verb("sales_invoice", dp.get("name", ""), "submit", {"force": True})
+    dp = fee.get("sales_invoice", (resp or {}).get("name", dp.get("name")))
+    st, fin = fee.create("sales_invoice", {"customer": cu, "posting_date": "2031-07-25", "due_date": "2031-07-25", "dp_invoice": dp["name"], "down_payment": 55_000_000,
+                                           "items": [lines[0], dict(lines[2], rate=10_000_000)]})
+    if check("fee-only PT: settlement invoice deducting the DP", st == 201, (st, fin)):
+        st, resp = fee.verb("sales_invoice", fin["name"], "submit", {"force": True})
+        fin = fee.get("sales_invoice", (resp or {}).get("name", fin["name"]))
+        eq("DP: PPN base 5.000.000 (its fee line); settlement: DPP 55.000.000, PPN base 10.000.000 - 5.000.000 = 5.000.000",
+           (dp.get("ppn_base"), fin.get("dpp"), fin.get("ppn_lines_base"), fin.get("ppn_dp_base"), fin.get("ppn_base"), fin.get("ppn")),
+           (5_000_000, 55_000_000, 10_000_000, 5_000_000, 5_000_000, 550_000))
+        eq("PPN over the DP and the settlement = PPN on the fee (10.000.000 x 11/12 x 12%)", dp.get("ppn") + fin.get("ppn"), 1_100_000)
+
+
+SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale, scenario_payroll_status_change, scenario_payroll_low_r2, scenario_ppn_fee_only]

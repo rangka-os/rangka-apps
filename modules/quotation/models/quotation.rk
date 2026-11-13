@@ -73,10 +73,20 @@ fields:
   # Not read_only: a generic amend zeroes read-only fields, and a zero dpp_den would break ppn (kernel follow-up).
   - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num'}
   - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den'}
+  # The PPN base as on the invoice (sales_invoice.ppn_base): the DPP, or with config tax.ppn_fee_only the share of the
+  # lines not marked ppn_exclude, so the quoted total equals the invoice's. No down payment on a quotation.
+  - name: ppn_base
+    type: currency
+    label: {id: Dasar PPN}
+    compute: >-
+      !('ppn_fee_only' in tax && tax.ppn_fee_only) ? dpp :
+      (currency != '' && currency != 'IDR'
+        ? (items.map(i, i.amount_fx_idr).sum() == 0 ? 0 : round(dpp * 1.0 * items.map(i, i.ppn_exclude ? 0 : i.amount_fx_idr).sum() / items.map(i, i.amount_fx_idr).sum()))
+        : (subtotal == 0 ? 0 : round(dpp * 1.0 * items.map(i, i.ppn_exclude ? 0 : i.amount).sum() / subtotal)))
   - name: ppn
     type: currency
-    label: {id: PPN (DPP x rasio DPP nilai lain x tarif)}
-    compute: "round(dpp * dpp_num / dpp_den * tax_rate / 100)"
+    label: {id: PPN (dasar PPN x rasio DPP nilai lain x tarif)}
+    compute: "round(ppn_base * dpp_num / dpp_den * tax_rate / 100)"
   - name: grand_total
     type: currency
     label: {id: Total}
@@ -111,7 +121,7 @@ fields:
   - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}
   - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
   - {name: dpp_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "subtotal_fx"}
-  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "round(dpp_fx * dpp_num / dpp_den * tax_rate / 100, 2)"}
+  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "dpp == 0 ? 0 : round(dpp_fx * (ppn_base * 1.0 / dpp) * dpp_num / dpp_den * tax_rate / 100, 2)"}
   - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_fx + ppn_fx"}
 rules:
   - name: foreign_needs_rate
@@ -186,7 +196,7 @@ views:
       - section: {id: Harga}
         columns:
           - [subtotal, dpp]
-          - [tax_rate, dpp_num, dpp_den, ppn, grand_total]
+          - [tax_rate, dpp_num, dpp_den, ppn_base, ppn, grand_total]
       - section: {id: Syarat}
         columns:
           - [payment_terms, delivery_terms]

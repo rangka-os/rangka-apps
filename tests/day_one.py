@@ -95,7 +95,7 @@ SITE_ORGS = {
     "demo-ritel": [("toko_contoh", "demo-ritel")],
     "demo-grosir": [("niaga_contoh", "demo-grosir")],
     "demo-produksi": [("pangan_contoh", "demo-produksi")],
-    "demo-manpower": [("tenaga_contoh", "demo-manpower")],
+    "demo-manpower": [("tenaga_contoh", "demo-manpower"), ("tenaga_fee", "demo-manpower")],
 }
 
 
@@ -5569,6 +5569,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import day_one_grosir  # noqa: E402
 import day_one_produksi  # noqa: E402
 import day_one_accounting  # noqa: E402
+import day_one_keuangan  # noqa: E402
 import day_one_payroll  # noqa: E402
 import day_one_returns  # noqa: E402
 import day_one_rental  # noqa: E402
@@ -5583,6 +5584,7 @@ import day_one_staff  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
+day_one_keuangan.bind(sys.modules[__name__])
 day_one_payroll.bind(sys.modules[__name__])
 day_one_returns.bind(sys.modules[__name__])
 day_one_rental.bind(sys.modules[__name__])   # also registers demo-sewa (orgs, members, matrix rows)
@@ -5610,6 +5612,7 @@ SCENARIOS = {
     "demo-kursus": day_one_courses.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-langganan": day_one_subscriptions.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
+    "demo-kepingan-keuangan": day_one_keuangan.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
 SCENARIOS["demo-fnb"] += day_one_moka.SCENARIOS
 for _site in ("demo-jasa", "demo-fnb"):
@@ -5662,6 +5665,8 @@ def main():
         day_one_payroll.setup_demo_manpower(api, k)
     if a.site == "demo-sewa":
         day_one_rental.setup_demo_sewa(api, k)
+    if a.site == "demo-kepingan-keuangan":
+        day_one_keuangan.setup_demo_keuangan(api, k)
     if a.site == "demo-kasir":
         day_one_pos.setup_demo_kasir(api, k)
         day_one_kitchen.setup(api, k)

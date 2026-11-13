@@ -295,6 +295,10 @@ def scenario_dashboards_produksi(api):
         check(f"produksi_overview has {w}", w in ws, sorted(ws))
     # G10: tidak ada lagi angka yang menjumlah satuan berbeda; grafik hasil hanya produk jadi (bukan isi/adonan setengah jadi)
     check("produksi_overview has no mixed-unit good_qty total", "good_qty" not in ws, sorted(ws))
+    rows = ws.get("recent_batches", {}).get("rows", [])
+    check("recent batches carry the unit of their quantity (pak and kg never read as one number)",
+          rows and all(r.get("uom") for r in rows) and {r["uom"] for r in rows} == {api.get("item", r["item"]).get("stock_uom") for r in rows},
+          [(r.get("item"), r.get("good_qty"), r.get("uom")) for r in rows])
     out = {d.get("key") for d in ws.get("output_by_product", {}).get("data", [])}
     check("output chart shows finished products only", not out & {"BRG-0020", "BRG-0021"}, out)
     ws = dashboard(api, "produksi_upah", period=30)

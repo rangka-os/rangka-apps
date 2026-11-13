@@ -2,15 +2,21 @@
 {{- /* Element names and order follow the DJP sample "Sample Faktur PK Template v.1.4.xml" (pajak.go.id Coretax
   templates). Per line: TaxBase = the line's share of the invoice DPP (header discount and down payment spread in
   proportion, the rounding rest on the last line, so the lines add up to the invoice DPP); TotalDiscount = Price x Qty
-  - TaxBase; OtherTaxBase = TaxBase x DPP factor; VAT = OtherTaxBase x rate. Amounts in rupiah, at most 2 decimals. */}}
+  - TaxBase; OtherTaxBase = TaxBase x DPP factor; VAT = OtherTaxBase x rate. Amounts in rupiah, at most 2 decimals.
+  PPN on the fee only (config tax.ppn_fee_only, PMK 83/2012): an invoice whose PPN base is below its DPP was submitted
+  that way; its wage lines (ppn_exclude) stay off the faktur pajak and the fee lines share the PPN base instead. */}}
 <TaxInvoiceBulk xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="TaxInvoice.xsd">
 	<TIN>{{.Doc.seller_tin}}</TIN>
 	<ListOfTaxInvoice>
 {{- $seller := .Doc.seller_nitku}}
 {{- range .Related.invoices}}{{$inv := .}}
 {{- $fx := and .currency (ne .currency "IDR")}}
-{{- $s := "0"}}{{range .items}}{{if $fx}}{{$s = add $s .amount_fx_idr}}{{else}}{{$s = add $s .amount}}{{end}}{{end}}
-{{- $r := sub $s .dpp}}{{$n := len .items}}{{$acc := "0"}}
+{{- /* an invoice submitted before ppn_base existed has none (the kernel leaves such computes empty on frozen documents):
+  its PPN was taken on the whole DPP */}}
+{{- $pb := .dpp}}{{if .ppn_base}}{{$pb = .ppn_base}}{{end}}
+{{- $fee := ne (dec $pb 2) (dec .dpp 2)}}
+{{- $s := "0"}}{{$n := "0"}}{{range .items}}{{if not (and $fee .ppn_exclude)}}{{$n = add $n 1}}{{if $fx}}{{$s = add $s .amount_fx_idr}}{{else}}{{$s = add $s .amount}}{{end}}{{end}}{{end}}
+{{- $r := sub $s $pb}}{{$k := "0"}}{{$acc := "0"}}
 		<TaxInvoice>
 			<TaxInvoiceDate>{{isodate .posting_date}}</TaxInvoiceDate>
 			<TaxInvoiceOpt>Normal</TaxInvoiceOpt>
@@ -18,7 +24,7 @@
 			<AddInfo/>
 			<CustomDoc/>
 			<CustomDocMonthYear/>
-			<RefDesc>{{.name}}{{if .dp_invoice}}; uang muka {{.dp_invoice}}{{end}}</RefDesc>
+			<RefDesc>{{.name}}{{if .dp_invoice}}; uang muka {{.dp_invoice}}{{end}}{{if $fee}}; upah tenaga kerja di luar DPP (PMK 83/2012){{end}}</RefDesc>
 			<FacilityStamp/>
 			<SellerIDTKU>{{$seller}}</SellerIDTKU>
 			<BuyerTin>{{.buyer_tin}}</BuyerTin>
@@ -30,10 +36,10 @@
 			<BuyerEmail>{{.buyer_email}}</BuyerEmail>
 			<BuyerIDTKU>{{.buyer_idtku}}</BuyerIDTKU>
 			<ListOfGoodService>
-{{- range $i, $l := .items}}
+{{- range $i, $l := .items}}{{if not (and $fee $l.ppn_exclude)}}{{$k = add $k 1}}
 {{- $b := $l.amount}}{{$p := $l.rate}}{{if $fx}}{{$b = $l.amount_fx_idr}}{{$p = round (mul $l.rate_fx $inv.exchange_rate) 2}}{{end}}
 {{- $q := round $l.qty 2}}
-{{- $tb := round (sub $b (div (mul $r $b) $s)) 2}}{{if eq (add $i 1) (add $n)}}{{$tb = sub $inv.dpp $acc}}{{end}}{{$acc = add $acc $tb}}
+{{- $tb := round (sub $b (div (mul $r $b) $s)) 2}}{{if eq $k $n}}{{$tb = sub $pb $acc}}{{end}}{{$acc = add $acc $tb}}
 {{- $otb := round (div (mul $tb $inv.dpp_num) $inv.dpp_den) 2}}
 {{- /* Line amounts are whole rupiah while Price x Qty has 2 decimals, so Price x Qty can fall a few sen under TaxBase:
   then Price is raised to TaxBase / Qty (rounded up to the sen) and TotalDiscount stays 0 or a few sen, never negative
@@ -54,7 +60,7 @@
 					<STLGRate>0</STLGRate>
 					<STLG>0</STLG>
 				</GoodService>
-{{- end}}
+{{- end}}{{end}}
 			</ListOfGoodService>
 		</TaxInvoice>
 {{- end}}
