@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A DOKU refund (trigger payment_notified, transaction.type REFUND, status SUCCESS): the money went back to the payer
+# from the DOKU balance. It is never money in (payment_from_doku runs only for paid == true) and it is not booked here
+# either (no credit note or money-out document yet), so the owner is told, with the invoice, the amount and DOKU's id,
+# to record it; before this a refund notification was dropped without a word (audit rel-uang-e2e M1).
+name: payment_refund_from_doku
+label: {id: Refund DOKU diberitahukan ke pemilik}
+on: doku.payment_notified
+if: "'type' in event && event.type == 'REFUND' && 'status' in event && event.status == 'SUCCESS'"
+idempotency: "'gateway_ref' in event ? 'refund:' + event.gateway_ref + ':' + string(event.paid_amount) : ''"
+steps:
+  - notify: owner
+    channel: email
+    template: {id: 'Refund DOKU Rp {event.paid_amount} untuk {event.external_id} ({event.gateway_ref}). Uang keluar dari saldo DOKU: catat pengembaliannya.'}

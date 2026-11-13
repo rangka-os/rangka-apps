@@ -12,8 +12,18 @@ steps:
   - find: payment
     where: "event.amended_from != '' && name == event.amended_from && bank_transaction == event.bank_transaction"
     as: source
+  # Checked again at the moment the money is booked (audit rel-uang-e2e r8 H11): another received payment of this amount
+  # from the same customer, submitted and held by no statement line, may be this very money (an instalment finance
+  # booked after the line was confirmed). Then the submit is refused; the owner sets the line against that payment.
+  - {find_all: bank_transaction, where: "status == 'booked'", as: held}
+  - find_all: payment
+    where: >-
+      docstatus == 1 && direction == 'receive' && method != 'sales_return' && amount == event.amount &&
+      customer == event.customer && bank_transaction == '' && name != event.name &&
+      !(name in held.map(l, l.booked_payment))
+    as: same
   - create: bank_transaction_claim
     set:
       bank_transaction: event.bank_transaction
       payment: event.name
-      valid: "line != null && line.amount == event.amount && (line.draft_payment == event.before.name || source != null)"
+      valid: "line != null && line.amount == event.amount && (line.draft_payment == event.before.name || source != null) && size(same) == 0"

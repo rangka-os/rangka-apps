@@ -20,6 +20,7 @@ modules:
   payments: ^1.0
   procurement: ^1.0
   subscriptions: ^1.0
+  bank_statement: ^1.0
 dashboards: [langganan_ringkas, penagihan_saya]
 roles: [finance_manager, collector]
 home: {dashboard: langganan_ringkas}
@@ -32,5 +33,7 @@ menu:
     items: [subscription, subscription_bill, subscription_extra, subscription_status_log]
   - group: {id: Penagihan lapangan}
     items: [field_collection, collection_visit, collector_deposit, service_area]
+  - group: {id: Bank}
+    items: [bank_transaction, bank_account]
   - group: {id: Pengaturan langganan}
     items: [subscription_plan, subscription_month]

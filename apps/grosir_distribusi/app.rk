@@ -26,13 +26,14 @@ modules:
   procurement: ^1.0
   distribution: ^1.0
   delivery: ^1.0
+  bank_statement: ^1.0
 dashboards: [grosir_overview, grosir_ar]
 roles: [sales_manager, finance_manager, head_office, field_sales]
 home: {dashboard: grosir_overview}
 # recipe is installed with stock but has no menu entry: a distributor sells goods as they are.
 menu:
   - group: {id: Penjualan}
-    items: [customer_order, sales_invoice, payment, giro, bank_account]
+    items: [customer_order, sales_invoice, payment, giro, bank_transaction, bank_account]
   - group: {id: Pengiriman}
     items: [delivery_note, sales_return, order_fulfilment, return_credit]
   - group: {id: Gudang}

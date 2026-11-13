@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The owner confirms a line that is money already on the books (booked_payment): the line is "Sudah tercatat" against
+# that payment. Nothing is drafted or paid: the money was booked when the payment was submitted (giro received, gateway
+# notification). booked_payment is unique, so one payment is on one line only.
+name: bank_transaction_booked
+label: {id: Mutasi dikonfirmasi sebagai uang yang sudah tercatat}
+on: bank_transaction.updated
+if: event.status == 'confirmed' && event.booked_payment != '' && event.payment == ''
+steps:
+  - {find: bank_transaction, where: name == event.name, as: line}
+  - update: line
+    set: {status: "'booked'", suggested_invoice: "''"}

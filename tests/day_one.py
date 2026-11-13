@@ -1388,6 +1388,213 @@ def statement_csv(rows, seq=True):
     return ("\n".join(out) + "\n").encode()
 
 
+def scenario_bank_takings(api):
+    """Audit rel-uang-e2e H3/H4/H6/M2: a shop's takings by QRIS or card reach the bank in sums of the bank's own (per
+    channel, per shift, days or outlets together, before or after the takings are entered). In a business with takings
+    a statement line is never suggested to an invoice by its amount alone; a transfer naming the invoice is."""
+    if not (installed(api, "bank_transaction") and installed(api, "outlet_takings")):
+        return
+    outlet = api.list("outlet")[0]["name"]
+    st, c = api.create("customer", {"customer_name": "Kantor Contoh Setoran"})
+    item = [i for i in api.list("item", limit=200) if (i.get("rate") or 0) > 0][0]["name"]
+
+    def invoice(rate):
+        st, inv = api.create("sales_invoice", {"customer": c["name"], "outlet": outlet, "posting_date": "2026-11-13", "items": [{"item": item, "qty": 1, "rate": rate}]})
+        st, inv = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        return inv
+
+    def line(day, note, amount, bal):
+        st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, f"mutasi-{day.replace('/', '')}-{amount}.csv", statement_csv([(day, note, amount, 0, bal)]))
+        st, cm = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+        return api.get("bank_transaction", (cm.get("records") or [""])[0])
+
+    X = invoice(1_357_000)
+    a = X["grand_total"]
+    pays0 = len(api.find("payment", "docstatus != 2"))
+    # the statement comes in before the takings are entered (audit r4 M2)
+    l0 = line("13/11/2026", "KR OTOMATIS MCP 0011", a, 89_000_000)
+    for amt, ref in ((600_000, "STL-1"), (a - 600_000, "STL-2")):
+        st, t = api.create("outlet_takings", {"outlet": outlet, "date": "2026-11-12", "lines": [{"method": "qris", "expected": amt, "received": amt, "fee": 0, "bank_ref": ref}]})
+        st, t = api.verb("outlet_takings", t.get("name", ""), "submit")
+    # two takings settled together (audit r4 H6)
+    l1 = line("14/11/2026", "KR OTOMATIS MCP 0012", a, 90_357_000)
+    check("statement lines of the open invoice's amount, before and after the takings: no suggestion by amount, Belum cocok",
+          all(l.get("status") == "unmatched" and not l.get("suggested_invoice") for l in (l0, l1)), (l0, l1))
+    eq("nothing paid: the invoice owes everything, no new payment", (api.get("sales_invoice", X["name"])["outstanding"], len(api.find("payment", "docstatus != 2"))), (a, pays0))
+    l2 = line("15/11/2026", "TRSF CR " + X["name"] + " KANTOR CONTOH", a, 91_714_000)
+    eq("a transfer naming the invoice is suggested to it", (l2.get("status"), l2.get("suggested_invoice")), ("suggested", X["name"]))
+    st, r = api.patch("bank_transaction", l1["name"], {"suggested_invoice": X["name"], "status": "confirmed"})
+    check("the owner can still pick the invoice for a line by hand", st == 200 and bool(api.get("bank_transaction", l1["name"]).get("draft_payment")), (st, r))
+
+
+def scenario_bank_booked(api):
+    """Audit rel-uang-e2e H1: money already on the books (a giro booked to the bank when received, a QRIS through a
+    gateway) shows on the statement later. Its line is "Sudah tercatat" against that payment and never pays a second
+    invoice of the same amount; one payment is on one line only; cancelling the payment frees the line."""
+    if not installed(api, "bank_transaction"):
+        return
+    item = services(api)[0]["name"]
+    st, cust = api.create("customer", {"customer_name": "PT Contoh Kembar"})
+    customer = cust["name"]
+
+    def submitted(rate):
+        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0))
+        st, resp = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        return resp.get("name", inv["name"])
+
+    def paid(inv, amount, method, ref):
+        st, p = api.create("payment", {"direction": "receive", "customer": customer, "method": method, "reference": ref, "amount": amount,
+                                       "allocations": [{"sales_invoice": inv, "amount": amount}]})
+        st, r = api.verb("payment", p["name"], "submit")
+        return r.get("name", p["name"])
+
+    def bank():
+        return sum(r["amount"] for r in api.find("gl_entry", "account == '11200'")) if installed(api, "gl_entry") else 0
+
+    X, Z = 1_370_295, 2_480_500
+    invA, invB = submitted(X), submitted(X)
+    invC, invD = submitted(Z), submitted(Z)
+    payA = paid(invA, X, "qris", "QR-AUD-0001")
+    payC = paid(invC, Z, "giro", "BG-AUD-77")
+    bank0 = bank()
+    rows = [("23/11/2026", "SETTLEMENT QRIS QR-AUD-0001", X, 0, 80_000_000),
+            ("23/11/2026", "KLIRING BG-AUD-77 PT CONTOH KEMBAR", Z, 0, 82_480_500),
+            ("23/11/2026", "KLIRING PT CONTOH KEMBAR", Z, 0, 84_961_000)]
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-tercatat.csv", statement_csv(rows))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    check("statement of money already booked: 3 lines", st == 200 and len(c.get("records", [])) == 3, (st, c))
+    lines = {l["description"]: l for l in api.find("bank_transaction", "date == '2026-11-23'")}
+    lq, lg, lk = lines.get(rows[0][1], {}), lines.get(rows[1][1], {}), lines.get(rows[2][1], {})
+    eq("QRIS settlement with the payment's reference: suggested as booked against that payment, not the twin invoice",
+       (lq.get("status"), lq.get("booked_payment"), lq.get("suggested_invoice") or ""), ("suggested", payA, ""))
+    eq("giro clearing with the giro number: suggested as booked against the giro payment",
+       (lg.get("status"), lg.get("booked_payment"), lg.get("suggested_invoice") or ""), ("suggested", payC, ""))
+    check("a second clearing of that amount (the giro is taken): no invoice suggested for a KLIRING line",
+          lk.get("status") == "unmatched" and not lk.get("suggested_invoice") and not lk.get("booked_payment"), lk)
+    for l in (lq, lg):
+        st, r = api.patch("bank_transaction", l["name"], {"status": "confirmed"})
+        check(f"confirm {l.get('description', '')[:24]}", st == 200, (st, r))
+    lq, lg = api.get("bank_transaction", lq["name"]), api.get("bank_transaction", lg["name"])
+    eq("confirmed lines are Sudah tercatat, without a new payment", [(l["status"], l.get("payment") or "", l.get("draft_payment") or "") for l in (lq, lg)],
+       [("booked", "", ""), ("booked", "", "")])
+    eq("the twin invoices still owe everything (nothing paid twice)", (api.get("sales_invoice", invB)["outstanding"], api.get("sales_invoice", invD)["outstanding"]), (X, Z))
+    eq("bank on the ledger unchanged by booking the lines", bank(), bank0)
+    eq("no payment made from the statement lines", len(api.find("payment", f"bank_transaction == '{lq['name']}' || bank_transaction == '{lg['name']}'")), 0)
+    st, r = api.patch("bank_transaction", lk["name"], {"booked_payment": payC, "status": "confirmed"})
+    check("the same payment booked on a second line: refused", st in (409, 422), (st, r))
+    st, r = api.patch("bank_transaction", lk["name"], {"booked_payment": payA, "suggested_invoice": invD})
+    check("a line cannot hold both an invoice and a booked payment", st in (409, 422), (st, r))
+    st, r = api.verb("payment", payA, "cancel")
+    lq = api.get("bank_transaction", lq["name"])
+    check("cancelling the booked payment frees its line (unmatched, no booked payment)", st == 200 and lq["status"] == "unmatched" and not lq.get("booked_payment"), (st, lq))
+
+    # audit r6 H8/H9: an instalment already booked (transfer without a reference, or cash collected) whose line names
+    # the invoice is not a second payment of that invoice
+    big = submitted(5_550_000)
+    st, p1 = api.create("payment", {"direction": "receive", "customer": customer, "method": "transfer", "reference": "", "amount": 2_000_000,
+                                    "allocations": [{"sales_invoice": big, "amount": 2_000_000}]})
+    st, r1 = api.verb("payment", p1["name"], "submit")
+    inst = r1.get("name", p1["name"])
+    st, p2 = api.create("payment", {"direction": "receive", "customer": customer, "method": "cash", "amount": 1_000_000,
+                                    "allocations": [{"sales_invoice": big, "amount": 1_000_000}]})
+    st, r2 = api.verb("payment", p2["name"], "submit")
+    rows = [("24/11/2026", "TRSF CR CICIL " + big, 2_000_000, 0, 90_000_000), ("24/11/2026", "SETOR TUNAI CRM " + big, 1_000_000, 0, 91_000_000)]
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-cicilan.csv", statement_csv(rows))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    got = {l["description"]: l for l in api.find("bank_transaction", "date == '2026-11-24'")}
+    li, lc = got.get(rows[0][1], {}), got.get(rows[1][1], {})
+    eq("an instalment transfer naming the invoice, already booked: suggested as Sudah tercatat against that payment, not the invoice",
+       (li.get("status"), li.get("booked_payment"), li.get("suggested_invoice") or ""), ("suggested", inst, ""))
+    check("a cash deposit naming the invoice, the cash already booked: no suggestion",
+          lc.get("status") == "unmatched" and not lc.get("suggested_invoice") and not lc.get("booked_payment"), lc)
+    eq("the invoice owes what is really left (5.550.000 - 3.000.000)", api.get("sales_invoice", big)["outstanding"], 2_550_000)
+    st, r = api.patch("bank_transaction", li["name"], {"status": "confirmed"})
+    eq("the owner accepts it: the instalment's line is Sudah tercatat", api.get("bank_transaction", li["name"])["status"], "booked")
+
+    # audit r7 H10: the line comes first and is suggested to the invoice; finance books the same instalment later; the
+    # owner's confirmation then drafts nothing and turns the line into Sudah tercatat against that payment
+    inv_h = submitted(4_440_000)
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-dulu.csv", statement_csv([("25/11/2026", "TRSF CR CICIL " + inv_h, 1_500_000, 0, 92_000_000)]))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    lh = api.get("bank_transaction", (c.get("records") or [""])[0])
+    eq("the line first: suggested to the invoice it names", (lh.get("status"), lh.get("suggested_invoice")), ("suggested", inv_h))
+    st, p3 = api.create("payment", {"direction": "receive", "customer": customer, "method": "transfer", "amount": 1_500_000,
+                                    "allocations": [{"sales_invoice": inv_h, "amount": 1_500_000}]})
+    st, r3 = api.verb("payment", p3["name"], "submit")
+    later = r3.get("name", p3["name"])
+    st, r = api.patch("bank_transaction", lh["name"], {"status": "confirmed"})
+    lh = api.get("bank_transaction", lh["name"])
+    eq("confirming after finance booked that instalment: no draft, the line is suggested as Sudah tercatat against it",
+       (lh["status"], lh.get("booked_payment"), lh.get("suggested_invoice") or "", lh.get("draft_payment") or ""), ("suggested", later, "", ""))
+    eq("the invoice owes 4.440.000 - 1.500.000 once", api.get("sales_invoice", inv_h)["outstanding"], 2_940_000)
+    # control: another customer's payment of the same amount does not stop the confirmation
+    st, other = api.create("customer", {"customer_name": "PT Contoh Lain"})
+    st, po = api.create("payment", {"direction": "receive", "customer": other["name"], "method": "transfer", "amount": 777_000})
+    api.verb("payment", po["name"], "submit")
+    inv_k = submitted(2_000_000)
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-kontrol.csv", statement_csv([("26/11/2026", "TRSF CR " + inv_k, 777_000, 0, 93_000_000)]))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    lk2 = api.get("bank_transaction", (c.get("records") or [""])[0])
+    st, r = api.patch("bank_transaction", lk2["name"], {"suggested_invoice": inv_k, "booked_payment": "", "status": "confirmed"})
+    lk2 = api.get("bank_transaction", lk2["name"])
+    check("the owner confirms an invoice for a line while another customer's payment of that amount waits: drafted", st == 200 and bool(lk2.get("draft_payment")), (st, lk2))
+
+    # audit r8 H11. S1: line confirmed (draft made), finance books the instalment, then the line's draft is submitted:
+    # refused, the invoice owes the rest once. S3: the line confirmed again turns Sudah tercatat and its old draft is
+    # dead. S2: finance's own unsubmitted draft of that amount stops the line's draft at confirmation.
+    inv_s = submitted(5_550_000)
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-s1.csv", statement_csv([("27/11/2026", "TRSF CR CICIL " + inv_s, 2_000_000, 0, 94_000_000)]))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    ls = api.get("bank_transaction", (c.get("records") or [""])[0])
+    api.patch("bank_transaction", ls["name"], {"status": "confirmed"})
+    old_draft = api.get("bank_transaction", ls["name"]).get("draft_payment")
+    st, pf = api.create("payment", {"direction": "receive", "customer": customer, "method": "transfer", "amount": 2_000_000,
+                                    "allocations": [{"sales_invoice": inv_s, "amount": 2_000_000}]})
+    st, rf = api.verb("payment", pf["name"], "submit")
+    fin = rf.get("name", pf["name"])
+    st, r = api.verb("payment", old_draft or "x", "submit")
+    check("S1: the line's draft submitted after finance booked that instalment: refused", bool(old_draft) and st in (409, 422), (old_draft, st, r))
+    eq("S1: the invoice owes 5.550.000 - 2.000.000 once", api.get("sales_invoice", inv_s)["outstanding"], 3_550_000)
+    api.patch("bank_transaction", ls["name"], {"status": "unmatched"})
+    st, r = api.patch("bank_transaction", ls["name"], {"suggested_invoice": inv_s, "status": "confirmed"})
+    ls = api.get("bank_transaction", ls["name"])
+    eq("S3: confirmed again, the line is a Sudah tercatat suggestion against finance's payment, no draft kept",
+       (ls["status"], ls.get("booked_payment"), ls.get("draft_payment") or ""), ("suggested", fin, ""))
+    st, r = api.verb("payment", old_draft or "x", "submit")
+    check("S3: the old draft can no longer be submitted", st in (409, 422), (st, r))
+    inv_t = submitted(3_400_000)
+    st, pd = api.create("payment", {"direction": "receive", "customer": customer, "method": "transfer", "amount": 1_700_000,
+                                    "allocations": [{"sales_invoice": inv_t, "amount": 1_700_000}]})
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-s2.csv", statement_csv([("28/11/2026", "TRSF CR " + inv_t, 1_700_000, 0, 95_700_000)]))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    lt = api.get("bank_transaction", (c.get("records") or [""])[0])
+    api.patch("bank_transaction", lt["name"], {"suggested_invoice": inv_t, "status": "confirmed"})
+    lt = api.get("bank_transaction", lt["name"])
+    check("S2: finance's unsubmitted draft of that amount: confirming drafts nothing, the line is Belum cocok",
+          lt["status"] == "unmatched" and not lt.get("draft_payment"), lt)
+
+    # audit r9 H12: a Sudah tercatat suggestion that nobody accepted yet does not free the invoice named in another line.
+    # Finance booked C's instalment P1; the file has X (another customer's money, no number) before Y (C's money naming
+    # C's invoice).
+    inv_c = submitted(3_532_000)
+    st, p1 = api.create("payment", {"direction": "receive", "customer": customer, "method": "transfer", "amount": 1_766_000,
+                                    "allocations": [{"sales_invoice": inv_c, "amount": 1_766_000}]})
+    st, r1 = api.verb("payment", p1["name"], "submit")
+    pay1 = r1.get("name", p1["name"])
+    rows = [("29/11/2026", "TRSF CR PT CONTOH LAIN", 1_766_000, 0, 97_000_000), ("29/11/2026", "TRSF CR CICIL " + inv_c, 1_766_000, 0, 98_766_000)]
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-h12.csv", statement_csv(rows))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    got = {l["description"]: l for l in api.find("bank_transaction", "date == '2026-11-29'")}
+    lx, ly = got.get(rows[0][1], {}), got.get(rows[1][1], {})
+    eq("H12: X gets the Sudah tercatat suggestion of P1", (lx.get("status"), lx.get("booked_payment")), ("suggested", pay1))
+    check("H12: Y naming C's invoice is not suggested to it while P1 waits for a confirmed line",
+          ly.get("status") == "unmatched" and not ly.get("suggested_invoice") and not ly.get("booked_payment"), ly)
+    st, r = api.patch("bank_transaction", ly["name"], {"suggested_invoice": inv_c, "status": "confirmed"})
+    ly = api.get("bank_transaction", ly["name"])
+    check("H12: the owner picking C's invoice for Y drafts nothing while P1 is unconfirmed", not ly.get("draft_payment"), (st, ly))
+    eq("H12: C's invoice owes the rest once", api.get("sales_invoice", inv_c)["outstanding"], 1_766_000)
+
+
 def scenario_xendit_callbacks(api):
     """Rel uang U13/U17 (ready, not active): synthetic Xendit callbacks, as the xendit connector's triggers emit them,
     run through payment_from_xendit_* with POST /flows/<name>/run (the kernel has no connector runtime yet). A paid
@@ -1692,8 +1899,8 @@ def scenario_payment_instruction(api):
                         statement_csv([("21/11/2026", note8, 5_000_002, 0, 70_000_000)]))
     st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
     l8 = (api.find("bank_transaction", "date == '2026-11-21' && amount == 5000002") or [{}])[0]
-    eq("a number in the note whose invoice owes less than the line: the invoice of that exact amount instead",
-       (l8.get("status"), l8.get("suggested_invoice")), ("suggested", inv9))
+    eq("a number in the note whose invoice owes less than the line: no suggestion (never by the amount alone)",
+       (l8.get("status"), l8.get("suggested_invoice") or ""), ("unmatched", ""))
     st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-sebagian.csv",
                         statement_csv([("22/11/2026", "CICIL " + inv8, 1_000_000, 0, 71_000_000)]))
     st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
@@ -1824,8 +2031,8 @@ def scenario_money_rail(api):
     eq("money out is negative", lf["amount"], -15_000)
     check("line with the invoice number in the note: suggested that invoice",
           la["status"] == "suggested" and la["suggested_invoice"] == inv_a, la)
-    check("line with a unique amount: suggested the invoice of that amount",
-          lb["status"] == "suggested" and lb["suggested_invoice"] == inv_b, lb)
+    check("line with a unique amount and no invoice number: no suggestion, the owner picks (never by the amount alone)",
+          lb["status"] == "unmatched" and not lb["suggested_invoice"], lb)
     check("line whose amount fits two invoices: no suggestion", ld["status"] == "unmatched" and not ld["suggested_invoice"], ld)
     eq("money out: no suggestion", lf["status"], "unmatched")
 
@@ -5393,11 +5600,11 @@ day_one_staff.bind(sys.modules[__name__])
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_coretax, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction, scenario_xendit_callbacks],
+                  scenario_prints_jasa, scenario_coretax, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction, scenario_xendit_callbacks, scenario_bank_booked],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods, scenario_bank_account_delete] + day_one_returns.SCENARIOS_FNB,
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
-                   scenario_permissions, scenario_payment_methods] + day_one_returns.SCENARIOS_RITEL,
+                   scenario_permissions, scenario_payment_methods] + day_one_returns.SCENARIOS_RITEL + [scenario_bank_takings],
     "demo-grosir": day_one_grosir.SCENARIOS + [scenario_payment_instruction, scenario_permissions, scenario_payment_methods],
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
     "demo-manpower": day_one_payroll.SCENARIOS + day_one_attendance.SCENARIOS + [scenario_permissions],

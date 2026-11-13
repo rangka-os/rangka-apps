@@ -25,6 +25,7 @@ modules:
   invoicing: ^1.0
   coretax: ^1.0
   consignment: ^1.0
+  bank_statement: ^1.0
 dashboards: [ritel_overview, ritel_stock, ritel_tax]
 roles: [head_office, outlet_staff]
 home: {dashboard: ritel_overview}
@@ -37,6 +38,8 @@ menu:
     items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
   - group: {id: Pembelian}
     items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment]
+  - group: {id: Bank}
+    items: [bank_transaction, bank_account]
   - group: {id: Titipan}
     items: [consignment_settlement]
   - group: {id: Pembukuan}
