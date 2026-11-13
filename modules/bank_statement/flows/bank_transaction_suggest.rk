@@ -1,8 +1,20 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
-# A new statement line with money in looks for the invoice it pays. First choice: an open invoice whose number is in
-# the transfer note (written loosely, see below). Otherwise: exactly one open invoice whose remaining amount equals
-# the line. Two candidates of the same amount -> no suggestion (the owner picks). It only suggests; the payment comes after the owner confirms.
-# outstanding is already net of PPh 23, so a customer who withheld tax still matches.
+# A new statement line with money in looks for what it is. It only suggests; nothing is paid before the owner confirms.
+# 1. Money already on the books (booked_payment): a submitted non-cash payment of the same amount that no statement line
+#    holds yet, whose reference (giro number, gateway reference) is in the note -> that payment. A giro is booked to the
+#    bank when it is received and a QRIS or VA through a gateway when the gateway reports it, so their clearing or
+#    settlement line must not pay an invoice again (audit rel-uang-e2e H1: a clearing line of one giro was suggested to
+#    another open invoice of the same amount and paid it twice).
+# 2. An open invoice whose number is in the transfer note (written loosely, see below), only when no received payment
+#    of the line's amount (cash too) waits for its line and the note is not a cash deposit (SETOR, TUNAI, CRM, CDM).
+# 3. Never an invoice by the amount alone (audit rel-uang-e2e r1-r5 H1, H3, H4, H6, H7, M2): money reaches the bank
+#    from too many places that carry no invoice (a giro or gateway payment already booked, a shop's takings settled in
+#    sums of the bank's own, cash collected and deposited, a transfer between the business's own accounts), and an
+#    amount can never tell them from a customer's transfer. A wrong suggestion, once confirmed, pays an invoice nobody
+#    paid. The owner picks the invoice of such a line by hand.
+# 4. Else exactly one booked payment of that amount waiting for its line -> that payment.
+# Anything else: no suggestion (the owner picks). outstanding is already net of PPh 23, so a customer who withheld tax
+# still matches.
 name: bank_transaction_suggest
 label: {id: Usulan cocok mutasi ke faktur}
 on: bank_transaction.created
@@ -12,20 +24,50 @@ steps:
   # "INV-2026-00012", "inv 2026 00012", "INV202600012", "INV/2026/00012" all match, compared without case, spaces,
   # dashes, slashes and dots on both sides. The number decides only when the line fits what the invoice still owes
   # (a part payment fits, an overpayment does not): "0004 2" typed for invoice 00042 must not pull a larger line
-  # to invoice 0004; such a line falls back to the amount match.
+  # to invoice 0004; such a line gets no invoice suggestion.
   - find_all: sales_invoice
     where: >-
       docstatus == 1 && outstanding >= event.amount && (event.description.contains(name) ||
       event.description.upperAscii().replace(' ', '').replace('-', '').replace('/', '').replace('.', '')
       .contains(name.upperAscii().replace(' ', '').replace('-', '').replace('/', '').replace('.', '')))
     as: by_number
-  - {find_all: sales_invoice, where: "docstatus == 1 && outstanding == event.amount", as: by_amount}
+  # held: lines with a booked payment, suggested or confirmed (a payment is suggested on one line at a time, booked_payment
+  # is unique); done: lines whose booking the owner confirmed. Money counts as waiting for its line until a line is
+  # confirmed against it: a suggestion alone, maybe wrong, does not free the invoice named in another line (audit r9 H12).
+  - {find_all: bank_transaction, where: "booked_payment != ''", as: held}
+  - {find_all: bank_transaction, where: "status == 'booked'", as: done}
+  - find_all: payment
+    where: >-
+      docstatus == 1 && direction == 'receive' && method != 'cash' && method != 'sales_return' && amount == event.amount &&
+      bank_transaction == '' && !(name in held.map(l, l.booked_payment))
+    as: booked
+  - find_all: payment
+    where: >-
+      docstatus == 1 && direction == 'receive' && method != 'cash' && method != 'sales_return' && amount == event.amount &&
+      bank_transaction == '' && !(name in held.map(l, l.booked_payment)) && reference != '' &&
+      event.description.upperAscii().contains(reference.upperAscii())
+    as: booked_ref
+  # Any received payment of this amount (cash too) no line holds yet: the line may be that money reaching the bank
+  # (an instalment by transfer or giro booked without a reference, cash collected and deposited). Then the invoice
+  # named in the note is not suggested (audit rel-uang-e2e r6 H8, H9): a booked non-cash payment is suggested as Sudah
+  # tercatat instead (step 3), a cash one leaves the line to the owner.
+  - find_all: payment
+    where: >-
+      docstatus == 1 && direction == 'receive' && method != 'sales_return' && amount == event.amount &&
+      bank_transaction == '' && !(name in done.map(l, l.booked_payment))
+    as: same
   - {find: bank_transaction, where: name == event.name, as: line}
-  - if: size(by_number) == 1
-    then:
-      - update: line
-        set: {suggested_invoice: "by_number[0].name", status: "'suggested'"}
-    else:
-      - update: line
-        if: size(by_amount) == 1
-        set: {suggested_invoice: "by_amount[0].name", status: "'suggested'"}
+  - update: line
+    if: size(booked_ref) == 1
+    set: {booked_payment: "booked_ref[0].name", status: "'suggested'"}
+  # a cash deposit names no customer's transfer, whatever number it carries
+  - update: line
+    if: >-
+      size(booked_ref) != 1 && size(by_number) == 1 && size(same) == 0 &&
+      ['SETOR', 'TUNAI', 'CRM', 'CDM', 'CASH DEP', 'CASH IN', 'DEP CASH'].map(w, event.description.upperAscii().contains(w) ? 1 : 0).sum() == 0
+    set: {suggested_invoice: "by_number[0].name", status: "'suggested'"}
+  - update: line
+    if: >-
+      size(booked_ref) != 1 && size(booked) == 1 && !(size(by_number) == 1 && size(same) == 0 &&
+      ['SETOR', 'TUNAI', 'CRM', 'CDM', 'CASH DEP', 'CASH IN', 'DEP CASH'].map(w, event.description.upperAscii().contains(w) ? 1 : 0).sum() == 0)
+    set: {booked_payment: "booked[0].name", status: "'suggested'"}

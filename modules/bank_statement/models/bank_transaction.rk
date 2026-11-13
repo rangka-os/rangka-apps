@@ -68,6 +68,7 @@ fields:
       - {value: suggested, label: {id: Ada usulan}}
       - {value: confirmed, label: {id: Dikonfirmasi}}
       - {value: matched, label: {id: Cocok, en: Matched}}
+      - {value: booked, label: {id: Sudah tercatat, en: Already booked}}
       - {value: ignored, label: {id: Abaikan}}
   - name: suggested_invoice
     type: link
@@ -87,6 +88,16 @@ fields:
     to: payment
     label: {id: Pembayaran}
     read_only: true
+  # Money that is already on the books before it shows on the statement: a giro (booked to the bank when received),
+  # a QRIS or VA paid through a gateway, a QRIS settlement. Its line is "Sudah tercatat" against that payment and never
+  # becomes a second payment of an invoice. unique: one payment is on one statement line only.
+  - name: booked_payment
+    type: link
+    to: payment
+    label: {id: Pembayaran yang sudah tercatat}
+    help: {id: 'Uang yang sudah dicatat sebelum muncul di mutasi (giro, QRIS, VA, gateway). Baris ini tidak membuat pembayaran baru.'}
+    unique: true
+    peek: [customer, method, reference, amount]
 rules:
   - name: one_side_only
     on: save
@@ -94,8 +105,20 @@ rules:
     message: {id: 'Isi Masuk atau Keluar saja, tidak boleh negatif'}
   - name: confirm_needs_invoice
     on: save
-    check: status != 'confirmed' || suggested_invoice != ''
-    message: {id: Pilih faktur sebelum konfirmasi}
+    check: status != 'confirmed' || suggested_invoice != '' || booked_payment != ''
+    message: {id: Pilih faktur (atau pembayaran yang sudah tercatat) sebelum konfirmasi}
+  - name: invoice_or_booked
+    on: save
+    check: suggested_invoice == '' || booked_payment == ''
+    message: {id: 'Pilih salah satu: faktur yang dibayar, atau pembayaran yang sudah tercatat'}
+  - name: booked_needs_payment
+    on: save
+    check: status != 'booked' || booked_payment != ''
+    message: {id: Pilih pembayaran yang sudah tercatat}
+  - name: booked_payment_fits
+    on: save
+    check: "booked_payment == '' || (booked_payment.docstatus == 1 && booked_payment.direction == 'receive' && booked_payment.method != 'cash' && booked_payment.method != 'sales_return' && booked_payment.amount == amount && booked_payment.bank_transaction == '')"
+    message: {id: 'Pembayaran yang sudah tercatat harus pembayaran masuk non-tunai yang diajukan, sebesar baris ini, dan belum dicocokkan ke mutasi lain'}
   - name: confirm_only_money_in
     on: save
     check: status != 'confirmed' || amount > 0
@@ -110,7 +133,7 @@ rules:
     message: {id: Urutan mulai dari 1}
 views:
   list:
-    columns: [date, description, amount, status, suggested_invoice, payment]
+    columns: [date, description, amount, status, suggested_invoice, payment, booked_payment]
     sort: -date
   form:
     layout:
@@ -120,5 +143,5 @@ views:
           - [credit, debit, amount, balance]
       - section: {id: Pencocokan}
         columns:
-          - [status, suggested_invoice]
+          - [status, suggested_invoice, booked_payment]
           - [draft_payment, payment]
