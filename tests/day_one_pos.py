@@ -33,7 +33,7 @@ MATRIX = {
     "pos_guard": {"head_office": {"create"}, "cashier": {"create"}, "outlet_staff": {"create"}},   # never stored (a flow's refusal)
 }
 # what the cashier reads besides its own models (role scope: its outlets only)
-CASHIER_READS = ("item", "uom", "uom_conversion", "outlet", "stock_balance", "gl_entry", "period_close", "outlet_sales", "outlet_takings")
+CASHIER_READS = ("item", "item_category", "uom", "uom_conversion", "outlet", "stock_balance", "gl_entry", "period_close", "outlet_sales", "outlet_takings")
 MEMBERS = [("dika", "cashier", "dika.dago@contohwarung.test", "Dika Contoh", DGO),
            ("sari", "cashier", "sari.riau@contohwarung.test", "Sari Contoh", RIU),
            ("bayu", "cashier", "bayu.dago@contohwarung.test", "Bayu Contoh", DGO),

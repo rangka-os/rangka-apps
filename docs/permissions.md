@@ -210,6 +210,6 @@ a receipt waits for head office (approval `big_discount`). `MATRIX` rows live in
 | pos_sale (void = cancel, same day, shift open, own shift; partial return = cancel + amend; outlet_staff: r) | all but e (own outlet) | all |
 | pos_shift_close (cancel = reopen the shift) | r c w d s p (own outlet) | all but a |
 | pos_guard (never stored; a flow's refusal; outlet_staff: c) | c | c |
-| item, uom, uom_conversion, outlet, stock_balance, period_close, outlet_sales, outlet_takings | r | (as above) |
+| item, item_category (the counter's category tabs), uom, uom_conversion, outlet, stock_balance, period_close, outlet_sales, outlet_takings | r | (as above) |
 | gl_entry | r (lines of `pos_sale`; `pos_shift_close` lines created, not read) | (as above) |
 

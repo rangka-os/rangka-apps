@@ -61,6 +61,8 @@ fields:
   - name: po_date
     type: date
     label: {id: Tanggal PO}
+    # a salesman takes the order at the shop the same day; a PO from an email is dated by hand
+    default: today()
     required: true
   - name: work_order
     type: data
