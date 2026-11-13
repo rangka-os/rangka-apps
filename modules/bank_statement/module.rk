@@ -10,3 +10,4 @@ summary:
 category: finance
 icon: bank-line
 requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, invoicing: ^1.0, payments: ^1.0}
+optional: {accounting: ^1.0}

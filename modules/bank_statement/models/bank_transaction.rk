@@ -98,6 +98,15 @@ fields:
     help: {id: 'Uang yang sudah dicatat sebelum muncul di mutasi (giro, QRIS, VA, gateway). Baris ini tidak membuat pembayaran baru.'}
     unique: true
     peek: [customer, method, reference, amount]
+  # The same for money a document other than a payment put on the bank (1-1200) in the books: a shop's daily takings by
+  # QRIS or card, a cashier shift closed with QRIS, a rental deposit by transfer (audit rel-uang-e2e H3). Written by
+  # flow bank_transaction_suggest_books as <voucher_type>/<voucher>; unique: one document on one line only.
+  - name: booked_voucher
+    type: data
+    label: {id: Dokumen bank yang sudah tercatat}
+    help: {id: 'Setoran outlet, tutup kasir, atau deposit yang sudah masuk Bank di pembukuan. Baris ini tidak membuat pembayaran baru.'}
+    unique: true
+    read_only: true
 rules:
   - name: one_side_only
     on: save
@@ -105,15 +114,15 @@ rules:
     message: {id: 'Isi Masuk atau Keluar saja, tidak boleh negatif'}
   - name: confirm_needs_invoice
     on: save
-    check: status != 'confirmed' || suggested_invoice != '' || booked_payment != ''
+    check: status != 'confirmed' || suggested_invoice != '' || booked_payment != '' || booked_voucher != ''
     message: {id: Pilih faktur (atau pembayaran yang sudah tercatat) sebelum konfirmasi}
   - name: invoice_or_booked
     on: save
-    check: suggested_invoice == '' || booked_payment == ''
-    message: {id: 'Pilih salah satu: faktur yang dibayar, atau pembayaran yang sudah tercatat'}
+    check: "(suggested_invoice != '' ? 1 : 0) + (booked_payment != '' ? 1 : 0) + (booked_voucher != '' ? 1 : 0) <= 1"
+    message: {id: 'Pilih salah satu: faktur yang dibayar, pembayaran yang sudah tercatat, atau dokumen bank yang sudah tercatat'}
   - name: booked_needs_payment
     on: save
-    check: status != 'booked' || booked_payment != ''
+    check: status != 'booked' || booked_payment != '' || booked_voucher != ''
     message: {id: Pilih pembayaran yang sudah tercatat}
   - name: booked_payment_fits
     on: save
@@ -143,5 +152,5 @@ views:
           - [credit, debit, amount, balance]
       - section: {id: Pencocokan}
         columns:
-          - [status, suggested_invoice, booked_payment]
+          - [status, suggested_invoice, booked_payment, booked_voucher]
           - [draft_payment, payment]

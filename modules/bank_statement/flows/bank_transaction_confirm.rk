@@ -8,7 +8,7 @@
 name: bank_transaction_confirm
 label: {id: Mutasi dikonfirmasi jadi pembayaran}
 on: bank_transaction.updated
-if: event.status == 'confirmed' && event.payment == '' && event.suggested_invoice != '' && event.booked_payment == ''
+if: event.status == 'confirmed' && event.payment == '' && event.suggested_invoice != '' && event.booked_payment == '' && event.booked_voucher == ''
 steps:
   - {find: payment, where: "docstatus == 0 && bank_transaction == event.name", as: draft}
   # a live payment already names the line (it is matched then, or a payment typed by hand carries the line in its

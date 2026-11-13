@@ -1388,6 +1388,42 @@ def statement_csv(rows, seq=True):
     return ("\n".join(out) + "\n").encode()
 
 
+def scenario_bank_takings(api):
+    """Audit rel-uang-e2e H3: a shop's QRIS takings are on the bank (1-1200) from the day they are submitted. The
+    settlement line on the statement, of the same amount as an open invoice, is "Sudah tercatat" against the takings,
+    never a second payment of that invoice."""
+    if not (installed(api, "bank_transaction") and installed(api, "outlet_takings") and installed(api, "gl_entry")):
+        return
+    outlet = api.list("outlet")[0]["name"]
+    st, c = api.create("customer", {"customer_name": "Kantor Contoh Setoran"})
+    item = [i for i in api.list("item", limit=200) if (i.get("rate") or 0) > 0][0]["name"]
+    st, inv = api.create("sales_invoice", {"customer": c["name"], "outlet": outlet, "posting_date": "2026-11-13", "items": [{"item": item, "qty": 1, "rate": 1_000_000}]})
+    st, inv = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+    amount = inv["grand_total"]
+    st, t = api.create("outlet_takings", {"outlet": outlet, "date": "2026-11-12", "lines": [{"method": "qris", "expected": amount + 7000, "received": amount, "fee": 7000, "bank_ref": "STL-9981"}]})
+    st, t = api.verb("outlet_takings", t.get("name", ""), "submit")
+    check("QRIS takings submitted", st == 200, (st, t))
+    takings = t.get("name")
+
+    def bank():
+        return sum(r["amount"] for r in api.find("gl_entry", "account == '11200'"))
+    bank0, pays0 = bank(), len(api.find("payment", "docstatus != 2"))
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-setoran.csv", statement_csv([("13/11/2026", "KR OTOMATIS MCP 0012 STL-9981", amount, 0, 90_000_000)]))
+    st, cm = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    line = api.get("bank_transaction", (cm.get("records") or [""])[0])
+    eq("settlement of the QRIS takings: suggested as Sudah tercatat against the takings, not the open invoice of that amount",
+       (line.get("status"), line.get("booked_voucher"), line.get("suggested_invoice") or ""), ("suggested", f"outlet_takings/{takings}", ""))
+    st, r = api.patch("bank_transaction", line["name"], {"status": "confirmed"})
+    line = api.get("bank_transaction", line["name"])
+    eq("confirmed: Sudah tercatat, no payment drafted", (line["status"], line.get("payment") or "", line.get("draft_payment") or ""), ("booked", "", ""))
+    eq("the invoice still owes everything", api.get("sales_invoice", inv["name"])["outstanding"], amount)
+    eq("bank on the ledger and payments unchanged", (bank(), len(api.find("payment", "docstatus != 2"))), (bank0, pays0))
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-setoran-2.csv", statement_csv([("14/11/2026", "KR OTOMATIS MCP 0013", amount, 0, 91_000_000)]))
+    st, cm = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    l2 = api.get("bank_transaction", (cm.get("records") or [""])[0])
+    eq("a second line of that amount (the takings are held): the invoice of that amount is suggested again", (l2.get("status"), l2.get("suggested_invoice"), l2.get("booked_voucher") or ""), ("suggested", inv["name"], ""))
+
+
 def scenario_bank_booked(api):
     """Audit rel-uang-e2e H1: money already on the books (a giro booked to the bank when received, a QRIS through a
     gateway) shows on the statement later. Its line is "Sudah tercatat" against that payment and never pays a second
@@ -5457,7 +5493,7 @@ SCENARIOS = {
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods, scenario_bank_account_delete] + day_one_returns.SCENARIOS_FNB,
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
-                   scenario_permissions, scenario_payment_methods] + day_one_returns.SCENARIOS_RITEL,
+                   scenario_permissions, scenario_payment_methods] + day_one_returns.SCENARIOS_RITEL + [scenario_bank_takings],
     "demo-grosir": day_one_grosir.SCENARIOS + [scenario_payment_instruction, scenario_permissions, scenario_payment_methods],
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
     "demo-manpower": day_one_payroll.SCENARIOS + day_one_attendance.SCENARIOS + [scenario_permissions],

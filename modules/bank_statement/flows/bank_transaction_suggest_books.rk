@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# After bank_transaction_suggest (same event, later in name order), when the books are kept (accounting): money that a
+# document other than a payment already put on the bank (1-1200) is found in the journal, so its statement line is not
+# a second payment of an invoice (audit rel-uang-e2e H3: a shop's QRIS takings of the same amount as an open invoice
+# was suggested to that invoice and paid it twice). Candidates: journal lines on 1-1200 of exactly the line's amount,
+# posted (not reversed) by a document that is not a payment and that no statement line holds yet.
+# - one candidate, and the line has no booked payment and no invoice whose number is in the note -> that document,
+#   suggested as Sudah tercatat (booked_voucher), the invoice suggestion taken back
+# - several candidates and an invoice suggested by amount only -> no suggestion (the owner picks)
+# An invoice named in the note stays suggested: the customer said what the transfer is for.
+name: bank_transaction_suggest_books
+label: {id: Usulan mutasi ke setoran yang sudah tercatat di pembukuan}
+on: bank_transaction.created
+if: "app_installed('accounting') && event.amount > 0 && event.status == 'unmatched'"
+steps:
+  - {find: bank_transaction, where: name == event.name, as: line}
+  - {find_all: bank_transaction, where: "booked_voucher != ''", as: held}
+  - {find_all: gl_entry, where: "account == '11200' && entry == 'reverse'", as: rev}
+  - find_all: gl_entry
+    where: >-
+      account == '11200' && entry == 'post' && amount == event.amount && voucher_type != 'payment' &&
+      !((voucher_type + '/' + voucher) in held.map(l, l.booked_voucher)) && !(voucher in rev.map(r, r.voucher))
+    as: other
+  - find_all: sales_invoice
+    where: >-
+      line != null && line.suggested_invoice != '' && name == line.suggested_invoice &&
+      (event.description.contains(name) || event.description.upperAscii().replace(' ', '').replace('-', '').replace('/', '').replace('.', '')
+      .contains(name.upperAscii().replace(' ', '').replace('-', '').replace('/', '').replace('.', '')))
+    as: named
+  - update: line
+    if: "line != null && size(other) == 1 && line.booked_payment == '' && size(named) == 0"
+    set: {booked_voucher: "other[0].voucher_type + '/' + other[0].voucher", suggested_invoice: "''", status: "'suggested'"}
+  - update: line
+    if: "line != null && size(other) > 1 && line.booked_payment == '' && size(named) == 0 && line.suggested_invoice != ''"
+    set: {suggested_invoice: "''", status: "'unmatched'"}
