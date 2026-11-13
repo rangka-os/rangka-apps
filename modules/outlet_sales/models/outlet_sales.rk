@@ -34,8 +34,6 @@ fields:
   - name: date
     type: date
     label: {id: Tanggal}
-    # the daily form is filled the same day; an import sets its own date
-    default: today()
     required: true
     in_list: true
   # Set by the import (moka, file, loyverse) or left at form. Not read_only: the kernel drops read_only input from imports
