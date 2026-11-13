@@ -62,8 +62,9 @@ created directly. A CEL rule cannot tell that a draft was made by a hook, so thi
 - **Reads:** the order and its lines; every submitted, not cancelled `sales_invoice` with `customer_order = <order>`
   and its lines.
 - **Writes:** a **draft** `sales_invoice` (`customer`, `customer_order`, `po_number`, `kind: regular`) with one line per
-  order line whose quantity is not yet fully invoiced: `qty = order qty - qty already invoiced` (counted per item and
-  line marks, filling the order's lines in order), `rate`, `uom` and `description` from the order line, and the line
+  order line whose quantity is not yet fully invoiced: `qty = order qty - qty already invoiced` (billed quantities go first
+  to order lines with the same item and line marks, then to the item's other lines whatever their marks, filling the
+  order's lines in order, so a mark changed on a draft invoice never bills a line twice), `rate`, `uom` and `description` from the order line, and the line
   marks `pph23_exclude` and `ppn_exclude` (the workers' wages line) when both line models have them.
   `orders.from_quotation` carries the same marks from the quotation lines to the order lines (rangka-os
   fix/conversions-ppn-exclude). An order made before the marks existed has none: mark its wages line on the draft
