@@ -11,6 +11,7 @@ into a temp dir. Needs what tests/day_one.py needs (RANGKA_OS, Postgres binaries
 import argparse
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -42,14 +43,19 @@ def main():
     subprocess.run(["tar", "-x", "-C", old], input=arc, check=True)
     state_dir = tempfile.mkdtemp(prefix="rangka-upgrade-")
     d1.ROOT = old
-    k = d1.Kernel(a.site, state_dir, site_dir=os.path.join(NEW_ROOT if a.new_site else old, "examples", "sites", a.site))
+    site_dir = os.path.join(old, "examples", "sites", a.site)   # a throwaway copy: the harness adds its test plan there
+    if a.new_site:   # this tree's site, copied first so the test plan never lands in the checkout (audit C1-3 L5)
+        site_dir = os.path.join(state_dir, "new-site", a.site)
+        shutil.copytree(os.path.join(NEW_ROOT, "examples", "sites", a.site), site_dir)
+    k = d1.Kernel(a.site, state_dir, site_dir=site_dir)
     k.start()
     d1.CTX["kernel"] = k   # a check may sign in to another org of the site
     try:
         state = chk.before(d1.Api(k.base))
         k.stop_serve()
         d1.ROOT = NEW_ROOT
-        k.site_dir = os.path.join(NEW_ROOT, "examples", "sites", a.site)
+        if not a.new_site:   # --new-site keeps its copy: this tree's site plus the test plan
+            k.site_dir = os.path.join(NEW_ROOT, "examples", "sites", a.site)
         r = subprocess.run([k.binary, "migrate"] + k.args(), capture_output=True, text=True)
         d1.check(f"migrate {a.ref} -> this tree", r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:])
         k.serve()

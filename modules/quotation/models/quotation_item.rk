@@ -32,6 +32,13 @@ fields:
     type: currency
     label: {id: Jumlah}
     compute: round(qty * rate * (1 - discount / 100))
+  # The workers' wages quoted on their own line: outside the PPN base when the org charges PPN on its fee only
+  # (config tax.ppn_fee_only, PMK 83/2012), as on the invoice (sales_invoice_item.ppn_exclude).
+  - name: ppn_exclude
+    type: check
+    label: {id: Upah tenaga kerja (di luar dasar PPN)}
+    help: {id: 'Centang untuk baris upah pekerja yang dirinci terpisah; hanya berlaku bila usaha memakai PPN atas fee'}
+    default: 'false'
 
   - {name: rate_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Harga (valas)}, default: '0'}
   - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah (valas)}, compute: "round(qty * rate_fx * (1 - discount / 100), 2)"}

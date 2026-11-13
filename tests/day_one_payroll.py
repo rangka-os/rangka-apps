@@ -628,6 +628,12 @@ def scenario_ppn_fee_only(api):
     eq("default PT: PPN on the whole DPP, round(115.500.000 x 11/12 x 12%) = 12.705.000",
        (d.get("dpp"), d.get("ppn_base"), d.get("ppn")), (115_500_000, 115_500_000, 12_705_000))
     eq("PPh 23 is unchanged by the PPN setting (2% of BPJS + fee)", (f.get("pph23_dpp"), d.get("pph23_dpp")), (15_500_000, 15_500_000))
+    # a quotation of the same lines totals what the invoice will (t_a15f1dba)
+    for label, cl, want in (("fee-only PT", fee, (15_500_000, 1_705_000, 117_205_000)), ("default PT", api, (115_500_000, 12_705_000, 128_205_000))):
+        cu = cl.find("customer", "customer_name == 'PT Klien Alih Daya Contoh'")[0]["name"]
+        st, q = cl.create("quotation", {"customer": cu, "subject": "Alih daya operator", "items": lines})
+        if check(f"{label}: quotation with the wage line marked", st == 201, (st, q)):
+            eq(f"{label}: quotation PPN base, PPN and total equal the invoice's", (q.get("ppn_base"), q.get("ppn"), q.get("grand_total")), want)
     # Coretax: the fee-only faktur carries BPJS + fee only
     seller = "9" + "0" * 13 + "99"   # a made-up NPWP
     st, tp = fee.create("tax_period", {"year": "2031", "month": "07", "seller_tin": seller, "seller_nitku": seller + "000000"})
