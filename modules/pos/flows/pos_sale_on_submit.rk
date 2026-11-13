@@ -15,7 +15,9 @@ steps:
     where: outlet == event.outlet && date == event.date && docstatus == 1
     limit: 1
     as: forms
-  - if: forms != null && forms.size() > 0
+  # a site without outlet_sales skips the find above, so forms is never declared: app_installed is checked first
+  # (&& stops there); `forms != null` alone read an undeclared name and failed every receipt (host smoke, 13 Nov)
+  - if: app_installed('outlet_sales') && forms.size() > 0
     create: pos_guard
     set:
       reason: "'daily_sales_same_day'"
@@ -26,7 +28,7 @@ steps:
     where: outlet == event.outlet && date == event.date && docstatus == 1
     limit: 1
     as: takings
-  - if: takings != null && takings.size() > 0
+  - if: app_installed('outlet_sales') && takings.size() > 0
     create: pos_guard
     set:
       reason: "'daily_sales_same_day'"
