@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# One sales source per outlet and day, kept in outlets/outlet_day so it holds when the cashier app is removed (audit
+# rangka-apps#74 L1); the cashier's own guards (module pos) stay as they are.
+name: outlet_day_free_takings
+label: {id: 'Setoran harian dibatalkan: hari itu bebas lagi kalau tidak ada dokumen lain'}
+on: outlet_takings.cancelled
+steps:
+  - find_all: outlet_sales
+    where: outlet == event.outlet && date == event.date && docstatus == 1
+    limit: 1
+    as: forms
+  - find_all: outlet_takings
+    where: outlet == event.outlet && date == event.date && docstatus == 1
+    limit: 1
+    as: takings
+  - {find: outlet_day, where: outlet == event.outlet && date == event.date, as: day}
+  - if: day != null && day.source == 'harian' && forms.size() == 0 && takings.size() == 0
+    update: day
+    set: {source: "''", document: "''"}

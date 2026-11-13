@@ -19,6 +19,7 @@ fields:
       - {value: sales_returned, label: {id: Penjualan sudah dikembalikan ke stok}}
       - {value: over_returned, label: {id: Retur melebihi yang diretur di kasir}}
       - {value: sales_cancelled, label: {id: Penjualan sudah dibatalkan}}
+      - {value: cashier_same_day, label: {id: Outlet sudah memakai kasir di tanggal itu}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: sales_returned
@@ -33,3 +34,7 @@ rules:
     on: save
     check: reason != 'sales_cancelled'
     message: {id: 'Penjualan ini baru saja dibatalkan; retur ke stok dari penjualan yang batal tidak bisa diajukan'}
+  - name: cashier_same_day
+    on: save
+    check: reason != 'cashier_same_day'
+    message: {id: 'Outlet ini sudah memakai kasir di tanggal itu: satu sumber penjualan per hari; batalkan struk kasirnya dulu'}
