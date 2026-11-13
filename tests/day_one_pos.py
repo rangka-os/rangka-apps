@@ -189,6 +189,7 @@ def scenario_pos_kasir_only_site(api):
         st, r = sale(owner, s["name"], [{"item": "BRG-0002", "qty": 2}], "", payments=[{"method": "cash", "amount": 10_000}])
         check("kasir-only site: a receipt of a stocked good submits -> 200", st == 200, (st, r))
         eq("kasir-only site: the sale takes 2 out of the outlet's stock", bal(owner, "OUT-02", "BRG-0002"), 8)
+        eq("kasir-only site: the head office's stock of the good is untouched", bal(owner, "OUT-01", "BRG-0002"), 0)
         got = shift_of(owner, s["name"])
         eq("kasir-only site: the shift counts both receipts and the good's cost (2 sales, net 30.000, cogs 3.600)",
            (got.get("sales_count"), got.get("net_total"), got.get("cogs_total")), (2, 30_000, 3_600))

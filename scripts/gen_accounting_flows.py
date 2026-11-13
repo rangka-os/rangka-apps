@@ -79,7 +79,7 @@ RETURN_VALUE = "round(event.amount * 1.0 * ret.return_value / ret.return_total)"
 BILL_COST = "bl.amount + (bl2 != null && bl2.account == bl.account ? bl2.amount : 0)"
 BILL_LEFT = "(" + BILL_COST + ") + prior.map(r, r.amount).sum() - event.amount"
 MOVED = "event.vendor_bill != '' && bl != null ? event.amount : 0"
-SALES_RETURN = "event.direction == 'receive' && event.method == 'sales_return' && ret != null && ret.return_total > 0"
+SALES_RETURN = "event.direction == 'receive' && event.method == 'sales_return' && event.sales_return != '' && ret != null && ret.return_total > 0"
 CASH_TAKEN = "event.lines.filter(l, l.method == 'cash').map(l, l.received).sum()"
 
 # model: label, date, outlet, project, party, extra steps (before the lock), if, lines [(account, amount)]
