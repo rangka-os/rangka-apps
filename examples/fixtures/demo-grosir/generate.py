@@ -16,6 +16,9 @@ GUDANG, KANVAS, RUSAK = "OUT-01", "OUT-02", "OUT-03"
 SALDO = "VND-0001"
 DUS, PAK, KARTON, BAL = "UOM-001", "UOM-002", "UOM-003", "UOM-004"
 UOMS = [(DUS, "Dus"), (PAK, "Pak"), (KARTON, "Karton"), (BAL, "Bal")]
+# Coretax unit codes (template Faktur PK v1.6.1, REF-General): Dus = UM.0022 Boks, Karton = UM.0037; Pak and Bal have
+# no code of their own and go as UM.0033 Lainnya.
+CORETAX_UNIT = {"Dus": "UM.0022", "Karton": "UM.0037", "Pak": "UM.0033", "Bal": "UM.0033"}
 CATEGORIES = ["Mi instan", "Minuman", "Minyak dan sembako", "Kopi dan teh", "Makanan ringan", "Sabun dan deterjen", "Susu"]
 
 # (category, product, uom, cost per uom). Prices: eceran = cost x 1,12; grosir = cost x 1,08; agen = cost x 1,05.
@@ -66,7 +69,7 @@ def price(cost, factor):
 
 def build():
     rnd = random.Random(20261106)
-    out = {"uom": [{"name": n, "uom_name": u} for n, u in UOMS],
+    out = {"uom": [{"name": n, "uom_name": u, "coretax_unit": CORETAX_UNIT[u]} for n, u in UOMS],
            "item_category": [{"name": f"KTG-{i + 1:03d}", "category_name": c} for i, c in enumerate(CATEGORIES)],
            "outlet": [
                {"name": GUDANG, "outlet_name": "Gudang Utama", "code": "GDG", "city": "Bandung", "address": "Jl. Contoh Industri No. 8", "is_head_office": True, "active": True},
@@ -105,7 +108,10 @@ def build():
     route = {n: r for n, _, r in SALESMEN}
     out["customer"] = [{"name": f"CUST-{i + 1:04d}", "customer_name": n, "salesman": sm, "price_tier": tier, "city": city,
                         "address": f"Jl. Contoh {city} No. {(i * 7) % 90 + 1}", "route_day": route[sm],
-                        "credit_limit": limit, "payment_days": days, "phone": f"+62 812 0000 {i + 1:04d}"}
+                        "credit_limit": limit, "payment_days": days, "phone": f"+62 812 0000 {i + 1:04d}",
+                        # the owner's NIK for e-Faktur (made up: no province starts with 9), so a PKP distributor can
+                        # issue faktur pajak to these shops (buyer document National ID)
+                        "nik": f"90000000{i + 1:08d}"}
                        for i, (n, sm, tier, city, limit, days) in enumerate(custs)]
     return out
 
@@ -125,7 +131,7 @@ def to_rk(data):
             return str(v)
         s = str(v)
         # flow mappings: a comma (1,5 liter) or bracket would split or end the value
-        if s.startswith("+") or ":" in s or any(c in s for c in ",[]{}#'\"") or s in ("yes", "no", "on", "off"):
+        if s.isdigit() or s.startswith("+") or ":" in s or any(c in s for c in ",[]{}#'\"") or s in ("yes", "no", "on", "off"):
             return "'" + s.replace("'", "''") + "'"
         return s
     lines = ["# Synthetic demo data for CV Contoh Niaga Distribusi, a fictional FMCG sub-distributor. No real people,",

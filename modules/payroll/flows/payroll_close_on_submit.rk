@@ -38,7 +38,7 @@ steps:
       pph23_applies: event.pph23_applies
       notes: "event.billing_mode == 'fee_only' ? 'Management fee tenaga kerja periode ' + event.period_from + ' s.d. ' + event.period_to + ' (' + event.name + ') [' + event.payroll_run + ']' : 'Tagihan tenaga kerja periode ' + event.period_from + ' s.d. ' + event.period_to + ' (' + event.name + ') [' + event.payroll_run + ']'"
       items: >-
-        event.billing_mode == 'fee_only' ? [{'item': event.fee_item, 'description': 'Management fee', 'qty': 1, 'rate': event.fee_amount, 'pph23_exclude': false}] : [{'item': event.wage_item, 'description': 'Gaji, tunjangan, lembur dan THR tenaga kerja', 'qty': 1, 'rate': event.total_cash_gross, 'pph23_exclude': true},
+        event.billing_mode == 'fee_only' ? [{'item': event.fee_item, 'description': 'Management fee', 'qty': 1, 'rate': event.fee_amount, 'pph23_exclude': false}] : [{'item': event.wage_item, 'description': 'Gaji, tunjangan, lembur dan THR tenaga kerja', 'qty': 1, 'rate': event.total_cash_gross, 'pph23_exclude': true, 'ppn_exclude': true},
          {'item': event.bpjs_item, 'description': 'Iuran BPJS Ketenagakerjaan dan Kesehatan bagian perusahaan', 'qty': 1, 'rate': event.total_employer_bpjs, 'pph23_exclude': false},
          {'item': event.fee_item, 'description': 'Management fee', 'qty': 1, 'rate': event.fee_amount, 'pph23_exclude': false}]
   - if: event.billing_mode == 'wages_plus_fee' && old == null
@@ -51,7 +51,7 @@ steps:
       pph23_rate: '2'
       notes: "'Tagihan tenaga kerja periode ' + event.period_from + ' s.d. ' + event.period_to + ' (' + event.name + ') [' + event.payroll_run + ']'"
       items: >-
-        [{'item': event.wage_item, 'description': 'Gaji, tunjangan, lembur dan THR tenaga kerja', 'qty': 1, 'rate': event.total_cash_gross, 'pph23_exclude': true},
+        [{'item': event.wage_item, 'description': 'Gaji, tunjangan, lembur dan THR tenaga kerja', 'qty': 1, 'rate': event.total_cash_gross, 'pph23_exclude': true, 'ppn_exclude': true},
          {'item': event.bpjs_item, 'description': 'Iuran BPJS Ketenagakerjaan dan Kesehatan bagian perusahaan', 'qty': 1, 'rate': event.total_employer_bpjs, 'pph23_exclude': false},
          {'item': event.fee_item, 'description': 'Management fee', 'qty': 1, 'rate': event.fee_amount, 'pph23_exclude': false}]
   - if: event.billing_mode == 'fee_only' && old == null

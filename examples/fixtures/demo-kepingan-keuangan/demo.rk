@@ -1,0 +1,24 @@
+# Synthetic demo data for Kedai Stok Contoh, a fictional PKP shop that runs its money and tax apps (faktur, pajak,
+# mutasi bank, pembelian, pembukuan) without the stock apps. No real people, businesses or tax numbers: the NIK below
+# start with 9, which no province code does. Invoices, bills and payments are made by tests/day_one_keuangan.py.
+uom:
+  - {name: UOM-001, uom_name: Kegiatan, coretax_unit: UM.0030}
+  - {name: UOM-002, uom_name: Dus, coretax_unit: UM.0022}
+  - {name: UOM-003, uom_name: Bulan, coretax_unit: UM.0024}
+vendor:
+  - {name: VND-0001, vendor_name: Saldo awal, city: Bandung, pkp: false, payment_days: 0}
+  - {name: VND-0002, vendor_name: PT Contoh Bahan Pangan, city: Bandung, pkp: true, payment_days: 30}
+  - {name: VND-0003, vendor_name: CV Contoh Jasa Kebersihan, city: Bandung, pkp: true, payment_days: 14, nik: '9000000000000301', pph23_object_code: 24-104-36}
+user:
+  - {name: USR-001, full_name: Sari Contoh, role: Pemilik}
+  - {name: USR-002, full_name: Joko Contoh, role: Keuangan}
+customer:
+  - {name: CUST-0001, customer_name: Kantor Contoh Sejahtera, city: Bandung, address: Jl. Contoh Asia Afrika No. 3, payment_days: 14, nik: '9000000000000101'}
+  - {name: CUST-0002, customer_name: Ibu Contoh Katering, city: Cimahi, address: Jl. Contoh Cimahi No. 9, payment_days: 7, nik: '9000000000000102'}
+  - {name: CUST-0003, customer_name: Sekolah Contoh Harapan, city: Bandung, address: Jl. Contoh Dago No. 21, payment_days: 30, nik: '9000000000000103'}
+item:
+  - {name: BRG-0001, item_name: Nasi kotak acara, kind: good, stock_uom: UOM-002, sales_uom: UOM-002, sku: KS-NSK, rate: 35000}
+  - {name: BRG-0002, item_name: Jasa katering acara kantor, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: KS-KTR, rate: 2500000}
+  - {name: BRG-0003, item_name: Langganan makan siang bulanan, kind: service, stock_uom: UOM-003, sales_uom: UOM-003, sku: KS-LMS, rate: 4500000}
+  - {name: BRG-0004, item_name: Bahan masakan, kind: good, stock_uom: UOM-002, sales_uom: UOM-002, sku: KS-BHN, rate: 0}
+  - {name: BRG-0005, item_name: Jasa kebersihan dapur, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: KS-BRS, rate: 0}

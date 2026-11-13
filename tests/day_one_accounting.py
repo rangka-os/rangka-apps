@@ -257,6 +257,15 @@ def scenario_accounting(api):
         eq(f"accounting: {f} at {d1} = documents", rep.get(f), bal[f])
     eq("accounting: current profit of the whole business = net profit (no outlet filter)", rep.get("current_profit"), rep.get("net_profit"))
     eq("accounting: closing cash = opening + in - out", rep.get("cash_closing"), rep.get("cash_opening", 0) + rep.get("cash_in", 0) - rep.get("cash_out", 0))
+    # the owner downloads the report for the accountant: CSV and Excel (kernel contract 0024 §8)
+    q = f"/api/v1/export/r/financial_report?filter=name%20%3D%3D%20%27{rep['name']}%27&columns=name,net_profit,balanced"
+    st, body, ct = api.html(q)
+    lines = body.lstrip("\ufeff").strip().splitlines()
+    eq("accounting: the report exports as CSV (number, net profit, balanced)", (st, ct.split(";")[0], lines[1:] if len(lines) > 1 else lines),
+       (200, "text/csv", [f"{rep['name']},{rep['net_profit']},Ya"]))
+    st, body, ct = api.html(q + "&format=xlsx")
+    check("accounting: the report exports as an Excel workbook", st == 200 and ct == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          and body.startswith("PK"), (st, ct, body[:20]))
     print(f"accounting {CTX.get('site')} {d0[:7]}: pendapatan {rep.get('net_revenue'):,} HPP {rep.get('cogs'):,} laba bersih {rep.get('net_profit'):,} "
           f"aset {rep.get('total_assets'):,} liabilitas {rep.get('total_liabilities'):,} ekuitas {rep.get('total_equity'):,}")
 
