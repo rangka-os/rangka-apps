@@ -22,5 +22,10 @@ auth:
       public: true
       scopes: [openid, profile, email, rangka.mcp]
 secrets: {driver: env}
+# Payment gateway keys through the env driver (contract 0017 §2); an unset variable leaves that connector without keys
+# (its webhooks answer 401). Local demos set them to the dummy keys of the mocks (rangka-connectors doku/mock).
+connector_auth:
+  doku: {client_id: '${DOKU_CLIENT_ID}', secret_key: '${DOKU_SECRET_KEY}', api_host: '${DOKU_API_HOST}'}
+  xendit: {secret_key: '${XENDIT_SECRET_KEY}', callback_token: '${XENDIT_CALLBACK_TOKEN}'}
 audit: {enabled: true, retention_days: 365}
 observability: {log_level: info, metrics: true}
