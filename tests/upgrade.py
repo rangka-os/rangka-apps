@@ -29,7 +29,8 @@ def load(path, name):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--site", required=True, choices=["kopi-senja", "demo-jasa", "demo-fnb"])
+    ap.add_argument("--site", required=True, choices=["kopi-senja", "demo-jasa", "demo-fnb", "demo-manpower"])
+    ap.add_argument("--new-site", action="store_true", help="run the old tree on THIS tree's site folder (a check that needs an org or setting the old site lacks)")
     ap.add_argument("--check", required=True)
     ap.add_argument("--from", dest="ref", default="origin/main")
     a = ap.parse_args()
@@ -41,8 +42,9 @@ def main():
     subprocess.run(["tar", "-x", "-C", old], input=arc, check=True)
     state_dir = tempfile.mkdtemp(prefix="rangka-upgrade-")
     d1.ROOT = old
-    k = d1.Kernel(a.site, state_dir, site_dir=os.path.join(old, "examples", "sites", a.site))
+    k = d1.Kernel(a.site, state_dir, site_dir=os.path.join(NEW_ROOT if a.new_site else old, "examples", "sites", a.site))
     k.start()
+    d1.CTX["kernel"] = k   # a check may sign in to another org of the site
     try:
         state = chk.before(d1.Api(k.base))
         k.stop_serve()

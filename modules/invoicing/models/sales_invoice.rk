@@ -132,7 +132,7 @@ fields:
   # a manpower firm that bills the workers' wages on their own line charges PPN on its fee only (DPP nilai lain, PMK
   # 83/2012 art. 4). Like PPh 23 (pph23_lines_base / pph23_dp_base): the lines not marked ppn_exclude, as a share of
   # subtotal less the header discount, minus the PPN base already taxed on the down-payment invoice this one deducts
-  # (that invoice's own ppn_base in proportion to down_payment; its DPP when it predates the field). Foreign documents
+  # (that invoice's own ppn_base in proportion to down_payment; its DPP when it predates the field and charged PPN). Foreign documents
   # take the share from the lines' rupiah twins. 'in': a kernel without the setting reads it as off, never as an
   # error that would zero the PPN. Frozen at submit with the setting of that day; the ratio (11/12) and rate still apply.
   - name: ppn_lines_base
@@ -144,7 +144,8 @@ fields:
     type: currency
     label: {id: Dasar PPN di faktur uang muka}
     hidden: true
-    compute: "dp_invoice == '' || dp_invoice.dpp == 0 ? 0 : round((dp_invoice.ppn_base != null ? dp_invoice.ppn_base : dp_invoice.dpp) * 1.0 * down_payment / dp_invoice.dpp)"
+    # a DP invoice from before ppn_base existed reads 0 there although it charged PPN: its whole DPP was the base
+    compute: "dp_invoice == '' || dp_invoice.dpp == 0 ? 0 : round((dp_invoice.ppn_base == 0 && dp_invoice.ppn != 0 ? dp_invoice.dpp : dp_invoice.ppn_base) * 1.0 * down_payment / dp_invoice.dpp)"
   - name: ppn_base
     type: currency
     label: {id: Dasar PPN}
