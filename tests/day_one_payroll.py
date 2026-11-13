@@ -650,6 +650,23 @@ def scenario_ppn_fee_only(api):
         check("OtherTaxBase = TaxBase x 11/12, VAT = OtherTaxBase x 12%", r2(Decimal(g_.findtext("TaxBase")) * 11 / 12) == Decimal(g_.findtext("OtherTaxBase"))
               and r2(Decimal(g_.findtext("OtherTaxBase")) * 12 / 100) == Decimal(g_.findtext("VAT")), [(c.tag, c.text) for c in g_])
     check("RefDesc says the wages are outside the DPP (PMK 83/2012)", "PMK 83/2012" in t.findtext("RefDesc"), t.findtext("RefDesc"))
+    # audit C1-3 H2: a settlement deducting a down payment subtracts the PPN base the DP invoice already taxed (its own
+    # ppn_base in proportion), like PPh 23. Contract: wages 100.000.000 + fee 10.000.000; DP 55.000.000 billed as
+    # wages 50.000.000 + fee 5.000.000. PPN base over both invoices = the fee 10.000.000.
+    cu = fee.find("customer", "customer_name == 'PT Klien Alih Daya Contoh'")[0]["name"]
+    dp = fee.create("sales_invoice", {"customer": cu, "kind": "down_payment", "posting_date": "2031-07-12", "due_date": "2031-07-12",
+                                      "items": [dict(lines[0], rate=50_000_000), dict(lines[2], rate=5_000_000)]})[1]
+    st, resp = fee.verb("sales_invoice", dp.get("name", ""), "submit", {"force": True})
+    dp = fee.get("sales_invoice", (resp or {}).get("name", dp.get("name")))
+    st, fin = fee.create("sales_invoice", {"customer": cu, "posting_date": "2031-07-25", "due_date": "2031-07-25", "dp_invoice": dp["name"], "down_payment": 55_000_000,
+                                           "items": [lines[0], dict(lines[2], rate=10_000_000)]})
+    if check("fee-only PT: settlement invoice deducting the DP", st == 201, (st, fin)):
+        st, resp = fee.verb("sales_invoice", fin["name"], "submit", {"force": True})
+        fin = fee.get("sales_invoice", (resp or {}).get("name", fin["name"]))
+        eq("DP: PPN base 5.000.000 (its fee line); settlement: DPP 55.000.000, PPN base 10.000.000 - 5.000.000 = 5.000.000",
+           (dp.get("ppn_base"), fin.get("dpp"), fin.get("ppn_lines_base"), fin.get("ppn_dp_base"), fin.get("ppn_base"), fin.get("ppn")),
+           (5_000_000, 55_000_000, 10_000_000, 5_000_000, 5_000_000, 550_000))
+        eq("PPN over the DP and the settlement = PPN on the fee (10.000.000 x 11/12 x 12%)", dp.get("ppn") + fin.get("ppn"), 1_100_000)
 
 
 SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale, scenario_payroll_status_change, scenario_payroll_low_r2, scenario_ppn_fee_only]
