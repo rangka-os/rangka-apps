@@ -128,10 +128,22 @@ fields:
   # Not read_only: a generic amend zeroes read-only fields, and a zero dpp_den would break ppn (kernel follow-up).
   - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num'}
   - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den'}
+  # The PPN base: the DPP, or with config tax.ppn_fee_only (kernel contract 0010 §8, default off) the DPP x the share
+  # of lines not marked ppn_exclude: a manpower firm that bills the workers' wages on their own line charges PPN on
+  # its fee only (DPP nilai lain, PMK 83/2012 art. 4). Foreign documents take the share from the lines' rupiah twins.
+  # Frozen at submit with the setting of that day; the ratio below (11/12) and the rate still apply.
+  - name: ppn_base
+    type: currency
+    label: {id: Dasar PPN}
+    compute: >-
+      !tax.ppn_fee_only ? dpp :
+      (currency != '' && currency != 'IDR'
+        ? (items.map(i, i.amount_fx_idr).sum() == 0 ? 0 : round(dpp * 1.0 * items.map(i, i.ppn_exclude ? 0 : i.amount_fx_idr).sum() / items.map(i, i.amount_fx_idr).sum()))
+        : (subtotal == 0 ? 0 : round(dpp * 1.0 * items.map(i, i.ppn_exclude ? 0 : i.amount).sum() / subtotal)))
   - name: ppn
     type: currency
-    label: {id: PPN (DPP x rasio DPP nilai lain x tarif)}
-    compute: "round(dpp * dpp_num / dpp_den * tax_rate / 100)"
+    label: {id: PPN (dasar PPN x rasio DPP nilai lain x tarif)}
+    compute: "round(ppn_base * dpp_num / dpp_den * tax_rate / 100)"
   - name: grand_total
     type: currency
     label: {id: Total}
@@ -214,7 +226,7 @@ fields:
   # Adjustments (discount_amount, down_payment) are entered in rupiah only, also on a foreign document: the ledger, the DP checks
   # and PPN read the IDR fields. Their foreign twins are derived here (IDR / exchange_rate), never entered.
   - {name: dpp_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "currency != '' && currency != 'IDR' ? round(subtotal_fx - (discount_amount + down_payment) / exchange_rate, 2) : 0"}
-  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "round(dpp_fx * dpp_num / dpp_den * tax_rate / 100, 2)"}
+  - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "dpp == 0 ? 0 : round(dpp_fx * (ppn_base * 1.0 / dpp) * dpp_num / dpp_den * tax_rate / 100, 2)"}
   - {name: grand_total_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Total (valas)}, compute: "dpp_fx + ppn_fx"}
   - {name: retention_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Retensi ditahan (valas)}, compute: "round(dpp_fx * retention_percent / 100, 2)"}
   - {name: pph23_amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPh 23 dipotong (valas)}, compute: "pph23_applies && dpp != 0 ? round(dpp_fx * (pph23_dpp * 1.0 / dpp * pph23_rate / 100), 2) : 0"}
@@ -467,7 +479,7 @@ views:
         fields: [items]
       - section: {id: Pajak & potongan}
         columns:
-          - [discount_amount, dp_invoice, down_payment, tax_rate, dpp_num, dpp_den, ppn]
+          - [discount_amount, dp_invoice, down_payment, tax_rate, dpp_num, dpp_den, ppn_base, ppn]
           - [pph23_applies, pph23_rate, pph23_amount, retention_percent, retention_of, retention_amount]
       - section: {id: Ringkasan}
         columns:

@@ -95,7 +95,7 @@ SITE_ORGS = {
     "demo-ritel": [("toko_contoh", "demo-ritel")],
     "demo-grosir": [("niaga_contoh", "demo-grosir")],
     "demo-produksi": [("pangan_contoh", "demo-produksi")],
-    "demo-manpower": [("tenaga_contoh", "demo-manpower")],
+    "demo-manpower": [("tenaga_contoh", "demo-manpower"), ("tenaga_fee", "demo-manpower")],
 }
 
 
