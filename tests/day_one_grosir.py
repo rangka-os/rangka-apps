@@ -597,6 +597,17 @@ def scenario_grosir_invoice_prints(api):
 CORETAX_LINE = ["Opt", "Code", "Name", "Unit", "Price", "Qty", "TotalDiscount", "TaxBase", "OtherTaxBase", "VATRate", "VAT", "STLGRate", "STLG"]
 
 
+def scenario_grosir_order_marks(api):
+    """The tier-pricing flows rewrite an order's lines: the wages marks of a line stay (audit lanjutan 2 F2)."""
+    a, b = [i["name"] for i in api.list("item", limit=2)]
+    st, so = api.create("customer_order", {"customer": "CUST-0001", "po_number": "PO-MARK-1", "po_date": "2026-11-10",
+                                           "items": [{"item": a, "qty": 1, "pph23_exclude": True, "ppn_exclude": True}, {"item": b, "qty": 2}]})
+    if check("grosir: order with a marked line", st == 201, (st, so)):
+        got = [(bool(x.get("pph23_exclude")), bool(x.get("ppn_exclude"))) for x in api.get("customer_order", so["name"])["items"]]
+        eq("grosir: the tier pricing keeps the line marks", got, [(True, True), (False, False)])
+        api.call("DELETE", f"/api/v1/r/customer_order/{Api.q(so['name'])}")
+
+
 def scenario_grosir_coretax(api):
     """A PKP distributor reports its sales of the month to Coretax: every submitted invoice with PPN, goods (Opt A),
     the units' Coretax codes, the shops' NIK as buyer document; and the books carry the same PPN keluaran (21200) and
@@ -654,4 +665,4 @@ def scenario_grosir_coretax(api):
 
 SCENARIOS = [scenario_grosir_fixtures, scenario_grosir_tier_price, scenario_grosir_salesman_scope, scenario_grosir_credit_hold,
              scenario_grosir_giro, scenario_grosir_ar_by_salesman, scenario_grosir_delivery, scenario_grosir_credit_at_delivery, scenario_grosir_credit_race, scenario_grosir_return,
-             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_coretax]
+             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_order_marks, scenario_grosir_coretax]

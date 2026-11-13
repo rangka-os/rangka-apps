@@ -664,6 +664,12 @@ def scenario_ppn_fee_only(api):
     di = fee.get("sales_invoice", resp["open"]["name"])
     eq("the invoice from the order taxes the fee only, like the quotation: PPN base 15.500.000, PPN 1.705.000",
        ([bool(x.get("ppn_exclude")) for x in di["items"]], di.get("ppn_base"), di.get("ppn")), ([True, False, False], 15_500_000, 1_705_000))
+    # a wages-only invoice in the fee-only PT: base 0, PPN 0, and the print says so (audit lanjutan 2 F3)
+    cu = fee.find("customer", "customer_name == 'PT Klien Alih Daya Contoh'")[0]["name"]
+    st, wo = fee.create("sales_invoice", {"customer": cu, "posting_date": "2031-07-28", "due_date": "2031-07-28", "items": [dict(lines[0], rate=50_000_000)]})
+    if check("fee-only PT: wages-only invoice", st == 201 and wo.get("ppn_base") == 0 and wo.get("ppn") == 0, (st, wo)):
+        check_print("wages-only invoice print", fee, "sales_invoice", wo["name"], "",
+                    ["Upah tenaga kerja di luar dasar PPN (PMK 83/2012)", "-Rp 50.000.000", "Dasar PPN", "Rp 0"], must_not=["Rp 45.833.333"])
     # Coretax: the fee-only faktur carries BPJS + fee only
     seller = "9" + "0" * 13 + "99"   # a made-up NPWP
     st, tp = fee.create("tax_period", {"year": "2031", "month": "07", "seller_tin": seller, "seller_nitku": seller + "000000"})

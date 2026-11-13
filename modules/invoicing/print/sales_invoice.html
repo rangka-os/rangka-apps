@@ -124,7 +124,9 @@
   {{- /* As on the faktur pajak (Coretax, PMK 131/2024): the base, then DPP nilai lain, then PPN = rate x DPP nilai lain.
     An invoice of an org with PPN on the fee only (tax.ppn_fee_only, PMK 83/2012) shows the wages left out first; an
     invoice from before ppn_base existed was taxed on its whole DPP. */}}
-  {{- $pb := .Doc.dpp}}{{if .Doc.ppn_base}}{{$pb = .Doc.ppn_base}}{{end}}
+  {{- /* the DPP only for a document from before ppn_base that charged PPN (as ppn_dp_base reads it); a base of 0 with
+    no PPN (wages only, or a settlement whose base the down payment used up) is that 0 */}}
+  {{- $pb := .Doc.dpp}}{{if or .Doc.ppn_base (not .Doc.ppn)}}{{$pb = or .Doc.ppn_base 0}}{{end}}
   {{- if ne (dec $pb) (dec .Doc.dpp)}}
   <tr class="small"><td>Upah tenaga kerja di luar dasar PPN (PMK 83/2012)</td><td class="num">-{{rupiah (sub .Doc.dpp $pb)}}</td></tr>
   <tr class="small"><td>Dasar PPN</td><td class="num">{{rupiah $pb}}</td></tr>

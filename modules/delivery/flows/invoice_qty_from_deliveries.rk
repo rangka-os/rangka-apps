@@ -17,4 +17,4 @@ steps:
   - update: inv
     if: f != null
     set:
-      items: "event.items.filter(l, f.items.map(b, b.item == l.item ? b.delivered_qty - b.invoiced_qty : 0).sum() > 0.0005).map(l, {'name': l.name, 'item': l.item, 'description': l.description, 'uom': l.uom, 'rate': l.rate, 'discount': l.discount, 'pph23_exclude': l.pph23_exclude, 'rate_fx': l.rate_fx, 'qty': min(l.qty, f.items.map(b, b.item == l.item ? b.delivered_qty - b.invoiced_qty : 0).sum())})"
+      items: "event.items.filter(l, f.items.map(b, b.item == l.item ? b.delivered_qty - b.invoiced_qty : 0).sum() > 0.0005).map(l, {'name': l.name, 'item': l.item, 'description': l.description, 'uom': l.uom, 'rate': l.rate, 'discount': l.discount, 'pph23_exclude': l.pph23_exclude, 'ppn_exclude': l.ppn_exclude, 'rate_fx': l.rate_fx, 'qty': min(l.qty, f.items.map(b, b.item == l.item ? b.delivered_qty - b.invoiced_qty : 0).sum())})"
