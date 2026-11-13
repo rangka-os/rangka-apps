@@ -663,6 +663,39 @@ def scenario_grosir_coretax(api):
     eq("books: PPN masukan (11500) = the PPN of the submitted bills of PKP suppliers", gl("11500", "vendor_bill"), sum(b.get("ppn") or 0 for b in bills))
 
 
+def scenario_grosir_staff_home(api):
+    """Card t_19f909b9: staff do not land on the owner's money dashboards. A warehouse member (outlet_staff, outlet
+    GUDANG) and a salesman each get their own home dashboard (contract 0030 §3: the first dashboard whose roles names one
+    of their roles), whose widgets all compute for them; grosir_overview and grosir_ar answer 403 to both and are not in
+    their /meta, while the sales manager still opens them."""
+    got = _need("asep", "sm")
+    if not got:
+        return
+    asep, sm = got
+    k, org = CTX.get("kernel"), CTX.get("org")
+    email = "gudang@contohniaga.test"
+    code, out = k.user_add(email, "outlet_staff", org, "Gudang Contoh", outlets=GUDANG, password=CTX["member_pw"])
+    staff = Api.login(k.base, email, CTX["member_pw"]) if code == 0 else None
+    if not check("a warehouse member (outlet_staff, outlet GUDANG) signs in", staff is not None, out):
+        return
+    for who, cl, home, other in (("warehouse member", staff, "gudang_harian", "salesman_harian"), ("salesman", asep, "salesman_harian", "gudang_harian")):
+        st, m = cl.call("GET", "/api/v1/meta")
+        dashes = set((m or {}).get("dashboards") or {})
+        check(f"{who}: /meta offers {home}, not the owner's money dashboards", home in dashes and not dashes & {"grosir_overview", "grosir_ar"}, sorted(dashes))
+        check(f"{who}: /meta does not offer {other}", other not in dashes, sorted(dashes))
+        for d in ("grosir_overview", "grosir_ar"):
+            st, resp = cl.call("GET", f"/api/v1/dashboards/{d}")
+            check(f"{who}: {d} -> 403", st == 403, (st, resp))
+        dashboard(cl, home)   # 200 and every widget computed: no widget over a model the role may not read
+    for d in ("grosir_overview", "grosir_ar"):
+        st, resp = sm.call("GET", f"/api/v1/dashboards/{d}")
+        check(f"the sales manager still opens {d}", st == 200, (st, resp))
+    ws = dashboard(asep, "salesman_harian")
+    st, mine = asep.call("GET", "/api/v1/r/sales_invoice?limit=500")
+    own = sum(float(i.get("outstanding") or 0) for i in (mine or {}).get("data", []) if i.get("docstatus") == 1)
+    check("the salesman's AR on his home is his customers' only", abs(float(ws.get("my_ar", {}).get("value") or 0) - own) < 1, (ws.get("my_ar"), own))
+
+
 SCENARIOS = [scenario_grosir_fixtures, scenario_grosir_tier_price, scenario_grosir_salesman_scope, scenario_grosir_credit_hold,
              scenario_grosir_giro, scenario_grosir_ar_by_salesman, scenario_grosir_delivery, scenario_grosir_credit_at_delivery, scenario_grosir_credit_race, scenario_grosir_return,
-             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_order_marks, scenario_grosir_coretax]
+             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_order_marks, scenario_grosir_coretax]
