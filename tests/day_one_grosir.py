@@ -678,6 +678,7 @@ def scenario_grosir_staff_home(api):
     staff = Api.login(k.base, email, CTX["member_pw"]) if code == 0 else None
     if not check("a warehouse member (outlet_staff, outlet GUDANG) signs in", staff is not None, out):
         return
+    CTX["gudang"] = staff
     for who, cl, home, other in (("warehouse member", staff, "gudang_harian", "salesman_harian"), ("salesman", asep, "salesman_harian", "gudang_harian")):
         st, m = cl.call("GET", "/api/v1/meta")
         dashes = set((m or {}).get("dashboards") or {})
@@ -696,6 +697,40 @@ def scenario_grosir_staff_home(api):
     check("the salesman's AR on his home is his customers' only", abs(float(ws.get("my_ar", {}).get("value") or 0) - own) < 1, (ws.get("my_ar"), own))
 
 
+CUSTOMER_MONEY = ("credit_limit", "outstanding", "credit_hold_reason", "oldest_open_due", "open_orders", "uninvoiced_deliveries",
+                  "npwp", "nitku", "nik", "passport_no")
+
+
+def scenario_grosir_staff_customer_money(api):
+    """Card t_5ba74e22: an outlet_staff member picks customers but never reads their money, credit or tax identity: the
+    fields are hidden (contract 0027), and totalling or grouping by them is refused, so the company's AR cannot be
+    summed from the customer list. The sales manager still reads them."""
+    got = _need("gudang", "sm")
+    if not got:
+        return
+    staff, sm = got
+    rows = staff.list("customer", limit=500)
+    check("the warehouse member still lists customers (to pick them)", len(rows) > 0, len(rows))
+    leaked = sorted({f for r in rows for f in CUSTOMER_MONEY if f in r})
+    check("customer rows carry no money, credit or tax identity for the warehouse member", not leaked, leaked)
+    one = staff.get("customer", rows[0]["name"]) if rows else {}
+    check("an opened customer carries none either", not [f for f in CUSTOMER_MONEY if f in one], sorted(one))
+    st, resp = staff.call("GET", "/api/v1/aggregate/customer?fn=sum:outstanding")
+    check("summing customers' outstanding is refused -> 403", st == 403, (st, resp))
+    st, resp = staff.call("GET", "/api/v1/aggregate/customer?fn=count&group=credit_hold_reason")
+    check("grouping customers by a hidden field is refused -> 403", st == 403, (st, resp))
+    st, all_ = staff.call("GET", "/api/v1/aggregate/customer?fn=count")
+    st2, some = staff.call("GET", "/api/v1/aggregate/customer?fn=count&filter=" + Api.q("outstanding > 1000000"))
+    n_all = ((all_ or {}).get("values") or {}).get("count")
+    n_some = ((some or {}).get("values") or {}).get("count") if st2 == 200 else None
+    check("filtering customers by outstanding reveals nothing (refused or treated as unknown)", st2 != 200 or n_some in (0, n_all), (st2, n_all, n_some))
+    st, resp = staff.call("GET", "/api/v1/r/customer?sort=-outstanding&limit=3")
+    top = [r.get("outstanding") for r in (resp or {}).get("data", [])] if st == 200 else []
+    check("sorting by outstanding reveals nothing", not any(top), (st, top))
+    mine = sm.list("customer", limit=500)
+    check("the sales manager still reads outstanding", any("outstanding" in r for r in mine), sorted(mine[0]) if mine else [])
+
+
 SCENARIOS = [scenario_grosir_fixtures, scenario_grosir_tier_price, scenario_grosir_salesman_scope, scenario_grosir_credit_hold,
              scenario_grosir_giro, scenario_grosir_ar_by_salesman, scenario_grosir_delivery, scenario_grosir_credit_at_delivery, scenario_grosir_credit_race, scenario_grosir_return,
-             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_order_marks, scenario_grosir_coretax]
+             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_staff_customer_money, scenario_grosir_order_marks, scenario_grosir_coretax]
