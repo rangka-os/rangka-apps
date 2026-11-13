@@ -10,6 +10,8 @@ permissions:
   - {role: purchasing_manager, read: true, create: true, write: true, print: true}
   - {role: project_admin, read: true, create: true, write: true, print: true}
   - {role: head_office, read: true, create: true, write: true, print: true}
+  # outlet staff pick customers (POS, outlet sales, returns) but never see their money, credit or tax identity: the
+  # money and identity fields are hidden_for outlet_staff (contract 0027; card t_5ba74e22)
   - {role: outlet_staff, read: true}
   - {role: sales_rep, read: true, create: true, write: true}
   # a salesman sees his own customers (role scope salesman) and cannot change their credit
@@ -44,11 +46,13 @@ fields:
     type: currency
     label: {id: Batas kredit}
     default: '25000000'
+    hidden_for: [outlet_staff]
   - name: outstanding
     type: currency
     label: {id: Piutang}
     read_only: true
     in_list: true
+    hidden_for: [outlet_staff]
   # Distributor sales (module distribution): the salesman who visits the customer, the route, the price tier, and
   # the credit control that holds its orders (customer_order approvals). oldest_open_due is the earliest due date of
   # its open invoices, kept by the distribution flows; an order is held while it is before today.
@@ -85,24 +89,29 @@ fields:
     type: data
     label: {id: Alasan tahan kredit}
     depends_on: app_installed('distribution')
+    hidden_for: [outlet_staff]
   - name: oldest_open_due
     type: date
     label: {id: Jatuh tempo tertua yang belum lunas}
     read_only: true
     depends_on: app_installed('distribution')
+    hidden_for: [outlet_staff]
   - name: open_orders
     type: currency
     label: {id: Pesanan belum ditagih (dengan PPN)}
     read_only: true
     depends_on: app_installed('distribution')
+    hidden_for: [outlet_staff]
   - name: uninvoiced_deliveries
     type: currency
     label: {id: Terkirim belum ditagih (dengan PPN)}
     read_only: true
     depends_on: app_installed('delivery')
+    hidden_for: [outlet_staff]
   - name: npwp
     type: npwp
     label: {id: NPWP}
+    hidden_for: [outlet_staff]
   # Tax identity for e-Faktur (module coretax, contract 0029): a buyer is identified by NPWP 16 digits plus its NITKU
   # (22 digits, NPWP + 000000 for the head office), else NIK, else a passport. vat_collector sets the transaction
   # code (02 government, 03 other collectors such as BUMN).
@@ -111,16 +120,19 @@ fields:
     label: {id: NITKU}
     help: {id: 'ID TKU 22 digit dari Coretax. Kosongkan bila pusat (NPWP + 000000)'}
     depends_on: app_installed('coretax')
+    hidden_for: [outlet_staff]
   - name: nik
     type: data
     label: {id: NIK}
     help: {id: 'Untuk pembeli orang pribadi tanpa NPWP'}
     depends_on: app_installed('coretax')
+    hidden_for: [outlet_staff]
   - name: passport_no
     type: data
     label: {id: No. paspor}
     help: {id: 'Untuk pembeli warga negara asing tanpa NPWP/NIK'}
     depends_on: app_installed('coretax')
+    hidden_for: [outlet_staff]
   - name: country
     type: data
     label: {id: Kode negara}
