@@ -1488,6 +1488,27 @@ def scenario_bank_booked(api):
     lq = api.get("bank_transaction", lq["name"])
     check("cancelling the booked payment frees its line (unmatched, no booked payment)", st == 200 and lq["status"] == "unmatched" and not lq.get("booked_payment"), (st, lq))
 
+    # audit r6 H8/H9: an instalment already booked (transfer without a reference, or cash collected) whose line names
+    # the invoice is not a second payment of that invoice
+    big = submitted(5_550_000)
+    st, p1 = api.create("payment", {"direction": "receive", "customer": customer, "method": "transfer", "reference": "", "amount": 2_000_000,
+                                    "allocations": [{"sales_invoice": big, "amount": 2_000_000}]})
+    st, r1 = api.verb("payment", p1["name"], "submit")
+    inst = r1.get("name", p1["name"])
+    st, p2 = api.create("payment", {"direction": "receive", "customer": customer, "method": "cash", "amount": 1_000_000,
+                                    "allocations": [{"sales_invoice": big, "amount": 1_000_000}]})
+    st, r2 = api.verb("payment", p2["name"], "submit")
+    rows = [("24/11/2026", "TRSF CR CICIL " + big, 2_000_000, 0, 90_000_000), ("24/11/2026", "SETOR TUNAI CRM " + big, 1_000_000, 0, 91_000_000)]
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-cicilan.csv", statement_csv(rows))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    got = {l["description"]: l for l in api.find("bank_transaction", "date == '2026-11-24'")}
+    li, lc = got.get(rows[0][1], {}), got.get(rows[1][1], {})
+    eq("an instalment transfer naming the invoice, already booked: suggested as Sudah tercatat against that payment, not the invoice",
+       (li.get("status"), li.get("booked_payment"), li.get("suggested_invoice") or ""), ("suggested", inst, ""))
+    check("a cash deposit naming the invoice, the cash already booked: no suggestion",
+          lc.get("status") == "unmatched" and not lc.get("suggested_invoice") and not lc.get("booked_payment"), lc)
+    eq("the invoice owes what is really left (5.550.000 - 3.000.000)", api.get("sales_invoice", big)["outstanding"], 2_550_000)
+
 
 def scenario_xendit_callbacks(api):
     """Rel uang U13/U17 (ready, not active): synthetic Xendit callbacks, as the xendit connector's triggers emit them,

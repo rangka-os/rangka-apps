@@ -5,7 +5,8 @@
 #    bank when it is received and a QRIS or VA through a gateway when the gateway reports it, so their clearing or
 #    settlement line must not pay an invoice again (audit rel-uang-e2e H1: a clearing line of one giro was suggested to
 #    another open invoice of the same amount and paid it twice).
-# 2. An open invoice whose number is in the transfer note (written loosely, see below).
+# 2. An open invoice whose number is in the transfer note (written loosely, see below), only when no received payment
+#    of the line's amount (cash too) waits for its line and the note is not a cash deposit (SETOR, TUNAI, CRM, CDM).
 # 3. Never an invoice by the amount alone (audit rel-uang-e2e r1-r5 H1, H3, H4, H6, H7, M2): money reaches the bank
 #    from too many places that carry no invoice (a giro or gateway payment already booked, a shop's takings settled in
 #    sums of the bank's own, cash collected and deposited, a transfer between the business's own accounts), and an
@@ -23,7 +24,7 @@ steps:
   # "INV-2026-00012", "inv 2026 00012", "INV202600012", "INV/2026/00012" all match, compared without case, spaces,
   # dashes, slashes and dots on both sides. The number decides only when the line fits what the invoice still owes
   # (a part payment fits, an overpayment does not): "0004 2" typed for invoice 00042 must not pull a larger line
-  # to invoice 0004; such a line falls back to the amount match.
+  # to invoice 0004; such a line gets no invoice suggestion.
   - find_all: sales_invoice
     where: >-
       docstatus == 1 && outstanding >= event.amount && (event.description.contains(name) ||
@@ -42,13 +43,27 @@ steps:
       bank_transaction == '' && !(name in held.map(l, l.booked_payment)) && reference != '' &&
       event.description.upperAscii().contains(reference.upperAscii())
     as: booked_ref
+  # Any received payment of this amount (cash too) no line holds yet: the line may be that money reaching the bank
+  # (an instalment by transfer or giro booked without a reference, cash collected and deposited). Then the invoice
+  # named in the note is not suggested (audit rel-uang-e2e r6 H8, H9): a booked non-cash payment is suggested as Sudah
+  # tercatat instead (step 3), a cash one leaves the line to the owner.
+  - find_all: payment
+    where: >-
+      docstatus == 1 && direction == 'receive' && method != 'sales_return' && amount == event.amount &&
+      bank_transaction == '' && !(name in held.map(l, l.booked_payment))
+    as: same
   - {find: bank_transaction, where: name == event.name, as: line}
   - update: line
     if: size(booked_ref) == 1
     set: {booked_payment: "booked_ref[0].name", status: "'suggested'"}
+  # a cash deposit names no customer's transfer, whatever number it carries
   - update: line
-    if: "size(booked_ref) != 1 && size(by_number) == 1"
+    if: >-
+      size(booked_ref) != 1 && size(by_number) == 1 && size(same) == 0 &&
+      ['SETOR', 'TUNAI', 'CRM', 'CDM', 'CASH DEPOSIT'].map(w, event.description.upperAscii().contains(w) ? 1 : 0).sum() == 0
     set: {suggested_invoice: "by_number[0].name", status: "'suggested'"}
   - update: line
-    if: "size(booked_ref) != 1 && size(by_number) != 1 && size(booked) == 1"
+    if: >-
+      size(booked_ref) != 1 && size(booked) == 1 && !(size(by_number) == 1 && size(same) == 0 &&
+      ['SETOR', 'TUNAI', 'CRM', 'CDM', 'CASH DEPOSIT'].map(w, event.description.upperAscii().contains(w) ? 1 : 0).sum() == 0)
     set: {booked_payment: "booked[0].name", status: "'suggested'"}
