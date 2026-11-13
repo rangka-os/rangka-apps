@@ -731,6 +731,30 @@ def scenario_grosir_staff_customer_money(api):
     check("the sales manager still reads outstanding", any("outstanding" in r for r in mine), sorted(mine[0]) if mine else [])
 
 
+def scenario_grosir_credit_writers(api):
+    """Card t_6c114aa0: a customer's credit (limit, hold, reason) is decided by the sales and finance managers. Head
+    office writes customers but its saves neither set nor change the credit (read_only_for, rangka-os contract 0027 §6);
+    /meta shows the fields read-only to it; the sales manager still decides."""
+    got = _need("hq", "sm")
+    if not got:
+        return
+    hq, sm = got
+    st, m = hq.call("GET", "/api/v1/meta")
+    ro = {f["name"]: f.get("read_only") for f in (((m or {}).get("models") or {}).get("customer") or {}).get("fields", [])}
+    check("head office sees the credit fields read-only", all(ro.get(f) is True for f in ("credit_limit", "credit_hold", "credit_hold_reason")), {f: ro.get(f) for f in ("credit_limit", "credit_hold", "credit_hold_reason")})
+    st, c = hq.create("customer", {"customer_name": "Toko Kredit Uji", "salesman": ASEP, "credit_limit": 999000000, "credit_hold": True})
+    if not check("head office creates a customer -> 201", st == 201, (st, c)):
+        return
+    rec = api.get("customer", c["name"])
+    check("head office did not set the credit on create (the default applies, no hold)", rec.get("credit_limit") != 999000000 and not rec.get("credit_hold"), (rec.get("credit_limit"), rec.get("credit_hold")))
+    st, _ = sm.patch("customer", c["name"], {"credit_limit": 7000000, "credit_hold": True, "credit_hold_reason": "uji"})
+    check("the sales manager sets the credit -> 200", st == 200, st)
+    st, _ = hq.patch("customer", c["name"], {"customer_name": "Toko Kredit Uji 2", "credit_limit": 999000000, "credit_hold": False, "credit_hold_reason": ""})
+    rec = api.get("customer", c["name"])
+    check("head office's save renames but keeps the manager's credit", st == 200 and rec.get("customer_name") == "Toko Kredit Uji 2"
+          and rec.get("credit_limit") == 7000000 and rec.get("credit_hold") and rec.get("credit_hold_reason") == "uji", (st, rec.get("customer_name"), rec.get("credit_limit"), rec.get("credit_hold"), rec.get("credit_hold_reason")))
+
+
 SCENARIOS = [scenario_grosir_fixtures, scenario_grosir_tier_price, scenario_grosir_salesman_scope, scenario_grosir_credit_hold,
              scenario_grosir_giro, scenario_grosir_ar_by_salesman, scenario_grosir_delivery, scenario_grosir_credit_at_delivery, scenario_grosir_credit_race, scenario_grosir_return,
-             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_staff_customer_money, scenario_grosir_order_marks, scenario_grosir_coretax]
+             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_staff_customer_money, scenario_grosir_credit_writers, scenario_grosir_order_marks, scenario_grosir_coretax]
