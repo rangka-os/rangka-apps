@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: pos
-version: 1.0.0
+version: 1.0.1
 title: {id: Kasir, en: Point of sale}
 summary:
   id: Kasir di browser dengan sesi kas, transaksi dan tutup sesi per outlet.

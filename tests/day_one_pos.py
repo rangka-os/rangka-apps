@@ -45,6 +45,7 @@ def bind(m):
               "kernel_today", "page_text", "decide", "approvals_of"):
         H[k] = getattr(m, k)
     globals().update(H)
+    H["day_one"] = m    # Kernel, Api and SITE_ORGS for the kasir-only site (scenario_pos_kasir_only_site)
     m.SITE_ORGS["demo-kasir"] = [("warung_contoh", "demo-kasir")]
     # the shared matrix check runs for a cashier (its 403s on every other money model); head office is checked here
     m.SITE_MEMBERS["demo-kasir"] = [("dika", "cashier")]
@@ -130,6 +131,59 @@ def void(cl, name, approve=True):
 
 def shift_of(api, name):
     return api.get("pos_shift", name) or {}
+
+
+KASIR_ONLY_FIXTURES = """# Synthetic: the smallest site of the kasir piece alone, one outlet and one service item.
+uom:
+  - {name: UOM-001, uom_name: Pcs}
+outlet:
+  - {name: OUT-01, outlet_name: Kantor Contoh, code: HO, city: Bandung, is_head_office: true, active: true}
+  - {name: OUT-02, outlet_name: Laundry Contoh, code: LDR, city: Depok, sales_source: kasir, active: true}
+item:
+  - {name: BRG-0001, item_name: Cuci kiloan, kind: service, stock_uom: UOM-001, rate: 8000}
+"""
+
+
+def scenario_pos_kasir_only_site(api):
+    """A site of the kasir piece alone, as Cloud's studio builds one (apps: [kasir], no outlet_sales): a cash receipt
+    submits. pos_sale_on_submit read `forms` of a find_all its `if: app_installed('outlet_sales')` had skipped, and every
+    receipt failed with 500 "undeclared reference to forms" (host smoke 13 Nov, kartu t_e5c261bb)."""
+    import os
+    import shutil
+    import tempfile
+    d1 = H["day_one"]
+    state, k = None, None
+    try:
+        state = tempfile.mkdtemp(prefix="day-one-kasir-only-")
+        site_dir = os.path.join(state, "site")
+        shutil.copytree(os.path.join(d1.ROOT, "examples", "sites", "demo-kasir"), site_dir)
+        for name in ("config.rk", "features.rk"):
+            path = os.path.join(site_dir, name)
+            text = open(path).read()
+            assert "apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan]" in text, name
+            open(path, "w").write(text.replace("apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan]", "apps: [kasir]"))
+        fixtures = os.path.join(state, "fixtures")
+        os.makedirs(fixtures)
+        open(os.path.join(fixtures, "demo.rk"), "w").write(KASIR_ONLY_FIXTURES)
+        d1.SITE_ORGS["demo-kasir-only"] = [("warung_contoh", fixtures)]   # an absolute path: os.path.join keeps it
+        k = d1.Kernel("demo-kasir-only", state, site_dir=site_dir)
+        k.start()
+        owner = d1.Api(k.base)
+        st, resp = owner.call("GET", "/api/v1/r/outlet_sales")
+        check("kasir-only site: outlet_sales is not installed (its records answer 404)", st == 404, (st, resp))
+        s = open_shift(owner, "OUT-02", 100_000, "kasir-only site")
+        if not s:
+            return
+        st, r = sale(owner, s["name"], [{"item": "BRG-0001", "qty": 3}], "", payments=[{"method": "cash", "amount": 30_000}])
+        check("kasir-only site: a cash receipt submits -> 200 (no 'undeclared reference to forms')", st == 200, (st, r))
+        got = shift_of(owner, s["name"])
+        eq("kasir-only site: the shift counts the receipt (1 sale, net 24.000, cash 24.000)",
+           (got.get("sales_count"), got.get("net_total"), got.get("cash_total")), (1, 24_000, 24_000))
+    finally:
+        if k is not None:
+            k.stop()
+        if state is not None:
+            shutil.rmtree(state, ignore_errors=True)
 
 
 def scenario_pos_opening_stock(api):
@@ -668,4 +722,4 @@ def scenario_pos_catalogue_hides_inactive(api):
 
 SCENARIOS = [scenario_pos_opening_stock, scenario_pos_shift, scenario_pos_retail_sale, scenario_pos_fnb_sale, scenario_pos_guards,
              scenario_pos_daily_form_next_door, scenario_pos_void_and_return, scenario_pos_race, scenario_pos_close, scenario_pos_close_race, scenario_pos_print,
-             scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive]
+             scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive, scenario_pos_kasir_only_site]
