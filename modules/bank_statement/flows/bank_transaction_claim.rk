@@ -15,7 +15,7 @@ steps:
   # Checked again at the moment the money is booked (audit rel-uang-e2e r8 H11): another received payment of this amount
   # from the same customer, submitted and held by no statement line, may be this very money (an instalment finance
   # booked after the line was confirmed). Then the submit is refused; the owner sets the line against that payment.
-  - {find_all: bank_transaction, where: "booked_payment != ''", as: held}
+  - {find_all: bank_transaction, where: "status == 'booked'", as: held}
   - find_all: payment
     where: >-
       docstatus == 1 && direction == 'receive' && method != 'sales_return' && amount == event.amount &&

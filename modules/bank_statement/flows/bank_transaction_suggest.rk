@@ -31,7 +31,11 @@ steps:
       event.description.upperAscii().replace(' ', '').replace('-', '').replace('/', '').replace('.', '')
       .contains(name.upperAscii().replace(' ', '').replace('-', '').replace('/', '').replace('.', '')))
     as: by_number
+  # held: lines with a booked payment, suggested or confirmed (a payment is suggested on one line at a time, booked_payment
+  # is unique); done: lines whose booking the owner confirmed. Money counts as waiting for its line until a line is
+  # confirmed against it: a suggestion alone, maybe wrong, does not free the invoice named in another line (audit r9 H12).
   - {find_all: bank_transaction, where: "booked_payment != ''", as: held}
+  - {find_all: bank_transaction, where: "status == 'booked'", as: done}
   - find_all: payment
     where: >-
       docstatus == 1 && direction == 'receive' && method != 'cash' && method != 'sales_return' && amount == event.amount &&
@@ -50,7 +54,7 @@ steps:
   - find_all: payment
     where: >-
       docstatus == 1 && direction == 'receive' && method != 'sales_return' && amount == event.amount &&
-      bank_transaction == '' && !(name in held.map(l, l.booked_payment))
+      bank_transaction == '' && !(name in done.map(l, l.booked_payment))
     as: same
   - {find: bank_transaction, where: name == event.name, as: line}
   - update: line

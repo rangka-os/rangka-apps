@@ -1508,6 +1508,8 @@ def scenario_bank_booked(api):
     check("a cash deposit naming the invoice, the cash already booked: no suggestion",
           lc.get("status") == "unmatched" and not lc.get("suggested_invoice") and not lc.get("booked_payment"), lc)
     eq("the invoice owes what is really left (5.550.000 - 3.000.000)", api.get("sales_invoice", big)["outstanding"], 2_550_000)
+    st, r = api.patch("bank_transaction", li["name"], {"status": "confirmed"})
+    eq("the owner accepts it: the instalment's line is Sudah tercatat", api.get("bank_transaction", li["name"])["status"], "booked")
 
     # audit r7 H10: the line comes first and is suggested to the invoice; finance books the same instalment later; the
     # owner's confirmation then drafts nothing and turns the line into Sudah tercatat against that payment
@@ -1570,6 +1572,27 @@ def scenario_bank_booked(api):
     lt = api.get("bank_transaction", lt["name"])
     check("S2: finance's unsubmitted draft of that amount: confirming drafts nothing, the line is Belum cocok",
           lt["status"] == "unmatched" and not lt.get("draft_payment"), lt)
+
+    # audit r9 H12: a Sudah tercatat suggestion that nobody accepted yet does not free the invoice named in another line.
+    # Finance booked C's instalment P1; the file has X (another customer's money, no number) before Y (C's money naming
+    # C's invoice).
+    inv_c = submitted(3_532_000)
+    st, p1 = api.create("payment", {"direction": "receive", "customer": customer, "method": "transfer", "amount": 1_766_000,
+                                    "allocations": [{"sales_invoice": inv_c, "amount": 1_766_000}]})
+    st, r1 = api.verb("payment", p1["name"], "submit")
+    pay1 = r1.get("name", p1["name"])
+    rows = [("29/11/2026", "TRSF CR PT CONTOH LAIN", 1_766_000, 0, 97_000_000), ("29/11/2026", "TRSF CR CICIL " + inv_c, 1_766_000, 0, 98_766_000)]
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-h12.csv", statement_csv(rows))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    got = {l["description"]: l for l in api.find("bank_transaction", "date == '2026-11-29'")}
+    lx, ly = got.get(rows[0][1], {}), got.get(rows[1][1], {})
+    eq("H12: X gets the Sudah tercatat suggestion of P1", (lx.get("status"), lx.get("booked_payment")), ("suggested", pay1))
+    check("H12: Y naming C's invoice is not suggested to it while P1 waits for a confirmed line",
+          ly.get("status") == "unmatched" and not ly.get("suggested_invoice") and not ly.get("booked_payment"), ly)
+    st, r = api.patch("bank_transaction", ly["name"], {"suggested_invoice": inv_c, "status": "confirmed"})
+    ly = api.get("bank_transaction", ly["name"])
+    check("H12: the owner picking C's invoice for Y drafts nothing while P1 is unconfirmed", not ly.get("draft_payment"), (st, ly))
+    eq("H12: C's invoice owes the rest once", api.get("sales_invoice", inv_c)["outstanding"], 1_766_000)
 
 
 def scenario_xendit_callbacks(api):
