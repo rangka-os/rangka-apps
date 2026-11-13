@@ -16,14 +16,29 @@ steps:
   - {find: payment, where: "docstatus == 1 && direction == 'receive' && (bank_transaction == event.name || reference == event.name)", as: paid}
   - {find: sales_invoice, where: name == event.suggested_invoice, as: inv}
   - {find: bank_transaction, where: name == event.name, as: line}
+  # Checked again now (audit rel-uang-e2e r7 H10): a payment of this amount from the invoice's customer booked after the
+  # suggestion was made, which no statement line holds yet, may be this very money. Then nothing is drafted: a non-cash
+  # one becomes the line's Sudah tercatat suggestion, a cash one leaves the line Belum cocok for the owner.
+  - {find_all: bank_transaction, where: "booked_payment != ''", as: held}
+  - find_all: payment
+    where: >-
+      inv != null && docstatus == 1 && direction == 'receive' && method != 'sales_return' && amount == event.amount &&
+      customer == inv.customer && bank_transaction == '' && !(name in held.map(l, l.booked_payment))
+    as: same
+  - update: line
+    if: "inv != null && size(same) > 0"
+    set:
+      suggested_invoice: "''"
+      booked_payment: "size(same) == 1 && same[0].method != 'cash' ? same[0].name : ''"
+      status: "size(same) == 1 && same[0].method != 'cash' ? 'suggested' : 'unmatched'"
   - update: draft
-    if: inv != null && draft != null
+    if: inv != null && draft != null && size(same) == 0
     set:
       customer: inv.customer
       amount: event.amount
       allocations: "[{'sales_invoice': inv.name, 'amount': min(event.amount, inv.outstanding)}]"
   - create: payment
-    if: inv != null && draft == null && paid == null
+    if: inv != null && draft == null && paid == null && size(same) == 0
     set:
       direction: "'receive'"
       customer: inv.customer
@@ -36,8 +51,8 @@ steps:
       notes: "'Dari mutasi ' + event.name + ': ' + event.description"
     as: pay
   - update: line
-    if: inv != null && draft != null && draft.name != event.draft_payment
+    if: inv != null && draft != null && draft.name != event.draft_payment && size(same) == 0
     set: {draft_payment: draft.name}
   - update: line
-    if: inv != null && draft == null && paid == null
+    if: inv != null && draft == null && paid == null && size(same) == 0
     set: {draft_payment: pay.name}

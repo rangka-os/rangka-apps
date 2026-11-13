@@ -60,10 +60,10 @@ steps:
   - update: line
     if: >-
       size(booked_ref) != 1 && size(by_number) == 1 && size(same) == 0 &&
-      ['SETOR', 'TUNAI', 'CRM', 'CDM', 'CASH DEPOSIT'].map(w, event.description.upperAscii().contains(w) ? 1 : 0).sum() == 0
+      ['SETOR', 'TUNAI', 'CRM', 'CDM', 'CASH DEP', 'CASH IN', 'DEP CASH'].map(w, event.description.upperAscii().contains(w) ? 1 : 0).sum() == 0
     set: {suggested_invoice: "by_number[0].name", status: "'suggested'"}
   - update: line
     if: >-
       size(booked_ref) != 1 && size(booked) == 1 && !(size(by_number) == 1 && size(same) == 0 &&
-      ['SETOR', 'TUNAI', 'CRM', 'CDM', 'CASH DEPOSIT'].map(w, event.description.upperAscii().contains(w) ? 1 : 0).sum() == 0)
+      ['SETOR', 'TUNAI', 'CRM', 'CDM', 'CASH DEP', 'CASH IN', 'DEP CASH'].map(w, event.description.upperAscii().contains(w) ? 1 : 0).sum() == 0)
     set: {booked_payment: "booked[0].name", status: "'suggested'"}

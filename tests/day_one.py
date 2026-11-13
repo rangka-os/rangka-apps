@@ -1509,6 +1509,34 @@ def scenario_bank_booked(api):
           lc.get("status") == "unmatched" and not lc.get("suggested_invoice") and not lc.get("booked_payment"), lc)
     eq("the invoice owes what is really left (5.550.000 - 3.000.000)", api.get("sales_invoice", big)["outstanding"], 2_550_000)
 
+    # audit r7 H10: the line comes first and is suggested to the invoice; finance books the same instalment later; the
+    # owner's confirmation then drafts nothing and turns the line into Sudah tercatat against that payment
+    inv_h = submitted(4_440_000)
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-dulu.csv", statement_csv([("25/11/2026", "TRSF CR CICIL " + inv_h, 1_500_000, 0, 92_000_000)]))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    lh = api.get("bank_transaction", (c.get("records") or [""])[0])
+    eq("the line first: suggested to the invoice it names", (lh.get("status"), lh.get("suggested_invoice")), ("suggested", inv_h))
+    st, p3 = api.create("payment", {"direction": "receive", "customer": customer, "method": "transfer", "amount": 1_500_000,
+                                    "allocations": [{"sales_invoice": inv_h, "amount": 1_500_000}]})
+    st, r3 = api.verb("payment", p3["name"], "submit")
+    later = r3.get("name", p3["name"])
+    st, r = api.patch("bank_transaction", lh["name"], {"status": "confirmed"})
+    lh = api.get("bank_transaction", lh["name"])
+    eq("confirming after finance booked that instalment: no draft, the line is suggested as Sudah tercatat against it",
+       (lh["status"], lh.get("booked_payment"), lh.get("suggested_invoice") or "", lh.get("draft_payment") or ""), ("suggested", later, "", ""))
+    eq("the invoice owes 4.440.000 - 1.500.000 once", api.get("sales_invoice", inv_h)["outstanding"], 2_940_000)
+    # control: another customer's payment of the same amount does not stop the confirmation
+    st, other = api.create("customer", {"customer_name": "PT Contoh Lain"})
+    st, po = api.create("payment", {"direction": "receive", "customer": other["name"], "method": "transfer", "amount": 777_000})
+    api.verb("payment", po["name"], "submit")
+    inv_k = submitted(2_000_000)
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-kontrol.csv", statement_csv([("26/11/2026", "TRSF CR " + inv_k, 777_000, 0, 93_000_000)]))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    lk2 = api.get("bank_transaction", (c.get("records") or [""])[0])
+    st, r = api.patch("bank_transaction", lk2["name"], {"suggested_invoice": inv_k, "booked_payment": "", "status": "confirmed"})
+    lk2 = api.get("bank_transaction", lk2["name"])
+    check("the owner confirms an invoice for a line while another customer's payment of that amount waits: drafted", st == 200 and bool(lk2.get("draft_payment")), (st, lk2))
+
 
 def scenario_xendit_callbacks(api):
     """Rel uang U13/U17 (ready, not active): synthetic Xendit callbacks, as the xendit connector's triggers emit them,
