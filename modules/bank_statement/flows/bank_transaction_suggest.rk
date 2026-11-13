@@ -1,8 +1,17 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
-# A new statement line with money in looks for the invoice it pays. First choice: an open invoice whose number is in
-# the transfer note (written loosely, see below). Otherwise: exactly one open invoice whose remaining amount equals
-# the line. Two candidates of the same amount -> no suggestion (the owner picks). It only suggests; the payment comes after the owner confirms.
-# outstanding is already net of PPh 23, so a customer who withheld tax still matches.
+# A new statement line with money in looks for what it is. It only suggests; nothing is paid before the owner confirms.
+# 1. Money already on the books (booked_payment): a submitted non-cash payment of the same amount that no statement line
+#    holds yet, whose reference (giro number, gateway reference) is in the note -> that payment. A giro is booked to the
+#    bank when it is received and a QRIS or VA through a gateway when the gateway reports it, so their clearing or
+#    settlement line must not pay an invoice again (audit rel-uang-e2e H1: a clearing line of one giro was suggested to
+#    another open invoice of the same amount and paid it twice).
+# 2. An open invoice whose number is in the transfer note (written loosely, see below).
+# 3. Exactly one open invoice whose remaining amount equals the line, only when the note is not a clearing or a
+#    settlement (KLIRING, SETORAN, SETTLEMENT, QRIS, DOKU, XENDIT, MIDTRANS) and no booked payment of that amount is
+#    still waiting for its statement line.
+# 4. Else exactly one booked payment of that amount waiting for its line -> that payment.
+# Anything else: no suggestion (the owner picks). outstanding is already net of PPh 23, so a customer who withheld tax
+# still matches.
 name: bank_transaction_suggest
 label: {id: Usulan cocok mutasi ke faktur}
 on: bank_transaction.created
@@ -20,12 +29,30 @@ steps:
       .contains(name.upperAscii().replace(' ', '').replace('-', '').replace('/', '').replace('.', '')))
     as: by_number
   - {find_all: sales_invoice, where: "docstatus == 1 && outstanding == event.amount", as: by_amount}
+  - {find_all: bank_transaction, where: "booked_payment != ''", as: held}
+  - find_all: payment
+    where: >-
+      docstatus == 1 && direction == 'receive' && method != 'cash' && method != 'sales_return' && amount == event.amount &&
+      bank_transaction == '' && !(name in held.map(l, l.booked_payment))
+    as: booked
+  - find_all: payment
+    where: >-
+      docstatus == 1 && direction == 'receive' && method != 'cash' && method != 'sales_return' && amount == event.amount &&
+      bank_transaction == '' && !(name in held.map(l, l.booked_payment)) && reference != '' &&
+      event.description.upperAscii().contains(reference.upperAscii())
+    as: booked_ref
   - {find: bank_transaction, where: name == event.name, as: line}
-  - if: size(by_number) == 1
-    then:
-      - update: line
-        set: {suggested_invoice: "by_number[0].name", status: "'suggested'"}
-    else:
-      - update: line
-        if: size(by_amount) == 1
-        set: {suggested_invoice: "by_amount[0].name", status: "'suggested'"}
+  - update: line
+    if: size(booked_ref) == 1
+    set: {booked_payment: "booked_ref[0].name", status: "'suggested'"}
+  - update: line
+    if: "size(booked_ref) != 1 && size(by_number) == 1"
+    set: {suggested_invoice: "by_number[0].name", status: "'suggested'"}
+  - update: line
+    if: >-
+      size(booked_ref) != 1 && size(by_number) != 1 && size(by_amount) == 1 && size(booked) == 0 &&
+      ['KLIRING', 'SETORAN', 'SETTLEMENT', 'QRIS', 'DOKU', 'XENDIT', 'MIDTRANS'].map(w, event.description.upperAscii().contains(w) ? 1 : 0).sum() == 0
+    set: {suggested_invoice: "by_amount[0].name", status: "'suggested'"}
+  - update: line
+    if: "size(booked_ref) != 1 && size(by_number) != 1 && (size(by_amount) != 1 || size(booked) > 0) && size(booked) == 1"
+    set: {booked_payment: "booked[0].name", status: "'suggested'"}

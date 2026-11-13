@@ -1388,6 +1388,68 @@ def statement_csv(rows, seq=True):
     return ("\n".join(out) + "\n").encode()
 
 
+def scenario_bank_booked(api):
+    """Audit rel-uang-e2e H1: money already on the books (a giro booked to the bank when received, a QRIS through a
+    gateway) shows on the statement later. Its line is "Sudah tercatat" against that payment and never pays a second
+    invoice of the same amount; one payment is on one line only; cancelling the payment frees the line."""
+    if not installed(api, "bank_transaction"):
+        return
+    item = services(api)[0]["name"]
+    st, cust = api.create("customer", {"customer_name": "PT Contoh Kembar"})
+    customer = cust["name"]
+
+    def submitted(rate):
+        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0))
+        st, resp = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        return resp.get("name", inv["name"])
+
+    def paid(inv, amount, method, ref):
+        st, p = api.create("payment", {"direction": "receive", "customer": customer, "method": method, "reference": ref, "amount": amount,
+                                       "allocations": [{"sales_invoice": inv, "amount": amount}]})
+        st, r = api.verb("payment", p["name"], "submit")
+        return r.get("name", p["name"])
+
+    def bank():
+        return sum(r["amount"] for r in api.find("gl_entry", "account == '11200'")) if installed(api, "gl_entry") else 0
+
+    X, Z = 1_370_295, 2_480_500
+    invA, invB = submitted(X), submitted(X)
+    invC, invD = submitted(Z), submitted(Z)
+    payA = paid(invA, X, "qris", "QR-AUD-0001")
+    payC = paid(invC, Z, "giro", "BG-AUD-77")
+    bank0 = bank()
+    rows = [("23/11/2026", "SETTLEMENT QRIS QR-AUD-0001", X, 0, 80_000_000),
+            ("23/11/2026", "KLIRING BG-AUD-77 PT CONTOH KEMBAR", Z, 0, 82_480_500),
+            ("23/11/2026", "KLIRING PT CONTOH KEMBAR", Z, 0, 84_961_000)]
+    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-tercatat.csv", statement_csv(rows))
+    st, c = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+    check("statement of money already booked: 3 lines", st == 200 and len(c.get("records", [])) == 3, (st, c))
+    lines = {l["description"]: l for l in api.find("bank_transaction", "date == '2026-11-23'")}
+    lq, lg, lk = lines.get(rows[0][1], {}), lines.get(rows[1][1], {}), lines.get(rows[2][1], {})
+    eq("QRIS settlement with the payment's reference: suggested as booked against that payment, not the twin invoice",
+       (lq.get("status"), lq.get("booked_payment"), lq.get("suggested_invoice") or ""), ("suggested", payA, ""))
+    eq("giro clearing with the giro number: suggested as booked against the giro payment",
+       (lg.get("status"), lg.get("booked_payment"), lg.get("suggested_invoice") or ""), ("suggested", payC, ""))
+    check("a second clearing of that amount (the giro is taken): no invoice suggested for a KLIRING line",
+          lk.get("status") == "unmatched" and not lk.get("suggested_invoice") and not lk.get("booked_payment"), lk)
+    for l in (lq, lg):
+        st, r = api.patch("bank_transaction", l["name"], {"status": "confirmed"})
+        check(f"confirm {l.get('description', '')[:24]}", st == 200, (st, r))
+    lq, lg = api.get("bank_transaction", lq["name"]), api.get("bank_transaction", lg["name"])
+    eq("confirmed lines are Sudah tercatat, without a new payment", [(l["status"], l.get("payment") or "", l.get("draft_payment") or "") for l in (lq, lg)],
+       [("booked", "", ""), ("booked", "", "")])
+    eq("the twin invoices still owe everything (nothing paid twice)", (api.get("sales_invoice", invB)["outstanding"], api.get("sales_invoice", invD)["outstanding"]), (X, Z))
+    eq("bank on the ledger unchanged by booking the lines", bank(), bank0)
+    eq("no payment made from the statement lines", len(api.find("payment", f"bank_transaction == '{lq['name']}' || bank_transaction == '{lg['name']}'")), 0)
+    st, r = api.patch("bank_transaction", lk["name"], {"booked_payment": payC, "status": "confirmed"})
+    check("the same payment booked on a second line: refused", st in (409, 422), (st, r))
+    st, r = api.patch("bank_transaction", lk["name"], {"booked_payment": payA, "suggested_invoice": invD})
+    check("a line cannot hold both an invoice and a booked payment", st in (409, 422), (st, r))
+    st, r = api.verb("payment", payA, "cancel")
+    lq = api.get("bank_transaction", lq["name"])
+    check("cancelling the booked payment frees its line (unmatched, no booked payment)", st == 200 and lq["status"] == "unmatched" and not lq.get("booked_payment"), (st, lq))
+
+
 def scenario_xendit_callbacks(api):
     """Rel uang U13/U17 (ready, not active): synthetic Xendit callbacks, as the xendit connector's triggers emit them,
     run through payment_from_xendit_* with POST /flows/<name>/run (the kernel has no connector runtime yet). A paid
@@ -5391,7 +5453,7 @@ day_one_staff.bind(sys.modules[__name__])
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_coretax, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction, scenario_xendit_callbacks],
+                  scenario_prints_jasa, scenario_coretax, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction, scenario_xendit_callbacks, scenario_bank_booked],
     "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods, scenario_bank_account_delete] + day_one_returns.SCENARIOS_FNB,
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,

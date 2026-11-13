@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The payment a line was booked against is cancelled (a giro bounced, a gateway payment reversed): the line goes back
+# to unmatched, without the payment, and can be matched again.
+name: bank_transaction_booked_released
+label: {id: Mutasi kembali belum cocok saat pembayaran tercatatnya dibatalkan}
+on: payment.cancelled
+steps:
+  - {find: bank_transaction, where: booked_payment == event.name, as: line}
+  - update: line
+    if: line != null
+    set: {status: "'unmatched'", booked_payment: "''"}
