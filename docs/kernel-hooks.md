@@ -62,8 +62,13 @@ created directly. A CEL rule cannot tell that a draft was made by a hook, so thi
 - **Reads:** the order and its lines; every submitted, not cancelled `sales_invoice` with `customer_order = <order>`
   and its lines.
 - **Writes:** a **draft** `sales_invoice` (`customer`, `customer_order`, `po_number`, `kind: regular`) with one line per
-  order line whose quantity is not yet fully invoiced: `qty = order qty - qty already invoiced` (counted per item, filling the order's lines in order),
-  `rate`, `uom` and `description` from the order line. Returns `{open: {model: sales_invoice, name}}`. Updates `customer_order.invoiced_amount`
+  order line whose quantity is not yet fully invoiced: `qty = order qty - qty already invoiced` (billed quantities go first
+  to order lines with the same item and line marks, then to the item's other lines whatever their marks, filling the
+  order's lines in order, so a mark changed on a draft invoice never bills a line twice), `rate`, `uom` and `description` from the order line, and the line
+  marks `pph23_exclude` and `ppn_exclude` (the workers' wages line) when both line models have them.
+  `orders.from_quotation` carries the same marks from the quotation lines to the order lines (rangka-os
+  fix/conversions-ppn-exclude). An order made before the marks existed has none: mark its wages line on the draft
+  invoice before submitting (a PT with `tax.ppn_fee_only` would otherwise charge PPN on the wages). Returns `{open: {model: sales_invoice, name}}`. Updates `customer_order.invoiced_amount`
   on submit of the invoice, not here.
 - **Refuses:** `409 nothing_to_invoice` when every line is fully invoiced; `409 order_not_submitted` when the order is not submitted (past the action gate).
 - **Idempotency:** the hook reuses an existing draft for the order (same `customer_order`, `docstatus 0`) and returns it instead of creating another

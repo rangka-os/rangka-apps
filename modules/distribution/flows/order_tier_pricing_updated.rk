@@ -11,7 +11,7 @@ steps:
   - {find: customer_order, where: name == event.name, as: so}
   - update: so
     set:
-      items: "event.items.map(i, {'name': i.name, 'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'rate': i.rate, 'tier_applied': i.tier_applied, 'price_tier': event.price_tier})"
+      items: "event.items.map(i, {'name': i.name, 'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'pph23_exclude': i.pph23_exclude, 'ppn_exclude': i.ppn_exclude, 'rate': i.rate, 'tier_applied': i.tier_applied, 'price_tier': event.price_tier})"
   - update: so
     set:
-      items: "so.items.map(i, {'name': i.name, 'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'rate': i.tier_applied == i.price_tier ? i.rate : i.list_rate, 'tier_applied': i.price_tier, 'price_tier': i.price_tier})"
+      items: "so.items.map(i, {'name': i.name, 'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'pph23_exclude': i.pph23_exclude, 'ppn_exclude': i.ppn_exclude, 'rate': i.tier_applied == i.price_tier ? i.rate : i.list_rate, 'tier_applied': i.price_tier, 'price_tier': i.price_tier})"

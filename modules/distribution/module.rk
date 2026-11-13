@@ -4,7 +4,7 @@
 # this module switches on live in their own models (customer, item, customer_order, sales_invoice, payment) behind
 # app_installed('distribution'); the flows here keep them current.
 name: distribution
-version: 1.0.0
+version: 1.0.1
 title: {id: Distribusi, en: Distribution}
 summary:
   id: Catat giro masuk dari pelanggan grosir sampai cair.

@@ -32,6 +32,12 @@ fields:
     type: currency
     label: {id: Jumlah}
     compute: round(qty * rate * (1 - discount / 100))
+  # The workers' wages or a reimbursed cost quoted on their own line: outside the PPh 23 base of the invoice made from
+  # the quotation (carried by the kernel conversions through the order); the quotation itself has no PPh 23.
+  - name: pph23_exclude
+    type: check
+    label: {id: Bukan dasar PPh 23}
+    default: 'false'
   # The workers' wages quoted on their own line: outside the PPN base when the org charges PPN on its fee only
   # (config tax.ppn_fee_only, PMK 83/2012), as on the invoice (sales_invoice_item.ppn_exclude).
   - name: ppn_exclude

@@ -23,7 +23,7 @@ ORACLE_KEY = {"base_pay": "base", "overtime_pay": "overtime", "holiday_overtime_
 
 
 def bind(m):
-    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "denied", "secrets", "import_commit", "submit_all", "messages"):
+    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "denied", "secrets", "import_commit", "submit_all", "messages", "check_print"):
         H[k] = getattr(m, k)
     globals().update(H)
 
@@ -634,6 +634,42 @@ def scenario_ppn_fee_only(api):
         st, q = cl.create("quotation", {"customer": cu, "subject": "Alih daya operator", "items": lines})
         if check(f"{label}: quotation with the wage line marked", st == 201, (st, q)):
             eq(f"{label}: quotation PPN base, PPN and total equal the invoice's", (q.get("ppn_base"), q.get("ppn"), q.get("grand_total")), want)
+    # the prints show the base as the faktur pajak does: DPP, (wages left out, Dasar PPN), DPP nilai lain 11/12, PPN
+    # (t_270f5445). Fee-only: 115.500.000 - 100.000.000 = 15.500.000; x 11/12 = 14.208.333; PPN 1.705.000.
+    fee_rows = ["DPP", "Rp 115.500.000", "Upah tenaga kerja di luar dasar PPN (PMK 83/2012)", "-Rp 100.000.000", "Dasar PPN", "Rp 15.500.000",
+                "DPP nilai lain 11/12", "Rp 14.208.333", "PPN 12%", "Rp 1.705.000"]
+    check_print("fee-only invoice print", fee, "sales_invoice", f["name"], "", fee_rows)
+    check_print("default invoice print", api, "sales_invoice", d["name"], "", ["DPP nilai lain 11/12", "Rp 105.875.000", "PPN 12%", "Rp 12.705.000"],
+                must_not=["PMK 83/2012", "Dasar PPN"])
+    fq = fee.find("quotation", "subject == 'Alih daya operator'")
+    if not fq:
+        return
+    check_print("fee-only quotation print", fee, "quotation", fq[0]["name"], "", fee_rows)
+    # quotation -> order -> invoice keeps the wage line's marks (kernel conversions, t_809c5883)
+    st, resp = fee.verb("quotation", fq[0]["name"], "submit", {"force": True})
+    qn = (resp or {}).get("name", fq[0]["name"])
+    fee.action("quotation", qn, "mark_outcome", {"outcome": "accepted"})
+    st, resp = fee.action("quotation", qn, "make_order", {"po_number": "PO-TK-77", "po_date": "2031-07-01"})
+    if not check("fee-only PT: order from the accepted quotation", st == 200 and (resp or {}).get("open", {}).get("model") == "customer_order", (st, resp)):
+        return
+    so = resp["open"]["name"]
+    order = fee.get("customer_order", so)
+    eq("the order lines keep the wage marks", [(bool(x.get("pph23_exclude")), bool(x.get("ppn_exclude"))) for x in order["items"]],
+       [(True, True), (False, False), (False, False)])
+    st, resp = fee.verb("customer_order", so, "submit", {"force": True})
+    so = (resp or {}).get("name", so)
+    st, resp = fee.action("customer_order", so, "make_invoice", {})
+    if not check("fee-only PT: invoice from the order", st == 200 and (resp or {}).get("open", {}).get("model") == "sales_invoice", (st, resp)):
+        return
+    di = fee.get("sales_invoice", resp["open"]["name"])
+    eq("the invoice from the order taxes the fee only, like the quotation: PPN base 15.500.000, PPN 1.705.000",
+       ([bool(x.get("ppn_exclude")) for x in di["items"]], di.get("ppn_base"), di.get("ppn")), ([True, False, False], 15_500_000, 1_705_000))
+    # a wages-only invoice in the fee-only PT: base 0, PPN 0, and the print says so (audit lanjutan 2 F3)
+    cu = fee.find("customer", "customer_name == 'PT Klien Alih Daya Contoh'")[0]["name"]
+    st, wo = fee.create("sales_invoice", {"customer": cu, "posting_date": "2031-07-28", "due_date": "2031-07-28", "items": [dict(lines[0], rate=50_000_000)]})
+    if check("fee-only PT: wages-only invoice", st == 201 and wo.get("ppn_base") == 0 and wo.get("ppn") == 0, (st, wo)):
+        check_print("wages-only invoice print", fee, "sales_invoice", wo["name"], "",
+                    ["Upah tenaga kerja di luar dasar PPN (PMK 83/2012)", "-Rp 50.000.000", "Dasar PPN", "Rp 0"], must_not=["Rp 45.833.333"])
     # Coretax: the fee-only faktur carries BPJS + fee only
     seller = "9" + "0" * 13 + "99"   # a made-up NPWP
     st, tp = fee.create("tax_period", {"year": "2031", "month": "07", "seller_tin": seller, "seller_nitku": seller + "000000"})
