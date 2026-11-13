@@ -5,7 +5,7 @@
 name: bank_transaction_booked
 label: {id: Mutasi dikonfirmasi sebagai uang yang sudah tercatat}
 on: bank_transaction.updated
-if: event.status == 'confirmed' && (event.booked_payment != '' || event.booked_voucher != '') && event.payment == ''
+if: event.status == 'confirmed' && event.booked_payment != '' && event.payment == ''
 steps:
   - {find: bank_transaction, where: name == event.name, as: line}
   - update: line

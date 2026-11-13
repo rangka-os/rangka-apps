@@ -1389,39 +1389,48 @@ def statement_csv(rows, seq=True):
 
 
 def scenario_bank_takings(api):
-    """Audit rel-uang-e2e H3: a shop's QRIS takings are on the bank (1-1200) from the day they are submitted. The
-    settlement line on the statement, of the same amount as an open invoice, is "Sudah tercatat" against the takings,
-    never a second payment of that invoice."""
+    """Audit rel-uang-e2e H3/H4/H5: a shop's takings by QRIS or card are on the bank (1-1200) from the day they are
+    submitted, one journal amount for every non-cash channel. A statement line of the same amount as an open invoice,
+    in the days after such takings, is not suggested to that invoice by the amount alone (it may be the settlement):
+    it stays Belum cocok for the owner. A transfer naming the invoice is still suggested to it."""
     if not (installed(api, "bank_transaction") and installed(api, "outlet_takings") and installed(api, "gl_entry")):
         return
     outlet = api.list("outlet")[0]["name"]
     st, c = api.create("customer", {"customer_name": "Kantor Contoh Setoran"})
     item = [i for i in api.list("item", limit=200) if (i.get("rate") or 0) > 0][0]["name"]
-    st, inv = api.create("sales_invoice", {"customer": c["name"], "outlet": outlet, "posting_date": "2026-11-13", "items": [{"item": item, "qty": 1, "rate": 1_000_000}]})
-    st, inv = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
-    amount = inv["grand_total"]
-    st, t = api.create("outlet_takings", {"outlet": outlet, "date": "2026-11-12", "lines": [{"method": "qris", "expected": amount + 7000, "received": amount, "fee": 7000, "bank_ref": "STL-9981"}]})
-    st, t = api.verb("outlet_takings", t.get("name", ""), "submit")
-    check("QRIS takings submitted", st == 200, (st, t))
-    takings = t.get("name")
+
+    def invoice(rate):
+        st, inv = api.create("sales_invoice", {"customer": c["name"], "outlet": outlet, "posting_date": "2026-11-13", "items": [{"item": item, "qty": 1, "rate": rate}]})
+        st, inv = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        return inv
+
+    def line(day, note, amount, bal):
+        st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, f"mutasi-{day.replace('/', '')}-{amount}.csv", statement_csv([(day, note, amount, 0, bal)]))
+        st, cm = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
+        return api.get("bank_transaction", (cm.get("records") or [""])[0])
 
     def bank():
         return sum(r["amount"] for r in api.find("gl_entry", "account == '11200'"))
+    X = invoice(1_234_000)
+    a = X["grand_total"]
+    # takings of the 12th: QRIS a (settled on its own) and debit 600.000, one 1-1200 amount in the books
+    st, t = api.create("outlet_takings", {"outlet": outlet, "date": "2026-11-12", "lines": [
+        {"method": "qris", "expected": a, "received": a, "fee": 0, "bank_ref": "STL-9981"},
+        {"method": "debit", "expected": 600_000, "received": 600_000, "fee": 0, "bank_ref": "EDC-12"}]})
+    st, t = api.verb("outlet_takings", t.get("name", ""), "submit")
+    check("QRIS and debit takings submitted", st == 200, (st, t))
     bank0, pays0 = bank(), len(api.find("payment", "docstatus != 2"))
-    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-setoran.csv", statement_csv([("13/11/2026", "KR OTOMATIS MCP 0012 STL-9981", amount, 0, 90_000_000)]))
-    st, cm = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
-    line = api.get("bank_transaction", (cm.get("records") or [""])[0])
-    eq("settlement of the QRIS takings: suggested as Sudah tercatat against the takings, not the open invoice of that amount",
-       (line.get("status"), line.get("booked_voucher"), line.get("suggested_invoice") or ""), ("suggested", f"outlet_takings/{takings}", ""))
-    st, r = api.patch("bank_transaction", line["name"], {"status": "confirmed"})
-    line = api.get("bank_transaction", line["name"])
-    eq("confirmed: Sudah tercatat, no payment drafted", (line["status"], line.get("payment") or "", line.get("draft_payment") or ""), ("booked", "", ""))
-    eq("the invoice still owes everything", api.get("sales_invoice", inv["name"])["outstanding"], amount)
-    eq("bank on the ledger and payments unchanged", (bank(), len(api.find("payment", "docstatus != 2"))), (bank0, pays0))
-    st, pv = api.upload("/api/v1/imports/bank_statement_csv", {}, "mutasi-setoran-2.csv", statement_csv([("14/11/2026", "KR OTOMATIS MCP 0013", amount, 0, 91_000_000)]))
-    st, cm = api.call("POST", f"/api/v1/imports/bank_statement_csv/{pv['id']}/commit") if st == 200 else (st, {})
-    l2 = api.get("bank_transaction", (cm.get("records") or [""])[0])
-    eq("a second line of that amount (the takings are held): the invoice of that amount is suggested again", (l2.get("status"), l2.get("suggested_invoice"), l2.get("booked_voucher") or ""), ("suggested", inv["name"], ""))
+    l1 = line("13/11/2026", "KR OTOMATIS MCP 0012", a, 90_000_000)
+    check("the QRIS settlement of the takings (same amount as the open invoice): no suggestion, Belum cocok",
+          l1.get("status") == "unmatched" and not l1.get("suggested_invoice") and not l1.get("booked_payment"), l1)
+    st, r = api.patch("bank_transaction", l1["name"], {"status": "ignored"})
+    eq("the owner sets it aside as money already on the books (Abaikan)", (st, api.get("bank_transaction", l1["name"])["status"]), (200, "ignored"))
+    eq("the invoice still owes everything; bank and payments unchanged", (api.get("sales_invoice", X["name"])["outstanding"], bank(), len(api.find("payment", "docstatus != 2"))), (a, bank0, pays0))
+    l2 = line("14/11/2026", "TRSF CR " + X["name"] + " KANTOR CONTOH", a, 91_234_000)
+    eq("a transfer naming the invoice is suggested to it, takings or not", (l2.get("status"), l2.get("suggested_invoice")), ("suggested", X["name"]))
+    l3 = line("30/11/2026", "TRSF CR KANTOR CONTOH", a, 92_468_000)
+    st, r = api.patch("bank_transaction", l2["name"], {"status": "ignored"})
+    eq("weeks after the takings, the amount alone suggests the invoice again", (l3.get("status"), l3.get("suggested_invoice")), ("suggested", X["name"]))
 
 
 def scenario_bank_booked(api):
