@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: gudang_harian
+label: {id: Gudang hari ini, en: Warehouse today}
+description: {id: 'Untuk staf gudang dan outlet: barang yang harus diterima, opname, dan penyesuaian di tempat kerja kamu'}
+default_period: 1
+cache: 1m
+# The home of outlet staff (contract 0030 §3: the first dashboard whose roles names one of the user's roles). Only
+# models outlet_staff may read, row-scoped to the member's outlets (role scope outlet, from_outlet, to_outlet), and no
+# money: the owner's grosir_overview and grosir_ar are for the managers (card t_19f909b9).
+roles: [outlet_staff, head_office]
+widgets:
+  - {name: receipts_draft, type: number, label: {id: Penerimaan belum diajukan}, model: goods_receipt, filter: docstatus == 0, good_when: down, span: 3}
+  - {name: receipts_today, type: number, label: {id: Penerimaan hari ini}, model: goods_receipt, filter: "docstatus == 1 && received_on == today()", span: 3}
+  - {name: to_receive, type: number, label: {id: Kiriman belum diterima}, model: stock_transfer, filter: "docstatus == 1 && state != 'received' && (user.outlets.size() == 0 || to_outlet in user.outlets)", good_when: down, span: 3}
+  - {name: counts_draft, type: number, label: {id: Opname belum diajukan}, model: stock_count, filter: docstatus == 0, good_when: down, span: 3}
+  - name: receipt_list
+    type: list
+    label: {id: Penerimaan barang yang belum diajukan}
+    model: goods_receipt
+    filter: docstatus == 0
+    sort: received_on
+    limit: 20
+    columns: [name, received_on, vendor, outlet]
+    span: 12
+  - name: receive_list
+    type: list
+    label: {id: Kiriman yang harus diterima}
+    model: stock_transfer
+    filter: "docstatus == 1 && state != 'received' && (user.outlets.size() == 0 || to_outlet in user.outlets)"
+    sort: transfer_date
+    limit: 20
+    columns: [name, transfer_date, from_outlet, to_outlet, state]
+    span: 12

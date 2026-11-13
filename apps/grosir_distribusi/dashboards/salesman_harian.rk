@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: salesman_harian
+label: {id: Pelanggan saya, en: My customers}
+description: {id: 'Untuk salesman: pesanan yang belum jalan, pelanggan yang telat bayar, dan giro dari pelanggan kamu'}
+default_period: 30
+cache: 1m
+# The home of a salesman (contract 0030 §3). Every model here is row-scoped to the member's own records (role
+# field_sales: salesman == user.name), so the numbers are theirs, never the company's (card t_19f909b9).
+roles: [field_sales]
+widgets:
+  - name: perlu_telat_bayar
+    type: list
+    label: {id: Pelanggan saya yang telat bayar}
+    model: customer
+    filter: oldest_open_due != '' && oldest_open_due < today()
+    sort: oldest_open_due
+    limit: 10
+    columns: [customer_name, oldest_open_due, outstanding]
+    span: 12
+  - {name: orders_open, type: number, label: {id: Pesanan belum jalan}, description: {id: Draft dan pesanan yang menunggu persetujuan kredit}, model: customer_order, aggregate: count, filter: docstatus == 0, good_when: down, span: 4}
+  - {name: my_sales, type: number, label: {id: Penjualan saya (faktur)}, description: {id: 'Nilai sebelum PPN, faktur pelanggan kamu pada periode ini'}, model: sales_invoice, aggregate: sum, field: subtotal, filter: docstatus == 1, period: posting_date, compact: true, span: 4}
+  - {name: my_ar, type: number, label: {id: Piutang pelanggan saya}, model: sales_invoice, aggregate: sum, field: outstanding, filter: docstatus == 1 && outstanding > 0, compact: true, good_when: down, span: 4}
+  - name: giro_due
+    type: list
+    label: {id: Giro pelanggan saya yang belum cair}
+    model: giro
+    filter: status == 'received' || status == 'deposited'
+    sort: effective_date
+    limit: 10
+    columns: [giro_no, customer, effective_date, amount, status]
+    span: 12

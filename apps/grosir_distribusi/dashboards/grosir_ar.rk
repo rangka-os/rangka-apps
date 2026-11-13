@@ -2,6 +2,9 @@
 name: grosir_ar
 label: {id: Piutang dan penagihan, en: Receivables and collections}
 cache: 5m
+# Money of the whole company: managers and the owner (always). Staff land on gudang_harian or salesman_harian
+# (card t_19f909b9: an outlet_staff member landed here and every widget was refused).
+roles: [sales_manager, finance_manager, head_office]
 widgets:
   - name: ar_by_salesman
     type: chart

@@ -27,7 +27,7 @@ modules:
   distribution: ^1.0
   delivery: ^1.0
   bank_statement: ^1.0
-dashboards: [grosir_overview, grosir_ar]
+dashboards: [grosir_overview, grosir_ar, gudang_harian, salesman_harian]
 roles: [sales_manager, finance_manager, head_office, field_sales]
 home: {dashboard: grosir_overview}
 # recipe is installed with stock but has no menu entry: a distributor sells goods as they are.
