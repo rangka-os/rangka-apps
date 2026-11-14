@@ -3987,6 +3987,15 @@ def scenario_tax_jasa(api):
         if check("X2 sales_manager cancels and amends finance's export invoice", st in (200, 201) and amn, (st, am)):
             st, r = sm.verb("sales_invoice", amn, "submit", {"force": True})
             check("X2 the amendment at rate 0 submitted by the sales_manager: held for finance (202)", st == 202, (st, r))
+        # F5: a DPP factor of finance's (1/10) carried by cancel and amend into the sales_manager's invoice is held too
+        st, f10 = fm.create("sales_invoice", invoice_body(customer, ndt, dpp_num=1, dpp_den=10))
+        st, r = fm.verb("sales_invoice", f10.get("name"), "submit", {"force": True}) if st == 201 else (st, f10)
+        f10n = (r or {}).get("name", f10.get("name"))
+        st, r = sm.verb("sales_invoice", f10n, "cancel", {})
+        st, am = sm.verb("sales_invoice", f10n, "amend", {}) if st == 200 else (st, r)
+        if check("F5 sales_manager cancels and amends finance's invoice at DPP 1/10", st in (200, 201) and (am or {}).get("name"), (st, am)):
+            st, r = sm.verb("sales_invoice", am["name"], "submit", {"force": True})
+            check("F5 the amendment at DPP 1/10 submitted by the sales_manager: held for finance (202)", st == 202, (st, r))
     st, resp = api.create("sales_invoice", dict(invoice_body(customer, ndt), tax_rate=100))
     check("the over-config message says how to fix an old draft", any("Draft lama" in m for m in messages(resp)), messages(resp))
     st, resp = api.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "T-8", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": -100_000}]})
