@@ -42,18 +42,19 @@ fields:
   - {name: yield_percent, type: float, label: {id: Rendemen aktual (%)}, compute: "planned_qty > 0 ? round(good_qty * 10000 / planned_qty) / 100 : 0"}
   - {name: share_total, type: float, label: {id: Total porsi biaya (%)}, compute: "outputs.map(o, o.cost_share).sum()"}
   - {name: main_share, type: float, label: {id: Porsi biaya produk utama (%)}, compute: "outputs.map(o, o.item == item ? o.cost_share : 0).sum()"}
-  - {name: material_cost, type: currency, label: {id: Biaya bahan (aktual)}, read_only: true}
+  - {name: material_cost, type: currency, label: {id: Biaya bahan (aktual)}, read_only: true, hidden_for: [outlet_staff]}
   - {name: labour_cost, type: currency, label: {id: Upah borongan}, compute: "labour.map(l, l.amount).sum()"}
   - {name: overhead_rate, type: currency, label: {id: Overhead per satuan}, default: bom.overhead_per_unit}
-  - {name: overhead_cost, type: currency, label: {id: Overhead}, compute: round(good_qty * overhead_rate)}
+  - {name: overhead_cost, type: currency, label: {id: Overhead}, compute: round(good_qty * overhead_rate), hidden_for: [outlet_staff]}
   # The product's share of the materials, plus all wages and overhead (by-products carry only their material share).
   - name: hpp_total
     type: currency
     label: {id: HPP batch (produk utama)}
     compute: "round(material_cost * main_share / 100) + labour_cost + overhead_cost"
     in_list: true
-  - {name: hpp_per_unit, type: currency, label: {id: HPP per satuan}, compute: "good_qty > 0 ? round(hpp_total / good_qty) : 0", in_list: true}
-  - {name: standard_unit_cost, type: currency, label: {id: HPP standar per satuan}, default: bom.unit_cost, read_only: true}
+    hidden_for: [outlet_staff]
+  - {name: hpp_per_unit, type: currency, label: {id: HPP per satuan}, compute: "good_qty > 0 ? round(hpp_total / good_qty) : 0", in_list: true, hidden_for: [outlet_staff]}
+  - {name: standard_unit_cost, type: currency, label: {id: HPP standar per satuan}, default: bom.unit_cost, read_only: true, hidden_for: [outlet_staff]}
   - {name: notes, type: text, label: {id: Catatan}}
 stock:
   date: production_date

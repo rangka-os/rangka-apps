@@ -238,6 +238,13 @@ def scenario_produksi_staff(api):
     if not check("production staff records a batch in the production room -> 201", st == 201, (st, pb)):
         return
     eq("yield 48 of 50 = 96%", pb["yield_percent"], 96)
+    # the batch's cost is the owner's: production staff record quantities, never see the HPP (card t_09a89bcd)
+    mine = staff.get("production_batch", pb["name"])
+    hpp = sorted(k for k in ("material_cost", "overhead_cost", "hpp_total", "hpp_per_unit", "standard_unit_cost") if k in mine)
+    hpp += sorted({"materials.cogs" for m in mine.get("materials", []) if "cogs" in m})
+    check("production staff read their batch without its HPP", not hpp, hpp)
+    st, resp = staff.call("GET", "/api/v1/aggregate/production_batch?fn=sum:hpp_total")
+    check("production staff cannot sum batch HPP -> 403", st == 403, (st, resp))
     st, resp = staff.patch("production_batch", pb["name"], {"labour": [{"worker": "WRK-0004", "stage": "TAHAP-004", "qty": 48, "rate": 50_000}]})
     eq("a typed piece rate is ignored: the stage's rate counts", api.get("production_batch", pb["name"])["labour_cost"], 48 * 600)
     st, resp = staff.create("production_batch", {"work_order": wo["name"], "output_outlet": BAHAN, "materials": mats,

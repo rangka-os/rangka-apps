@@ -38,3 +38,4 @@ fields:
     type: currency
     label: {id: Harga pokok}
     read_only: true
+    hidden_for: [cashier, outlet_staff]
