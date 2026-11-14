@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
 name: user
-label: {id: Pengguna}
+label: {id: Karyawan, en: Employee}
 icon: user
 title_field: full_name
 naming: USR-{###}
@@ -20,10 +20,39 @@ fields:
     label: {id: Nama}
     required: true
     in_list: true
-  - name: role
+  - name: employee_no
     type: data
-    label: {id: Peran}
-    in_list: true
+    label: {id: Nomor karyawan}
+  - name: phone
+    type: phone
+    label: {id: Nomor telepon}
+    hidden_for: [cashier, collector, course_admin, field_sales, field_worker, finance_manager, instructor, kitchen, outlet_staff, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, site_supervisor]
   - name: email
     type: data
     label: {id: Email}
+    read_only: true
+    hidden_for: [cashier, collector, course_admin, field_sales, field_worker, finance_manager, instructor, kitchen, outlet_staff, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, site_supervisor]
+  - name: role
+    type: data
+    label: {id: Peran}
+    read_only: true
+    in_list: true
+  - {name: outlets, type: table, of: user_outlet, label: {id: Outlet}, read_only: true, depends_on: app_installed('outlets')}
+  - name: access
+    type: select
+    label: {id: Akses}
+    help: {id: Akses diatur di Tim.}
+    default: "'none'"
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: active, label: {id: Aktif}}
+      - {value: pending, label: {id: Menunggu}}
+      - {value: removed, label: {id: Dicabut}}
+      - {value: none, label: {id: Tanpa akses}}
+  - name: account_id
+    type: int
+    label: {id: ID akun}
+    read_only: true
+    hidden_for: [cashier, collector, course_admin, field_sales, field_worker, finance_manager, head_office, instructor, kitchen, outlet_staff, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, site_supervisor]
