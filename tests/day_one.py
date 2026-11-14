@@ -3479,11 +3479,27 @@ def scenario_coretax(api):
     st, resp = api.verb("sales_invoice", i4, "cancel")
     check("coretax: a cancelled invoice", st == 200, (st, resp))
     i5 = inv(ca, may + "09", [(1, 1_000_000, {})], tax_rate=0, tax_rate_reason="not_taxable")
+    # card t_611be720: dibebaskan (08) and tidak dipungut (07) are faktur pajak with the facility's codes and the PPN
+    # stated, not billed (DJP template v1.6.1; reports/keputusan-riset/coretax-fasilitas-07-08.md)
+    i8 = inv(ca, may + "15", [(1, 6_720_000, {})], tax_rate=0, tax_rate_reason="exempt", coretax_facility="education_pp49")
+    aju = "00000040000020260514000123"
+    i7 = inv(ca, may + "17", [(1, 2_900_000, {})], tax_rate=0, tax_rate_reason="not_collected", coretax_facility="bonded_zone",
+             customs_doc=aju, customs_doc_period="052031")
+    for label, extra, want in (("exempt without a facility", {"tax_rate_reason": "exempt"}, "pilih fasilitasnya"),
+                               ("exempt with a bonded-zone facility", {"tax_rate_reason": "exempt", "coretax_facility": "bonded_zone"}, "tidak cocok"),
+                               ("a customs period not MMYYYY", {"tax_rate_reason": "not_collected", "coretax_facility": "bonded_zone", "customs_doc": aju, "customs_doc_period": "2031-05"}, "BBTTTT")):
+        st, resp = api.create("sales_invoice", {"customer": ca, "posting_date": may + "18", "due_date": may + "18", "tax_rate": 0,
+                                                "items": [{"item": svc["name"], "qty": 1, "rate": 1_000_000}], **extra})
+        check(f"coretax: {label} -> 422 '{want}'", st == 422 and any(want in m for m in messages(resp)), (st, resp))
+    g8, g7 = api.get("sales_invoice", i8), api.get("sales_invoice", i7)
+    eq("08 invoice: code 08, TD.00510 / TD.01110, PPN stated at 12% but billed 0",
+       (g8.get("efaktur_code"), g8.get("coretax_add_info"), g8.get("coretax_stamp"), g8.get("coretax_vat_rate"), g8.get("ppn")), ("08", "TD.00510", "TD.01110", 12, 0))
+    eq("07 invoice: code 07, TD.00502 / TD.01102", (g7.get("efaktur_code"), g7.get("coretax_add_info"), g7.get("coretax_stamp")), ("07", "TD.00502", "TD.01102"))
     dp = inv(ca, may + "10", [(1, 5_000_000, {})], kind="down_payment")
     fin = inv(ca, may + "20", [(1, 20_000_000, {})], dp_invoice=dp, down_payment=5_000_000)
     inv(ca, "2031-04-30", [(1, 7_000_000, {})])
     inv(ca, "2031-06-01", [(1, 7_000_000, {})])
-    got = {n: api.get("sales_invoice", n) for n in (i1, i2, i3, dp, fin)}
+    got = {n: api.get("sales_invoice", n) for n in (i1, i2, i3, dp, fin, i7, i8)}
     eq("e-Faktur codes: 04 (DPP nilai lain), 04, 02 (government collector)", [got[n].get("efaktur_code") for n in (i1, i2, i3)], ["04", "04", "02"])
     eq("buyer identity frozen on the invoice: NIK buyer", (got[i2].get("buyer_id_type"), got[i2].get("buyer_tin"), got[i2].get("buyer_doc_no"), got[i2].get("buyer_idtku")),
        ("National ID", "0" * 16, nik_b, "000000"))
@@ -3553,7 +3569,18 @@ def scenario_coretax(api):
     eq("root TaxInvoiceBulk with the seller NPWP", (root.tag, root.findtext("TIN")), ("TaxInvoiceBulk", seller))
     tis = root.findall("ListOfTaxInvoice/TaxInvoice")
     by_ref = {t.findtext("RefDesc").split(";")[0]: t for t in tis}
-    eq("the period's PPN invoices, no cancelled, no 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin, sen]))
+    eq("the period's PPN invoices and the 07/08 ones, no cancelled, no Pasal 4A 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin, sen, i7, i8]))
+    if i8 in by_ref:
+        t = by_ref[i8]
+        g = t.find("ListOfGoodService/GoodService")
+        eq("08 in XML: TrxCode, AddInfo, FacilityStamp, empty CustomDoc; TaxBase 6.720.000, OtherTaxBase 6.160.000, VATRate 12, VAT 739.200",
+           (t.findtext("TrxCode"), t.findtext("AddInfo"), t.findtext("FacilityStamp"), t.findtext("CustomDoc"), g.findtext("TaxBase"), g.findtext("OtherTaxBase"), g.findtext("VATRate"), g.findtext("VAT")),
+           ("08", "TD.00510", "TD.01110", "", "6720000", "6160000", "12", "739200"))
+    if i7 in by_ref:
+        t = by_ref[i7]
+        eq("07 in XML: TrxCode, AddInfo, FacilityStamp, customs document and its MMYYYY",
+           (t.findtext("TrxCode"), t.findtext("AddInfo"), t.findtext("FacilityStamp"), t.findtext("CustomDoc"), t.findtext("CustomDocMonthYear")),
+           ("07", "TD.00502", "TD.01102", aju, "052031"))
     neg = [(t.findtext("RefDesc"), g.findtext("TotalDiscount")) for t in tis for g in t.iter("GoodService") if D(g.findtext("TotalDiscount")) < 0]
     eq("no line has a negative TotalDiscount (audit D1)", neg, [])
     if sen in by_ref:
@@ -3574,7 +3601,9 @@ def scenario_coretax(api):
             eq(f"{ref}: service line Opt B, code 000000, unit UM.0030", (v["Opt"], v["Code"], v["Unit"]), ("B", "000000", "UM.0030" if uom else "UM.0033"))
             tb += D(v["TaxBase"]); vat += D(v["VAT"])
         eq(f"{ref}: lines add up to the invoice DPP", tb, D(doc["dpp"]))
-        check(f"{ref}: line PPN within Rp1 of the booked PPN", abs(vat - D(doc["ppn"])) <= 1, (vat, doc["ppn"]))
+        # 07/08: the faktur states the PPN the facility leaves uncollected; the invoice books none
+        if doc.get("efaktur_code") not in ("07", "08"):
+            check(f"{ref}: line PPN within Rp1 of the booked PPN", abs(vat - D(doc["ppn"])) <= 1, (vat, doc["ppn"]))
         eq(f"{ref}: date, Normal, seller NITKU", (t.findtext("TaxInvoiceDate"), t.findtext("TaxInvoiceOpt"), t.findtext("SellerIDTKU")),
            (doc["posting_date"][:10], "Normal", seller + "000000"))
     a = by_ref.get(i1)

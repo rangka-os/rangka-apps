@@ -11,7 +11,9 @@ related:
   invoices:
     model: sales_invoice
     range: {posting_date: [period_start, period_end]}
-    filter: docstatus == 1 && tax_rate > 0 && ppn > 0 && kind != 'retention'
+    # 07/08 (tidak dipungut, dibebaskan): a faktur pajak with PPN stated but not collected (card t_611be720); export
+    # (PEB is its faktur) and Pasal 4A (no faktur) stay out
+    filter: "docstatus == 1 && kind != 'retention' && ((tax_rate > 0 && ppn > 0) || efaktur_code == '07' || efaktur_code == '08')"
     sort: name
     children: true
     limit: 1000
@@ -37,3 +39,6 @@ related:
         message: {id: 'Jumlah barang di faktur pajak maksimal 2 desimal: pakai satuan yang lebih kecil (misalnya gram)'}
       - check: efaktur_code == '' || buyer_id_type != 'Passport' || buyer_country != 'IDN'
         message: {id: 'Pembeli dengan paspor harus punya kode negara selain IDN di Data pajak pelanggan'}
+      # Keterangan Tambahan and Cap Fasilitas are validated by DJP for 07/08 (template v1.6.1, sheet Keterangan)
+      - check: "(efaktur_code != '07' && efaktur_code != '08') || (coretax_add_info != '' && coretax_stamp != '')"
+        message: {id: 'Faktur PPN dibebaskan atau tidak dipungut belum punya fasilitas PPN: pilih fasilitasnya di faktur'}

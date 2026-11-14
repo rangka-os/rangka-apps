@@ -15,17 +15,20 @@
   its PPN was taken on the whole DPP */}}
 {{- $pb := .dpp}}{{if .ppn_base}}{{$pb = .ppn_base}}{{end}}
 {{- $fee := ne (dec $pb 2) (dec .dpp 2)}}
+{{- /* 07/08: the faktur states the PPN the facility leaves uncollected at the company's rate (coretax_vat_rate, frozen on
+  submit); an invoice submitted before that field charges its own rate */}}
+{{- $vr := .tax_rate}}{{if .coretax_vat_rate}}{{$vr = .coretax_vat_rate}}{{end}}
 {{- $s := "0"}}{{$n := "0"}}{{range .items}}{{if not (and $fee .ppn_exclude)}}{{$n = add $n 1}}{{if $fx}}{{$s = add $s .amount_fx_idr}}{{else}}{{$s = add $s .amount}}{{end}}{{end}}{{end}}
 {{- $r := sub $s $pb}}{{$k := "0"}}{{$acc := "0"}}
 		<TaxInvoice>
 			<TaxInvoiceDate>{{isodate .posting_date}}</TaxInvoiceDate>
 			<TaxInvoiceOpt>Normal</TaxInvoiceOpt>
 			<TrxCode>{{.efaktur_code}}</TrxCode>
-			<AddInfo/>
-			<CustomDoc/>
-			<CustomDocMonthYear/>
+			{{if .coretax_add_info}}<AddInfo>{{.coretax_add_info}}</AddInfo>{{else}}<AddInfo/>{{end}}
+			{{if .customs_doc}}<CustomDoc>{{.customs_doc}}</CustomDoc>{{else}}<CustomDoc/>{{end}}
+			{{if .customs_doc}}<CustomDocMonthYear>{{.customs_doc_period}}</CustomDocMonthYear>{{else}}<CustomDocMonthYear/>{{end}}
 			<RefDesc>{{.name}}{{if .dp_invoice}}; uang muka {{.dp_invoice}}{{end}}{{if $fee}}; upah tenaga kerja di luar DPP (PMK 83/2012){{end}}</RefDesc>
-			<FacilityStamp/>
+			{{if .coretax_stamp}}<FacilityStamp>{{.coretax_stamp}}</FacilityStamp>{{else}}<FacilityStamp/>{{end}}
 			<SellerIDTKU>{{$seller}}</SellerIDTKU>
 			<BuyerTin>{{.buyer_tin}}</BuyerTin>
 			<BuyerDocument>{{.buyer_id_type}}</BuyerDocument>
@@ -55,8 +58,8 @@
 					<TotalDiscount>{{dec (sub (round (mul $p $q) 2) $tb) 2}}</TotalDiscount>
 					<TaxBase>{{dec $tb 2}}</TaxBase>
 					<OtherTaxBase>{{dec $otb 2}}</OtherTaxBase>
-					<VATRate>{{dec $inv.tax_rate 2}}</VATRate>
-					<VAT>{{dec (round (div (mul $otb $inv.tax_rate) 100) 2) 2}}</VAT>
+					<VATRate>{{dec $vr 2}}</VATRate>
+					<VAT>{{dec (round (div (mul $otb $vr) 100) 2) 2}}</VAT>
 					<STLGRate>0</STLGRate>
 					<STLG>0</STLG>
 				</GoodService>

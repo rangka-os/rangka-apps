@@ -46,6 +46,7 @@ steps:
       posting_date: event.invoice_date
       tax_rate: '0'
       tax_rate_reason: "'exempt'"
+      coretax_facility: "'education_pp49'"
       notes: "'Biaya kursus ' + event.description + ' [' + event.name + ']'"
       items: "[{'item': event.item, 'description': event.description, 'qty': 1, 'rate': event.amount}]"
   - if: "!event.vat_exempt"
