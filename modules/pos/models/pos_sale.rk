@@ -41,6 +41,7 @@ fields:
   - name: date
     type: date
     label: {id: Tanggal}
+    index: true # the outlet_day backfill reads one outlet and day at a time (card t_0dba5917)
     default: today()
     in_list: true
   - name: buyer
