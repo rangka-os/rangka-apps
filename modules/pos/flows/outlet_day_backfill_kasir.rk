@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Backfill of outlets/outlet_day for days submitted before it existed (audit rangka-apps#77 F3): the kernel has no
+# migrate hook for .rk, so every run marks up to 20 more outlet-days (the oldest first) that have a submitted receipt but
+# no marker. A marked day (any source, also one freed by a cancel) is skipped, so the run is safe to repeat and a day
+# never gets two markers (day_key is unique). It runs on its schedule as the system; once every day is marked it only
+# reads.
+name: outlet_day_backfill_kasir
+label: {id: 'Lengkapi sumber penjualan harian dari struk kasir lama'}
+schedule: '*/5 * * * *'
+steps:
+  - for_each: "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]"
+    as: slot
+    do:
+      - find_all: outlet_day
+        if: slot == 1 || size(r) > 0
+        as: marked
+      - find_all: pos_sale
+        if: slot == 1 || size(r) > 0
+        where: "docstatus == 1 && !marked.exists(m, m.outlet == outlet && m.date == date)"
+        sort: date
+        limit: 1
+        as: r
+      - create: outlet_day
+        if: size(r) > 0
+        set:
+          outlet: "r[0].outlet"
+          date: "r[0].date"
+          source: "'kasir'"
+          document: "r[0].name"
+          day_key: "r[0].outlet + '|' + string(r[0].date)"
