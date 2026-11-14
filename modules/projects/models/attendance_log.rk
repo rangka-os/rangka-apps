@@ -183,10 +183,12 @@ rules:
            || (clock_in.startsWith(work_date - duration(1)) && clock_in >= (work_date - duration(1)) + 'T15:00:00'))
         : clock_in.startsWith(work_date))
     message: {id: 'Jam masuk harus di tanggal absen'}
+  # Kept strict: payroll counts attendance days, so a clock-out in the same minute (a mis-tap) must not make a paid
+  # day. The message says what to do instead of only what is wrong (C1-2, kartu t_5b5a3ae5).
   - name: out_after_in
     on: save
     check: clock_out == '' || (clock_in != '' && clock_out > clock_in)
-    message: {id: 'Jam keluar harus sesudah jam masuk'}
+    message: {id: 'Absen keluar paling cepat satu menit setelah absen masuk. Kalau tadi salah tekan masuk, minta mandor menghapus absennya.'}
   - name: overtime_range
     on: save
     check: overtime_hours >= 0 && overtime_hours <= 12

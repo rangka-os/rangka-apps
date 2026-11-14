@@ -29,6 +29,8 @@ fields:
     to: outlet
     label: {id: Diterima di}
     required: true
+    # staff with one outlet do not pick it (C1-2, kartu t_5b5a3ae5); head office with several picks as before
+    default: "user.outlets.size() == 1 ? user.outlets[0] : ''"
     in_list: true
   - name: received_on
     type: date
