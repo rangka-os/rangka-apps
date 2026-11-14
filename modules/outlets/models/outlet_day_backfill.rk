@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Done marker of the outlet_day backfill flows (audit rangka-apps#79 F1): one row per source (kasir from pos, harian
+# from outlet_sales), written by the backfill flow in the run that finds no unmarked day left. Every later run reads
+# this row by its key (one indexed row) and skips the scan of the receipts or daily records, so a finished backfill
+# no longer holds the payment locks every 5 minutes. Days after the backfill are marked by the live flows
+# (pos_sale_on_submit, outlet_day_on_sales, outlet_day_on_takings). Every field is read_only, like outlet_day.
+name: outlet_day_backfill
+label: {id: Status pelengkapan sumber penjualan harian, en: Outlet day backfill status}
+icon: history-line
+title_field: key
+permissions:
+  - {role: head_office, read: true, create: true, write: true}
+fields:
+  - name: key
+    type: select
+    label: {id: Sumber}
+    required: true
+    unique: true
+    read_only: true
+    options:
+      - {value: kasir, label: {id: Kasir}}
+      - {value: harian, label: {id: 'Penjualan harian (form, Moka, file) atau setoran'}}
+  - {name: done, type: check, label: {id: Selesai}, read_only: true}

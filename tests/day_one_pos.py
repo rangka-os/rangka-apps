@@ -279,6 +279,8 @@ def scenario_pos_day_source_backfill(api):
         s = open_shift(owner, DGO, 0, "backfill: Dago")
         st, r = sale(owner, s.get("name"), [{"item": PULSA, "qty": 1}], "", payments=[{"method": "cash", "amount": 5_000}]) if s else (0, None)
         check("backfill: a receipt at Toko Dago -> 200", st == 200, (st, r))
+        st, r = sale(owner, s.get("name"), [{"item": PULSA, "qty": 1}], "", payments=[{"method": "cash", "amount": 5_000}]) if s else (0, None)
+        check("backfill: a second receipt at Toko Dago the same day -> 200 (one batch, one marker)", st == 200, (st, r))
         st, f = owner.create("outlet_sales", {"outlet": CMH, "date": today, "lines": [{"item": GULA, "qty": 1, "gross": 18_000}]})
         if check("backfill: Cimahi's daily form -> 201", st == 201, (st, f)):
             st, sub = owner.verb("outlet_sales", rec(f)["name"], "submit")
@@ -287,7 +289,7 @@ def scenario_pos_day_source_backfill(api):
         psql = os.path.join(os.environ.get("PGBIN", ""), "psql")
         if not os.access(psql, os.X_OK):
             psql = shutil.which("psql") or "psql"
-        out = subprocess.run([psql, k.db, "-X", "-v", "ON_ERROR_STOP=1", "-c", "delete from r_outlet_day"], capture_output=True, text=True)
+        out = subprocess.run([psql, k.db, "-X", "-v", "ON_ERROR_STOP=1", "-c", "delete from r_outlet_day; delete from r_outlet_day_backfill"], capture_output=True, text=True)
         check("backfill: markers removed (the state before outlet_day)", out.returncode == 0, out.stderr[-300:])
         eq("backfill: no marker left", len(owner.find("outlet_day", "true")), 0)
         for flow in ("outlet_day_backfill_kasir", "outlet_day_backfill_harian"):
@@ -298,6 +300,14 @@ def scenario_pos_day_source_backfill(api):
         for flow in ("outlet_day_backfill_kasir", "outlet_day_backfill_harian"):
             owner.call("POST", f"/api/v1/flows/{flow}/run", {})
         eq("backfill: a second run adds nothing", len(owner.find("outlet_day", "true")), 2)
+        eq("backfill: each source is recorded done", sorted((x["key"], x.get("done")) for x in owner.find("outlet_day_backfill", "true")),
+           [("harian", True), ("kasir", True)])
+        # audit rangka-apps#79 F1: once done, a run reads only its done row, not the receipts or daily records
+        for flow, models in (("outlet_day_backfill_kasir", ("pos_sale",)), ("outlet_day_backfill_harian", ("outlet_sales", "outlet_takings"))):
+            st, res = owner.call("POST", f"/api/v1/flows/{flow}/run", {})
+            steps = (res or {}).get("steps") or []
+            read = [x for x in steps if any(f"find_all {m} " in x for m in models)]
+            check(f"backfill: {flow} after done reads no document -> 200, skipped", st == 200 and not read and any("skipped" in x for x in steps), (st, steps))
     finally:
         if k is not None:
             k.stop()
