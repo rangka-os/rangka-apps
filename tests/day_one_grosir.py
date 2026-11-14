@@ -755,6 +755,48 @@ def scenario_grosir_credit_writers(api):
           and rec.get("credit_limit") == 7000000 and rec.get("credit_hold") and rec.get("credit_hold_reason") == "uji", (st, rec.get("customer_name"), rec.get("credit_limit"), rec.get("credit_hold"), rec.get("credit_hold_reason")))
 
 
+def scenario_grosir_staff_ledger(api):
+    """Card t_7eeaf99a: outlet staff do not see whether a customer is on credit hold, nor the amounts of the ledger lines
+    their documents post (gl_entry amount/debit/credit hidden_for outlet_staff). The posting flows still run as them: a
+    transfer receipt the warehouse member submits and cancels posts and reverses at the real value."""
+    got = _need("gudang", "hq")
+    if not got:
+        return
+    staff, hq = got
+    rows = staff.list("customer", limit=200)
+    check("customer rows carry no credit_hold for the warehouse member", rows and not any("credit_hold" in r for r in rows), sorted(rows[0]) if rows else [])
+    st, resp = staff.call("GET", "/api/v1/aggregate/customer?fn=count&group=credit_hold")
+    check("grouping customers by credit_hold is refused -> 403", st == 403, (st, resp))
+    st, tr = hq.create("stock_transfer", {"from_outlet": KANVAS, "to_outlet": GUDANG, "items": [{"item": MI, "qty": 2}]})
+    st2, tr2 = hq.verb("stock_transfer", (tr or {}).get("name", "x"), "submit")
+    if not check("head office sends 2 from the canvas van to the warehouse", st == 201 and st2 == 200, (st, tr, st2, tr2)):
+        return
+    trn = (tr2 or {}).get("name") or tr["name"]
+    st, rc = staff.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": GUDANG, "items": [{"item": MI, "qty": 2}]})
+    st2, sub = staff.verb("stock_transfer_receipt", (rc or {}).get("name", "x"), "submit")
+    if not check("the warehouse member receives it", st == 201 and st2 == 200, (st, rc, st2)):
+        return
+    rn = (sub or {}).get("name") or rc["name"]
+    mine = staff.list("gl_entry", limit=50, filter=f"voucher == '{rn}'")
+    check("the warehouse member reads the receipt's ledger lines without amounts", mine and not any(k in l for l in mine for k in ("amount", "debit", "credit")), mine[:2])
+    st, resp = staff.call("GET", "/api/v1/aggregate/gl_entry?fn=sum:amount")
+    check("summing ledger amounts is refused for the warehouse member -> 403", st == 403, (st, resp))
+    st, resp = staff.verb("stock_transfer_receipt", rn, "cancel")
+    if not check("the warehouse member cancels the receipt", st == 200, (st, resp)):
+        return
+    lines = api.find("gl_entry", f"voucher == '{rn}'")
+    posts = [l for l in lines if l.get("entry") == "post"]
+    revs = [l for l in lines if l.get("entry") == "reverse"]
+    check("the receipt posted real amounts and the staff cancel reversed each at its value (the flow reads the hidden amount)",
+          posts and len(revs) == len(posts) and any(l["amount"] for l in posts)
+          and sorted(l["amount"] for l in revs) == sorted(-l["amount"] for l in posts),
+          [(l.get("entry"), l.get("account"), l.get("amount")) for l in lines])
+    # receive it again, so no goods stay in transit for the month-end inventory check
+    st, rc = staff.create("stock_transfer_receipt", {"stock_transfer": trn, "outlet": GUDANG, "items": [{"item": MI, "qty": 2}]})
+    st2, _ = staff.verb("stock_transfer_receipt", (rc or {}).get("name", "x"), "submit")
+    check("the warehouse member receives the transfer again", st == 201 and st2 == 200, (st, rc, st2))
+
+
 SCENARIOS = [scenario_grosir_fixtures, scenario_grosir_tier_price, scenario_grosir_salesman_scope, scenario_grosir_credit_hold,
              scenario_grosir_giro, scenario_grosir_ar_by_salesman, scenario_grosir_delivery, scenario_grosir_credit_at_delivery, scenario_grosir_credit_race, scenario_grosir_return,
-             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_staff_customer_money, scenario_grosir_credit_writers, scenario_grosir_order_marks, scenario_grosir_coretax]
+             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_staff_customer_money, scenario_grosir_credit_writers, scenario_grosir_staff_ledger, scenario_grosir_order_marks, scenario_grosir_coretax]
