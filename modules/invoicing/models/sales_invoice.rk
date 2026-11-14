@@ -488,6 +488,14 @@ approvals:
     when: grand_total > 100000000
     approvers: [finance_manager]
     label: {id: Persetujuan keuangan untuk faktur besar, en: Finance approval for large invoices}
+  # a PKP invoice at another rate than the company's waits for finance (card t_d6461a33, audit invoice-tax-lock F1/F2):
+  # the field lock alone lets a sales_manager reach rate 0 by turning a retention draft into a regular invoice, or by
+  # amending a finance export invoice; finance and the owner approve their own (an export at 0%, a pre-2025 document)
+  - name: ppn_rate_differs
+    on: submit
+    when: "tax.pkp && kind != 'retention' && tax_rate != tax.ppn_rate"
+    approvers: [finance_manager]
+    label: {id: 'Tarif PPN berbeda dari pengaturan pajak: perlu persetujuan keuangan', en: 'PPN rate differs from the tax settings: finance approval'}
 
 views:
   list:

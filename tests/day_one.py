@@ -3967,6 +3967,26 @@ def scenario_tax_jasa(api):
         eq("sales_manager's /meta marks tax_rate, dpp_num, dpp_den read-only", (ro.get("tax_rate"), ro.get("dpp_num"), ro.get("dpp_den")), (True, True, True))
         st, fi = fm.create("sales_invoice", invoice_body(customer, ndt, tax_rate=0))
         eq("finance_manager may still set tax_rate 0 (an export)", (st, fi.get("tax_rate"), fi.get("ppn")), (201, 0, 0))
+        # the lock is not enough on its own (audit invoice-tax-lock F1/F2): a submit at another rate waits for finance
+        st, r = fm.verb("sales_invoice", fi["name"], "submit", {"force": True}) if st == 201 else (0, {})
+        check("finance_manager submits its own export invoice at 0% (self-approved): 200", st == 200, (st, r))
+        exp = (r or {}).get("name", fi.get("name"))
+        st, own = sm.create("sales_invoice", invoice_body(customer, ndt, retention_percent=5))
+        st, r = sm.verb("sales_invoice", own.get("name"), "submit", {"force": True})
+        st, ret = sm.create("sales_invoice", invoice_body(customer, ndt, rate=0, kind="retention", retention_of=(r or {}).get("name", own.get("name"))))
+        eq("X1 sales_manager's retention draft takes rate 0", (st, (ret or {}).get("tax_rate")), (201, 0))
+        if st == 201:
+            sm.call("PATCH", f"/api/v1/r/sales_invoice/{sm.q(ret['name'])}", {"kind": "regular", "retention_of": "", "items": [{"item": ndt, "qty": 1, "rate": 10_000_000}]})
+            st, r = sm.verb("sales_invoice", ret["name"], "submit", {"force": True})
+            cur = api.get("sales_invoice", ret["name"])
+            check("X1 the retention draft turned regular at rate 0: submit held for finance (202), still a draft",
+                  st == 202 and cur.get("docstatus") == 0, (st, r, cur.get("kind"), cur.get("tax_rate")))
+        st, r = sm.verb("sales_invoice", exp, "cancel", {})
+        st, am = sm.verb("sales_invoice", exp, "amend", {}) if st == 200 else (st, r)
+        amn = (am or {}).get("name")
+        if check("X2 sales_manager cancels and amends finance's export invoice", st in (200, 201) and amn, (st, am)):
+            st, r = sm.verb("sales_invoice", amn, "submit", {"force": True})
+            check("X2 the amendment at rate 0 submitted by the sales_manager: held for finance (202)", st == 202, (st, r))
     st, resp = api.create("sales_invoice", dict(invoice_body(customer, ndt), tax_rate=100))
     check("the over-config message says how to fix an old draft", any("Draft lama" in m for m in messages(resp)), messages(resp))
     st, resp = api.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "T-8", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": -100_000}]})
