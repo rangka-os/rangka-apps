@@ -4576,6 +4576,19 @@ def scenario_stock_access(api):
     check("outlet_staff cannot sum the cost of goods sold from stock moves -> 403", st == 403, (st, resp))
     st, it = dago.call("GET", f"/api/v1/r/item/{Api.q(m)}")
     check("outlet_staff reads the item without its standard cost", st == 200 and "standard_cost" not in it, sorted(it) if st == 200 else (st, it))
+    # ... nor through the documents that copy them (audit hpp-stock-paths F1-F3)
+    trs = [t for t in api.find("stock_transfer", "from_outlet == '%s' || to_outlet == '%s'" % (DAGO, DAGO)) if t.get("docstatus") == 1]
+    if trs:
+        tr = dago.get("stock_transfer", trs[0]["name"])
+        check("outlet_staff reads a transfer without the sending outlet's unit cost", tr and not any("unit_cost" in l for l in tr.get("items", [])), [sorted(l) for l in tr.get("items", [])[:1]])
+    vals = dago.list("stock_adjustment_value", limit=20)
+    check("outlet_staff reads stock adjustment values without the value", not any("value" in v for v in vals), [sorted(v) for v in vals[:1]])
+    st, resp = dago.call("GET", "/api/v1/aggregate/stock_adjustment_value?fn=sum:value")
+    check("outlet_staff cannot sum stock adjustment values -> 403", st == 403, (st, resp))
+    st, pr = dago.call("POST", "/api/v1/compute/purchase_request", {"outlet": DAGO, "items": [{"item": m, "qty": 1}]})
+    rows = (pr or {}).get("items", []) if st == 200 else []
+    check("a purchase request computed for outlet_staff carries no estimated rate (it defaults to the standard cost)",
+          st == 200 and not any(k in r for r in rows for k in ("est_rate", "amount")) and "estimated_total" not in (pr or {}), (st, rows[:1], (pr or {}).get("estimated_total")))
     check("outlet_staff (Dago) lists only Dago's stock_balance", bool(mine) and all(r["outlet"] == DAGO for r in mine), mine)
     eq("outlet_staff (Dago) lists all rows of its own outlet", len(mine), len([b for b in all_bal if b["outlet"] == DAGO]))
     st, resp = dago.call("GET", f"/api/v1/r/stock_balance/{Api.q(bal_braga['name'])}")

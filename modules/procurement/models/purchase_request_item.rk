@@ -29,7 +29,9 @@ fields:
     type: currency
     label: {id: Perkiraan harga}
     default: item.standard_cost
+    hidden_for: [outlet_staff]
   - name: amount
     type: currency
     label: {id: Jumlah}
     compute: round(qty * est_rate)
+    hidden_for: [outlet_staff]
