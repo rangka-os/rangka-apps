@@ -243,6 +243,11 @@ def scenario_produksi_staff(api):
     hpp = sorted(k for k in ("material_cost", "overhead_cost", "hpp_total", "hpp_per_unit", "standard_unit_cost") if k in mine)
     hpp += sorted({"materials.cogs" for m in mine.get("materials", []) if "cogs" in m})
     check("production staff read their batch without its HPP", not hpp, hpp)
+    boms = staff.list("bom", limit=20)
+    bom = staff.get("bom", boms[0]["name"]) if boms else {}
+    cost = sorted(k for k in ("overhead_per_unit", "material_cost", "unit_cost") if k in bom) + sorted({"lines." + k for l in bom.get("lines", []) for k in ("unit_cost", "cost") if k in l})
+    check("production staff read the recipe without its costs (card t_a8bbc2bf)", bom and not cost, cost)
+    check("production staff do not see the batch's overhead rate", "overhead_rate" not in mine, sorted(mine))
     st, resp = staff.call("GET", "/api/v1/aggregate/production_batch?fn=sum:hpp_total")
     check("production staff cannot sum batch HPP -> 403", st == 403, (st, resp))
     st, resp = staff.patch("production_batch", pb["name"], {"labour": [{"worker": "WRK-0004", "stage": "TAHAP-004", "qty": 48, "rate": 50_000}]})

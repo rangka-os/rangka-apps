@@ -14,11 +14,11 @@ fields:
   - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, read_only: true, in_list: true}
   - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
   - {name: qty, type: float, label: {id: 'Qty (+ masuk, - keluar)'}, read_only: true, in_list: true}
-  - {name: unit_cost, type: currency, label: {id: Biaya per satuan}, read_only: true}
-  - {name: value, type: currency, label: {id: Nilai}, read_only: true, in_list: true}
+  - {name: unit_cost, type: currency, label: {id: Biaya per satuan}, read_only: true, hidden_for: [outlet_staff, cashier]}
+  - {name: value, type: currency, label: {id: Nilai}, read_only: true, in_list: true, hidden_for: [outlet_staff, cashier]}
   - {name: balance_qty, type: float, label: {id: Saldo qty}, read_only: true, in_list: true}
-  - {name: balance_value, type: currency, label: {id: Saldo nilai}, read_only: true}
-  - {name: avg_cost, type: currency, label: {id: Rata-rata biaya}, read_only: true}
+  - {name: balance_value, type: currency, label: {id: Saldo nilai}, read_only: true, hidden_for: [outlet_staff, cashier]}
+  - {name: avg_cost, type: currency, label: {id: Rata-rata biaya}, read_only: true, hidden_for: [outlet_staff, cashier]}
   - {name: negative, type: check, label: {id: Stok minus}, read_only: true, in_list: true}
   - {name: voucher_type, type: data, label: {id: Jenis dokumen}, read_only: true, in_list: true}
   - {name: voucher, type: data, label: {id: Dokumen}, read_only: true, in_list: true}
@@ -27,7 +27,7 @@ fields:
   # cancelled sale nets to zero. A Retur ke stok (outlet_return, contract 0022) counts against them: goods back on the
   # shelf are not sold and their cost leaves HPP, so a unit sold again is not counted (or paid to a consignor) twice.
   - {name: sold_qty, type: float, label: {id: Qty terjual}, compute: "voucher_type == 'outlet_sales' || voucher_type == 'outlet_return' ? -qty : 0"}
-  - {name: sold_cost, type: currency, label: {id: Harga pokok terjual}, compute: "voucher_type == 'outlet_sales' || voucher_type == 'outlet_return' ? -value : 0"}
+  - {name: sold_cost, type: currency, label: {id: Harga pokok terjual}, compute: "voucher_type == 'outlet_sales' || voucher_type == 'outlet_return' ? -value : 0", hidden_for: [outlet_staff, cashier]}
   - name: reason
     type: select
     label: {id: Sebab}

@@ -44,6 +44,7 @@ fields:
     label: {id: Perkiraan total}
     compute: items.map(i, i.amount).sum()
     in_list: true
+    hidden_for: [outlet_staff]
   - name: state
     type: select
     label: {id: Status permintaan}

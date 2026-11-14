@@ -30,5 +30,5 @@ fields:
     type: float
     label: {id: Qty stok}
     compute: "packing == '' ? qty : qty * packing.factor"
-  - {name: unit_cost, type: currency, read_only: true, label: {id: Biaya per satuan}, help: {id: 'Diisi saat transfer dikirim: rata-rata outlet asal'}}
+  - {name: unit_cost, type: currency, read_only: true, label: {id: Biaya per satuan}, help: {id: 'Diisi saat transfer dikirim: rata-rata outlet asal'}, hidden_for: [outlet_staff, cashier]}
   - {name: received_qty, type: float, read_only: true, label: {id: Qty diterima}}
