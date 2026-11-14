@@ -110,7 +110,7 @@ rules:
   - name: tax_rate_at_most_config
     on: save
     check: "tax_rate <= tax.ppn_rate"
-    message: {id: 'Tarif PPN tidak boleh melebihi tarif di pengaturan pajak usaha'}
+    message: {id: 'Tarif PPN tidak boleh melebihi tarif di pengaturan pajak usaha. Draft lama: ubah dulu tarifnya ke tarif pengaturan'}
   - name: ppn_needs_pkp
     on: save
     check: vendor.pkp || tax_rate == 0
