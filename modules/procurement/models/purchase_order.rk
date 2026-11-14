@@ -114,7 +114,7 @@ rules:
   - name: ppn_needs_pkp
     on: save
     check: vendor.pkp || tax_rate == 0
-    message: {id: Pemasok bukan PKP tidak boleh dikenai PPN (tarif PPN harus 0)}
+    message: {id: 'Pemasok bukan PKP: tarif PPN harus 0. Status PKP pemasok diatur pemilik atau bagian keuangan'}
   - name: delivery_after_order
     on: save
     check: delivery_date == '' || delivery_date >= order_date
