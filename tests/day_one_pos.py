@@ -258,6 +258,63 @@ def scenario_pos_day_source_kept_after_removal(api):
             shutil.rmtree(state, ignore_errors=True)
 
 
+def scenario_pos_day_source_backfill(api):
+    """Audit rangka-apps#77 F3: days submitted before outlets/outlet_day existed get their marker from the backfill
+    flows (outlet_day_backfill_kasir in pos, outlet_day_backfill_harian in outlet_sales), with the right source, and a
+    second run adds nothing."""
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+    d1 = H["day_one"]
+    state, k = None, None
+    try:
+        state = tempfile.mkdtemp(prefix="day-one-day-backfill-")
+        site_dir = os.path.join(state, "site")
+        shutil.copytree(os.path.join(d1.ROOT, "examples", "sites", "demo-kasir"), site_dir)
+        k = d1.Kernel("demo-kasir", state, site_dir=site_dir)
+        k.start()
+        owner = d1.Api(k.base)
+        today = kernel_today().isoformat()
+        s = open_shift(owner, DGO, 0, "backfill: Dago")
+        st, r = sale(owner, s.get("name"), [{"item": PULSA, "qty": 1}], "", payments=[{"method": "cash", "amount": 5_000}]) if s else (0, None)
+        check("backfill: a receipt at Toko Dago -> 200", st == 200, (st, r))
+        st, r = sale(owner, s.get("name"), [{"item": PULSA, "qty": 1}], "", payments=[{"method": "cash", "amount": 5_000}]) if s else (0, None)
+        check("backfill: a second receipt at Toko Dago the same day -> 200 (one batch, one marker)", st == 200, (st, r))
+        st, f = owner.create("outlet_sales", {"outlet": CMH, "date": today, "lines": [{"item": GULA, "qty": 1, "gross": 18_000}]})
+        if check("backfill: Cimahi's daily form -> 201", st == 201, (st, f)):
+            st, sub = owner.verb("outlet_sales", rec(f)["name"], "submit")
+            check("backfill: Cimahi's daily form submitted", st == 200, (st, sub))
+        # as before outlet_day existed: no marker at all
+        psql = os.path.join(os.environ.get("PGBIN", ""), "psql")
+        if not os.access(psql, os.X_OK):
+            psql = shutil.which("psql") or "psql"
+        out = subprocess.run([psql, k.db, "-X", "-v", "ON_ERROR_STOP=1", "-c", "delete from r_outlet_day; delete from r_outlet_day_backfill"], capture_output=True, text=True)
+        check("backfill: markers removed (the state before outlet_day)", out.returncode == 0, out.stderr[-300:])
+        eq("backfill: no marker left", len(owner.find("outlet_day", "true")), 0)
+        for flow in ("outlet_day_backfill_kasir", "outlet_day_backfill_harian"):
+            st, res = owner.call("POST", f"/api/v1/flows/{flow}/run", {})
+            check(f"backfill: {flow} runs -> 200", st == 200, (st, res))
+        got = sorted((x["outlet"], x["date"], x["source"]) for x in owner.find("outlet_day", "true"))
+        eq("backfill: Dago marked kasir, Cimahi marked harian", got, sorted([(DGO, today, "kasir"), (CMH, today, "harian")]))
+        for flow in ("outlet_day_backfill_kasir", "outlet_day_backfill_harian"):
+            owner.call("POST", f"/api/v1/flows/{flow}/run", {})
+        eq("backfill: a second run adds nothing", len(owner.find("outlet_day", "true")), 2)
+        eq("backfill: each source is recorded done", sorted((x["key"], x.get("done")) for x in owner.find("outlet_day_backfill", "true")),
+           [("harian", True), ("kasir", True)])
+        # audit rangka-apps#79 F1: once done, a run reads only its done row, not the receipts or daily records
+        for flow, models in (("outlet_day_backfill_kasir", ("pos_sale",)), ("outlet_day_backfill_harian", ("outlet_sales", "outlet_takings"))):
+            st, res = owner.call("POST", f"/api/v1/flows/{flow}/run", {})
+            steps = (res or {}).get("steps") or []
+            read = [x for x in steps if any(f"find_all {m} " in x for m in models)]
+            check(f"backfill: {flow} after done reads no document -> 200, skipped", st == 200 and not read and any("skipped" in x for x in steps), (st, steps))
+    finally:
+        if k is not None:
+            k.stop()
+        if state is not None:
+            shutil.rmtree(state, ignore_errors=True)
+
+
 def scenario_pos_opening_stock(api):
     """Head office counts the opening stock of both outlets (stock_count: in at the items' standard cost)."""
     hq = CTX.get("hq")
@@ -794,4 +851,4 @@ def scenario_pos_catalogue_hides_inactive(api):
 
 SCENARIOS = [scenario_pos_opening_stock, scenario_pos_shift, scenario_pos_retail_sale, scenario_pos_fnb_sale, scenario_pos_guards,
              scenario_pos_daily_form_next_door, scenario_pos_void_and_return, scenario_pos_race, scenario_pos_close, scenario_pos_close_race, scenario_pos_print,
-             scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive, scenario_pos_kasir_only_site, scenario_pos_day_source_kept_after_removal]
+             scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive, scenario_pos_kasir_only_site, scenario_pos_day_source_kept_after_removal, scenario_pos_day_source_backfill]
