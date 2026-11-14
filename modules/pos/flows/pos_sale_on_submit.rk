@@ -33,6 +33,18 @@ steps:
     set:
       reason: "'daily_sales_same_day'"
       document: takings[0].name
+  # one sales source per outlet and day, kept in outlets (installed with either source): a daily sales record or
+  # setoran marked the day 'harian', which holds even after the outlet_sales app is removed (audit #74 L1)
+  - {find: outlet_day, where: outlet == event.outlet && date == event.date, as: day}
+  - if: day != null && day.source == 'harian'
+    create: pos_guard
+    set: {reason: "'daily_sales_same_day'", document: day.document}
+  - if: day == null
+    create: outlet_day
+    set: {outlet: event.outlet, date: event.date, source: "'kasir'", document: event.name, day_key: "event.outlet + '|' + string(event.date)"}
+  - if: day != null && day.source == ''
+    update: day
+    set: {source: "'kasir'", document: event.name}
   - if: s == null
     create: pos_guard
     set: {reason: "'shift_closed'", document: event.name}

@@ -31,3 +31,12 @@ steps:
       cogs_total: s.cogs_total - event.cogs_total
       void_count: s.void_count + 1
       void_total: s.void_total + event.grand_total
+  # the last receipt of the day voided: the day is free again for a daily sales record (outlet_day, audit #74 L1)
+  - find_all: pos_sale
+    where: outlet == event.outlet && date == event.date && docstatus == 1
+    limit: 1
+    as: left
+  - {find: outlet_day, where: outlet == event.outlet && date == event.date, as: day}
+  - if: day != null && day.source == 'kasir' && left.size() == 0
+    update: day
+    set: {source: "''", document: "''"}
