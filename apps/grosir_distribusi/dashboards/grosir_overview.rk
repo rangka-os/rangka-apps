@@ -4,9 +4,10 @@ label: {id: Ringkasan distribusi, en: Distribution overview}
 default_period: 30
 cache: 5m
 # The owner's daily questions: what did the salesmen sell, which orders wait, who pays late, which giro is due.
-# Money of the whole company: managers and the owner (always). Staff land on gudang_harian or salesman_harian
+# Money of the whole company: the sales and finance managers and the owner (always). Head office is the warehouse
+# in a distributor (it reads neither giro nor payments) and lands on gudang_harian (card t_2619c876). Staff land on gudang_harian or salesman_harian
 # (card t_19f909b9: an outlet_staff member landed here and every widget was refused).
-roles: [sales_manager, finance_manager, head_office]
+roles: [sales_manager, finance_manager]
 widgets:
   # riset desain K-A2: "perlu_" lists open the home as "Perlu diurus" rows (P2). Held orders are not listed here:
   # they already wait in Persetujuan, which the same panel shows.

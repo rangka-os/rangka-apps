@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
 name: salesman_harian
 label: {id: Pelanggan saya, en: My customers}
-description: {id: 'Untuk salesman: pesanan yang belum jalan, pelanggan yang telat bayar, dan giro dari pelanggan kamu'}
+description: {id: 'Untuk salesman: pesanan yang belum jalan, piutang dan tagihan, pelanggan yang ditahan kredit, dan giro dari pelanggan kamu'}
 default_period: 30
 cache: 1m
 # The home of a salesman (contract 0030 §3). Every model here is row-scoped to the member's own records (role
@@ -19,6 +19,8 @@ widgets:
     span: 12
   - {name: orders_open, type: number, label: {id: Pesanan belum jalan}, description: {id: Draft dan pesanan yang menunggu persetujuan kredit}, model: customer_order, aggregate: count, filter: docstatus == 0, good_when: down, span: 4}
   - {name: my_sales, type: number, label: {id: Penjualan saya (faktur)}, description: {id: 'Nilai sebelum PPN, faktur pelanggan kamu pada periode ini'}, model: sales_invoice, aggregate: sum, field: subtotal, filter: docstatus == 1, period: posting_date, compact: true, span: 4}
+  - {name: my_overdue, type: number, label: {id: Piutang saya lewat jatuh tempo}, model: sales_invoice, aggregate: sum, field: outstanding, filter: "docstatus == 1 && outstanding > 0 && due_date < today()", compact: true, good_when: down, span: 4}
+  - {name: my_collected, type: number, label: {id: Tertagih (periode ini)}, model: payment, aggregate: sum, field: amount, filter: docstatus == 1, period: payment_date, compact: true, span: 4}
   - {name: my_ar, type: number, label: {id: Piutang pelanggan saya}, model: sales_invoice, aggregate: sum, field: outstanding, filter: docstatus == 1 && outstanding > 0, compact: true, good_when: down, span: 4}
   - name: giro_due
     type: list
@@ -28,4 +30,22 @@ widgets:
     sort: effective_date
     limit: 10
     columns: [giro_no, customer, effective_date, amount, status]
+    span: 12
+  # the collection tools a salesman needs on the road (card t_2619c876): who is on hold and which invoices are overdue
+  - name: on_hold
+    type: list
+    label: {id: Pelanggan saya yang ditahan kredit}
+    model: customer
+    filter: credit_hold
+    limit: 20
+    columns: [customer_name, credit_hold_reason, outstanding]
+    span: 12
+  - name: overdue_list
+    type: list
+    label: {id: Faktur pelanggan saya lewat jatuh tempo}
+    model: sales_invoice
+    filter: "docstatus == 1 && outstanding > 0 && due_date < today()"
+    sort: due_date
+    limit: 20
+    columns: [name, customer, due_date, outstanding]
     span: 12

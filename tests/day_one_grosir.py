@@ -15,7 +15,7 @@ H = {}
 
 def bind(m):
     """Take the helpers of tests/day_one.py (ok, fail, gap, check, eq, CTX, Api, denied, ...)."""
-    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "denied", "approvals_of", "dashboard", "secrets", "messages", "qris_payload", "check_print", "installed"):
+    for k in ("ok", "fail", "gap", "check", "eq", "CTX", "Api", "denied", "approvals_of", "dashboard", "secrets", "messages", "qris_payload", "check_print", "installed", "kernel_today"):
         H[k] = getattr(m, k)
     globals().update(H)
 
@@ -691,10 +691,26 @@ def scenario_grosir_staff_home(api):
     for d in ("grosir_overview", "grosir_ar"):
         st, resp = sm.call("GET", f"/api/v1/dashboards/{d}")
         check(f"the sales manager still opens {d}", st == 200, (st, resp))
+    # head office is the distributor's warehouse: it reads neither giro nor payments, so the money dashboards are not
+    # its home; gudang_harian is (card t_2619c876)
+    hq = CTX.get("hq")
+    if hq is not None:
+        st, m = hq.call("GET", "/api/v1/meta")
+        dashes = set((m or {}).get("dashboards") or {})
+        check("head office: /meta offers gudang_harian, not the money dashboards", "gudang_harian" in dashes and not dashes & {"grosir_overview", "grosir_ar"}, sorted(dashes))
+        dashboard(hq, "gudang_harian")
     ws = dashboard(asep, "salesman_harian")
     st, mine = asep.call("GET", "/api/v1/r/sales_invoice?limit=500")
     own = sum(float(i.get("outstanding") or 0) for i in (mine or {}).get("data", []) if i.get("docstatus") == 1)
     check("the salesman's AR on his home is his customers' only", abs(float(ws.get("my_ar", {}).get("value") or 0) - own) < 1, (ws.get("my_ar"), own))
+    # the collection tools on his home (card t_2619c876): overdue AR, customers on hold, overdue invoices, collected
+    for w in ("my_overdue", "my_collected", "on_hold", "overdue_list"):
+        check(f"salesman_harian has {w}", w in ws, sorted(ws))
+    today = kernel_today().isoformat()
+    rows = [i for i in (mine or {}).get("data", []) if i.get("docstatus") == 1 and float(i.get("outstanding") or 0) > 0]
+    if today:
+        late = sum(float(i["outstanding"]) for i in rows if (i.get("due_date") or "9999") < today)
+        check("the salesman's overdue AR is his overdue invoices only", abs(float(ws.get("my_overdue", {}).get("value") or 0) - late) < 1, (ws.get("my_overdue"), late))
 
 
 CUSTOMER_MONEY = ("credit_limit", "outstanding", "credit_hold_reason", "oldest_open_due", "open_orders", "uninvoiced_deliveries",
