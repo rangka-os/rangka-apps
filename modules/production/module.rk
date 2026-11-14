@@ -5,7 +5,7 @@
 # at the value of those materials through the declarative stock block of contract 0021 (K-o). Wages and overhead are
 # in the batch's actual cost (HPP) but not in the stock value until K-r.
 name: production
-version: 1.2.1
+version: 1.2.2
 title: {id: Produksi, en: Production}
 summary:
   id: Resep produksi, SPK, hasil per batch dan upah borongan.

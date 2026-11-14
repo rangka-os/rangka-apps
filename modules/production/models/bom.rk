@@ -20,14 +20,15 @@ fields:
   - {name: lines, type: table, of: bom_line, label: {id: Bahan}, min_rows: 1}
   - {name: byproducts, type: table, of: bom_byproduct, label: {id: Produk sampingan}}
   - {name: labour_per_unit, type: currency, label: {id: Upah borongan per satuan}, help: {id: Jumlah tarif semua tahap per satuan hasil}}
-  - {name: overhead_per_unit, type: currency, label: {id: Overhead per satuan}, help: {id: 'Tarif sederhana: listrik, gas, sewa dibagi hasil sebulan'}}
-  - {name: material_cost, type: currency, label: {id: Biaya bahan per batch}, compute: "lines.map(l, l.cost).sum()"}
+  - {name: overhead_per_unit, type: currency, label: {id: Overhead per satuan}, help: {id: 'Tarif sederhana: listrik, gas, sewa dibagi hasil sebulan'}, hidden_for: [outlet_staff]}
+  - {name: material_cost, type: currency, label: {id: Biaya bahan per batch}, compute: "lines.map(l, l.cost).sum()", hidden_for: [outlet_staff]}
   - {name: byproduct_share, type: float, label: {id: Porsi produk sampingan (%)}, compute: "byproducts.map(b, b.cost_share).sum()"}
   - name: unit_cost
     type: currency
     label: {id: HPP standar per satuan}
     compute: "output_qty > 0 ? round(material_cost * (100 - byproduct_share) / 100 / output_qty) + labour_per_unit + overhead_per_unit : 0"
     in_list: true
+    hidden_for: [outlet_staff]
   - {name: notes, type: text, label: {id: Catatan}}
 rules:
   - name: output_positive

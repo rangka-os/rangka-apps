@@ -7,5 +7,5 @@ fields:
   - {name: uom, type: link, to: uom, label: {id: Satuan}, default: item.stock_uom}
   - {name: semi_finished, type: check, label: {id: Setengah jadi}, compute: "item.default_bom != ''"}
   # a semi-finished item costs what its own BOM says (rolled up); a raw material its standard cost
-  - {name: unit_cost, type: currency, label: {id: Biaya per satuan}, compute: "item.default_bom != '' ? item.default_bom.unit_cost : item.standard_cost"}
-  - {name: cost, type: currency, label: {id: Biaya}, compute: round(qty * unit_cost)}
+  - {name: unit_cost, type: currency, label: {id: Biaya per satuan}, compute: "item.default_bom != '' ? item.default_bom.unit_cost : item.standard_cost", hidden_for: [outlet_staff]}
+  - {name: cost, type: currency, label: {id: Biaya}, compute: round(qty * unit_cost), hidden_for: [outlet_staff]}

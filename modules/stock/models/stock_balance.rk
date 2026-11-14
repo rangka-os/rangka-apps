@@ -13,8 +13,8 @@ fields:
   - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, read_only: true, in_list: true}
   - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
   - {name: qty, type: float, label: {id: Qty}, read_only: true, in_list: true}
-  - {name: value, type: currency, label: {id: Nilai}, read_only: true, in_list: true}
-  - {name: avg_cost, type: currency, label: {id: Rata-rata biaya}, read_only: true, in_list: true}
+  - {name: value, type: currency, label: {id: Nilai}, read_only: true, in_list: true, hidden_for: [outlet_staff, cashier]}
+  - {name: avg_cost, type: currency, label: {id: Rata-rata biaya}, read_only: true, in_list: true, hidden_for: [outlet_staff, cashier]}
   - {name: negative, type: check, label: {id: Stok minus}, compute: qty < 0, in_list: true}
   - {name: last_move, type: data, label: {id: Mutasi terakhir}, read_only: true}
   # Written by stock.post_moves on each sale out of this balance (rangka-os#59); older

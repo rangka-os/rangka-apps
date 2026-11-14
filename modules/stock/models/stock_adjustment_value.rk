@@ -58,6 +58,7 @@ fields:
     label: {id: 'Nilai (negatif = keluar)'}
     read_only: true
     in_list: true
+    hidden_for: [outlet_staff, cashier]
   - name: entry_key
     type: data
     label: {id: Kunci baris}

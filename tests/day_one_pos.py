@@ -480,6 +480,8 @@ def scenario_pos_guards(api):
     check("Dika lists only Toko Dago receipts", st == 200 and outlets == {DGO}, (st, outlets, (resp or {}).get("data", [])[:2], resp if st != 200 else ""))
     st, resp = sari.call("GET", "/api/v1/r/stock_balance?limit=200")
     check("Sari reads the stock of Kedai Riau only", st == 200 and {r["outlet"] for r in resp.get("data", [])} == {RIU}, (st, resp))
+    check("a cashier reads stock quantities without value or average cost (card t_a8bbc2bf)",
+          st == 200 and resp.get("data") and not any(k in r for r in resp["data"] for k in ("value", "avg_cost")), [sorted(r) for r in resp.get("data", [])[:1]])
     for model in ("stock_move", "financial_report", "stock_count"):
         st, resp = dika.call("GET", f"/api/v1/r/{model}?limit=1")
         check(f"a cashier cannot list {model} -> 403", denied(st, resp), (st, resp))
