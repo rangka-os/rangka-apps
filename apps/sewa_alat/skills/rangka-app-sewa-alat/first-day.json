@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "greeting": "Ini langkah hari pertama kita. Mulai dari yang paling dasar: isi {rental_item|lower} yang kamu sewakan, lalu coba satu pesanan.",
+  "steps": [
+    {
+      "id": "isi_alat",
+      "title": "Isi {rental_item|lower} yang kamu sewakan",
+      "why": "Pesanan sewa memilih dari daftar ini, lengkap dengan tarif dan dendanya.",
+      "model": "rental_item",
+      "done": {
+        "model": "rental_item",
+        "min": 1
+      },
+      "seed": "alat",
+      "action": "Buka {rental_item}"
+    },
+    {
+      "id": "pesanan",
+      "title": "Catat satu {rental_booking|lower} sebagai percobaan",
+      "why": "Jadwal terisi dan kamu langsung melihat kalau ada yang bentrok.",
+      "model": "rental_booking",
+      "done": {
+        "model": "rental_booking",
+        "min": 1
+      },
+      "action": "Catat {rental_booking|lower}",
+      "new": true
+    },
+    {
+      "id": "keluar",
+      "title": "Catat {rental_checkout|lower} saat barang dibawa penyewa",
+      "why": "Kondisi dan kelengkapan tercatat, jadi denda dan kerusakan jelas saat kembali.",
+      "model": "rental_checkout",
+      "done": {
+        "model": "rental_checkout",
+        "min": 1
+      },
+      "action": "Buka {rental_checkout}"
+    },
+    {
+      "id": "staf",
+      "title": "Ajak staf yang melayani serah terima",
+      "why": "Staf mencatat keluar dan kembali dari ponselnya sendiri; kamu tinggal melihat ringkasannya.",
+      "link": "members",
+      "action": "Ajak staf"
+    }
+  ],
+  "seed": [
+    {
+      "key": "alat",
+      "model": "rental_item",
+      "label": "{rental_item}",
+      "creates": [
+        {
+          "as": "uom",
+          "model": "uom",
+          "set": {
+            "uom_name": "Unit"
+          },
+          "reuse": true
+        },
+        {
+          "as": "item",
+          "model": "item",
+          "fields": {
+            "item_name": "name"
+          },
+          "refs": {
+            "stock_uom": "uom"
+          }
+        }
+      ],
+      "fields": [
+        {
+          "name": "name",
+          "label": "Nama atau jenis yang disewakan (misal kelas atau tipe)",
+          "type": "data"
+        },
+        {
+          "name": "units",
+          "label": "Jumlah unit jenis ini",
+          "type": "int"
+        },
+        {
+          "name": "daily_rate",
+          "label": "Tarif sewa per hari (rupiah)",
+          "type": "currency",
+          "money": true
+        },
+        {
+          "name": "rate_per_event",
+          "label": "Tarif per acara atau per pemakaian (rupiah)",
+          "type": "currency",
+          "money": true,
+          "pseudo": true
+        },
+        {
+          "name": "deposit_per_unit",
+          "label": "Deposit atau jaminan uang per unit (rupiah)",
+          "type": "currency",
+          "money": true
+        },
+        {
+          "name": "late_fee_per_day",
+          "label": "Denda telat per hari per unit (rupiah)",
+          "type": "currency",
+          "money": true
+        }
+      ],
+      "required": [
+        "name"
+      ],
+      "max_rows": 10,
+      "rename": true,
+      "hint": "Satu baris per jenis atau kelas yang pemilik sebut; isi nama dan jumlah unit walau tarifnya belum jelas. Jaminan berupa KTP, motor, paspor, atau dokumen bukan deposit uang. Denda yang pemilik sebut per jam tidak diisi ke denda per hari; sebutkan di unclear. Untuk sewa harian, tarif per malam sama dengan tarif per hari; isi dan sebutkan di unclear supaya pemilik mengecek. Tarif yang pemilik sebut per acara atau per pemakaian (tenda, sound, dekor hajatan) diisi ke rate_per_event, bukan daily_rate, dan tidak perlu disebut di unclear.",
+      "refs": {
+        "item": "item"
+      },
+      "count_field": "units",
+      "count_word": "unit",
+      "save_requires": [
+        "daily_rate"
+      ],
+      "fallbacks": [
+        {
+          "field": "daily_rate",
+          "from": "rate_per_event",
+          "note": "Tarif per acara aku catat sebagai tarif sekali sewa: satu acara dihitung satu hari sewa. Kalau acaranya lebih dari sehari, ubah tarifnya nanti."
+        }
+      ]
+    }
+  ],
+  "rename": {
+    "rental_item": "{Word}",
+    "rental_unit": "Unit {word}",
+    "rental_checkout": "Serah {word} keluar",
+    "rental_return": "Terima {word} kembali",
+    "rental_schedule": "Jadwal {word}"
+  },
+  "menu": {
+    "rental_booking": "Pesanan sewa dari pelanggan: tanggal ambil, tanggal kembali, dan berapa unit. Jadwal bentrok langsung ketahuan.",
+    "rental_checkout": "Catatan saat barang dibawa penyewa: unit mana dan kondisinya.",
+    "rental_return": "Catatan saat barang kembali: kondisi, telat atau tidak, dan dendanya.",
+    "rental_schedule": "Kalender unit: mana yang keluar, mana yang tersedia.",
+    "rental_item": "Daftar yang kamu sewakan, dengan jumlah unit, tarif, deposit, dan denda.",
+    "rental_unit": "Unit satu per satu (misal per plat nomor), kalau tiap unit perlu dicatat terpisah.",
+    "customer": "Daftar penyewamu dan riwayat sewanya."
+  },
+  "rename_groups": {
+    "Sewa alat": "Sewa {word}",
+    "Alat dan pelanggan": "{Word} dan pelanggan"
+  },
+  "rename_word": "alat",
+  "rename_fields": [
+    "rental_item",
+    "rental_unit",
+    "rental_booking",
+    "rental_checkout",
+    "rental_return",
+    "rental_schedule"
+  ]
+}
