@@ -238,7 +238,7 @@ rules:
   - name: ppn_needs_pkp
     on: save
     check: "tax_rate == 0 || (purchase_order != '' ? purchase_order.tax_rate > 0 : vendor.pkp)"
-    message: {id: Pemasok bukan PKP (atau PO tanpa PPN) tidak boleh dikenai PPN (tarif PPN harus 0)}
+    message: {id: 'Pemasok bukan PKP (atau PO tanpa PPN): tarif PPN harus 0. Status PKP pemasok diatur pemilik atau bagian keuangan'}
   - name: due_after_bill
     on: save
     check: due_date == '' || due_date >= bill_date

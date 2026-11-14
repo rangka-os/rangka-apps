@@ -57,7 +57,7 @@ fields:
   - name: pkp
     type: check
     label: {id: Pemasok PKP}
-    help: {id: 'PPN pembelian dari pemasok ini dihitung bila PKP'}
+    help: {id: 'PPN pembelian dari pemasok ini dihitung bila PKP. Diatur pemilik atau bagian keuangan setelah memeriksa SPPKP pemasok'}
     default: 'false'
     read_only_for: [sales_manager, purchasing_manager, project_admin, head_office]
   - name: payment_days

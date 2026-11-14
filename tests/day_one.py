@@ -3946,6 +3946,7 @@ def scenario_tax_jasa(api):
     check("purchase_order from a non-PKP vendor with tax_rate 12 -> 422", st == 422 and any("bukan PKP" in m for m in messages(resp)), (st, resp))
     st, resp = api.create("vendor_bill", {"vendor": "VND-0002", "tax_rate": 12, "bill_no": "T-6", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
     check("vendor_bill from a non-PKP vendor (no PO) with tax_rate 12 -> 422", st == 422 and any("bukan PKP" in m for m in messages(resp)), (st, resp))
+    check("the message tells the bookkeeper who sets a supplier's PKP status (card t_0cc2d2aa)", any("bagian keuangan" in m for m in messages(resp)), messages(resp))
     st, resp = api.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "T-8", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": -100_000}]})
     check("vendor_bill with a negative line rate -> 422", st == 422 and any("Harga tidak boleh negatif" in m for m in messages(resp)), (st, resp))
     st, po0 = api.create("purchase_order", {"vendor": "VND-0001", "tax_rate": 0, "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
