@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: worker_employee_changed
+label: {id: Akun absen tenaga kerja berubah}
+# A worker linked to an employee record after their assignments were made (the owner invites them in Tim later) must see
+# those assignments on the phone: the assignments still running get the worker's employee again (assignment.employee is
+# computed on save). Ended assignments keep the old value; their logs are history.
+on: worker.updated
+if: event.employee != event.before.employee
+steps:
+  - find_all: assignment
+    where: worker == event.name && end_date >= today()
+    limit: 200
+    as: open
+  - for_each: open
+    as: a
+    do:
+      - update: a
+        set:
+          worker: a.worker

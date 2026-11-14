@@ -2,6 +2,7 @@
 name: site_supervisor
 label: {id: Pengawas lokasi}
 description: {id: 'Mandor atau danru: melihat absen lokasi kerjanya dan menyetujui absen di luar radius, terlambat diisi atau lembur'}
-# Contract 0010 §5: records whose work_site is one of the member's places of work. The kernel keeps one list of places per
-# member, `outlets` (rangka user add --outlets LOK-001,LOK-002); for this role it holds work site codes.
-scope: {field: work_site, from: user.outlets}
+# Contract 0010 §5: records whose `supervisor` is the member's own employee record (user.name, a users.user record since
+# rangka-os contract 0056): the work sites that name them, and the assignments and logs of those sites (copied from
+# work_site.supervisor). Contract 0056 keeps a member's outlets to outlet records, so sites are no longer listed there.
+scope: {field: supervisor, from: '[user.name]'}

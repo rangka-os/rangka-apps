@@ -41,6 +41,12 @@ fields:
   - {name: site_lat, type: float, label: {id: Lintang lokasi absen}, read_only: true, compute: "work_site != '' ? work_site.lat : 0"}
   - {name: site_lng, type: float, label: {id: Bujur lokasi absen}, read_only: true, compute: "work_site != '' ? work_site.lng : 0"}
   - {name: site_radius_m, type: int, label: {id: Radius absen (m)}, read_only: true, compute: "work_site != '' ? work_site.radius_m : 0"}
+  # The worker's employee record (rangka-os contract 0056): the field worker's row scope (roles/field_worker.rk) shows the
+  # assignments that name them. Copied from the worker on every save; flow worker_employee_changed refreshes the open
+  # assignments when the worker gets (or changes) an employee record.
+  - {name: employee, type: link, to: user, label: {id: Karyawan}, read_only: true, hidden: true, compute: "worker != '' ? worker.employee : ''"}
+  # The site's supervisor (work_site.supervisor): the site supervisor's row scope (roles/site_supervisor.rk).
+  - {name: supervisor, type: link, to: user, label: {id: Pengawas lokasi}, read_only: true, hidden: true, compute: "work_site != '' ? work_site.supervisor : ''"}
   # For the clock screen (screens/absen.rk): the worker picks today's assignment as the place to clock in.
   - {name: site_name, type: data, label: {id: Nama lokasi absen}, read_only: true, compute: "work_site != '' ? work_site.site_name : ''"}
   - {name: site_point, type: geo, label: {id: Titik lokasi absen}, read_only: true, hidden: true, compute: "work_site != '' ? {'lat': site_lat, 'lng': site_lng} : ''"}

@@ -130,9 +130,11 @@ Sales and purchasing have no access.
 ### Field attendance (module projects, in jasa_proyek)
 
 Two roles with their files in the `projects` module, since their row scopes name its fields: `field_worker` (Pekerja
-lapangan) with scope `worker` from `[user.name]` (the member's worker record, `rangka user add --record WRK-0001`), and
-`site_supervisor` (Pengawas lokasi, mandor or danru) with scope `work_site` from `user.outlets` (the kernel's one list of
-places per member holds work site codes, `--outlets LOK-001`). A worker clocks in and out on their own logs and submits
+lapangan) with scope `employee` from `[user.name]` (the member's employee record, a `users.user` record since rangka-os
+contract 0056; the owner links the worker record to it in `worker.employee`, and assignments and logs copy it), and
+`site_supervisor` (Pengawas lokasi, mandor or danru) with scope `supervisor` from `[user.name]` (the sites whose
+`work_site.supervisor` names their employee record, and the assignments and logs of those sites, which copy it; contract
+0056 keeps a member's outlets to outlet records). A worker clocks in and out on their own logs and submits
 them; a log outside the radius, without position, entered more than a day late or with overtime is held for the site
 supervisor (approvals `outside_site`, `late_entry`, `overtime`, contract 0007); every log needs a clock-in photo, who must be able to read the log, so only
 the supervisor of that site (or the owner) decides it. Neither role reads worker records (pay); the log carries the

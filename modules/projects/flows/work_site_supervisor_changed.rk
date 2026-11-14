@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: work_site_supervisor_changed
+label: {id: Pengawas lokasi berganti}
+# assignment.supervisor is computed on save. When a site gets (or changes) its supervisor, the assignments still running
+# there are saved again, so the clock-ins from now on name the new supervisor. Logs keep the supervisor stamped at their
+# clock-in: re-saving a held log would void its approval (kernel), and a day belongs to whoever kept the site that day.
+on: work_site.updated
+if: event.supervisor != event.before.supervisor
+steps:
+  - find_all: assignment
+    where: work_site == event.name && end_date >= today()
+    limit: 500
+    as: open
+  - for_each: open
+    as: a
+    do:
+      - update: a
+        set:
+          work_site: a.work_site

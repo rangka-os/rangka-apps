@@ -13,7 +13,9 @@ device: phone
 needs: [location, photo]
 clock:
   # The worker's own logs (row scope worker); the open one is the newest with a clock-in and no clock-out.
-  record: {model: attendance_log, filter: "docstatus == 0", set: {worker: user.name}}
+  # The log names the assignment; its worker follows (attendance_log.worker default), and the row scope (employee) keeps
+  # it to the worker's own.
+  record: {model: attendance_log, filter: "docstatus == 0"}
   in: {field: clock_in, location: in_pos, photo: in_photo}
   out: {field: clock_out, location: out_pos, photo: out_photo}
   site: {model: assignment, link: assignment, filter: "start_date <= today() && end_date >= today() && work_site != ''", title: site_name, location: site_point, radius_m: site_radius_m}

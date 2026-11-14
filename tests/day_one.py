@@ -136,7 +136,10 @@ class Kernel:
         steps = [("migrate", [])]
         for org, fixtures in self.orgs:     # `seed --org` fills one org with its own fixtures
             steps.append(("seed", ["--fixtures", os.path.join(ROOT, "examples", "fixtures", fixtures),
-                                   "--email", self.owner_email, "--password", self.owner_pw] + (["--org", org] if org else [])))
+                                   "--email", self.owner_email, "--password", self.owner_pw,
+                                   # contract 0056 §5: the owner gets an employee record of their own (the kernel makes
+                                   # it); the fixtures' USR-001 is a staff member the scenarios add with --record
+                                   "--user-record="] + (["--org", org] if org else [])))
         for verb, extra in steps:
             r = subprocess.run([self.binary, verb] + self.args() + extra, capture_output=True, text=True)
             if r.returncode != 0:
@@ -515,7 +518,7 @@ def scenario_masters_jasa(api):
        (len(api.list("customer")), len(api.list("vendor")), len(api.list("item")), len(api.list("worker", children=1))), (2, 2, 6, 3))
     check("fixtures: every worker has a certification", all(w.get("certifications") for w in api.list("worker", children=1)), "")
     eq("fixtures: currencies IDR and USD, tax codes PPN and PPh 23", (sorted(c["code"] for c in api.list("currency")), sorted(t["kind"] for t in api.list("tax_code"))), (["IDR", "USD"], ["pph23", "ppn"]))
-    eq("fixtures: users with the four owner-led roles", sorted(u["role"] for u in api.list("user")), ["finance_manager", "project_admin", "purchasing_manager", "sales_manager"])
+    eq("fixtures: users with the four owner-led roles", sorted(u["role"] for u in api.list("user") if u["name"] in ("USR-001", "USR-002", "USR-003", "USR-004")), ["finance_manager", "project_admin", "purchasing_manager", "sales_manager"])
     st, pl = api.create("price_list", {"list_name": "Harga inspeksi 2026", "customer": "CUST-0001", "valid_from": "2026-01-01", "valid_until": "2026-12-31",
                                         "items": [{"item": "BRG-0001", "uom": "UOM-004", "rate": 1_400_000}, {"item": "BRG-0002", "uom": "UOM-001", "rate": 80_000}]})
     check("create a price list with 2 services for a customer (PT Contoh Inspeksi)", st == 201 and len(pl["items"]) == 2, (st, pl))
@@ -4378,7 +4381,7 @@ def scenario_fnb_fixtures(api):
     conv = api.get("uom_conversion", "KONV-0001")
     eq("fixtures: Karung -> Kg factor 50 (tepung bumbu)", (conv["uom"], conv["factor"], api.get("item", conv["item"])["stock_uom"]), ("UOM-003", 50, "UOM-001"))
     eq("fixtures: 2 vendors", len(api.list("vendor")), 2)
-    eq("fixtures: users with roles head_office and outlet_staff", sorted(u["role"] for u in api.list("user")), ["head_office", "outlet_staff", "outlet_staff"])
+    eq("fixtures: users with roles head_office and outlet_staff", sorted(u["role"] for u in api.list("user") if u["name"] in ("USR-001", "USR-002", "USR-003")), ["head_office", "outlet_staff", "outlet_staff"])
 
 
 def scenario_stock(api):

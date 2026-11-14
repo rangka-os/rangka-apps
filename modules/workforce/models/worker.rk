@@ -68,6 +68,15 @@ fields:
     type: check
     label: {id: Aktif}
     default: 'true'
+  # The employee record (Karyawan, users.user) of a worker who signs in and clocks in on their phone (rangka-os contract
+  # 0056: a member's record is always a user record, made or picked in Tim). The field worker's row scope reads it through
+  # `employee` on assignments and logs (projects/roles/field_worker.rk). One worker per employee.
+  - name: employee
+    type: link
+    to: user
+    label: {id: Karyawan (akun absen)}
+    help: {id: 'Karyawan di Tim yang absen di HP sebagai tenaga kerja ini.'}
+    unique: true
   - name: certifications
     type: table
     of: certification

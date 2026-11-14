@@ -38,12 +38,22 @@ permissions:
   - {role: project_admin, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: finance_manager, read: true, export: true}
 fields:
+  # The clock screen sends only the assignment: the worker is the assignment's (rule assignment_of_worker).
   - name: worker
     type: link
     to: worker
     label: {id: Tenaga kerja}
     required: true
     in_list: true
+    default: assignment.worker
+  # The worker's employee record (rangka-os contract 0056): the field worker's row scope reads and writes the logs that name
+  # them (roles/field_worker.rk), so a worker cannot clock in for someone else.
+  - {name: employee, type: link, to: user, label: {id: Karyawan}, read_only: true, hidden: true, compute: "worker != '' ? worker.employee : ''"}
+  # The site's supervisor when the worker clocked in (the assignment's, which follows work_site.supervisor): they read the
+  # log and decide it when held (row scope supervisor, roles/site_supervisor.rk). Stamped once, like the site point: a later
+  # change of supervisor leaves the day with the one who kept the site that day, and a held approval is not voided by a
+  # re-save (audit 2026-11-15 F1, F2). The owner may always decide a held log.
+  - {name: supervisor, type: link, to: user, label: {id: Pengawas lokasi}, read_only: true, hidden: true, default: "assignment != '' ? assignment.supervisor : ''"}
   # The name, for the worker and the supervisor, who may not read worker records (they carry pay).
   - name: worker_name
     type: data
