@@ -4586,9 +4586,10 @@ def scenario_stock_access(api):
     st, resp = dago.call("GET", "/api/v1/aggregate/stock_adjustment_value?fn=sum:value")
     check("outlet_staff cannot sum stock adjustment values -> 403", st == 403, (st, resp))
     st, pr = dago.call("POST", "/api/v1/compute/purchase_request", {"outlet": DAGO, "items": [{"item": m, "qty": 1}]})
-    rows = (pr or {}).get("items", []) if st == 200 else []
+    prec = ((pr or {}).get("record") or pr or {}) if st == 200 else {}   # compute answers {"record": ...}
+    rows = prec.get("items") or []
     check("a purchase request computed for outlet_staff carries no estimated rate (it defaults to the standard cost)",
-          st == 200 and not any(k in r for r in rows for k in ("est_rate", "amount")) and "estimated_total" not in (pr or {}), (st, rows[:1], (pr or {}).get("estimated_total")))
+          st == 200 and rows and not any(k in r for r in rows for k in ("est_rate", "amount")) and "estimated_total" not in prec, (st, rows[:1], prec.get("estimated_total")))
     check("outlet_staff (Dago) lists only Dago's stock_balance", bool(mine) and all(r["outlet"] == DAGO for r in mine), mine)
     eq("outlet_staff (Dago) lists all rows of its own outlet", len(mine), len([b for b in all_bal if b["outlet"] == DAGO]))
     st, resp = dago.call("GET", f"/api/v1/r/stock_balance/{Api.q(bal_braga['name'])}")
