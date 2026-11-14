@@ -699,6 +699,8 @@ def scenario_grosir_staff_home(api):
         dashes = set((m or {}).get("dashboards") or {})
         check("head office: /meta offers gudang_harian, not the money dashboards", "gudang_harian" in dashes and not dashes & {"grosir_overview", "grosir_ar"}, sorted(dashes))
         dashboard(hq, "gudang_harian")
+    # an overdue invoice of Asep's customer, so the overdue widgets carry a real amount (card t_2619c876)
+    late_inv = overdue_invoice(api, "CUST-0001", 250_000, posting="2026-08-01", due="2026-08-31")
     ws = dashboard(asep, "salesman_harian")
     st, mine = asep.call("GET", "/api/v1/r/sales_invoice?limit=500")
     own = sum(float(i.get("outstanding") or 0) for i in (mine or {}).get("data", []) if i.get("docstatus") == 1)
@@ -708,9 +710,13 @@ def scenario_grosir_staff_home(api):
         check(f"salesman_harian has {w}", w in ws, sorted(ws))
     today = kernel_today().isoformat()
     rows = [i for i in (mine or {}).get("data", []) if i.get("docstatus") == 1 and float(i.get("outstanding") or 0) > 0]
-    if today:
-        late = sum(float(i["outstanding"]) for i in rows if (i.get("due_date") or "9999") < today)
-        check("the salesman's overdue AR is his overdue invoices only", abs(float(ws.get("my_overdue", {}).get("value") or 0) - late) < 1, (ws.get("my_overdue"), late))
+    late = sum(float(i["outstanding"]) for i in rows if (i.get("due_date") or "9999") < today)
+    check("the salesman's overdue AR is his overdue invoices only (and not zero)", late > 0 and abs(float(ws.get("my_overdue", {}).get("value") or 0) - late) < 1, (ws.get("my_overdue"), late, late_inv))
+    check("the overdue list shows the injected invoice", (late_inv or {}).get("name") in [r.get("name") for r in ws.get("overdue_list", {}).get("rows", [])], ws.get("overdue_list", {}).get("rows"))
+    # what he collected = his bar in the manager's chart (money received, not Potong retur nor supplier payments)
+    ar = dashboard(sm, "grosir_ar")
+    bar = sum(float(d.get("value") or 0) for d in ar.get("collected_by_salesman", {}).get("data", []) if d.get("key") == ASEP)
+    check("the salesman's collected = his bar in the manager's collected-by-salesman chart", abs(float(ws.get("my_collected", {}).get("value") or 0) - bar) < 1, (ws.get("my_collected"), bar))
 
 
 CUSTOMER_MONEY = ("credit_limit", "outstanding", "credit_hold_reason", "oldest_open_due", "open_orders", "uninvoiced_deliveries",

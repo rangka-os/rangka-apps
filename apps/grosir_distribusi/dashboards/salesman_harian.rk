@@ -20,7 +20,7 @@ widgets:
   - {name: orders_open, type: number, label: {id: Pesanan belum jalan}, description: {id: Draft dan pesanan yang menunggu persetujuan kredit}, model: customer_order, aggregate: count, filter: docstatus == 0, good_when: down, span: 4}
   - {name: my_sales, type: number, label: {id: Penjualan saya (faktur)}, description: {id: 'Nilai sebelum PPN, faktur pelanggan kamu pada periode ini'}, model: sales_invoice, aggregate: sum, field: subtotal, filter: docstatus == 1, period: posting_date, compact: true, span: 4}
   - {name: my_overdue, type: number, label: {id: Piutang saya lewat jatuh tempo}, model: sales_invoice, aggregate: sum, field: outstanding, filter: "docstatus == 1 && outstanding > 0 && due_date < today()", compact: true, good_when: down, span: 4}
-  - {name: my_collected, type: number, label: {id: Tertagih (periode ini)}, model: payment, aggregate: sum, field: amount, filter: docstatus == 1, period: payment_date, compact: true, span: 4}
+  - {name: my_collected, type: number, label: {id: Tertagih (periode ini)}, model: payment, aggregate: sum, field: amount, filter: "docstatus == 1 && direction == 'receive' && method != 'sales_return'", period: payment_date, compact: true, span: 4}
   - {name: my_ar, type: number, label: {id: Piutang pelanggan saya}, model: sales_invoice, aggregate: sum, field: outstanding, filter: docstatus == 1 && outstanding > 0, compact: true, good_when: down, span: 4}
   - name: giro_due
     type: list
