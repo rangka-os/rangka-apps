@@ -3947,6 +3947,28 @@ def scenario_tax_jasa(api):
     st, resp = api.create("vendor_bill", {"vendor": "VND-0002", "tax_rate": 12, "bill_no": "T-6", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
     check("vendor_bill from a non-PKP vendor (no PO) with tax_rate 12 -> 422", st == 422 and any("bukan PKP" in m for m in messages(resp)), (st, resp))
     check("the message tells the bookkeeper who sets a supplier's PKP status (card t_0cc2d2aa)", any("bagian keuangan" in m for m in messages(resp)), messages(resp))
+    # the output PPN rate and DPP factor are finance's (card t_d6461a33): a sales_manager's 0 would drop the invoice from
+    # the Coretax XML while the PPN is still owed; their input is dropped and the config applies, finance may still set it
+    sm, fm = CTX.get("sm"), CTX.get("fm")
+    if sm is None or fm is None:
+        fail("tax rate lock: the sales_manager and finance_manager members", CTX.get("login_error", "not signed in"))
+    else:
+        st, si = sm.create("sales_invoice", invoice_body(customer, ndt, tax_rate=0, dpp_num=12))
+        eq("sales_manager's invoice with tax_rate 0, dpp_num 12: stored 12 and 11/12 from the config, PPN 1.100.000",
+           (st, si.get("tax_rate"), si.get("dpp_num"), si.get("dpp_den"), si.get("ppn")), (201, 12, 11, 12, 1_100_000))
+        st, si2 = sm.create("sales_invoice", invoice_body(customer, ndt, tax_rate=None))
+        eq("sales_manager's invoice with tax_rate null: stored 12", (st, si2.get("tax_rate")), (201, 12))
+        if st == 201:
+            st, up = sm.call("PATCH", f"/api/v1/r/sales_invoice/{sm.q(si2['name'])}", {"tax_rate": 1.2, "dpp_den": 11})
+            cur = api.get("sales_invoice", si2["name"])
+            eq("sales_manager PATCHes the draft to tax_rate 1.2, dpp_den 11: both kept (12, 12)", (cur.get("tax_rate"), cur.get("dpp_den")), (12, 12))
+        meta = ((sm.call("GET", "/api/v1/meta")[1] or {}).get("models") or {}).get("sales_invoice") or {}
+        ro = {f.get("name"): f.get("read_only") for f in meta.get("fields", []) if isinstance(f, dict)}
+        eq("sales_manager's /meta marks tax_rate, dpp_num, dpp_den read-only", (ro.get("tax_rate"), ro.get("dpp_num"), ro.get("dpp_den")), (True, True, True))
+        st, fi = fm.create("sales_invoice", invoice_body(customer, ndt, tax_rate=0))
+        eq("finance_manager may still set tax_rate 0 (an export)", (st, fi.get("tax_rate"), fi.get("ppn")), (201, 0, 0))
+    st, resp = api.create("sales_invoice", dict(invoice_body(customer, ndt), tax_rate=100))
+    check("the over-config message says how to fix an old draft", any("Draft lama" in m for m in messages(resp)), messages(resp))
     st, resp = api.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "T-8", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": -100_000}]})
     check("vendor_bill with a negative line rate -> 422", st == 422 and any("Harga tidak boleh negatif" in m for m in messages(resp)), (st, resp))
     st, po0 = api.create("purchase_order", {"vendor": "VND-0001", "tax_rate": 0, "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})

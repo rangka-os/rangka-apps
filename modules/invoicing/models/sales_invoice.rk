@@ -120,14 +120,18 @@ fields:
     type: currency
     label: {id: DPP}
     compute: subtotal - discount_amount - down_payment
+  # The output PPN rate and DPP factor are finance's decision (audit tax-rate-config F1, card t_d6461a33): a rate of 0
+  # empties the faktur code and drops the invoice from the Coretax XML while the PPN is still owed, so a sales_manager
+  # (or any role that only reads invoices) cannot set them; their input is dropped and the company's config applies.
+  # read_only_for, not read_only: a generic amend zeroes read-only fields, and a zero dpp_den would break ppn.
   - name: tax_rate
     type: percent
     label: {id: Tarif PPN}
-    help: {id: 'Dari config tax.ppn_rate; 0 bila perusahaan bukan PKP atau faktur retensi (PPN sudah ditagih di faktur asal). Tersimpan di dokumen.'}
+    help: {id: 'Dari pengaturan pajak; 0 bila bukan PKP atau faktur retensi. Hanya pemilik atau bagian keuangan yang dapat mengubahnya.'}
     default: "kind == 'retention' ? 0 : (tax.pkp ? tax.ppn_rate : 0)"
-  # Not read_only: a generic amend zeroes read-only fields, and a zero dpp_den would break ppn (kernel follow-up).
-  - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num'}
-  - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den'}
+    read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]
+  - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num', read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]}
+  - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den', read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]}
   # The PPN base: the DPP, or with config tax.ppn_fee_only (kernel contract 0010 §8, default off) the fee part of it:
   # a manpower firm that bills the workers' wages on their own line charges PPN on its fee only (DPP nilai lain, PMK
   # 83/2012 art. 4). Like PPh 23 (pph23_lines_base / pph23_dp_base): the lines not marked ppn_exclude, as a share of
@@ -423,7 +427,7 @@ rules:
   - name: tax_rate_at_most_config
     on: save
     check: "tax_rate <= tax.ppn_rate"
-    message: {id: 'Tarif PPN tidak boleh melebihi tarif di pengaturan pajak usaha'}
+    message: {id: 'Tarif PPN tidak boleh melebihi tarif di pengaturan pajak usaha. Draft lama: ubah dulu tarifnya ke tarif pengaturan'}
   - name: ppn_needs_pkp
     on: save
     check: tax.pkp || tax_rate == 0
