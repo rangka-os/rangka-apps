@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: catalogue
-version: 1.3.0
+version: 1.3.1
 title: {id: Katalog, en: Catalogue}
 summary:
   id: Daftar barang dan jasa dengan kategori, satuan dan daftar harga.

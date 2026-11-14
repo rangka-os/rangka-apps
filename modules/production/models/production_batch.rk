@@ -44,7 +44,7 @@ fields:
   - {name: main_share, type: float, label: {id: Porsi biaya produk utama (%)}, compute: "outputs.map(o, o.item == item ? o.cost_share : 0).sum()"}
   - {name: material_cost, type: currency, label: {id: Biaya bahan (aktual)}, read_only: true, hidden_for: [outlet_staff]}
   - {name: labour_cost, type: currency, label: {id: Upah borongan}, compute: "labour.map(l, l.amount).sum()"}
-  - {name: overhead_rate, type: currency, label: {id: Overhead per satuan}, default: bom.overhead_per_unit}
+  - {name: overhead_rate, type: currency, label: {id: Overhead per satuan}, default: bom.overhead_per_unit, hidden_for: [outlet_staff]}
   - {name: overhead_cost, type: currency, label: {id: Overhead}, compute: round(good_qty * overhead_rate), hidden_for: [outlet_staff]}
   # The product's share of the materials, plus all wages and overhead (by-products carry only their material share).
   - name: hpp_total

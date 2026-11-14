@@ -4568,6 +4568,14 @@ def scenario_stock_access(api):
 
     # outlet_staff at Dago
     mine = dago.find("stock_balance", "item == '%s'" % m)
+    # the stock's value is the owner's (card t_a8bbc2bf): quantities only, no value, average cost or COGS
+    moves = dago.find("stock_move", "item == '%s'" % m)
+    leaked = sorted({k for r in mine for k in ("value", "avg_cost") if k in r} | {k for r in moves for k in ("unit_cost", "value", "balance_value", "avg_cost", "sold_cost") if k in r})
+    check("outlet_staff reads stock balances and moves without their value or cost", mine and moves and not leaked, leaked)
+    st, resp = dago.call("GET", "/api/v1/aggregate/stock_move?fn=sum:sold_cost")
+    check("outlet_staff cannot sum the cost of goods sold from stock moves -> 403", st == 403, (st, resp))
+    st, it = dago.call("GET", f"/api/v1/r/item/{Api.q(m)}")
+    check("outlet_staff reads the item without its standard cost", st == 200 and "standard_cost" not in it, sorted(it) if st == 200 else (st, it))
     check("outlet_staff (Dago) lists only Dago's stock_balance", bool(mine) and all(r["outlet"] == DAGO for r in mine), mine)
     eq("outlet_staff (Dago) lists all rows of its own outlet", len(mine), len([b for b in all_bal if b["outlet"] == DAGO]))
     st, resp = dago.call("GET", f"/api/v1/r/stock_balance/{Api.q(bal_braga['name'])}")
