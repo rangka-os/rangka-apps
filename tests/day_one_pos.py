@@ -261,7 +261,9 @@ def scenario_pos_day_source_kept_after_removal(api):
 def scenario_pos_day_source_backfill(api):
     """Audit rangka-apps#77 F3: days submitted before outlets/outlet_day existed get their marker from the backfill
     flows (outlet_day_backfill_kasir in pos, outlet_day_backfill_harian in outlet_sales), with the right source, and a
-    second run adds nothing."""
+    second run adds nothing. Card t_0dba5917: the kasir backfill walks back 30 days per run (the first run only records
+    where it starts), marks a day with its first receipt, and records done once no receipt is older."""
+    import datetime
     import os
     import shutil
     import subprocess
@@ -276,38 +278,61 @@ def scenario_pos_day_source_backfill(api):
         k.start()
         owner = d1.Api(k.base)
         today = kernel_today().isoformat()
+        old = (kernel_today() - datetime.timedelta(days=40)).isoformat()
         s = open_shift(owner, DGO, 0, "backfill: Dago")
-        st, r = sale(owner, s.get("name"), [{"item": PULSA, "qty": 1}], "", payments=[{"method": "cash", "amount": 5_000}]) if s else (0, None)
-        check("backfill: a receipt at Toko Dago -> 200", st == 200, (st, r))
-        st, r = sale(owner, s.get("name"), [{"item": PULSA, "qty": 1}], "", payments=[{"method": "cash", "amount": 5_000}]) if s else (0, None)
-        check("backfill: a second receipt at Toko Dago the same day -> 200 (one batch, one marker)", st == 200, (st, r))
+        names = []
+        for what in ("a receipt at Toko Dago", "a second receipt at Toko Dago the same day", "a receipt moved 40 days back"):
+            st, r = sale(owner, s.get("name"), [{"item": PULSA, "qty": 1}], "", payments=[{"method": "cash", "amount": 5_000}]) if s else (0, None)
+            check(f"backfill: {what} -> 200", st == 200, (st, r))
+            names.append(rec(r).get("name") if isinstance(r, dict) else None)
         st, f = owner.create("outlet_sales", {"outlet": CMH, "date": today, "lines": [{"item": GULA, "qty": 1, "gross": 18_000}]})
         if check("backfill: Cimahi's daily form -> 201", st == 201, (st, f)):
             st, sub = owner.verb("outlet_sales", rec(f)["name"], "submit")
             check("backfill: Cimahi's daily form submitted", st == 200, (st, sub))
-        # as before outlet_day existed: no marker at all
+        # as before outlet_day existed: no marker at all; one receipt of Dago belongs to a day 40 days back
         psql = os.path.join(os.environ.get("PGBIN", ""), "psql")
         if not os.access(psql, os.X_OK):
             psql = shutil.which("psql") or "psql"
-        out = subprocess.run([psql, k.db, "-X", "-v", "ON_ERROR_STOP=1", "-c", "delete from r_outlet_day; delete from r_outlet_day_backfill"], capture_output=True, text=True)
-        check("backfill: markers removed (the state before outlet_day)", out.returncode == 0, out.stderr[-300:])
+        sql = f"delete from r_outlet_day; delete from r_outlet_day_backfill; update r_pos_sale set date = '{old}' where name = '{names[2]}'"
+        out = subprocess.run([psql, k.db, "-X", "-v", "ON_ERROR_STOP=1", "-c", sql], capture_output=True, text=True)
+        check("backfill: markers removed (the state before outlet_day), a receipt dated 40 days back", out.returncode == 0, out.stderr[-300:])
         eq("backfill: no marker left", len(owner.find("outlet_day", "true")), 0)
-        for flow in ("outlet_day_backfill_kasir", "outlet_day_backfill_harian"):
+
+        def run(flow):
             st, res = owner.call("POST", f"/api/v1/flows/{flow}/run", {})
             check(f"backfill: {flow} runs -> 200", st == 200, (st, res))
+            return (res or {}).get("steps") or []
+
+        def kasir_state():
+            x = owner.find("outlet_day_backfill", "key == 'kasir'")
+            return (x[0].get("before"), bool(x[0].get("done"))) if x else None
+
+        run("outlet_day_backfill_kasir")
+        tomorrow = (kernel_today() + datetime.timedelta(days=1)).isoformat()
+        eq("backfill kasir run 1: only records where it starts (before tomorrow, not done), marks nothing",
+           (kasir_state(), len(owner.find("outlet_day", "source == 'kasir'"))), ((tomorrow, False), 0))
+        run("outlet_day_backfill_kasir")
+        start2 = (kernel_today() - datetime.timedelta(days=29)).isoformat()
+        eq("backfill kasir run 2: today's Dago day marked with its first receipt; a receipt is older, so not done",
+           ([(x["outlet"], x["date"], x.get("document")) for x in owner.find("outlet_day", "source == 'kasir'")], kasir_state()),
+           ([(DGO, today, names[0])], (start2, False)))
+        run("outlet_day_backfill_kasir")
+        eq("backfill kasir run 3: the day 40 days back marked, nothing older, done",
+           (sorted((x["date"], x.get("document")) for x in owner.find("outlet_day", "source == 'kasir'")), kasir_state()[1]),
+           (sorted([(today, names[0]), (old, names[2])]), True))
+        run("outlet_day_backfill_harian")
         got = sorted((x["outlet"], x["date"], x["source"]) for x in owner.find("outlet_day", "true"))
-        eq("backfill: Dago marked kasir, Cimahi marked harian", got, sorted([(DGO, today, "kasir"), (CMH, today, "harian")]))
+        eq("backfill: Dago marked kasir (two days), Cimahi marked harian", got, sorted([(DGO, today, "kasir"), (DGO, old, "kasir"), (CMH, today, "harian")]))
         for flow in ("outlet_day_backfill_kasir", "outlet_day_backfill_harian"):
-            owner.call("POST", f"/api/v1/flows/{flow}/run", {})
-        eq("backfill: a second run adds nothing", len(owner.find("outlet_day", "true")), 2)
-        eq("backfill: each source is recorded done", sorted((x["key"], x.get("done")) for x in owner.find("outlet_day_backfill", "true")),
+            run(flow)
+        eq("backfill: a further run adds nothing", len(owner.find("outlet_day", "true")), 3)
+        eq("backfill: each source is recorded done", sorted((x["key"], bool(x.get("done"))) for x in owner.find("outlet_day_backfill", "true")),
            [("harian", True), ("kasir", True)])
         # audit rangka-apps#79 F1: once done, a run reads only its done row, not the receipts or daily records
         for flow, models in (("outlet_day_backfill_kasir", ("pos_sale",)), ("outlet_day_backfill_harian", ("outlet_sales", "outlet_takings"))):
-            st, res = owner.call("POST", f"/api/v1/flows/{flow}/run", {})
-            steps = (res or {}).get("steps") or []
-            read = [x for x in steps if any(f"find_all {m} " in x for m in models)]
-            check(f"backfill: {flow} after done reads no document -> 200, skipped", st == 200 and not read and any("skipped" in x for x in steps), (st, steps))
+            steps = run(flow)
+            read = [x for x in steps if any(f"find_all {m} " in x or f"find {m} " in x for m in models)]
+            check(f"backfill: {flow} after done reads no document, skipped", not read and any("skipped" in x for x in steps), steps)
     finally:
         if k is not None:
             k.stop()

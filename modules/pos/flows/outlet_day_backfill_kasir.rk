@@ -1,47 +1,61 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # Backfill of outlets/outlet_day for days submitted before it existed (audit rangka-apps#77 F3): the kernel has no
-# migrate hook for .rk, so every run marks the days of up to 1000 submitted receipts that have no marker yet.
-# One read of the documents per run (audit #79 F2), then per document one indexed lookup of its day_key, so two
-# documents of one day give one marker and a day already marked (any source, also one freed by a cancel) is skipped:
-# the run is safe to repeat and a day never gets two markers (day_key is unique). A document without an outlet is left
-# out so it cannot stall the queue (audit #79 F5). The run that finds nothing left writes outlet_day_backfill
-# key kasir done; from then on a run reads only that one row (audit #79 F1: the finished backfill read every document
-# each 5 minutes under the payment locks). The documents are read newest first (the kernel's order without sort:, so the
-# read stops at limit), so a backfilled marker names a document of its day, not always the first (audit #79 F6).
+# migrate hook for .rk, so the run walks back through the days in windows of 30, newest first (card t_0dba5917, audit
+# rangka-apps#79 R2-1: reading every receipt per run grew with the history). The first run records the start in
+# outlet_day_backfill key kasir (before = tomorrow). Every later run checks, for each outlet and each day of the window
+# below `before`, the first submitted receipt of that outlet and day (an SQL read on outlet, date and docstatus, kernel
+# date pushdown, pos_sale.date indexed; first by number, STRK-<outlet>-<YYMM>-<n> is padded) and its marker (day_key,
+# unique); a day without a marker gets one with source kasir and that receipt (audit #79 R2-3). A day already marked
+# (any source, also one freed by a cancel) is left as it is, so the run is safe to repeat and a day never gets two
+# markers. Then `before` moves back 30 days; the run that finds no submitted receipt before it records done, and from
+# then on a run reads only that one row (audit #79 F1). A receipt without an outlet has no day to mark and does not hold
+# the walk back (audit #79 F5).
 name: outlet_day_backfill_kasir
 label: {id: 'Lengkapi sumber penjualan harian dari struk kasir lama'}
 schedule: '*/5 * * * *'
 steps:
-  - find_all: outlet_day_backfill
+  - find: outlet_day_backfill
     where: "key == 'kasir'"
-    limit: 1
     as: st
-  - find_all: outlet_day
-    if: "size(st) == 0"
-    as: marked
-  - find_all: pos_sale
-    if: "size(st) == 0"
-    where: "docstatus == 1 && outlet != null && outlet != '' && !marked.exists(m, m.outlet == outlet && m.date == date)"
-    limit: 1000
-    as: r
-  - for_each: "r"
-    if: "size(st) == 0"
-    as: d
-    do:
-      - find_all: outlet_day
-        where: "day_key == d.outlet + '|' + string(d.date)"
-        limit: 1
-        as: k
-      - create: outlet_day
-        if: "size(k) == 0"
-        set:
-          outlet: "d.outlet"
-          date: "d.date"
-          source: "'kasir'"
-          document: "d.name"
-          day_key: "d.outlet + '|' + string(d.date)"
   - create: outlet_day_backfill
-    if: "size(st) == 0 && size(r) == 0"
+    if: "st == null"
     set:
       key: "'kasir'"
-      done: "true"
+      before: "today() + duration(1)"
+      done: "false"
+  - find_all: outlet
+    if: "st != null && !st.done"
+    as: outlets
+  - for_each: "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map(i, st.before - duration(i))"
+    if: "st != null && !st.done"
+    as: d
+    do:
+      - for_each: "outlets"
+        as: o
+        do:
+          - find_all: pos_sale
+            where: "docstatus == 1 && outlet == o.name && date == d"
+            sort: name
+            limit: 1
+            as: r
+          - find: outlet_day
+            if: "size(r) > 0"
+            where: "day_key == o.name + '|' + d"
+            as: k
+          - create: outlet_day
+            if: "size(r) > 0 && k == null"
+            set:
+              outlet: "o.name"
+              date: "d"
+              source: "'kasir'"
+              document: "r[0].name"
+              day_key: "o.name + '|' + d"
+  - find: pos_sale
+    if: "st != null && !st.done"
+    where: "docstatus == 1 && date < st.before - duration(30)"
+    as: more
+  - update: st
+    if: "st != null && !st.done"
+    set:
+      before: "st.before - duration(30)"
+      done: "more == null"
