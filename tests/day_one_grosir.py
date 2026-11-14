@@ -819,6 +819,23 @@ def scenario_grosir_customer_terms(api):
     check("the warehouse member lists vendors without what the company owes them", vendors and not leaked, leaked)
 
 
+def scenario_grosir_salesman_cost(api):
+    """Card t_09a89bcd: a salesman reads his delivery notes (row scope) without what the goods cost the company; the
+    sales manager still sees the COGS."""
+    got = _need("asep", "sm")
+    if not got:
+        return
+    asep, sm = got
+    notes = asep.list("delivery_note", limit=50)
+    if not notes:
+        gap("salesman reads delivery notes without COGS", "fixtures", "no delivery note of Asep's on this run")
+        return
+    one = asep.get("delivery_note", notes[0]["name"])
+    cost = sorted({"cogs_total"} & (set(one) | {k for n in notes for k in n})) + sorted({"items.cogs" for l in one.get("items", []) if "cogs" in l})
+    check("a salesman's delivery notes carry no COGS", not cost, cost)
+    check("the sales manager still reads the COGS", "cogs_total" in sm.get("delivery_note", notes[0]["name"]), notes[0]["name"])
+
+
 SCENARIOS = [scenario_grosir_fixtures, scenario_grosir_tier_price, scenario_grosir_salesman_scope, scenario_grosir_credit_hold,
              scenario_grosir_giro, scenario_grosir_ar_by_salesman, scenario_grosir_delivery, scenario_grosir_credit_at_delivery, scenario_grosir_credit_race, scenario_grosir_return,
-             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_staff_customer_money, scenario_grosir_credit_writers, scenario_grosir_staff_ledger, scenario_grosir_customer_terms, scenario_grosir_order_marks, scenario_grosir_coretax]
+             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_staff_customer_money, scenario_grosir_credit_writers, scenario_grosir_staff_ledger, scenario_grosir_customer_terms, scenario_grosir_salesman_cost, scenario_grosir_order_marks, scenario_grosir_coretax]

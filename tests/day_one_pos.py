@@ -382,6 +382,9 @@ def scenario_pos_retail_sale(api):
     eq("totals: subtotal, discounts, total, cash, change", (draft["gross_total"], draft["subtotal"], draft["discount_total"], draft["grand_total"],
                                                            draft["cash_amount"], draft["qris_amount"], draft["change_amount"]),
        (gross, sub, 2_800, total, total, 0, 500_000 - total))
+    # a cashier sees the receipt's prices, never its cost or margin (card t_09a89bcd; pos_shift already hides its COGS)
+    cost = sorted(k for k in ("cogs_total", "margin") if k in draft) + sorted({"items.cogs" for l in draft["items"] if "cogs" in l})
+    check("a cashier's receipt carries no cost or margin", not cost, cost)
     # a cashier gives discounts, never a price
     st, resp = dika.patch("pos_sale", draft["name"], {"items": [dict(l, rate=1) for l in lines]})
     eq("a typed price is ignored (rate is computed from the item)", [l["rate"] for l in rec(api.get("pos_sale", draft["name"]))["items"]][:1], [4000])
@@ -394,7 +397,8 @@ def scenario_pos_retail_sale(api):
     eq("stock left Toko Dago in the stock unit (2 + 24 bottles, 5 + 40 packs, 1 sugar)",
        (bal(api, DGO, AIR), bal(api, DGO, MI), bal(api, DGO, GULA)), (174, 155, 19))
     cogs = 26 * 2500 + 45 * 2600 + 15000
-    eq("cogs: goods out at their average cost", (r["cogs_total"], r["margin"]), (cogs, total - cogs))
+    own = rec(api.get("pos_sale", r["name"]))   # the owner's view: the cashier does not see cost or margin
+    eq("cogs: goods out at their average cost", (own["cogs_total"], own["margin"]), (cogs, total - cogs))
     ppn = ppn_of(total)
     pph = rnd((total - ppn) * 5 / 1000)
     eq("PPN inside the PKP price and the final PPh", (r["ppn_in_sales"], r["pph_final"]), (ppn, pph))
@@ -444,7 +448,7 @@ def scenario_pos_fnb_sale(api):
        {KOPI: round(2 - used[KOPI], 4), SUSU: 9.7, AREN: 1.95, GELAS: 197, ROTI: 19})
     # per line, per material: round(qty x average)
     cogs = (rnd(0.036 * 120000) + rnd(0.3 * 20000) + rnd(0.05 * 40000) + rnd(2 * 600)) + (rnd(0.015 * 120000) + rnd(600)) + 6000
-    eq("cogs of the receipt = the recipe materials and the roti at their average", r["cogs_total"], cogs)
+    eq("cogs of the receipt = the recipe materials and the roti at their average", rec(api.get("pos_sale", r["name"]))["cogs_total"], cogs)
     eq("change", r["change_amount"], 100_000 - (2 * 22_000 + 15_000 + 15_000))
 
 

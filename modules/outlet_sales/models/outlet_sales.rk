@@ -105,11 +105,13 @@ fields:
     help: {id: 'Diisi sistem saat diajukan: bahan resep x rata-rata biaya'}
     read_only: true
     in_list: true
+    hidden_for: [cashier, outlet_staff]
   - name: margin
     type: currency
     label: {id: Margin}
     compute: net_total - cogs_total
     in_list: true
+    hidden_for: [cashier, outlet_staff]
   # Monthly tax recap (no file): a PKP shop's sales prices include PPN, so the PPN inside net sales is
   # net x rate x dpp / (100 + rate x dpp) (Digunggung amounts). The 0,5% final PPh of PP 55/2022 depends on turnover
   # (up to Rp 4,8 miliar a year), not on PKP status, so it is shown for every shop on turnover without PPN; a shop

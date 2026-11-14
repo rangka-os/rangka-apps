@@ -110,10 +110,12 @@ fields:
     label: {id: Harga pokok}
     help: {id: 'Diisi sistem saat dibayar: barang atau bahan resep x rata-rata biaya'}
     read_only: true
+    hidden_for: [cashier, outlet_staff]
   - name: margin
     type: currency
     label: {id: Margin}
     compute: grand_total - cogs_total
+    hidden_for: [cashier, outlet_staff]
   # Same monthly tax recap as outlet_sales: PPN inside a PKP shop's prices, and the 0,5% final PPh of PP 55/2022.
   - name: ppn_in_sales
     type: currency

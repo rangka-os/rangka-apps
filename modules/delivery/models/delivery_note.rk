@@ -36,7 +36,7 @@ fields:
     label: {id: Lewat batas kredit saat diajukan}
     hidden: true
     compute: "app_installed('distribution') && customer.credit_limit > 0 && customer.outstanding + customer.uninvoiced_deliveries + delivery_total > customer.credit_limit"
-  - {name: cogs_total, type: currency, label: {id: Harga pokok barang dikirim}, read_only: true}
+  - {name: cogs_total, type: currency, label: {id: Harga pokok barang dikirim}, read_only: true, hidden_for: [field_sales]}
   - {name: received_by, type: data, label: {id: Diterima oleh}}
   - {name: notes, type: text, label: {id: Catatan}}
 stock:

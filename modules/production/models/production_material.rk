@@ -5,4 +5,4 @@ fields:
   - {name: item, type: link, to: item, label: {id: Bahan}, required: true}
   - {name: qty, type: float, label: {id: Qty terpakai}}
   - {name: uom, type: link, to: uom, label: {id: Satuan}, default: item.stock_uom}
-  - {name: cogs, type: currency, label: {id: Biaya bahan}, read_only: true}
+  - {name: cogs, type: currency, label: {id: Biaya bahan}, read_only: true, hidden_for: [outlet_staff]}
