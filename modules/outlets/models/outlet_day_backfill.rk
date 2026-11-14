@@ -21,3 +21,5 @@ fields:
       - {value: kasir, label: {id: Kasir}}
       - {value: harian, label: {id: 'Penjualan harian (form, Moka, file) atau setoran'}}
   - {name: done, type: check, label: {id: Selesai}, read_only: true}
+  # the kasir backfill walks back in windows of days (card t_0dba5917): days before this date are still to check
+  - {name: before, type: date, label: {id: Belum diperiksa sebelum}, read_only: true}
