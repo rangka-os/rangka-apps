@@ -82,6 +82,19 @@ def clock_out(cl, name, day, north=10.0, east=-15.0, with_photo=True, **extra):
 SITE_POINT_OF = {}
 
 
+def link_worker(api, email, worker):
+    """Contract 0056: a member's record is their employee record (users.user, made by the kernel on sign-in when the add
+    named none). The owner links the worker record to it (worker.employee), which is what the field worker's row scope
+    reads. Returns the employee record's name ('' when missing)."""
+    mine = api.find("user", f"email == '{email}'")
+    emp = mine[0]["name"] if len(mine) == 1 else ""
+    if emp:
+        st, w = api.patch("worker", worker, {"employee": emp})
+        if st != 200:
+            return ""
+    return emp
+
+
 def setup_attendance(api):
     """Three new workers (not paid elsewhere in the month scenarios), their project and assignments, payroll profiles, and the
     members: two field workers, a supervisor per site. Returns False when a step failed."""
@@ -121,15 +134,34 @@ def setup_attendance(api):
     CTX["att_asg_of"] = {}
     pw = secrets.token_urlsafe(18)   # throwaway password of a throwaway database
     for key, email, role, recname, name, outlets in [
-            ("w1", "yudi@contohtenaga.test", "field_worker", workers["MP-101"], "Yudi Contoh", ""),
-            ("w2", "zahra@contohtenaga.test", "field_worker", workers["MP-102"], "Zahra Contoh", ""),
-            ("sv1", "sinta@contohtenaga.test", "site_supervisor", "USR-003", "Sinta Contoh", SITE),
-            ("sv2", "taufik@contohtenaga.test", "site_supervisor", "USR-004", "Taufik Contoh", SITE2)]:
+            ("w1", "yudi@contohtenaga.test", "field_worker", "", "Yudi Contoh", ""),
+            ("w2", "zahra@contohtenaga.test", "field_worker", "", "Zahra Contoh", ""),
+            # contract 0056: a member's outlets are outlet records only; a supervisor is named on the site instead
+            ("sv1", "sinta@contohtenaga.test", "site_supervisor", "USR-003", "Sinta Contoh", ""),
+            ("sv2", "taufik@contohtenaga.test", "site_supervisor", "USR-004", "Taufik Contoh", "")]:
         code, out = k.user_add(email, role, CTX["org"], name, outlets=outlets, record=recname, password=pw)
         cl = Api.login(k.base, email, pw) if code == 0 else None
         if not check(f"add and sign in {role} {email}", cl is not None, out):
             return False
         CTX["att_" + key] = cl
+    # The workers' assignments were made before they signed in: linking the worker to the employee record refreshes the
+    # running assignments (flow worker_employee_changed), so the phone shows them.
+    for no, email in (("MP-101", "yudi@contohtenaga.test"), ("MP-102", "zahra@contohtenaga.test")):
+        emp = link_worker(api, email, workers[no])
+        if not check(f"owner links worker {no} to the employee record of {email}", emp != "", emp):
+            return False
+        eq(f"the running assignment of {no} names that employee (flow worker_employee_changed)", api.get("assignment", asg[no]).get("employee"), emp)
+    # the owner names each site's supervisor (work_site.supervisor); the running assignments follow (flow
+    # work_site_supervisor_changed)
+    for site, emp in ((SITE, "USR-003"), (SITE2, "USR-004")):
+        st, w = api.patch("work_site", site, {"supervisor": emp})
+        if not check(f"owner names {emp} supervisor of {site}", st == 200 and w.get("supervisor") == emp, (st, w)):
+            return False
+    eq("the running assignments of the factory name its supervisor", sorted({api.get("assignment", asg[no]).get("supervisor") for no in ("MP-101", "MP-102")}), ["USR-003"])
+    st, out = k.user_add("sinta2@contohtenaga.test", "site_supervisor", CTX["org"], "Sinta Dua", outlets=SITE, password=pw)
+    check("a work site is not an outlet: rangka user add --outlets LOK-001 is refused (unknown_outlet)", st != 0 and "unknown_outlet" in out, out)
+    st, dup = api.patch("worker", workers["MP-103"], {"employee": api.get("worker", workers["MP-101"]).get("employee")})
+    check("one worker per employee record (unique)", st in (409, 422), (st, dup))
     return True
 
 
@@ -505,7 +537,7 @@ def scenario_attendance_screen(api):
     sc = ((m or {}).get("screens") or {}).get("absen") or {}
     check("absen is a clock over attendance_log, site = assignment", sc.get("type") == "clock" and (sc.get("clock") or {}).get("site", {}).get("model") == "assignment", sc)
     st, r = w1.call("GET", "/api/v1/screens/absen")
-    check("the screen's record set fills the worker's own record (user.name)", st == 200 and ((r or {}).get("sets") or {}).get("record", {}).get("worker") == W["MP-101"], (st, r))
+    check("the screen sends no worker: the log's worker comes from the assignment (contract 0056)", st == 200 and "worker" not in (((r or {}).get("sets") or {}).get("record") or {}), (st, r))
     site = (sc.get("clock") or {}).get("site") or {}
     rows = w1.list("assignment")
     today_rows = [a for a in rows if a.get("start_date", "") <= str(CTX["att_today"]) <= a.get("end_date", "") and a.get("work_site")]
@@ -525,9 +557,11 @@ def scenario_attendance_screen(api):
     if not check("project admin assigns Aldi to the warehouse in a project of its own", st == 201, (st, a3)):
         return
     k, pw = CTX.get("kernel"), secrets.token_urlsafe(18)
-    code, out = k.user_add("aldi@contohtenaga.test", "field_worker", CTX["org"], "Aldi Contoh", record=W["MP-103"], password=pw)
+    code, out = k.user_add("aldi@contohtenaga.test", "field_worker", CTX["org"], "Aldi Contoh", password=pw)
     w3 = Api.login(k.base, "aldi@contohtenaga.test", pw) if code == 0 else None
     if not check("add and sign in field worker aldi@contohtenaga.test", w3 is not None, out):
+        return
+    if not check("owner links Aldi's worker record to his employee record", link_worker(api, "aldi@contohtenaga.test", W["MP-103"]) != "", ""):
         return
     st, r = w3.call("GET", "/api/v1/screens/absen")
     body = dict(((r or {}).get("sets") or {}).get("record") or {})

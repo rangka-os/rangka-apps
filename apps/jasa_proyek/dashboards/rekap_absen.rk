@@ -2,7 +2,7 @@
 name: rekap_absen
 label: {id: Rekap absen lapangan, en: Field attendance}
 description: {id: 'Siapa yang sudah absen hari ini, absen di luar radius yang menunggu persetujuan, dan hari hadir per pekerja'}
-# For the site supervisor (only the logs of their sites, row scope work_site) and the project admin (every site). The
+# For the site supervisor (only the logs of their sites, row scope supervisor) and the project admin (every site). The
 # held submits themselves are decided in Persetujuan (contract 0007); this board shows which logs wait.
 default_period: 31
 roles: [site_supervisor, project_admin]

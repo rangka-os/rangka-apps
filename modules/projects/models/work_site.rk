@@ -6,8 +6,9 @@ naming: LOK-{###}
 title_field: site_name
 # Where workers clock in: a client's factory, a building a guard keeps, an office a cleaner works in (A2, plans/layar-kerja.md
 # §4.1, the `site` slot of the clock screen in contract 0030). A clock-in further than radius_m from the point (lat, lng) is
-# kept, not refused, and waits for the site supervisor (attendance_log). The site supervisor's row scope is the members'
-# `outlets` list holding site codes (LOK-001), see roles/site_supervisor.rk.
+# kept, not refused, and waits for the site supervisor (attendance_log). The site supervisor is the employee record named in
+# `supervisor` (rangka-os contract 0056: a member's outlets are outlet records only, so sites are no longer kept there); their
+# row scope is the sites, assignments and logs that name them, see roles/site_supervisor.rk.
 permissions:
   - {role: project_admin, read: true, create: true, write: true, delete: true, export: true, print: true}
   - {role: finance_manager, read: true}
@@ -24,6 +25,14 @@ fields:
     type: link
     to: customer
     label: {id: Klien}
+    in_list: true
+  # The mandor or danru of this site (an employee in Tim with the role Pengawas lokasi): sees its logs and decides the held
+  # ones. One supervisor per site; a supervisor may keep several sites. Flow work_site_supervisor_changed hands the open
+  # assignments and draft logs to a new one.
+  - name: supervisor
+    type: link
+    to: user
+    label: {id: Pengawas lokasi}
     in_list: true
   - name: address
     type: text
