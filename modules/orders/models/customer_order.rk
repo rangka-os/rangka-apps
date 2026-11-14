@@ -67,15 +67,23 @@ fields:
   - name: work_order
     type: data
     label: {id: No. work order}
+    # manpower orders (jasa_proyek); a distributor's order form does not show them (C1-2, kartu t_5b5a3ae5)
+    depends_on: "!app_installed('distribution') || app_installed('jasa_proyek')"
   - name: site
     type: data
     label: {id: Lokasi kerja}
+    # manpower orders (jasa_proyek); a distributor's order form does not show them (C1-2, kartu t_5b5a3ae5)
+    depends_on: "!app_installed('distribution') || app_installed('jasa_proyek')"
   - name: start_date
     type: date
     label: {id: Mulai}
+    # manpower orders (jasa_proyek); a distributor's order form does not show them (C1-2, kartu t_5b5a3ae5)
+    depends_on: "!app_installed('distribution') || app_installed('jasa_proyek')"
   - name: end_date
     type: date
     label: {id: Selesai}
+    # manpower orders (jasa_proyek); a distributor's order form does not show them (C1-2, kartu t_5b5a3ae5)
+    depends_on: "!app_installed('distribution') || app_installed('jasa_proyek')"
   - name: items
     type: table
     of: customer_order_item
