@@ -3150,6 +3150,7 @@ MATRIX = {
     "outlet_takings": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     # one sales source per outlet and day (outlets): written by the flows of the daily form, setoran and cashier
     "outlet_day": {"head_office": {"read", "create", "write"}, "outlet_staff": {"read", "create", "write"}, "cashier": {"read", "create", "write"}},
+    "outlet_day_backfill": {"head_office": {"read", "create", "write"}},
     # cashier refunds back into stock (contract 0022): pos_refund is written by the flows of whoever submits the sale
     # or the return (all its fields are read_only); outlet staff put goods back at their outlet, head office cancels
     "pos_refund": {"head_office": {"read", "create", "write", "export"}, "outlet_staff": {"read", "write"}},

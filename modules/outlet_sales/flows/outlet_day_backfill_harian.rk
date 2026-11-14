@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Backfill of outlets/outlet_day for days submitted before it existed (audit rangka-apps#77 F3): the kernel has no
+# migrate hook for .rk, so every run marks the days of up to 500 submitted daily sales records and setoran that have no marker yet.
+# One read of the documents per run (audit #79 F2), then per document one indexed lookup of its day_key, so two
+# documents of one day give one marker and a day already marked (any source, also one freed by a cancel) is skipped:
+# the run is safe to repeat and a day never gets two markers (day_key is unique). A document without an outlet is left
+# out so it cannot stall the queue (audit #79 F5). The run that finds nothing left writes outlet_day_backfill
+# key harian done; from then on a run reads only that one row (audit #79 F1: the finished backfill read every document
+# each 5 minutes under the payment locks). The documents are read newest first (the kernel's order without sort:, so the
+# read stops at limit), so a backfilled marker names a document of its day, not always the first (audit #79 F6).
+name: outlet_day_backfill_harian
+label: {id: 'Lengkapi sumber penjualan harian dari penjualan harian dan setoran lama'}
+schedule: '*/5 * * * *'
+steps:
+  - find_all: outlet_day_backfill
+    where: "key == 'harian'"
+    limit: 1
+    as: st
+  - find_all: outlet_day
+    if: "size(st) == 0"
+    as: marked1
+  - find_all: outlet_sales
+    if: "size(st) == 0"
+    where: "docstatus == 1 && outlet != null && outlet != '' && !marked1.exists(m, m.outlet == outlet && m.date == date)"
+    limit: 500
+    as: f
+  - for_each: "f"
+    if: "size(st) == 0"
+    as: d1
+    do:
+      - find_all: outlet_day
+        where: "day_key == d1.outlet + '|' + string(d1.date)"
+        limit: 1
+        as: k1
+      - create: outlet_day
+        if: "size(k1) == 0"
+        set:
+          outlet: "d1.outlet"
+          date: "d1.date"
+          source: "'harian'"
+          document: "d1.name"
+          day_key: "d1.outlet + '|' + string(d1.date)"
+  - find_all: outlet_day
+    if: "size(st) == 0"
+    as: marked2
+  - find_all: outlet_takings
+    if: "size(st) == 0"
+    where: "docstatus == 1 && outlet != null && outlet != '' && !marked2.exists(m, m.outlet == outlet && m.date == date)"
+    limit: 500
+    as: g
+  - for_each: "g"
+    if: "size(st) == 0"
+    as: d2
+    do:
+      - find_all: outlet_day
+        where: "day_key == d2.outlet + '|' + string(d2.date)"
+        limit: 1
+        as: k2
+      - create: outlet_day
+        if: "size(k2) == 0"
+        set:
+          outlet: "d2.outlet"
+          date: "d2.date"
+          source: "'harian'"
+          document: "d2.name"
+          day_key: "d2.outlet + '|' + string(d2.date)"
+  - create: outlet_day_backfill
+    if: "size(st) == 0 && size(f) == 0 && size(g) == 0"
+    set:
+      key: "'harian'"
+      done: "true"
