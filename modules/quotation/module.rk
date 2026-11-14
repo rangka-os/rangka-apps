@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: quotation
-version: 1.2.0
+version: 1.2.1
 title: {id: Penawaran, en: Quotation}
 summary:
   id: Kirim penawaran harga ke pelanggan sebelum jadi pesanan.

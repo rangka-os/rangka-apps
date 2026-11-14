@@ -229,6 +229,12 @@ rules:
     on: save
     check: dpp_den > 0 && dpp_num > 0 && dpp_num <= dpp_den && tax_rate >= 0 && tax_rate <= 100
     message: {id: Tarif PPN atau faktor DPP tidak valid}
+  # the rate is at most the company's (tax.ppn_rate): lower rates are lawful (PPN besaran tertentu, an earlier
+  # statutory 10% or 11%), a higher one only inflates the PPN, e.g. a typed 100% (audit tax-fields N2; card t_81bc5551)
+  - name: tax_rate_at_most_config
+    on: save
+    check: "tax_rate <= tax.ppn_rate || (purchase_order != '' && tax_rate == purchase_order.tax_rate)"
+    message: {id: 'Tarif PPN tidak boleh melebihi tarif di pengaturan pajak usaha'}
   - name: ppn_needs_pkp
     on: save
     check: "tax_rate == 0 || (purchase_order != '' ? purchase_order.tax_rate > 0 : vendor.pkp)"
