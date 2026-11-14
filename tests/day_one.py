@@ -3971,7 +3971,7 @@ def scenario_tax_jasa(api):
         st, r = fm.create("sales_invoice", invoice_body(customer, ndt, tax_rate=0))
         check("finance_manager's PKP invoice at 0% without a ground -> 422 'perlu dasar'", st == 422 and any("perlu dasar" in m for m in messages(r)), (st, r))
         st, r = fm.create("sales_invoice", invoice_body(customer, ndt, tax_rate_reason="export"))
-        check("a ground on an invoice at 12% -> 422", st == 422 and any("hanya untuk faktur bertarif PPN 0" in m for m in messages(r)), (st, r))
+        check("a ground left on an invoice at 12% is harmless: 201 at 12 (audit zero-rate N2)", st == 201 and r.get("tax_rate") == 12, (st, r))
         st, r = sm.create("sales_invoice", invoice_body(customer, ndt, tax_rate_reason="export"))
         eq("sales_manager's ground is dropped like its rate: 201 at 12, no ground", (st, (r or {}).get("tax_rate"), (r or {}).get("tax_rate_reason")), (201, 12, ""))
         # the lock is not enough on its own (audit invoice-tax-lock F1/F2): a submit at another rate waits for finance

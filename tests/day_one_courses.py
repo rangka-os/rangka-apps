@@ -200,7 +200,7 @@ def scenario_courses_billing(api):
     if check("finance submits instalment 1", st == 200, (st, resp)):
         n1 = submitted_name(resp, c["name"])
         inv = invoice_of(api, n1, 0)
-        if check("instalment 1: draft invoice to the payer with [charge number], no PPN, ground not_taxable (card t_3106eb6c)", inv and inv["customer"] == "CUST-0003" and inv["tax_rate"] == 0 and inv.get("tax_rate_reason") == "not_taxable", inv):
+        if check("instalment 1: draft invoice to the payer with [charge number], no PPN, ground exempt (Pasal 16B, card t_3106eb6c)", inv and inv["customer"] == "CUST-0003" and inv["tax_rate"] == 0 and inv.get("tax_rate_reason") == "exempt", inv):
             invoices.append(inv["name"])
         amounts.append(api.get("course_charge", n1)["amount"])
     st, resp = ca.patch("enrollment", enr, {"discount": 200_000})
@@ -245,7 +245,7 @@ def scenario_courses_billing(api):
         return
     real = submitted_name(resp, inv_oct["name"])
     # a second invoice with the same charge number: refused at submit
-    st, twin = fm.create("sales_invoice", {"customer": "CUST-0005", "notes": f"Salinan [{oct_}]", "tax_rate": 0, "tax_rate_reason": "not_taxable", "items": [{"item": "BRG-0002", "qty": 1, "rate": 450_000}]})
+    st, twin = fm.create("sales_invoice", {"customer": "CUST-0005", "notes": f"Salinan [{oct_}]", "tax_rate": 0, "tax_rate_reason": "exempt", "items": [{"item": "BRG-0002", "qty": 1, "rate": 450_000}]})
     if check("a copy invoice carrying the same charge number is drafted (201)", st == 201, (st, twin)):
         st, resp = fm.verb("sales_invoice", twin["name"], "submit")
         check("submitting it -> refused (the month is invoiced already)", refused(st, resp, "sudah punya faktur diajukan"), (st, resp))
@@ -404,7 +404,7 @@ def scenario_courses_audit(api):
     live = rows_all(api, "course_charge", f"enrollment == '{ani}' && docstatus == 1")
     eq("S2: Ani is billed once, 1.800.000", [c["amount"] for c in live], [1_800_000])
     # L1: one invoice naming two charges
-    st, inv = fm.create("sales_invoice", {"customer": "CUST-0006", "notes": f"Gabungan [{nov}] [{am_name}]", "tax_rate": 0, "tax_rate_reason": "not_taxable", "items": [{"item": "BRG-0002", "qty": 1, "rate": 450_000}]})
+    st, inv = fm.create("sales_invoice", {"customer": "CUST-0006", "notes": f"Gabungan [{nov}] [{am_name}]", "tax_rate": 0, "tax_rate_reason": "exempt", "items": [{"item": "BRG-0002", "qty": 1, "rate": 450_000}]})
     if check("L1: an invoice naming two charges is drafted (201)", st == 201, (st, inv)):
         st, resp = fm.verb("sales_invoice", inv["name"], "submit")
         check("L1: submitting it -> refused", refused(st, resp, "bukan untuk tagihan"), (st, resp))

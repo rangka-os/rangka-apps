@@ -131,8 +131,9 @@ fields:
     default: "kind == 'retention' ? 0 : (tax.pkp ? tax.ppn_rate : 0)"
     read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]
   # the legal ground of a PKP invoice at 0% (card t_3106eb6c): without one the PPN owed would leave the Coretax XML
-  # unnoticed. Export of BKP/JKP is 0% (UU PPN Pasal 7 ayat 2); goods and services not subject to PPN (Pasal 4A, e.g.
-  # education) carry none. Facilities dibebaskan/tidak dipungut (07/08) keep the 12% rate with PPN not collected.
+  # unnoticed. Export of BKP/JKP is 0% (UU PPN Pasal 7 ayat 2); not subject to PPN (Pasal 4A) or no delivery carries
+  # none; facilities dibebaskan (Pasal 16B, PP 49/2022: education) and tidak dipungut are faktur codes 08 and 07 in
+  # Coretax (their XML is a follow-up card), recorded here at 0% with that ground.
   - name: tax_rate_reason
     type: select
     label: {id: Dasar tarif PPN 0}
@@ -140,8 +141,10 @@ fields:
     depends_on: tax_rate == 0 && kind != 'retention'
     read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]
     options:
-      - {value: export, label: {id: 'Ekspor (PPN 0%, Pasal 7 ayat 2)'}}
-      - {value: not_taxable, label: {id: 'Tidak dikenai PPN (Pasal 4A, mis. jasa pendidikan)'}}
+      - {value: export, label: {id: 'Ekspor BKP/JKP (PPN 0%, Pasal 7 ayat 2)'}}
+      - {value: exempt, label: {id: 'Dibebaskan (Pasal 16B, PP 49/2022, mis. jasa pendidikan)'}}
+      - {value: not_collected, label: {id: 'Tidak dipungut (Pasal 16B, mis. kawasan berikat)'}}
+      - {value: not_taxable, label: {id: 'Bukan objek PPN (Pasal 4A) atau bukan penyerahan'}}
   - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num', read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]}
   - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den', read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]}
   # The PPN base: the DPP, or with config tax.ppn_fee_only (kernel contract 0010 §8, default off) the fee part of it:
@@ -434,16 +437,14 @@ rules:
     on: save
     check: dpp_den > 0 && dpp_num > 0 && dpp_num <= dpp_den && tax_rate >= 0 && tax_rate <= 100
     message: {id: Tarif PPN atau faktor DPP tidak valid}
-  # the rate is at most the company's (tax.ppn_rate): lower rates are lawful (PPN besaran tertentu, an earlier
-  # statutory 10% or 11%), a higher one only inflates the PPN, e.g. a typed 100% (audit tax-fields N2; card t_81bc5551)
+  # a PKP invoice at 0% names its ground (card t_3106eb6c); a ground left on a rate above 0 is ignored (Coretax and
+  # ppn read the rate), so raising the rate never trips over the hidden field (audit zero-rate N2)
   - name: zero_rate_needs_reason
     on: save
     check: "!tax.pkp || kind == 'retention' || tax_rate > 0 || tax_rate_reason != ''"
-    message: {id: 'Faktur PKP bertarif PPN 0 perlu dasar: ekspor, atau barang/jasa yang tidak dikenai PPN. Diisi pemilik atau bagian keuangan'}
-  - name: zero_rate_reason_only_at_zero
-    on: save
-    check: tax_rate_reason == '' || tax_rate == 0
-    message: {id: Dasar tarif PPN 0 hanya untuk faktur bertarif PPN 0}
+    message: {id: 'Faktur PKP bertarif PPN 0 perlu dasar (ekspor, dibebaskan, tidak dipungut, bukan objek). Diisi pemilik atau bagian keuangan'}
+  # the rate is at most the company's (tax.ppn_rate): lower rates are lawful (PPN besaran tertentu, an earlier
+  # statutory 10% or 11%), a higher one only inflates the PPN, e.g. a typed 100% (audit tax-fields N2; card t_81bc5551)
   - name: tax_rate_at_most_config
     on: save
     check: "tax_rate <= tax.ppn_rate"
