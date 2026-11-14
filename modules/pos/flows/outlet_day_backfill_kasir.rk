@@ -9,7 +9,7 @@
 # (any source, also one freed by a cancel) is left as it is, so the run is safe to repeat and a day never gets two
 # markers. Then `before` moves back 30 days; the run that finds no submitted receipt before it records done, and from
 # then on a run reads only that one row (audit #79 F1). A receipt without an outlet has no day to mark and does not hold
-# the walk back (audit #79 F5).
+# the walk back (audit #79 F5), nor does a receipt without a date (audit t_0dba5917 B2).
 name: outlet_day_backfill_kasir
 label: {id: 'Lengkapi sumber penjualan harian dari struk kasir lama'}
 schedule: '*/5 * * * *'
@@ -52,7 +52,7 @@ steps:
               day_key: "o.name + '|' + d"
   - find: pos_sale
     if: "st != null && !st.done"
-    where: "docstatus == 1 && date < st.before - duration(30)"
+    where: "docstatus == 1 && date != '' && date < st.before - duration(30)"
     as: more
   - update: st
     if: "st != null && !st.done"
