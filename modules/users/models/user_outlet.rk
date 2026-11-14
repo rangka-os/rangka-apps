@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
-# One outlet a member works at. Rows are written from Tim (contract 0055), not edited on the record.
+# One outlet a member works at. Rows are written from Tim (contract 0056), not edited on the record.
 name: user_outlet
 is_child: true
 fields:
