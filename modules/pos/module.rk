@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: pos
-version: 1.1.2
+version: 1.2.0
 title: {id: Kasir, en: Point of sale}
 summary:
   id: Kasir di browser dengan sesi kas, transaksi dan tutup sesi per outlet.
@@ -17,6 +17,6 @@ icon: shopping-basket-line
 # (cancel, then amend without the returned items) only on its own day while its shift is open.
 # Sales of an outlet run either here or through outlet_sales (Jalur A), never both: an outlet whose sales_source is
 # 'kasir' takes no daily form or POS file, and a sale needs that source when outlet_sales is installed.
-requires: {rangka: '>=0.5', users: ^1.2, catalogue: ^1.3, outlets: ^1.4, stock: ^1.2}
+requires: {rangka: '>=0.5', users: ^1.2, catalogue: ^1.3, outlets: ^1.5, stock: ^1.2}
 hooks: [stock.reverse_moves]
 optional: {accounting: ^1.2, outlet_sales: ^1.1}
