@@ -89,6 +89,7 @@ fields:
     help: {id: Semua pesanan pelanggan ini butuh persetujuan sampai dicentang lagi}
     depends_on: app_installed('distribution')
     read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin]
+    hidden_for: [outlet_staff]
   - name: credit_hold_reason
     type: data
     label: {id: Alasan tahan kredit}
