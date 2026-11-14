@@ -14,7 +14,8 @@ permissions:
   # money and identity fields are hidden_for outlet_staff (contract 0027; card t_5ba74e22)
   - {role: outlet_staff, read: true}
   - {role: sales_rep, read: true, create: true, write: true}
-  # credit_limit, credit_hold and credit_hold_reason are decided by the sales and finance managers (and the owner):
+  # credit_limit, credit_hold, credit_hold_reason, payment_days and price_tier (the customer's credit and terms) are
+  # decided by the sales and finance managers (and the owner):
   # they are read_only_for every other role that writes customers (rangka-os contract 0027 §6; card t_6c114aa0)
   # a salesman sees his own customers (role scope salesman) and cannot change their credit
   - {role: field_sales, read: true}
@@ -44,6 +45,7 @@ fields:
     label: {id: Tempo (hari)}
     default: '30'
     in_list: true
+    read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin]
   - name: credit_limit
     type: currency
     label: {id: Batas kredit}
@@ -83,6 +85,7 @@ fields:
       - {value: retail, label: {id: Eceran}}
       - {value: wholesale, label: {id: Grosir}}
       - {value: agent, label: {id: Agen}}
+    read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin]
   - name: credit_hold
     type: check
     label: {id: Tahan kredit}

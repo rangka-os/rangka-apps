@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: accounting
-version: 1.3.2
+version: 1.3.3
 title: {id: Akuntansi, en: Accounting}
 summary:
   id: Jurnal, saldo awal, tutup buku dan laporan keuangan dari transaksi yang sudah dicatat.

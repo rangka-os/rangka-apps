@@ -797,6 +797,28 @@ def scenario_grosir_staff_ledger(api):
     check("the warehouse member receives the transfer again", st == 201 and st2 == 200, (st, rc, st2))
 
 
+def scenario_grosir_customer_terms(api):
+    """Card t_8074a56a: a customer's price tier and payment terms are credit decisions too (a lower tier lowers the
+    price, a longer tempo delays the credit hold): head office's saves neither set nor change them; the sales manager
+    does. The warehouse member does not read what the company owes its suppliers (vendor outstanding, terms)."""
+    got = _need("hq", "sm", "gudang")
+    if not got:
+        return
+    hq, sm, staff = got
+    st, c = hq.create("customer", {"customer_name": "Toko Syarat Uji", "salesman": ASEP, "price_tier": "agent", "payment_days": 120})
+    if not check("head office creates a customer -> 201", st == 201, (st, c)):
+        return
+    rec = api.get("customer", c["name"])
+    check("head office did not set the tier or the tempo on create (defaults apply)", rec.get("price_tier") != "agent" and rec.get("payment_days") != 120, (rec.get("price_tier"), rec.get("payment_days")))
+    sm.patch("customer", c["name"], {"price_tier": "wholesale", "payment_days": 14})
+    hq.patch("customer", c["name"], {"price_tier": "agent", "payment_days": 120})
+    rec = api.get("customer", c["name"])
+    eq("head office's save keeps the sales manager's tier and tempo", (rec.get("price_tier"), rec.get("payment_days")), ("wholesale", 14))
+    vendors = staff.list("vendor", limit=50)
+    leaked = sorted({k for v in vendors for k in ("outstanding", "payment_days") if k in v})
+    check("the warehouse member lists vendors without what the company owes them", vendors and not leaked, leaked)
+
+
 SCENARIOS = [scenario_grosir_fixtures, scenario_grosir_tier_price, scenario_grosir_salesman_scope, scenario_grosir_credit_hold,
              scenario_grosir_giro, scenario_grosir_ar_by_salesman, scenario_grosir_delivery, scenario_grosir_credit_at_delivery, scenario_grosir_credit_race, scenario_grosir_return,
-             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_staff_customer_money, scenario_grosir_credit_writers, scenario_grosir_staff_ledger, scenario_grosir_order_marks, scenario_grosir_coretax]
+             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_staff_customer_money, scenario_grosir_credit_writers, scenario_grosir_staff_ledger, scenario_grosir_customer_terms, scenario_grosir_order_marks, scenario_grosir_coretax]

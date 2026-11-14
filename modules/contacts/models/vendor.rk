@@ -59,11 +59,13 @@ fields:
     type: int
     label: {id: Tempo (hari)}
     default: '30'
+    hidden_for: [outlet_staff]
   - name: outstanding
     type: currency
     label: {id: Utang}
     read_only: true
     in_list: true
+    hidden_for: [outlet_staff]
   - name: contacts
     type: table
     of: contact_person
