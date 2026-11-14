@@ -3,11 +3,11 @@
 # (TaxInvoiceBulk) and the unified withholding slips the firm issues (BPPU, BpuBulk), checked before download.
 # Decisions and sources: reports/keputusan-riset/09-pajak-coretax.md in the project folder.
 name: coretax
-version: 1.1.0
+version: 1.2.0
 title: {id: Lapor pajak Coretax, en: Coretax tax filing}
 summary:
   id: Siapkan masa pajak dan berkas unduhan untuk lapor di Coretax.
   en: Prepare tax periods and the files to report in Coretax.
 category: tax
 icon: file-list-3-line
-requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.2, catalogue: ^1.2, invoicing: ^1.7, procurement: ^1.1, payments: ^1.4}
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.2, catalogue: ^1.2, invoicing: ^1.9, procurement: ^1.1, payments: ^1.4}

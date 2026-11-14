@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: invoicing
-version: 1.8.0
+version: 1.9.0
 title: {id: Faktur, en: Invoicing}
 summary:
   id: Buat faktur penjualan, pilih cara bayar termasuk QRIS, dan kirim pengingat tagihan.

@@ -145,6 +145,48 @@ fields:
       - {value: exempt, label: {id: 'Dibebaskan (Pasal 16B, PP 49/2022, mis. jasa pendidikan)'}}
       - {value: not_collected, label: {id: 'Tidak dipungut (Pasal 16B, mis. kawasan berikat)'}}
       - {value: not_taxable, label: {id: 'Bukan objek PPN (Pasal 4A) atau bukan penyerahan'}}
+  # A PKP invoice dibebaskan (08) or tidak dipungut (07) is still a faktur pajak in Coretax, with the facility's
+  # Keterangan Tambahan and Cap Fasilitas (DJP template v1.6.1 REF-KetTambahan / REF-CapFasilitas, the column of the
+  # code) and, for a bonded zone, the customs document (card t_611be720, reports/keputusan-riset/coretax-fasilitas-07-08.md)
+  - name: coretax_facility
+    type: select
+    label: {id: Fasilitas PPN}
+    help: {id: 'Fasilitas dari dasar tarif 0: menentukan kode keterangan dan cap fasilitas di faktur pajak Coretax.'}
+    depends_on: tax_rate == 0 && (tax_rate_reason == 'exempt' || tax_rate_reason == 'not_collected')
+    read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]
+    options:
+      - {value: education_pp49, label: {id: 'Dibebaskan: jasa pendidikan, PP 49/2022 (kode 08)'}}
+      - {value: bonded_zone, label: {id: 'Tidak dipungut: tempat penimbunan berikat (kode 07)'}}
+      - {value: special_economic_zone, label: {id: 'Tidak dipungut: kawasan ekonomi khusus, PP 40/2021 (kode 07)'}}
+      - {value: free_zone, label: {id: 'Tidak dipungut: kawasan bebas, PP 41/2021 (kode 07)'}}
+  - name: customs_doc
+    type: data
+    label: {id: Nomor dokumen pabean}
+    help: {id: 'Nomor aju BC 4.0 (tanpa tanda baca), PPKEK#nomor, atau PJKEK#nomor bila penyerahan memakai dokumen pabean.'}
+    depends_on: tax_rate == 0 && tax_rate_reason == 'not_collected'
+    read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]
+  - name: customs_doc_period
+    type: data
+    label: {id: Masa dokumen pabean (BBTTTT)}
+    depends_on: customs_doc != ''
+    read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]
+  # the PPN the facility leaves uncollected: the faktur pajak states it (DJP sample 07, FAQ 08), the invoice does not bill it
+  - name: coretax_vat_rate
+    type: percent
+    label: {id: Tarif PPN di faktur pajak}
+    depends_on: app_installed('coretax') && efaktur_code != ''
+    compute: "tax_rate > 0 ? tax_rate : (efaktur_code == '07' || efaktur_code == '08' ? tax.ppn_rate : 0)"
+  - name: coretax_add_info
+    type: data
+    label: {id: Keterangan tambahan faktur pajak}
+    depends_on: app_installed('coretax') && coretax_facility != ''
+    # only on a 07/08 faktur: a facility left on a draft whose rate was raised is ignored (audit coretax-07-08 F1)
+    compute: "efaktur_code != '07' && efaktur_code != '08' ? '' : coretax_facility == 'education_pp49' ? 'TD.00510' : (coretax_facility == 'bonded_zone' ? 'TD.00502' : (coretax_facility == 'special_economic_zone' ? 'TD.00517' : (coretax_facility == 'free_zone' ? 'TD.00518' : '')))"
+  - name: coretax_stamp
+    type: data
+    label: {id: Cap fasilitas faktur pajak}
+    depends_on: app_installed('coretax') && coretax_facility != ''
+    compute: "efaktur_code != '07' && efaktur_code != '08' ? '' : coretax_facility == 'education_pp49' ? 'TD.01110' : (coretax_facility == 'bonded_zone' ? 'TD.01102' : (coretax_facility == 'special_economic_zone' ? 'TD.01117' : (coretax_facility == 'free_zone' ? 'TD.01118' : '')))"
   - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num', read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]}
   - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den', read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]}
   # The PPN base: the DPP, or with config tax.ppn_fee_only (kernel contract 0010 §8, default off) the fee part of it:
@@ -316,8 +358,8 @@ fields:
   - name: efaktur_code
     type: data
     label: {id: Kode transaksi e-Faktur}
-    depends_on: app_installed('coretax') && tax_rate > 0
-    compute: "tax_rate == 0 ? '' : (customer.vat_collector == 'government' ? '02' : (customer.vat_collector == 'other' ? '03' : (dpp_num == dpp_den ? '01' : '04')))"
+    depends_on: app_installed('coretax') && (tax_rate > 0 || coretax_facility != '')
+    compute: "tax_rate == 0 ? (!tax.pkp || coretax_facility == '' ? '' : (tax_rate_reason == 'exempt' ? '08' : (tax_rate_reason == 'not_collected' ? '07' : ''))) : (customer.vat_collector == 'government' ? '02' : (customer.vat_collector == 'other' ? '03' : (dpp_num == dpp_den ? '01' : '04')))"
   # The invoice this one amends (kernel amended_from as a link), so the Coretax export can refuse a replacement of
   # an invoice of an earlier period: that one is a Faktur Pengganti made in Coretax.
   - name: replaces
@@ -437,6 +479,18 @@ rules:
     on: save
     check: dpp_den > 0 && dpp_num > 0 && dpp_num <= dpp_den && tax_rate >= 0 && tax_rate <= 100
     message: {id: Tarif PPN atau faktor DPP tidak valid}
+  - name: facility_needs_kind
+    on: save
+    check: "!tax.pkp || kind == 'retention' || tax_rate > 0 || (tax_rate_reason != 'exempt' && tax_rate_reason != 'not_collected') || coretax_facility != ''"
+    message: {id: 'PPN dibebaskan atau tidak dipungut: pilih fasilitasnya (untuk kode dan cap fasilitas faktur pajak)'}
+  - name: facility_matches_reason
+    on: save
+    check: "coretax_facility == '' || tax_rate > 0 || (coretax_facility == 'education_pp49' ? tax_rate_reason == 'exempt' : tax_rate_reason == 'not_collected')"
+    message: {id: 'Fasilitas tidak cocok dengan dasar tarif 0: jasa pendidikan dibebaskan, kawasan berikat/KEK/kawasan bebas tidak dipungut'}
+  - name: customs_doc_period_format
+    on: save
+    check: "customs_doc == '' || customs_doc_period.matches('^(0[1-9]|1[0-2])[0-9]{4}$')"
+    message: {id: 'Masa dokumen pabean ditulis BBTTTT, misalnya 122026'}
   # a PKP invoice at 0% names its ground (card t_3106eb6c); a ground left on a rate above 0 is ignored (Coretax and
   # ppn read the rate), so raising the rate never trips over the hidden field (audit zero-rate N2)
   - name: zero_rate_needs_reason
@@ -533,7 +587,7 @@ views:
         fields: [items]
       - section: {id: Pajak & potongan}
         columns:
-          - [discount_amount, dp_invoice, down_payment, tax_rate, tax_rate_reason, dpp_num, dpp_den, ppn_base, ppn]
+          - [discount_amount, dp_invoice, down_payment, tax_rate, tax_rate_reason, coretax_facility, customs_doc, customs_doc_period, dpp_num, dpp_den, ppn_base, ppn]
           - [pph23_applies, pph23_rate, pph23_amount, retention_percent, retention_of, retention_amount]
       - section: {id: Ringkasan}
         columns:
