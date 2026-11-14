@@ -85,12 +85,15 @@ fields:
       - {value: '61900', label: {id: '6-1900 Beban operasional lain'}}
       - {value: '69100', label: {id: '6-9100 Beban pajak'}}
     # accounts:end
+  # outlet staff read the lines of their outlet's documents only because the posting flows run as them (a cancel
+  # finds the post lines); the amounts are not theirs to see (contract 0027: flows still read them; card t_7eeaf99a)
   - name: amount
     type: currency
     label: {id: 'Nilai (+ debit, - kredit)'}
     required: true
-  - {name: debit, type: currency, label: {id: Debit}, compute: "amount > 0 ? amount : 0", in_list: true}
-  - {name: credit, type: currency, label: {id: Kredit}, compute: "amount < 0 ? 0 - amount : 0", in_list: true}
+    hidden_for: [outlet_staff]
+  - {name: debit, type: currency, label: {id: Debit}, compute: "amount > 0 ? amount : 0", in_list: true, hidden_for: [outlet_staff]}
+  - {name: credit, type: currency, label: {id: Kredit}, compute: "amount < 0 ? 0 - amount : 0", in_list: true, hidden_for: [outlet_staff]}
   - name: voucher_type
     type: data
     label: {id: Jenis dokumen}
