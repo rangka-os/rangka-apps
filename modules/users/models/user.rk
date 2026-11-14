@@ -37,7 +37,7 @@ fields:
     label: {id: Peran}
     read_only: true
     in_list: true
-  - {name: outlets, type: table, of: user_outlet, label: {id: Outlet}, read_only: true}
+  - {name: outlets, type: table, of: user_outlet, label: {id: Outlet}, read_only: true, depends_on: app_installed('outlets')}
   - name: access
     type: select
     label: {id: Akses}

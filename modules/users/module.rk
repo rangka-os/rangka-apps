@@ -7,4 +7,5 @@ summary:
   en: The people who use Rangka in your business.
 category: people
 icon: user-line
-requires: {rangka: '>=0.5', outlets: ^1.0}
+requires: {rangka: '>=0.5'}
+optional: {outlets: ^1.5}
