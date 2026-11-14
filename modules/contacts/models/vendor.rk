@@ -11,6 +11,9 @@ permissions:
   - {role: project_admin, read: true, create: true, write: true, print: true}
   - {role: head_office, read: true, create: true, write: true, print: true}
   - {role: outlet_staff, read: true}
+# pkp opens PPN masukan on the vendor's bills and pph23_object_code is the default tax object of its bills: tax
+# decisions of finance (and the owner), read_only_for every other role that writes vendors, so the person who records
+# a bill cannot also make its vendor PKP (rangka-os contract 0027 §6; card t_d8afe122)
 fields:
   - name: vendor_name
     type: data
@@ -50,11 +53,13 @@ fields:
     label: {id: Kode objek PPh 23}
     help: {id: 'Kode objek pajak Coretax, misalnya 24-104-17 jasa penyedia tenaga kerja, 24-104-36 kebersihan, 24-100-02 sewa'}
     depends_on: app_installed('coretax')
+    read_only_for: [sales_manager, purchasing_manager, project_admin, head_office]
   - name: pkp
     type: check
     label: {id: Pemasok PKP}
     help: {id: 'PPN pembelian dari pemasok ini dihitung bila PKP'}
     default: 'false'
+    read_only_for: [sales_manager, purchasing_manager, project_admin, head_office]
   - name: payment_days
     type: int
     label: {id: Tempo (hari)}
