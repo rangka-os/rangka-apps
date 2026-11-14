@@ -175,17 +175,18 @@ fields:
     type: percent
     label: {id: Tarif PPN di faktur pajak}
     depends_on: app_installed('coretax') && efaktur_code != ''
-    compute: "tax_rate > 0 ? tax_rate : (coretax_facility != '' ? tax.ppn_rate : 0)"
+    compute: "tax_rate > 0 ? tax_rate : (efaktur_code == '07' || efaktur_code == '08' ? tax.ppn_rate : 0)"
   - name: coretax_add_info
     type: data
     label: {id: Keterangan tambahan faktur pajak}
     depends_on: app_installed('coretax') && coretax_facility != ''
-    compute: "coretax_facility == 'education_pp49' ? 'TD.00510' : (coretax_facility == 'bonded_zone' ? 'TD.00502' : (coretax_facility == 'special_economic_zone' ? 'TD.00517' : (coretax_facility == 'free_zone' ? 'TD.00518' : '')))"
+    # only on a 07/08 faktur: a facility left on a draft whose rate was raised is ignored (audit coretax-07-08 F1)
+    compute: "efaktur_code != '07' && efaktur_code != '08' ? '' : coretax_facility == 'education_pp49' ? 'TD.00510' : (coretax_facility == 'bonded_zone' ? 'TD.00502' : (coretax_facility == 'special_economic_zone' ? 'TD.00517' : (coretax_facility == 'free_zone' ? 'TD.00518' : '')))"
   - name: coretax_stamp
     type: data
     label: {id: Cap fasilitas faktur pajak}
     depends_on: app_installed('coretax') && coretax_facility != ''
-    compute: "coretax_facility == 'education_pp49' ? 'TD.01110' : (coretax_facility == 'bonded_zone' ? 'TD.01102' : (coretax_facility == 'special_economic_zone' ? 'TD.01117' : (coretax_facility == 'free_zone' ? 'TD.01118' : '')))"
+    compute: "efaktur_code != '07' && efaktur_code != '08' ? '' : coretax_facility == 'education_pp49' ? 'TD.01110' : (coretax_facility == 'bonded_zone' ? 'TD.01102' : (coretax_facility == 'special_economic_zone' ? 'TD.01117' : (coretax_facility == 'free_zone' ? 'TD.01118' : '')))"
   - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num', read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]}
   - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den', read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]}
   # The PPN base: the DPP, or with config tax.ppn_fee_only (kernel contract 0010 §8, default off) the fee part of it:
@@ -358,7 +359,7 @@ fields:
     type: data
     label: {id: Kode transaksi e-Faktur}
     depends_on: app_installed('coretax') && (tax_rate > 0 || coretax_facility != '')
-    compute: "tax_rate == 0 ? (tax_rate_reason == 'exempt' && coretax_facility != '' ? '08' : (tax_rate_reason == 'not_collected' && coretax_facility != '' ? '07' : '')) : (customer.vat_collector == 'government' ? '02' : (customer.vat_collector == 'other' ? '03' : (dpp_num == dpp_den ? '01' : '04')))"
+    compute: "tax_rate == 0 ? (!tax.pkp || coretax_facility == '' ? '' : (tax_rate_reason == 'exempt' ? '08' : (tax_rate_reason == 'not_collected' ? '07' : ''))) : (customer.vat_collector == 'government' ? '02' : (customer.vat_collector == 'other' ? '03' : (dpp_num == dpp_den ? '01' : '04')))"
   # The invoice this one amends (kernel amended_from as a link), so the Coretax export can refuse a replacement of
   # an invoice of an earlier period: that one is a Faktur Pengganti made in Coretax.
   - name: replaces
@@ -478,8 +479,6 @@ rules:
     on: save
     check: dpp_den > 0 && dpp_num > 0 && dpp_num <= dpp_den && tax_rate >= 0 && tax_rate <= 100
     message: {id: Tarif PPN atau faktor DPP tidak valid}
-  # a PKP invoice at 0% names its ground (card t_3106eb6c); a ground left on a rate above 0 is ignored (Coretax and
-  # ppn read the rate), so raising the rate never trips over the hidden field (audit zero-rate N2)
   - name: facility_needs_kind
     on: save
     check: "!tax.pkp || kind == 'retention' || tax_rate > 0 || (tax_rate_reason != 'exempt' && tax_rate_reason != 'not_collected') || coretax_facility != ''"
@@ -492,6 +491,8 @@ rules:
     on: save
     check: "customs_doc == '' || customs_doc_period.matches('^(0[1-9]|1[0-2])[0-9]{4}$')"
     message: {id: 'Masa dokumen pabean ditulis BBTTTT, misalnya 122026'}
+  # a PKP invoice at 0% names its ground (card t_3106eb6c); a ground left on a rate above 0 is ignored (Coretax and
+  # ppn read the rate), so raising the rate never trips over the hidden field (audit zero-rate N2)
   - name: zero_rate_needs_reason
     on: save
     check: "!tax.pkp || kind == 'retention' || tax_rate > 0 || tax_rate_reason != ''"

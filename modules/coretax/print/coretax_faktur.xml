@@ -24,11 +24,14 @@
 			<TaxInvoiceDate>{{isodate .posting_date}}</TaxInvoiceDate>
 			<TaxInvoiceOpt>Normal</TaxInvoiceOpt>
 			<TrxCode>{{.efaktur_code}}</TrxCode>
-			{{if .coretax_add_info}}<AddInfo>{{.coretax_add_info}}</AddInfo>{{else}}<AddInfo/>{{end}}
-			{{if .customs_doc}}<CustomDoc>{{.customs_doc}}</CustomDoc>{{else}}<CustomDoc/>{{end}}
-			{{if .customs_doc}}<CustomDocMonthYear>{{.customs_doc_period}}</CustomDocMonthYear>{{else}}<CustomDocMonthYear/>{{end}}
+{{- /* facility elements on a 07/08 faktur only, the customs document on 07 only: what a draft kept after its rate was
+  raised or its ground changed stays off (audit coretax-07-08 F1, F2) */}}
+{{- $fac := or (eq .efaktur_code "07") (eq .efaktur_code "08")}}
+			{{if and $fac .coretax_add_info}}<AddInfo>{{.coretax_add_info}}</AddInfo>{{else}}<AddInfo/>{{end}}
+			{{if and (eq .efaktur_code "07") .customs_doc}}<CustomDoc>{{.customs_doc}}</CustomDoc>{{else}}<CustomDoc/>{{end}}
+			{{if and (eq .efaktur_code "07") .customs_doc}}<CustomDocMonthYear>{{.customs_doc_period}}</CustomDocMonthYear>{{else}}<CustomDocMonthYear/>{{end}}
 			<RefDesc>{{.name}}{{if .dp_invoice}}; uang muka {{.dp_invoice}}{{end}}{{if $fee}}; upah tenaga kerja di luar DPP (PMK 83/2012){{end}}</RefDesc>
-			{{if .coretax_stamp}}<FacilityStamp>{{.coretax_stamp}}</FacilityStamp>{{else}}<FacilityStamp/>{{end}}
+			{{if and $fac .coretax_stamp}}<FacilityStamp>{{.coretax_stamp}}</FacilityStamp>{{else}}<FacilityStamp/>{{end}}
 			<SellerIDTKU>{{$seller}}</SellerIDTKU>
 			<BuyerTin>{{.buyer_tin}}</BuyerTin>
 			<BuyerDocument>{{.buyer_id_type}}</BuyerDocument>

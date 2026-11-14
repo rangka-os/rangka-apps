@@ -3491,6 +3491,22 @@ def scenario_coretax(api):
         st, resp = api.create("sales_invoice", {"customer": ca, "posting_date": may + "18", "due_date": may + "18", "tax_rate": 0,
                                                 "items": [{"item": svc["name"], "qty": 1, "rate": 1_000_000}], **extra})
         check(f"coretax: {label} -> 422 '{want}'", st == 422 and any(want in m for m in messages(resp)), (st, resp))
+    # audit coretax-07-08 F1/F2: facility fields a draft keeps after its rate is raised, or a customs document on 08, stay
+    # off the faktur (the fields are hidden once the rate is above 0, so the user cannot clear them)
+    def raised(extra):
+        d = inv(ca, may + "19", [(1, 10_000_000, {})], submit=False, tax_rate=0, **extra)
+        st, r = api.patch("sales_invoice", d, {"tax_rate": 12})
+        check(f"coretax: raise the draft {extra.get('coretax_facility')} to 12%", st == 200, (st, r))
+        st, r = api.verb("sales_invoice", d, "submit", {"force": True})
+        return r.get("name", d) if isinstance(r, dict) else d
+    r08 = raised({"tax_rate_reason": "exempt", "coretax_facility": "education_pp49"})
+    r07 = raised({"tax_rate_reason": "not_collected", "coretax_facility": "bonded_zone", "customs_doc": aju, "customs_doc_period": "052031"})
+    f12 = inv(ca, may + "19", [(1, 10_000_000, {})], coretax_facility="free_zone")
+    c08 = inv(ca, may + "19", [(1, 6_720_000, {})], tax_rate=0, tax_rate_reason="exempt", coretax_facility="education_pp49",
+              customs_doc="<x&y>", customs_doc_period="052031")
+    eq("raised drafts and a 12% invoice with a facility: code 04 and no facility codes",
+       [(api.get("sales_invoice", n).get("efaktur_code"), api.get("sales_invoice", n).get("coretax_add_info") or "", api.get("sales_invoice", n).get("coretax_stamp") or "")
+        for n in (r08, r07, f12)], [("04", "", "")] * 3)
     g8, g7 = api.get("sales_invoice", i8), api.get("sales_invoice", i7)
     eq("08 invoice: code 08, TD.00510 / TD.01110, PPN stated at 12% but billed 0",
        (g8.get("efaktur_code"), g8.get("coretax_add_info"), g8.get("coretax_stamp"), g8.get("coretax_vat_rate"), g8.get("ppn")), ("08", "TD.00510", "TD.01110", 12, 0))
@@ -3499,7 +3515,7 @@ def scenario_coretax(api):
     fin = inv(ca, may + "20", [(1, 20_000_000, {})], dp_invoice=dp, down_payment=5_000_000)
     inv(ca, "2031-04-30", [(1, 7_000_000, {})])
     inv(ca, "2031-06-01", [(1, 7_000_000, {})])
-    got = {n: api.get("sales_invoice", n) for n in (i1, i2, i3, dp, fin, i7, i8)}
+    got = {n: api.get("sales_invoice", n) for n in (i1, i2, i3, dp, fin, i7, i8, r08, r07, f12, c08)}
     eq("e-Faktur codes: 04 (DPP nilai lain), 04, 02 (government collector)", [got[n].get("efaktur_code") for n in (i1, i2, i3)], ["04", "04", "02"])
     eq("buyer identity frozen on the invoice: NIK buyer", (got[i2].get("buyer_id_type"), got[i2].get("buyer_tin"), got[i2].get("buyer_doc_no"), got[i2].get("buyer_idtku")),
        ("National ID", "0" * 16, nik_b, "000000"))
@@ -3569,7 +3585,12 @@ def scenario_coretax(api):
     eq("root TaxInvoiceBulk with the seller NPWP", (root.tag, root.findtext("TIN")), ("TaxInvoiceBulk", seller))
     tis = root.findall("ListOfTaxInvoice/TaxInvoice")
     by_ref = {t.findtext("RefDesc").split(";")[0]: t for t in tis}
-    eq("the period's PPN invoices and the 07/08 ones, no cancelled, no Pasal 4A 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin, sen, i7, i8]))
+    eq("the period's PPN invoices and the 07/08 ones, no cancelled, no Pasal 4A 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin, sen, i7, i8, r08, r07, f12, c08]))
+    fac = lambda t: (t.findtext("TrxCode"), t.findtext("AddInfo") or "", t.findtext("FacilityStamp") or "", t.findtext("CustomDoc") or "", t.findtext("CustomDocMonthYear") or "")
+    eq("XML: raised 08, raised 07 with a customs document, 12% with a facility: 04 with empty facility elements (audit F1)",
+       [fac(by_ref[n]) for n in (r08, r07, f12) if n in by_ref], [("04", "", "", "", "")] * 3)
+    if c08 in by_ref:
+        eq("XML: an 08 faktur leaves a customs document off (audit F2)", fac(by_ref[c08]), ("08", "TD.00510", "TD.01110", "", ""))
     if i8 in by_ref:
         t = by_ref[i8]
         g = t.find("ListOfGoodService/GoodService")
