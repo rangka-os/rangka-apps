@@ -200,6 +200,64 @@ def scenario_pos_kasir_only_site(api):
             shutil.rmtree(state, ignore_errors=True)
 
 
+def scenario_pos_day_source_kept_after_removal(api):
+    """Audit rangka-apps#74 L1: an outlet's daily form submitted today, the outlet moved to the cashier, then the daily
+    sales app removed from the site: the cashier's receipt for that day is still refused (outlets/outlet_day keeps
+    the day's source; the old guard could not see a daily form of an app no longer installed)."""
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+    d1 = H["day_one"]
+    state, k = None, None
+    try:
+        state = tempfile.mkdtemp(prefix="day-one-day-source-")
+        site_dir = os.path.join(state, "site")
+        shutil.copytree(os.path.join(d1.ROOT, "examples", "sites", "demo-kasir"), site_dir)
+        k = d1.Kernel("demo-kasir", state, site_dir=site_dir)
+        k.start()
+        owner = d1.Api(k.base)
+        today = kernel_today().isoformat()
+        st, f = owner.create("outlet_sales", {"outlet": CMH, "date": today, "lines": [{"item": GULA, "qty": 2, "gross": 36_000}]})
+        if not check("day source: Cimahi's daily form -> 201", st == 201, (st, f)):
+            return
+        st, r = owner.verb("outlet_sales", rec(f)["name"], "submit")
+        check("day source: Cimahi's daily form submitted", st == 200, (st, r))
+        day = owner.find("outlet_day", f"outlet == '{CMH}' && date == '{today}'")
+        eq("day source: the day is marked 'harian' with the form", [(x.get("source"), x.get("document")) for x in day], [("harian", rec(r).get("name") or rec(f)["name"])])
+        # nobody writes the marker by hand (audit #77 F1/F2): a new one is refused, a change is dropped
+        st, resp = owner.create("outlet_day", {"outlet": CMH, "date": today, "source": "", "day_key": "x"})
+        check("day source: a marker cannot be made through the API (read_only fields)", st in (400, 403, 422), (st, resp))
+        if day:
+            owner.patch("outlet_day", day[0]["name"], {"source": "", "day_key": "y"})
+            again = owner.find("outlet_day", f"outlet == '{CMH}' && date == '{today}'")
+            eq("day source: an edit through the API leaves the marker as it was", [(x.get("source"), x.get("day_key")) for x in again],
+               [("harian", day[0].get("day_key"))])
+        owner.patch("outlet", CMH, {"sales_source": "kasir"})
+        # the owner removes the daily sales app (penjualan_harian) the same day
+        k.stop_serve()
+        for name in ("config.rk", "features.rk"):
+            path = os.path.join(site_dir, name)
+            text = open(path).read()
+            assert "apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan]" in text, name
+            open(path, "w").write(text.replace("apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan]", "apps: [kasir, stok_outlet, dapur, pembukuan]"))
+        r = subprocess.run([k.binary, "migrate"] + k.args(), capture_output=True, text=True)
+        check("day source: migrate without penjualan_harian", r.returncode == 0, r.stderr[-400:])
+        k.serve()
+        st, resp = owner.call("GET", "/api/v1/r/outlet_sales")
+        check("day source: outlet_sales is gone from the site (404)", st == 404, st)
+        s = open_shift(owner, CMH, 0, "day source: Cimahi")
+        if not s:
+            return
+        st, resp = sale(owner, s["name"], [{"item": PULSA, "qty": 1}], "", payments=[{"method": "cash", "amount": 5_000}])
+        check("day source: a receipt for that day is still refused -> 422 daily_sales_same_day", st == 422 and "daily_sales_same_day" in rules(resp), (st, resp))
+    finally:
+        if k is not None:
+            k.stop()
+        if state is not None:
+            shutil.rmtree(state, ignore_errors=True)
+
+
 def scenario_pos_opening_stock(api):
     """Head office counts the opening stock of both outlets (stock_count: in at the items' standard cost)."""
     hq = CTX.get("hq")
@@ -736,4 +794,4 @@ def scenario_pos_catalogue_hides_inactive(api):
 
 SCENARIOS = [scenario_pos_opening_stock, scenario_pos_shift, scenario_pos_retail_sale, scenario_pos_fnb_sale, scenario_pos_guards,
              scenario_pos_daily_form_next_door, scenario_pos_void_and_return, scenario_pos_race, scenario_pos_close, scenario_pos_close_race, scenario_pos_print,
-             scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive, scenario_pos_kasir_only_site]
+             scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive, scenario_pos_kasir_only_site, scenario_pos_day_source_kept_after_removal]
