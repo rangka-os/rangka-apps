@@ -85,15 +85,15 @@ fields:
       - {value: '61900', label: {id: '6-1900 Beban operasional lain'}}
       - {value: '69100', label: {id: '6-9100 Beban pajak'}}
     # accounts:end
-  # outlet staff read the lines of their outlet's documents only because the posting flows run as them (a cancel
+  # outlet staff and cashiers read the lines of their documents only because the posting flows run as them (a cancel
   # finds the post lines); the amounts are not theirs to see (contract 0027: flows still read them; card t_7eeaf99a)
   - name: amount
     type: currency
     label: {id: 'Nilai (+ debit, - kredit)'}
     required: true
-    hidden_for: [outlet_staff]
-  - {name: debit, type: currency, label: {id: Debit}, compute: "amount > 0 ? amount : 0", in_list: true, hidden_for: [outlet_staff]}
-  - {name: credit, type: currency, label: {id: Kredit}, compute: "amount < 0 ? 0 - amount : 0", in_list: true, hidden_for: [outlet_staff]}
+    hidden_for: [outlet_staff, cashier]
+  - {name: debit, type: currency, label: {id: Debit}, compute: "amount > 0 ? amount : 0", in_list: true, hidden_for: [outlet_staff, cashier]}
+  - {name: credit, type: currency, label: {id: Kredit}, compute: "amount < 0 ? 0 - amount : 0", in_list: true, hidden_for: [outlet_staff, cashier]}
   - name: voucher_type
     type: data
     label: {id: Jenis dokumen}
@@ -124,7 +124,7 @@ fields:
   - {name: party, type: data, label: {id: Pihak}}
   # a project expense's credit line: the vendor bill whose cost it moved into the project
   - {name: against, type: data, label: {id: Tagihan asal}, hidden: true}
-  - {name: bill_left, type: currency, label: {id: Sisa biaya tagihan}, hidden: true}
+  - {name: bill_left, type: currency, label: {id: Sisa biaya tagihan}, hidden: true, hidden_for: [outlet_staff, cashier]}
   - {name: lock_date, type: date, label: {id: Buku ditutup sampai}, hidden: true}
   - name: account_class
     type: select

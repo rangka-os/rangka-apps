@@ -484,6 +484,11 @@ def scenario_pos_guards(api):
     st, resp = dika.call("GET", "/api/v1/r/gl_entry?limit=200")
     check("a cashier reads only the journal lines of its own outlet's receipts (not a close's cash difference)",
           st == 200 and {r["voucher_type"] for r in resp.get("data", [])} == {"pos_sale"} and {r.get("outlet") for r in resp.get("data", [])} <= {DGO}, (st, resp))
+    # the amounts of those lines (the receipt's COGS and revenue split) are not the cashier's to see (card t_8074a56a)
+    leaked = sorted({k for r in resp.get("data", []) for k in ("amount", "debit", "credit", "bill_left") if k in r}) if st == 200 else []
+    check("a cashier's journal lines carry no amounts", st == 200 and resp.get("data") and not leaked, leaked)
+    st, resp = dika.call("GET", "/api/v1/aggregate/gl_entry?fn=sum:amount")
+    check("a cashier cannot sum journal amounts -> 403", st == 403, (st, resp))
     st, resp = dika.patch("item", AIR, {"rate": 1})
     check("a cashier cannot change a price on the item -> 403", denied(st, resp), (st, resp))
     # Jalur A and Jalur B: one sales source per outlet, and never both on one outlet and day
