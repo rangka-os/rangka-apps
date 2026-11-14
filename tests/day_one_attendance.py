@@ -248,6 +248,15 @@ def scenario_attendance_clock(api):
     st, resp = w2.verb("attendance_log", L2, "submit")
     pend = [a for a in (resp or {}).get("approvals", []) if a.get("state") == "pending"] if isinstance(resp, dict) else []
     check("the far log waits for the site supervisor (202, policy outside_site)", st == 202 and [a.get("policy") for a in pend] == ["outside_site"], (st, resp))
+    # A new supervisor for the site does not touch the held log: its approval stays pending and the day stays with the
+    # supervisor of its clock-in (audit 2026-11-15 F1); the running assignments follow the site.
+    st, w = api.patch("work_site", SITE, {"supervisor": "USR-004"})
+    held = [a for a in approvals_of(api, "attendance_log", L2) if a.get("state") == "pending"]
+    check("changing the site's supervisor keeps the held approval pending and the log's supervisor",
+          st == 200 and len(held) == 1 and api.get("attendance_log", L2).get("supervisor") == "USR-003", (st, held))
+    eq("the running assignment follows the new supervisor", api.get("assignment", A["MP-102"]).get("supervisor"), "USR-004")
+    st, w = api.patch("work_site", SITE, {"supervisor": "USR-003"})
+    check("the factory's supervisor is Sinta again", st == 200 and api.get("assignment", A["MP-102"]).get("supervisor") == "USR-003", (st, w))
     CTX["att_L2"] = L2
     CTX["att_L2_req"] = pend[0]["id"] if pend else ""
     st, resp = sv1.create("attendance_log", {"worker": W["MP-102"], "assignment": A["MP-102"], "work_date": str(t)})

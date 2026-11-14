@@ -27,8 +27,8 @@ fields:
     label: {id: Klien}
     in_list: true
   # The mandor or danru of this site (an employee in Tim with the role Pengawas lokasi): sees its logs and decides the held
-  # ones. One supervisor per site; a supervisor may keep several sites. Flow work_site_supervisor_changed hands the open
-  # assignments and draft logs to a new one.
+  # ones. One supervisor per site; a supervisor may keep several sites. Name them before the workers clock in: each log keeps
+  # the supervisor of its clock-in, and flow work_site_supervisor_changed hands the running assignments to a new one.
   - name: supervisor
     type: link
     to: user
