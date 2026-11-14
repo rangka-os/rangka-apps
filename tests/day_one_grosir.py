@@ -836,6 +836,39 @@ def scenario_grosir_salesman_cost(api):
     check("the sales manager still reads the COGS", "cogs_total" in sm.get("delivery_note", notes[0]["name"]), notes[0]["name"])
 
 
+
+def scenario_grosir_tax_deciders(api):
+    """Card t_d8afe122 (money sweep F1, F2): a customer's VAT-collector status and country set the Coretax transaction
+    code of its invoices, and a supplier's PKP flag opens PPN masukan on its bills: tax decisions of finance (and the
+    owner). The sales manager and head office save customers and suppliers without setting or changing them."""
+    got = _need("hq", "sm", "fm")
+    if not got:
+        return
+    hq, sm, fm = got
+    st, c = hq.create("customer", {"customer_name": "Dinas Uji Pajak", "salesman": ASEP, "vat_collector": "government", "country": "SGP"})
+    if not check("head office creates a customer -> 201", st == 201, (st, c)):
+        return
+    rec = api.get("customer", c["name"])
+    check("head office did not set the VAT collector or the country on create (defaults apply)",
+          rec.get("vat_collector") != "government" and rec.get("country") != "SGP", (rec.get("vat_collector"), rec.get("country")))
+    fm.patch("customer", c["name"], {"vat_collector": "government"})
+    for who, cl in (("sales manager", sm), ("head office", hq)):
+        cl.patch("customer", c["name"], {"vat_collector": "none", "country": "SGP"})
+        rec = api.get("customer", c["name"])
+        eq(f"the {who}'s save keeps finance's VAT collector and the country", (rec.get("vat_collector"), rec.get("country")), ("government", "IDN"))
+    st, v = hq.create("vendor", {"vendor_name": "CV Uji PKP", "pkp": True, "pph23_object_code": "24-104-17"})
+    if not check("head office creates a supplier -> 201", st == 201, (st, v)):
+        return
+    rec = api.get("vendor", v["name"])
+    check("head office did not make the supplier PKP or give it a tax object on create", not rec.get("pkp") and not rec.get("pph23_object_code"),
+          (rec.get("pkp"), rec.get("pph23_object_code")))
+    fm.patch("vendor", v["name"], {"pkp": True, "pph23_object_code": "24-104-36"})
+    for who, cl in (("sales manager", sm), ("head office", hq)):
+        cl.patch("vendor", v["name"], {"pkp": False, "pph23_object_code": "24-104-17"})
+        rec = api.get("vendor", v["name"])
+        eq(f"the {who}'s save keeps finance's PKP flag and tax object", (bool(rec.get("pkp")), rec.get("pph23_object_code")), (True, "24-104-36"))
+
+
 SCENARIOS = [scenario_grosir_fixtures, scenario_grosir_tier_price, scenario_grosir_salesman_scope, scenario_grosir_credit_hold,
              scenario_grosir_giro, scenario_grosir_ar_by_salesman, scenario_grosir_delivery, scenario_grosir_credit_at_delivery, scenario_grosir_credit_race, scenario_grosir_return,
-             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_staff_customer_money, scenario_grosir_credit_writers, scenario_grosir_staff_ledger, scenario_grosir_customer_terms, scenario_grosir_salesman_cost, scenario_grosir_order_marks, scenario_grosir_coretax]
+             scenario_grosir_invoice_prints, scenario_dashboards_grosir, scenario_grosir_staff_home, scenario_grosir_staff_customer_money, scenario_grosir_credit_writers, scenario_grosir_staff_ledger, scenario_grosir_customer_terms, scenario_grosir_tax_deciders, scenario_grosir_salesman_cost, scenario_grosir_order_marks, scenario_grosir_coretax]
