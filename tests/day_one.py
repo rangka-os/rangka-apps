@@ -400,7 +400,7 @@ def scenario_invoicing(api):
     eq("PKP outstanding", inv["outstanding"], 11_100_000)
 
     # non-PKP: PPN off
-    st, inv = api.create("sales_invoice", invoice_body(customer, item, tax_rate=0))
+    st, inv = api.create("sales_invoice", invoice_body(customer, item, tax_rate=0, tax_rate_reason="not_taxable"))
     eq("non-PKP ppn 0", inv.get("ppn"), 0)
     eq("non-PKP grand_total 10.000.000", inv.get("grand_total"), 10_000_000)
 
@@ -943,7 +943,7 @@ def scenario_payments(api):
         return resp.get("name", inv["name"])
 
     inv1 = submitted_invoice(10_000_000)
-    inv2 = submitted_invoice(3_900_000, tax_rate=0)
+    inv2 = submitted_invoice(3_900_000, tax_rate=0, tax_rate_reason="not_taxable")
     eq("invoice 1 outstanding 11.100.000", api.get("sales_invoice", inv1)["outstanding"], 11_100_000)
     eq("invoice 2 outstanding 3.900.000", api.get("sales_invoice", inv2)["outstanding"], 3_900_000)
     cust_before = api.get("customer", customer)["outstanding"]
@@ -1438,7 +1438,7 @@ def scenario_bank_booked(api):
     customer = cust["name"]
 
     def submitted(rate):
-        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0))
+        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0, tax_rate_reason="not_taxable"))
         st, resp = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
         return resp.get("name", inv["name"])
 
@@ -1606,7 +1606,7 @@ def scenario_xendit_callbacks(api):
     item = (services(api) or api.list("item"))[0]["name"]
 
     def submitted(rate):
-        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0))
+        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0, tax_rate_reason="not_taxable"))
         st, resp = api.verb("sales_invoice", inv.get("name", ""), "submit", {"force": True})
         check(f"xendit: submit invoice {rate}", st == 200, (st, resp))
         return resp.get("name", inv.get("name")) if isinstance(resp, dict) else inv.get("name")
@@ -1794,7 +1794,7 @@ def scenario_payment_instruction(api):
     # submit: the invoice gets a copy of the default account, with its number as payment reference
     def submitted(rate, as_api=None, **extra):
         cl = as_api or api
-        st, inv = cl.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0, **extra))
+        st, inv = cl.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0, tax_rate_reason="not_taxable", **extra))
         check(f"payment instruction: create invoice {rate}", st == 201, (st, inv))
         st, resp = cl.verb("sales_invoice", inv.get("name", ""), "submit", {"force": True})
         check(f"payment instruction: submit invoice {rate}", st == 200, (st, resp))
@@ -1918,7 +1918,7 @@ def scenario_money_rail(api):
     customer = cust["name"]
 
     def submitted_invoice(rate, **extra):
-        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0, **extra))
+        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0, tax_rate_reason="not_taxable", **extra))
         check(f"money rail: create invoice {rate}", st == 201, inv)
         st, resp = api.verb("sales_invoice", inv["name"], "submit", {"force": True})
         check(f"money rail: submit invoice {rate}", st == 200, resp)
@@ -3478,7 +3478,7 @@ def scenario_coretax(api):
     i4 = inv(ca, may + "08", [(1, 1_000_000, {})])
     st, resp = api.verb("sales_invoice", i4, "cancel")
     check("coretax: a cancelled invoice", st == 200, (st, resp))
-    i5 = inv(ca, may + "09", [(1, 1_000_000, {})], tax_rate=0)
+    i5 = inv(ca, may + "09", [(1, 1_000_000, {})], tax_rate=0, tax_rate_reason="not_taxable")
     dp = inv(ca, may + "10", [(1, 5_000_000, {})], kind="down_payment")
     fin = inv(ca, may + "20", [(1, 20_000_000, {})], dp_invoice=dp, down_payment=5_000_000)
     inv(ca, "2031-04-30", [(1, 7_000_000, {})])
@@ -3965,8 +3965,15 @@ def scenario_tax_jasa(api):
         meta = ((sm.call("GET", "/api/v1/meta")[1] or {}).get("models") or {}).get("sales_invoice") or {}
         ro = {f.get("name"): f.get("read_only") for f in meta.get("fields", []) if isinstance(f, dict)}
         eq("sales_manager's /meta marks tax_rate, dpp_num, dpp_den read-only", (ro.get("tax_rate"), ro.get("dpp_num"), ro.get("dpp_den")), (True, True, True))
-        st, fi = fm.create("sales_invoice", invoice_body(customer, ndt, tax_rate=0))
+        st, fi = fm.create("sales_invoice", invoice_body(customer, ndt, tax_rate=0, tax_rate_reason="export"))
         eq("finance_manager may still set tax_rate 0 (an export)", (st, fi.get("tax_rate"), fi.get("ppn")), (201, 0, 0))
+        # a PKP invoice at 0% names its legal ground (card t_3106eb6c): otherwise it would leave the Coretax XML unnoticed
+        st, r = fm.create("sales_invoice", invoice_body(customer, ndt, tax_rate=0))
+        check("finance_manager's PKP invoice at 0% without a ground -> 422 'perlu dasar'", st == 422 and any("perlu dasar" in m for m in messages(r)), (st, r))
+        st, r = fm.create("sales_invoice", invoice_body(customer, ndt, tax_rate_reason="export"))
+        check("a ground on an invoice at 12% -> 422", st == 422 and any("hanya untuk faktur bertarif PPN 0" in m for m in messages(r)), (st, r))
+        st, r = sm.create("sales_invoice", invoice_body(customer, ndt, tax_rate_reason="export"))
+        eq("sales_manager's ground is dropped like its rate: 201 at 12, no ground", (st, (r or {}).get("tax_rate"), (r or {}).get("tax_rate_reason")), (201, 12, ""))
         # the lock is not enough on its own (audit invoice-tax-lock F1/F2): a submit at another rate waits for finance
         st, r = fm.verb("sales_invoice", fi["name"], "submit", {"force": True}) if st == 201 else (0, {})
         check("finance_manager submits its own export invoice at 0% (self-approved): 200", st == 200, (st, r))
@@ -3976,11 +3983,10 @@ def scenario_tax_jasa(api):
         st, ret = sm.create("sales_invoice", invoice_body(customer, ndt, rate=0, kind="retention", retention_of=(r or {}).get("name", own.get("name"))))
         eq("X1 sales_manager's retention draft takes rate 0", (st, (ret or {}).get("tax_rate")), (201, 0))
         if st == 201:
-            sm.call("PATCH", f"/api/v1/r/sales_invoice/{sm.q(ret['name'])}", {"kind": "regular", "retention_of": "", "items": [{"item": ndt, "qty": 1, "rate": 10_000_000}]})
-            st, r = sm.verb("sales_invoice", ret["name"], "submit", {"force": True})
+            st, r = sm.call("PATCH", f"/api/v1/r/sales_invoice/{sm.q(ret['name'])}", {"kind": "regular", "retention_of": "", "items": [{"item": ndt, "qty": 1, "rate": 10_000_000}]})
             cur = api.get("sales_invoice", ret["name"])
-            check("X1 the retention draft turned regular at rate 0: submit held for finance (202), still a draft",
-                  st == 202 and cur.get("docstatus") == 0, (st, r, cur.get("kind"), cur.get("tax_rate")))
+            check("X1 the retention draft turned regular at rate 0 without a ground -> 422 (card t_3106eb6c), still a retention",
+                  st == 422 and any("perlu dasar" in m for m in messages(r)) and cur.get("kind") == "retention", (st, r, cur.get("kind")))
         st, r = sm.verb("sales_invoice", exp, "cancel", {})
         st, am = sm.verb("sales_invoice", exp, "amend", {}) if st == 200 else (st, r)
         amn = (am or {}).get("name")
@@ -4101,7 +4107,7 @@ def scenario_dashboards_jasa(api):
     added = dict.fromkeys(buckets, 0)
     for days, bucket, amount in AGING_EDGES:
         due = today - datetime.timedelta(days=days)
-        st, i = api.create("sales_invoice", invoice_body(bc["name"], services(api)[0]["name"], rate=amount, tax_rate=0,
+        st, i = api.create("sales_invoice", invoice_body(bc["name"], services(api)[0]["name"], rate=amount, tax_rate=0, tax_rate_reason="not_taxable",
                                                           posting_date=(due - datetime.timedelta(days=30)).isoformat(), due_date=due.isoformat()))
         st2, resp = api.verb("sales_invoice", i["name"], "submit", {"force": True}) if st == 201 else (st, i)
         check(f"aging edges: invoice due {days} days ago submitted", st == 201 and st2 == 200, (st, st2, resp))

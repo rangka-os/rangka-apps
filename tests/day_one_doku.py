@@ -32,7 +32,7 @@ def scenario_doku_callbacks(api):
     item = (services(api) or api.list("item"))[0]["name"]
 
     def submitted(rate):
-        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0))
+        st, inv = api.create("sales_invoice", invoice_body(customer, item, rate=rate, tax_rate=0, tax_rate_reason="not_taxable"))
         st, resp = api.verb("sales_invoice", inv.get("name", ""), "submit", {"force": True})
         check(f"doku: submit invoice {rate}", st == 200, (st, resp))
         return resp.get("name", inv.get("name")) if isinstance(resp, dict) else inv.get("name")
