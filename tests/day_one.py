@@ -3908,6 +3908,9 @@ def scenario_tax_jasa(api):
         for label, extra in (("dpp_den 0", {"dpp_den": 0}), ("dpp_num above dpp_den", {"dpp_num": 13}), ("tax_rate 120", {"tax_rate": 120}), ("tax_rate -1", {"tax_rate": -1})):
             st, resp = api.create(model, dict(body, **extra))
             check(f"{model} with {label} -> 422 'Tarif PPN atau faktor DPP tidak valid'", st == 422 and any("faktor DPP tidak valid" in m for m in messages(resp)), (st, resp))
+        # a rate above the company's (12%) only inflates the PPN (card t_81bc5551); a lower lawful rate stays possible
+        st, resp = api.create(model, dict(body, tax_rate=100))
+        check(f"{model} with tax_rate 100 -> 422 'melebihi tarif di pengaturan pajak'", st == 422 and any("melebihi tarif" in m for m in messages(resp)), (st, resp))
     # ledger.post_receivable guard (reads down_payment and dpp): two deductions of 2.000.000 from a 3.000.000 DP
     st, dp = api.create("sales_invoice", invoice_body(customer, ndt, rate=3_000_000, kind="down_payment"))
     st, resp = api.verb("sales_invoice", dp["name"], "submit", {"force": True})
