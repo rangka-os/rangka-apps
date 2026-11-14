@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: contacts
-version: 1.2.1
+version: 1.2.2
 title: {id: Kontak, en: Contacts}
 summary:
   id: Catat pelanggan dan pemasok di satu tempat, lengkap dengan batas kredit.
