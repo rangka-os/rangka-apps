@@ -11,6 +11,10 @@ table.detail { font-size: 0.88em; }
 .code { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .note { margin: 0 0 2mm; font-size: 0.92em; }
 h2 { font-size: 1.05em; margin-top: 2mm; }
+/* on a phone the tables scroll sideways inside their box; the page and its notes stay at screen width */
+.scroll { overflow-x: auto; max-width: 100%; }
+.scroll table.rekap { min-width: 560px; }
+@media print { .scroll { overflow: visible; } .scroll table.rekap { min-width: 0; } }
 {{end}}
 {{template "letterhead" .}}
 <h1>Rekap PPN keluaran masa {{.Doc.month}}/{{.Doc.year}}</h1>
@@ -30,7 +34,7 @@ h2 { font-size: 1.05em; margin-top: 2mm; }
 <div class="sheet">
 <section class="detail-block">
 <h2>Rincian per faktur</h2>
-<table class="rekap detail">
+<div class="scroll"><table class="rekap detail">
   <thead><tr><th>No. faktur</th><th>Tanggal</th><th>Kode</th><th class="num">DPP</th><th class="num">DPP nilai lain</th><th class="num">PPN di faktur pajak</th><th class="num">PPN ditagih (buku)</th></tr></thead>
   <tbody>
 {{- range $inv := .Related.invoices}}
@@ -76,13 +80,13 @@ h2 { font-size: 1.05em; margin-top: 2mm; }
   <tr><td colspan="7" class="muted">Belum ada faktur penjualan yang diajukan di masa ini.</td></tr>
 {{- end}}
   </tbody>
-</table>
+</table></div>
 {{if .Truncated.invoices}}<p class="note"><strong>Daftar dipotong:</strong> hanya 1.000 faktur pertama yang dihitung, jadi rekap di atas lebih kecil dari yang sebenarnya.</p>{{end}}
 </section>
 
 <section class="summary">
 <h2>Penyerahan dengan faktur pajak (XML Faktur Keluaran)</h2>
-<table class="rekap">
+<div class="scroll"><table class="rekap">
   <thead><tr><th>Kelompok</th><th class="num">Faktur</th><th class="num">DPP</th><th class="num">DPP nilai lain</th><th class="num">PPN di faktur pajak</th><th class="num">PPN ditagih (buku)</th></tr></thead>
   <tbody>
   <tr data-group="A" data-count="{{dec $ac 0}}" data-dpp="{{dec $at 2}}" data-otb="{{dec $ao 2}}" data-vat="{{dec $av 2}}" data-ppn="{{dec $ap 2}}">
@@ -97,21 +101,21 @@ h2 { font-size: 1.05em; margin-top: 2mm; }
   <tr class="total" data-group="total" data-count="{{dec $tc 0}}" data-dpp="{{dec $tt 2}}" data-otb="{{dec $to 2}}" data-vat="{{dec $tv 2}}" data-ppn="{{dec $tp 2}}">
     <td>Jumlah di XML Faktur Keluaran</td><td class="num">{{dec $tc 0}}</td><td class="num">{{number $tt 2}}</td><td class="num">{{number $to 2}}</td><td class="num">{{number $tv 2}}</td><td class="num">{{number $tp 2}}</td></tr>
   </tbody>
-</table>
+</table></div>
 <p class="note"><strong>PPN yang kamu pungut dan setor sendiri:</strong> Rp {{number $ap 2}} (kode 01, 04, sebelum dikurangi PPN masukan). PPN kode 02 dan 03 dipungut dan disetor pembeli pemungut.</p>
-<p class="note"><strong>Kode 07 dan 08 tidak ditagih:</strong> faktur pajaknya mencantumkan PPN Rp {{number (add $cv $dv) 2}} karena faktur pajak menyatakan PPN yang tidak dipungut atau dibebaskan (tarif PPN usaha atas DPP nilai lain), tetapi pembeli tidak membayarnya dan buku mencatat PPN 0. Di SPT Masa PPN angka ini masuk penyerahan yang PPN-nya tidak dipungut (07) atau dibebaskan (08), bukan PPN yang harus disetor. Selisih XML dengan buku sebesar itu memang seharusnya ada.</p>
+<p class="note"><strong>Kode 07 dan 08 tidak ditagih:</strong> faktur pajaknya mencantumkan PPN Rp {{number (add $cv $dv) 2}} (tarif PPN usaha atas DPP nilai lain), tetapi pembeli tidak membayarnya dan buku mencatat PPN 0. Di SPT Masa PPN angka ini masuk penyerahan yang PPN-nya tidak dipungut (07) atau dibebaskan (08), bukan PPN yang harus disetor. Selisih XML dengan buku sebesar itu memang seharusnya ada.</p>
 
 <h2>Penyerahan tanpa faktur pajak di XML</h2>
-<table class="rekap">
+<div class="scroll"><table class="rekap">
   <thead><tr><th>Kelompok</th><th class="num">Faktur</th><th class="num">DPP</th><th class="num">PPN ditagih (buku)</th><th>Dilaporkan lewat</th></tr></thead>
   <tbody>
-  <tr data-group="E" data-count="{{dec $ec 0}}" data-dpp="{{dec $et 2}}"><td>Ekspor BKP/JKP (tarif 0)</td><td class="num">{{dec $ec 0}}</td><td class="num">{{number $et 2}}</td><td class="num">0</td><td>PEB atau dokumen ekspor, bukan faktur keluaran</td></tr>
-  <tr data-group="F" data-count="{{dec $fc 0}}" data-dpp="{{dec $ft 2}}"><td>Bukan objek PPN (Pasal 4A)</td><td class="num">{{dec $fc 0}}</td><td class="num">{{number $ft 2}}</td><td class="num">0</td><td>Tidak dilaporkan di SPT Masa PPN</td></tr>
+  <tr data-group="E" data-count="{{dec $ec 0}}" data-dpp="{{dec $et 2}}"><td>Ekspor BKP/JKP (tarif 0)</td><td class="num">{{dec $ec 0}}</td><td class="num">{{number $et 2}}</td><td class="num">0,00</td><td>PEB atau dokumen ekspor, bukan faktur keluaran</td></tr>
+  <tr data-group="F" data-count="{{dec $fc 0}}" data-dpp="{{dec $ft 2}}"><td>Bukan objek PPN (Pasal 4A)</td><td class="num">{{dec $fc 0}}</td><td class="num">{{number $ft 2}}</td><td class="num">0,00</td><td>Tidak dilaporkan di SPT Masa PPN</td></tr>
   <tr data-group="G" data-count="{{dec $gc 0}}" data-dpp="{{dec $gt 2}}" data-ppn="{{dec $gp 2}}"><td>Ditagih PPN tanpa kode faktur pajak</td><td class="num">{{dec $gc 0}}</td><td class="num">{{number $gt 2}}</td><td class="num">{{number $gp 2}}</td><td>Buat faktur pajaknya langsung di Coretax</td></tr>
-  <tr data-group="H" data-count="{{dec $hc 0}}" data-dpp="{{dec $ht 2}}"><td>Tarif 0 lain (usaha belum PKP atau tanpa dasar)</td><td class="num">{{dec $hc 0}}</td><td class="num">{{number $ht 2}}</td><td class="num">0</td><td>Periksa status PKP dan dasar tarif 0</td></tr>
+  <tr data-group="H" data-count="{{dec $hc 0}}" data-dpp="{{dec $ht 2}}"><td>Tarif 0 lain (usaha belum PKP atau tanpa dasar)</td><td class="num">{{dec $hc 0}}</td><td class="num">{{number $ht 2}}</td><td class="num">0,00</td><td>Periksa status PKP dan dasar tarif 0</td></tr>
   <tr data-group="P" data-count="{{dec $pc 0}}" data-dpp="{{dec $pt 2}}" data-ppn="{{dec $pp 2}}"><td>Pengganti faktur masa sebelumnya</td><td class="num">{{dec $pc 0}}</td><td class="num">{{number $pt 2}}</td><td class="num">{{number $pp 2}}</td><td>Faktur Pengganti dan pembetulan SPT masa asalnya</td></tr>
   </tbody>
-</table>
+</table></div>
 <p class="note muted">Tidak termasuk: penjualan kasir eceran tanpa identitas pembeli (dilaporkan sebagai digunggung), faktur retensi, faktur yang dibatalkan, dan PPN masukan (dikreditkan dari data Coretax).</p>
 </section>
 </div>
