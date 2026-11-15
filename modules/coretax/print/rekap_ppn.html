@@ -97,25 +97,29 @@ h2 { font-size: 1.05em; margin-top: 2mm; }
 {{- $c := .efaktur_code}}{{$inx := or (eq $c "07") (eq $c "08") (and $c .ppn)}}
 {{- if eq $rn "0"}}
 <h2>Faktur yang diganti di masa lain</h2>
-<p class="note">Faktur asalnya di masa ini sudah dibatalkan dan diganti dengan tanggal di masa lain. Yang punya faktur pajak: buat Faktur Pengganti di Coretax dan masukkan ke pembetulan SPT masa ini. Yang tidak punya faktur pajak dihitung di kelompoknya di rekap masa ini.</p>
+<p class="note">Faktur asalnya di masa ini sudah dibatalkan dan diganti dengan tanggal di masa lain. Yang punya faktur pajak: buat Faktur Pengganti di Coretax dan masukkan ke pembetulan SPT masa ini. Yang tidak punya faktur pajak dihitung di kelompoknya di rekap masa ini; bila faktur asalnya dulu sudah punya faktur pajak di Coretax, batalkan faktur pajak itu. DPP yang tercantum adalah DPP faktur pajak (tanpa upah bila PPN hanya atas fee).</p>
 <div class="scroll"><table class="rekap detail">
   <thead><tr><th>No. faktur</th><th>Tanggal faktur asal</th><th>Tanggal pengganti</th><th>Kode</th><th class="num">DPP</th><th class="num">PPN ditagih (buku)</th><th>Dihitung sebagai</th></tr></thead>
   <tbody>
 {{- end}}
+{{- /* the faktur pajak's DPP is the PPN base where it is set (PPN on the fee only: wages stay off the faktur, audit rekap F4),
+  as in the XML and in group P of the period it is dated in */}}
+{{- $rb := .dpp}}{{if and $inx .ppn_base}}{{$rb = .ppn_base}}{{end}}
 {{- $rn = add $rn 1}}{{$rg := "R"}}
-{{- if $inx}}{{$rc = add $rc 1}}{{$rt = add $rt .dpp}}{{$rp = add $rp .ppn}}
+{{- if $inx}}{{$rc = add $rc 1}}{{$rt = add $rt $rb}}{{$rp = add $rp .ppn}}
 {{- else if $c}}{{$rg = "Z"}}{{$zc = add $zc 1}}{{$zt = add $zt .dpp}}
 {{- else if .ppn}}{{$rg = "G"}}{{$gc = add $gc 1}}{{$gt = add $gt .dpp}}{{$gp = add $gp .ppn}}
 {{- else if eq .tax_rate_reason "export"}}{{$rg = "E"}}{{$ec = add $ec 1}}{{$et = add $et .dpp}}
 {{- else if eq .tax_rate_reason "not_taxable"}}{{$rg = "F"}}{{$fc = add $fc 1}}{{$ft = add $ft .dpp}}
 {{- else}}{{$rg = "H"}}{{$hc = add $hc 1}}{{$ht = add $ht .dpp}}{{end}}
-  <tr data-replacement="{{.name}}" data-group="{{$rg}}"><td>{{.name}}</td><td>{{date .origin_posting_date}}</td><td>{{date .posting_date}}</td><td class="code">{{if $c}}{{$c}}{{else}}-{{end}}</td><td class="num">{{number .dpp 2}}</td><td class="num">{{number .ppn 2}}</td><td>{{if eq $rg "R"}}Faktur Pengganti{{else if eq $rg "E"}}Ekspor{{else if eq $rg "F"}}Bukan objek PPN{{else if eq $rg "Z"}}Bertarif, PPN 0{{else if eq $rg "G"}}PPN tanpa kode faktur pajak{{else}}Tarif 0 lain{{end}}</td></tr>
+  <tr data-replacement="{{.name}}" data-group="{{$rg}}"><td>{{.name}}</td><td>{{date .origin_posting_date}}</td><td>{{date .posting_date}}</td><td class="code">{{if $c}}{{$c}}{{else}}-{{end}}</td><td class="num">{{number $rb 2}}</td><td class="num">{{number .ppn 2}}</td><td>{{if eq $rg "R"}}Faktur Pengganti atau faktur pajak{{else if eq $rg "E"}}Ekspor{{else if eq $rg "F"}}Bukan objek PPN{{else if eq $rg "Z"}}Bertarif, PPN 0{{else if eq $rg "G"}}PPN tanpa kode faktur pajak{{else}}Tarif 0 lain{{end}}</td></tr>
 {{- end}}{{end}}
 {{- if ne $rn "0"}}
   <tr class="total" data-group="R" data-count="{{dec $rc 0}}" data-dpp="{{dec $rt 2}}" data-ppn="{{dec $rp 2}}"><td colspan="4">Jumlah Faktur Pengganti untuk pembetulan masa ini</td><td class="num">{{number $rt 2}}</td><td class="num">{{number $rp 2}}</td><td></td></tr>
   </tbody>
 </table></div>
 {{- end}}
+{{if .Truncated.replacements}}<p class="note"><strong>Daftar faktur pengganti dipotong:</strong> hanya 1.000 faktur pertama yang dihitung.</p>{{end}}
 </section>
 
 <section class="summary">
