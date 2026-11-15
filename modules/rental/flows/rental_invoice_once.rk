@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 name: rental_invoice_once
 label: {id: Satu faktur per pesanan sewa atau per alat kembali}
-description: {id: 'Satu pesanan sewa atau satu pengembalian hanya punya satu faktur. Faktur kedua ditahan.'}
+description: {id: 'Satu pesanan sewa atau satu pengembalian hanya punya satu faktur. Faktur kedua ditahan, begitu juga faktur dari pesanan atau pengembalian yang sudah tidak berlaku.'}
 # The rent invoice of a booking carries its number in () (SWA-...), the invoice for what a deposit did not cover the
 # return's (KBL-...); an invoice cannot link the rental module. Such an invoice is submitted only while that document
 # is submitted (not a draft left behind by a cancel and amend) and when no other submitted invoice carries the same

@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 name: rental_checkout_on_submit
 label: {id: Alat keluar dicatat}
-description: {id: 'Saat alat diserahkan, jadwalnya ditandai keluar. Kalau pesanan belum terjadwal atau unitnya kurang, penyerahan ditahan.'}
+description: {id: 'Saat alat diserahkan, jadwal sewa ditandai keluar. Penyerahan ditahan kalau pesanan tidak sedang menunggu diambil, unit yang masih keluar sudah penuh, atau unit yang dipilih tidak tersedia.'}
 # The booking must be waiting to go out (schedule booked): a second checkout of the same booking, or one of a
 # cancelled booking, is refused. The units physically out (other bookings still out, also late ones) plus this one
 # may not exceed the item's units. The schedule becomes out with the actual date. Reads rental_item before

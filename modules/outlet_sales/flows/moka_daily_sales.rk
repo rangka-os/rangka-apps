@@ -19,7 +19,7 @@
 # recap reads the table once, a run with N outlet-days N + 1 times.
 name: moka_daily_sales
 label: {id: Rekap harian penjualan Moka per outlet}
-description: {id: 'Tiap jam, rekap penjualan Moka per outlet ditarik ulang supaya angka harian tetap cocok.'}
+description: {id: 'Tiap jam, penjualan Moka hari-hari sebelumnya dikelompokkan per outlet dan per tanggal jadi satu rekap penjualan. Kalau barang atau outletnya tidak dikenali, barisnya dikembalikan ke Belum dipetakan dan kantor pusat dikabari.'}
 schedule: '15 * * * *'
 steps:
   - for_each: "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]"
