@@ -34,6 +34,7 @@
 # moka_transaction_refused tells head office).
 name: moka_transaction_staged
 label: {id: Transaksi Moka masuk jadi baris penjualan}
+description: {id: 'Tiap transaksi dari Moka dicatat sebagai baris penjualan di outletnya, lalu direkap harian. Kalau outlet atau barangnya belum dikenal, kantor pusat dikabari. Kalau transaksinya direfund di Moka, baris retur ikut dicatat.'}
 on: moka.transaction_created
 if: "'transaction_id' in event && event.transaction_id != null && string(event.transaction_id) != '' && 'created_at' in event && 'checkouts' in event && 'outlet_id' in event && event.checkouts.map(c, 'quantity' in c && c.quantity != null && 'total_price' in c && c.total_price != null ? 0 : 1).sum() == 0"
 idempotency: "string(event.transaction_id) + ':' + string(event.checkouts.map(c, 'refunded_quantity' in c && c.refunded_quantity != null ? c.refunded_quantity : 0).sum())"

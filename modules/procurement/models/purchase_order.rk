@@ -130,6 +130,7 @@ rules:
 actions:
   - name: receive
     label: {id: Terima barang, en: Receive goods}
+    description: {id: 'Tombol Terima barang muncul di pesanan yang sudah diajukan dan belum diterima semua.'}
     icon: check
     primary: true
     hook: procurement.receive
