@@ -3524,9 +3524,22 @@ def scenario_coretax(api):
        (gg.get("efaktur_code"), gg.get("coretax_add_info"), gg.get("coretax_stamp"), gg.get("coretax_vat_rate"), gg.get("ppn")), ("08", "TD.00510", "TD.01110", 12, 0))
     dp = inv(ca, may + "10", [(1, 5_000_000, {})], kind="down_payment")
     fin = inv(ca, may + "20", [(1, 20_000_000, {})], dp_invoice=dp, down_payment=5_000_000)
+    # audit rekap F1: a settlement the down payment covers whole has code 04 and PPN 0: no faktur pajak, not in the XML
+    dp3 = inv(ca, may + "22", [(1, 3_000_000, {})], kind="down_payment")
+    full = inv(ca, may + "23", [(1, 3_000_000, {})], dp_invoice=dp3, down_payment=3_000_000)
+    # audit rekap F2: a May invoice cancelled and replaced in June: its Faktur Pengganti belongs to May's SPT
+    xo = inv(ca, may + "24", [(1, 6_000_000, {})])
+    api.verb("sales_invoice", xo, "cancel")
+    st, xa = api.verb("sales_invoice", xo, "amend")
+    xr = ""
+    if check("amend a May invoice into June", st in (200, 201) and isinstance(xa, dict), (st, xa)):
+        api.patch("sales_invoice", xa["name"], {"posting_date": "2031-06-03", "due_date": "2031-06-03"})
+        st, resp = api.verb("sales_invoice", xa["name"], "submit", {"force": True})
+        xr = resp.get("name", xa["name"]) if isinstance(resp, dict) else xa["name"]
     inv(ca, "2031-04-30", [(1, 7_000_000, {})])
     inv(ca, "2031-06-01", [(1, 7_000_000, {})])
-    got = {n: api.get("sales_invoice", n) for n in (i1, i2, i3, dp, fin, i7, i8, g49, r08, r07, f12, c08, i5, ex)}
+    got = {n: api.get("sales_invoice", n) for n in (i1, i2, i3, dp, fin, i7, i8, g49, r08, r07, f12, c08, i5, ex, dp3, full)}
+    eq("a settlement the down payment covers whole: code 04, PPN 0", (got[full].get("efaktur_code"), got[full].get("ppn")), ("04", 0))
     eq("e-Faktur codes: 04 (DPP nilai lain), 04, 02 (government collector)", [got[n].get("efaktur_code") for n in (i1, i2, i3)], ["04", "04", "02"])
     eq("buyer identity frozen on the invoice: NIK buyer", (got[i2].get("buyer_id_type"), got[i2].get("buyer_tin"), got[i2].get("buyer_doc_no"), got[i2].get("buyer_idtku")),
        ("National ID", "0" * 16, nik_b, "000000"))
@@ -3596,7 +3609,7 @@ def scenario_coretax(api):
     eq("root TaxInvoiceBulk with the seller NPWP", (root.tag, root.findtext("TIN")), ("TaxInvoiceBulk", seller))
     tis = root.findall("ListOfTaxInvoice/TaxInvoice")
     by_ref = {t.findtext("RefDesc").split(";")[0]: t for t in tis}
-    eq("the period's PPN invoices and the 07/08 ones, no cancelled, no Pasal 4A 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin, sen, i7, i8, g49, r08, r07, f12, c08]))
+    eq("the period's PPN invoices and the 07/08 ones, no cancelled, no Pasal 4A 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin, sen, i7, i8, g49, r08, r07, f12, c08, dp3]))
     fac = lambda t: (t.findtext("TrxCode"), t.findtext("AddInfo") or "", t.findtext("FacilityStamp") or "", t.findtext("CustomDoc") or "", t.findtext("CustomDocMonthYear") or "")
     eq("XML: raised 08, raised 07 with a customs document, 12% with a facility: 04 with empty facility elements (audit F1)",
        [fac(by_ref[n]) for n in (r08, r07, f12) if n in by_ref], [("04", "", "", "", "")] * 3)
@@ -3685,6 +3698,10 @@ def scenario_coretax(api):
            (len(by_ref), sum((D(x.text) for t in tis for x in t.iter("VAT")), Decimal(0))))
         eq("rekap: export and Pasal 4A outside the XML, in their own groups", (detail.get(ex), detail.get(i5), rows["E"]["dpp"], rows["F"]["dpp"]),
            ("E", "F", "2000000", "1000000"))
+        eq("rekap: a coded invoice with PPN 0 stands apart from the XML groups (audit F1)", (detail.get(full), rows["Z"]["count"], rows["Z"]["dpp"]), ("Z", "1", "0"))
+        reps = re.findall(r'data-replacement="([^"]*)"', page)
+        eq("rekap May names its invoice replaced in June, with its amounts; the cancelled one is gone (audit F2)",
+           (reps, rows.get("R", {}).get("dpp"), rows.get("R", {}).get("ppn"), xo in detail), ([xr], "6000000", "660000", False))
         check("rekap names the 07/08 PPN as not billed", "Kode 07 dan 08 tidak ditagih" in page and "buku mencatat PPN 0" in page, page[-600:])
 
     # BPPU: the PPh 23 the firm withheld from vendor bills of the period

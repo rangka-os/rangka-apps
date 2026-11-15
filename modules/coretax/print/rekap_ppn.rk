@@ -17,3 +17,11 @@ related:
     sort: name
     children: true
     limit: 1000
+  # audit rekap F2: invoices whose chain started in this period but that were submitted in a later one (a replacement
+  # of a cancelled invoice of this period): their Faktur Pengganti belongs to this period's SPT
+  replacements:
+    model: sales_invoice
+    range: {origin_posting_date: [period_start, period_end]}
+    filter: "docstatus == 1 && kind != 'retention'"
+    sort: name
+    limit: 1000
