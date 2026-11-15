@@ -35,6 +35,9 @@ related:
         message: {id: 'Faktur ini mengganti faktur yang diajukan sebelum ekspor Coretax dipasang: buat faktur pajaknya langsung di Coretax'}
       - check: origin_posting_date == '' || origin_posting_date >= doc.period_start
         message: {id: 'Faktur ini mengganti faktur masa sebelumnya: buat Faktur Pengganti di Coretax, jangan diimpor'}
+      # audit coretax-rekap N5: a replacement dated back before the period of the invoice it replaces
+      - check: origin_posting_date == '' || origin_posting_date <= doc.period_end
+        message: {id: 'Faktur ini mengganti faktur masa sesudahnya: buat Faktur Pengganti di Coretax dengan tanggal faktur asal, jangan diimpor'}
       - check: "efaktur_code == '' || items.map(i, i.qty * 100 - round(i.qty * 100) > 0.000001 || round(i.qty * 100) - i.qty * 100 > 0.000001 ? 1 : 0).sum() == 0"
         message: {id: 'Jumlah barang di faktur pajak maksimal 2 desimal: pakai satuan yang lebih kecil (misalnya gram)'}
       - check: efaktur_code == '' || buyer_id_type != 'Passport' || buyer_country != 'IDN'

@@ -58,10 +58,13 @@ h2 { font-size: 1.05em; margin-top: 2mm; }
 {{- end}}{{end}}
 {{- $tb0 = $acc}}
 {{- end}}
-{{- /* a replacement of an earlier period's invoice belongs to that period's SPT (Faktur Pengganti, pembetulan) */}}
-{{- $old := and .origin_posting_date (lt .origin_posting_date $.Doc.period_start)}}
+{{- /* an invoice whose chain started in another period belongs to that period's rekap: with a faktur pajak it is a Faktur
+  Pengganti (pembetulan of the original period), without one (export, Pasal 4A, PPN 0) it is counted there in its
+  own group (audit rekap F3); that period's rekap lists it under replacements */}}
+{{- $old := and .origin_posting_date (or (lt .origin_posting_date $.Doc.period_start) (gt .origin_posting_date $.Doc.period_end))}}
 {{- $g := ""}}
-{{- if $old}}{{$g = "P"}}{{$pc = add $pc 1}}{{$pt = add $pt $tb0}}{{$pp = add $pp .ppn}}
+{{- if and $old $inx}}{{$g = "P"}}{{$pc = add $pc 1}}{{$pt = add $pt $tb0}}{{$pp = add $pp .ppn}}
+{{- else if $old}}{{$g = "X"}}
 {{- else if or (eq $c "02") (eq $c "03")}}{{$g = "B"}}{{$bc = add $bc 1}}{{$bt = add $bt $tb0}}{{$bo = add $bo $otb0}}{{$bv = add $bv $vat0}}{{$bp = add $bp .ppn}}
 {{- else if eq $c "07"}}{{$g = "C"}}{{$cc = add $cc 1}}{{$ct = add $ct $tb0}}{{$co = add $co $otb0}}{{$cv = add $cv $vat0}}{{$cp = add $cp .ppn}}
 {{- else if eq $c "08"}}{{$g = "D"}}{{$dc = add $dc 1}}{{$dt = add $dt $tb0}}{{$do = add $do $otb0}}{{$dv = add $dv $vat0}}{{$dp = add $dp .ppn}}
@@ -74,7 +77,7 @@ h2 { font-size: 1.05em; margin-top: 2mm; }
   <tr data-invoice="{{.name}}" data-group="{{$g}}">
     <td>{{.name}}</td>
     <td>{{date .posting_date}}</td>
-    <td class="code">{{if $c}}{{$c}}{{else if eq $g "E"}}ekspor{{else if eq $g "F"}}4A{{else}}-{{end}}</td>
+    <td class="code">{{if eq $g "X"}}di masa {{date .origin_posting_date}}{{else if $c}}{{$c}}{{else if eq $g "E"}}ekspor{{else if eq $g "F"}}4A{{else}}-{{end}}</td>
     <td class="num">{{number $tb0 2}}</td>
     <td class="num">{{if $inx}}{{number $otb0 2}}{{end}}</td>
     <td class="num">{{if $inx}}{{number $vat0 2}}{{end}}</td>
@@ -86,6 +89,33 @@ h2 { font-size: 1.05em; margin-top: 2mm; }
   </tbody>
 </table></div>
 {{if .Truncated.invoices}}<p class="note"><strong>Daftar dipotong:</strong> hanya 1.000 faktur pertama yang dihitung, jadi rekap di atas lebih kecil dari yang sebenarnya.</p>{{end}}
+{{- /* audit rekap F2/F3: an invoice of this period cancelled and replaced in another period. With a faktur pajak (the
+  XML's own test: 07/08, or a code with PPN) its Faktur Pengganti goes to this period's pembetulan and is listed with its
+  amounts; without one it is counted here in its group (export, Pasal 4A, PPN 0), where the original was */}}
+{{- $rn := "0"}}{{$rc := "0"}}{{$rt := "0"}}{{$rp := "0"}}
+{{- range .Related.replacements}}{{$pd := isodate .posting_date}}{{if or (gt $pd $.Doc.period_end) (lt $pd $.Doc.period_start)}}
+{{- $c := .efaktur_code}}{{$inx := or (eq $c "07") (eq $c "08") (and $c .ppn)}}
+{{- if eq $rn "0"}}
+<h2>Faktur yang diganti di masa lain</h2>
+<p class="note">Faktur asalnya di masa ini sudah dibatalkan dan diganti dengan tanggal di masa lain. Yang punya faktur pajak: buat Faktur Pengganti di Coretax dan masukkan ke pembetulan SPT masa ini. Yang tidak punya faktur pajak dihitung di kelompoknya di rekap masa ini.</p>
+<div class="scroll"><table class="rekap detail">
+  <thead><tr><th>No. faktur</th><th>Tanggal faktur asal</th><th>Tanggal pengganti</th><th>Kode</th><th class="num">DPP</th><th class="num">PPN ditagih (buku)</th><th>Dihitung sebagai</th></tr></thead>
+  <tbody>
+{{- end}}
+{{- $rn = add $rn 1}}{{$rg := "R"}}
+{{- if $inx}}{{$rc = add $rc 1}}{{$rt = add $rt .dpp}}{{$rp = add $rp .ppn}}
+{{- else if $c}}{{$rg = "Z"}}{{$zc = add $zc 1}}{{$zt = add $zt .dpp}}
+{{- else if .ppn}}{{$rg = "G"}}{{$gc = add $gc 1}}{{$gt = add $gt .dpp}}{{$gp = add $gp .ppn}}
+{{- else if eq .tax_rate_reason "export"}}{{$rg = "E"}}{{$ec = add $ec 1}}{{$et = add $et .dpp}}
+{{- else if eq .tax_rate_reason "not_taxable"}}{{$rg = "F"}}{{$fc = add $fc 1}}{{$ft = add $ft .dpp}}
+{{- else}}{{$rg = "H"}}{{$hc = add $hc 1}}{{$ht = add $ht .dpp}}{{end}}
+  <tr data-replacement="{{.name}}" data-group="{{$rg}}"><td>{{.name}}</td><td>{{date .origin_posting_date}}</td><td>{{date .posting_date}}</td><td class="code">{{if $c}}{{$c}}{{else}}-{{end}}</td><td class="num">{{number .dpp 2}}</td><td class="num">{{number .ppn 2}}</td><td>{{if eq $rg "R"}}Faktur Pengganti{{else if eq $rg "E"}}Ekspor{{else if eq $rg "F"}}Bukan objek PPN{{else if eq $rg "Z"}}Bertarif, PPN 0{{else if eq $rg "G"}}PPN tanpa kode faktur pajak{{else}}Tarif 0 lain{{end}}</td></tr>
+{{- end}}{{end}}
+{{- if ne $rn "0"}}
+  <tr class="total" data-group="R" data-count="{{dec $rc 0}}" data-dpp="{{dec $rt 2}}" data-ppn="{{dec $rp 2}}"><td colspan="4">Jumlah Faktur Pengganti untuk pembetulan masa ini</td><td class="num">{{number $rt 2}}</td><td class="num">{{number $rp 2}}</td><td></td></tr>
+  </tbody>
+</table></div>
+{{- end}}
 </section>
 
 <section class="summary">
@@ -118,28 +148,9 @@ h2 { font-size: 1.05em; margin-top: 2mm; }
   <tr data-group="Z" data-count="{{dec $zc 0}}" data-dpp="{{dec $zt 2}}"><td>Bertarif PPN tetapi PPN 0 (mis. upah saja atau lunas oleh uang muka)</td><td class="num">{{dec $zc 0}}</td><td class="num">{{number $zt 2}}</td><td class="num">0,00</td><td>Tidak ada faktur pajak; PPN-nya sudah di faktur uang muka atau tidak ada</td></tr>
   <tr data-group="G" data-count="{{dec $gc 0}}" data-dpp="{{dec $gt 2}}" data-ppn="{{dec $gp 2}}"><td>Ditagih PPN tanpa kode faktur pajak</td><td class="num">{{dec $gc 0}}</td><td class="num">{{number $gt 2}}</td><td class="num">{{number $gp 2}}</td><td>Buat faktur pajaknya langsung di Coretax</td></tr>
   <tr data-group="H" data-count="{{dec $hc 0}}" data-dpp="{{dec $ht 2}}"><td>Tarif 0 lain (usaha belum PKP, tanpa dasar, atau fasilitas belum dipilih)</td><td class="num">{{dec $hc 0}}</td><td class="num">{{number $ht 2}}</td><td class="num">0,00</td><td>Periksa status PKP dan dasar tarif 0</td></tr>
-  <tr data-group="P" data-count="{{dec $pc 0}}" data-dpp="{{dec $pt 2}}" data-ppn="{{dec $pp 2}}"><td>Pengganti faktur masa sebelumnya</td><td class="num">{{dec $pc 0}}</td><td class="num">{{number $pt 2}}</td><td class="num">{{number $pp 2}}</td><td>Faktur Pengganti dan pembetulan SPT masa asalnya</td></tr>
+  <tr data-group="P" data-count="{{dec $pc 0}}" data-dpp="{{dec $pt 2}}" data-ppn="{{dec $pp 2}}"><td>Faktur Pengganti untuk faktur masa lain</td><td class="num">{{dec $pc 0}}</td><td class="num">{{number $pt 2}}</td><td class="num">{{number $pp 2}}</td><td>Faktur Pengganti di Coretax dan pembetulan SPT masa asalnya</td></tr>
   </tbody>
 </table></div>
-{{- /* audit rekap F2: an invoice of this period cancelled and replaced in a later period: its Faktur Pengganti belongs to
-  this period's SPT (pembetulan), so this period's rekap names it with its amounts */}}
-{{- $rc := "0"}}{{$rt := "0"}}{{$rp := "0"}}
-{{- range .Related.replacements}}{{if gt (isodate .posting_date) $.Doc.period_end}}
-{{- if eq $rc "0"}}
-<h2>Faktur Pengganti untuk masa ini, dibuat di masa berikutnya</h2>
-<p class="note">Faktur asalnya di masa ini sudah dibatalkan, jadi tidak ada di rekap dan XML di atas. Buat Faktur Pengganti di Coretax dan masukkan ke pembetulan SPT masa ini.</p>
-<div class="scroll"><table class="rekap detail">
-  <thead><tr><th>No. faktur</th><th>Tanggal faktur asal</th><th>Tanggal pengganti</th><th>Kode</th><th class="num">DPP</th><th class="num">PPN ditagih (buku)</th></tr></thead>
-  <tbody>
-{{- end}}
-{{- $rc = add $rc 1}}{{$rt = add $rt .dpp}}{{$rp = add $rp .ppn}}
-  <tr data-replacement="{{.name}}"><td>{{.name}}</td><td>{{date .origin_posting_date}}</td><td>{{date .posting_date}}</td><td class="code">{{if .efaktur_code}}{{.efaktur_code}}{{else}}-{{end}}</td><td class="num">{{number .dpp 2}}</td><td class="num">{{number .ppn 2}}</td></tr>
-{{- end}}{{end}}
-{{- if ne $rc "0"}}
-  <tr class="total" data-group="R" data-count="{{dec $rc 0}}" data-dpp="{{dec $rt 2}}" data-ppn="{{dec $rp 2}}"><td colspan="4">Jumlah Faktur Pengganti</td><td class="num">{{number $rt 2}}</td><td class="num">{{number $rp 2}}</td></tr>
-  </tbody>
-</table></div>
-{{- end}}
 <p class="note muted">Tidak termasuk: penjualan kasir eceran tanpa identitas pembeli (dilaporkan sebagai digunggung), faktur retensi, faktur yang dibatalkan, dan PPN masukan (dikreditkan dari data Coretax).</p>
 </section>
 </div>

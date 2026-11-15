@@ -3536,6 +3536,15 @@ def scenario_coretax(api):
         api.patch("sales_invoice", xa["name"], {"posting_date": "2031-06-03", "due_date": "2031-06-03"})
         st, resp = api.verb("sales_invoice", xa["name"], "submit", {"force": True})
         xr = resp.get("name", xa["name"]) if isinstance(resp, dict) else xa["name"]
+    # audit rekap F3: an export of May re-issued in June has no faktur pajak: May counts it as export, not as a replacement
+    xe = inv(ca, may + "25", [(1, 1_600_000, {})], tax_rate=0, tax_rate_reason="export")
+    api.verb("sales_invoice", xe, "cancel")
+    st, xea = api.verb("sales_invoice", xe, "amend")
+    xer = ""
+    if check("amend a May export into June", st in (200, 201) and isinstance(xea, dict), (st, xea)):
+        api.patch("sales_invoice", xea["name"], {"posting_date": "2031-06-04", "due_date": "2031-06-04"})
+        st, resp = api.verb("sales_invoice", xea["name"], "submit", {"force": True})
+        xer = resp.get("name", xea["name"]) if isinstance(resp, dict) else xea["name"]
     inv(ca, "2031-04-30", [(1, 7_000_000, {})])
     inv(ca, "2031-06-01", [(1, 7_000_000, {})])
     got = {n: api.get("sales_invoice", n) for n in (i1, i2, i3, dp, fin, i7, i8, g49, r08, r07, f12, c08, i5, ex, dp3, full)}
@@ -3696,12 +3705,28 @@ def scenario_coretax(api):
         tot = rows.get("total", {})
         eq("rekap total = every faktur in the XML", (int(tot.get("count", -1)), D(tot.get("vat", "-1"))),
            (len(by_ref), sum((D(x.text) for t in tis for x in t.iter("VAT")), Decimal(0))))
-        eq("rekap: export and Pasal 4A outside the XML, in their own groups", (detail.get(ex), detail.get(i5), rows["E"]["dpp"], rows["F"]["dpp"]),
-           ("E", "F", "2000000", "1000000"))
+        eq("rekap: export and Pasal 4A outside the XML, in their own groups; May's export re-issued in June counts in May (audit F3)",
+           (detail.get(ex), detail.get(i5), rows["E"]["count"], rows["E"]["dpp"], rows["F"]["dpp"]), ("E", "F", "2", "3600000", "1000000"))
         eq("rekap: a coded invoice with PPN 0 stands apart from the XML groups (audit F1)", (detail.get(full), rows["Z"]["count"], rows["Z"]["dpp"]), ("Z", "1", "0"))
-        reps = re.findall(r'data-replacement="([^"]*)"', page)
-        eq("rekap May names its invoice replaced in June, with its amounts; the cancelled one is gone (audit F2)",
-           (reps, rows.get("R", {}).get("dpp"), rows.get("R", {}).get("ppn"), xo in detail), ([xr], "6000000", "660000", False))
+        reps = dict(re.findall(r'data-replacement="([^"]*)" data-group="([^"]*)"', page))
+        eq("rekap May names its invoices replaced in June: the faktur pajak one as a Faktur Pengganti with its amounts, the export as export; the cancelled ones are gone (audit F2, F3)",
+           (reps, rows.get("R", {}).get("count"), rows.get("R", {}).get("dpp"), rows.get("R", {}).get("ppn"), xo in detail, xe in detail),
+           ({xr: "R", xer: "E"}, "1", "6000000", "660000", False, False))
+        # audit rekap N5: a June invoice replaced with a May date is a Faktur Pengganti of June: May's XML refuses it, the rekap
+        # puts it under P
+        jo = inv(ca, "2031-06-10", [(1, 2_000_000, {})])
+        api.verb("sales_invoice", jo, "cancel")
+        st, ja = api.verb("sales_invoice", jo, "amend")
+        if check("amend a June invoice back into May", st in (200, 201) and isinstance(ja, dict), (st, ja)):
+            api.patch("sales_invoice", ja["name"], {"posting_date": may + "26", "due_date": may + "26"})
+            st, resp = api.verb("sales_invoice", ja["name"], "submit", {"force": True})
+            jr = resp.get("name", ja["name"]) if isinstance(resp, dict) else ja["name"]
+            st, resp = api.call("GET", url + "coretax_faktur")
+            check("XML refuses a replacement dated before the period of the invoice it replaces (audit rekap N5)",
+                  st == 422 and any(p["name"] == jr and "sesudahnya" in p["message"] for p in resp["error"]["problems"]), (st, resp))
+            st, page2, _ = api.print_html("tax_period", tp["name"], "rekap_ppn")
+            eq("rekap May puts the back-dated June replacement under P", re.findall(r'data-invoice="' + re.escape(jr) + r'" data-group="([^"]*)"', page2), ["P"])
+            api.verb("sales_invoice", jr, "cancel")
         check("rekap names the 07/08 PPN as not billed", "Kode 07 dan 08 tidak ditagih" in page and "buku mencatat PPN 0" in page, page[-600:])
 
     # BPPU: the PPh 23 the firm withheld from vendor bills of the period
