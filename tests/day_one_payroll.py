@@ -711,4 +711,64 @@ def scenario_ppn_fee_only(api):
         eq("PPN over the DP and the settlement = PPN on the fee (10.000.000 x 11/12 x 12%)", dp.get("ppn") + fin.get("ppn"), 1_100_000)
 
 
-SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale, scenario_payroll_status_change, scenario_payroll_low_r2, scenario_ppn_fee_only]
+
+def scenario_ppn_exclude_finance(api):
+    """card t_98c8d504 (audit invoice-tax-lock F3): in the fee-only PT a ticked wage line (ppn_exclude) shrinks the PPN
+    base, which is finance's call like the rate. A sales_manager may draft it (orders, amend and payroll copy the mark
+    too), but the submit waits for finance; finance and the owner submit their own; an invoice without the mark is not held."""
+    k = CTX.get("kernel")
+    if k is None:
+        fail("ppn_exclude lock: kernel", "no kernel")
+        return
+    pw = secrets.token_urlsafe(18)   # throwaway password of a throwaway database
+    cl = {}
+    # members of the fee-only PT only (one role per org and user), signed in there
+    for key, email, role in (("sm", "dodi.fee@contohtenaga.test", "sales_manager"), ("fm", "rina.fee@contohtenaga.test", "finance_manager")):
+        code, out = k.user_add(email, role, "tenaga_fee", f"{role} fee", password=pw)
+        cl[key] = Api.login(k.base, email, pw, org="tenaga_fee") if code == 0 else None
+        if not check(f"fee-only PT: {role} member signs in", cl[key] is not None, out):
+            return
+    sm, fm = cl["sm"], cl["fm"]
+    owner = Api.login(k.base, k.owner_email, k.owner_pw, org="tenaga_fee")
+    g = gen()
+    wages = {"item": g.WAGES, "qty": 1, "rate": 40_000_000, "pph23_exclude": True, "ppn_exclude": True}
+    fee_line = {"item": g.FEE, "qty": 1, "rate": 5_000_000}
+    st, cu = owner.create("customer", {"customer_name": "PT Klien Kunci PPN", "address": "Jl. Contoh No. 9", "city": "Bekasi"})
+    if not check("fee-only PT: customer", st == 201, (st, cu)):
+        return
+    body = lambda *lines: {"customer": cu["name"], "posting_date": "2031-08-10", "due_date": "2031-08-10", "items": list(lines)}
+    st, inv = sm.create("sales_invoice", body(wages, fee_line))
+    eq("sales_manager drafts wages 40.000.000 (marked) + fee 5.000.000: PPN base 5.000.000", (st, (inv or {}).get("ppn_base")), (201, 5_000_000))
+    if st == 201:
+        st, r = sm.verb("sales_invoice", inv["name"], "submit", {"force": True})
+        pend = [a for a in (sm.call("GET", f"/api/v1/approvals?model=sales_invoice&name={Api.q(inv['name'])}")[1] or {}).get("data", []) if a.get("state") == "pending"]
+        check("the sales_manager's invoice with a wage line out of the PPN base: held for finance (202, ppn_base_excludes)",
+              st == 202 and any(a.get("policy") == "ppn_base_excludes" for a in pend), (st, r, pend))
+        if pend:
+            st, r = sm.call("POST", f"/api/v1/approvals/{pend[0]['id']}/approve", {})
+            check("the sales_manager cannot approve it (403)", st == 403, (st, r))
+            st, r = fm.call("POST", f"/api/v1/approvals/{pend[0]['id']}/approve", {})
+            done = fm.get("sales_invoice", ((r or {}).get("record") or {}).get("name", inv["name"]))
+            check("finance approves: submitted with PPN base 5.000.000, decided by finance on record",
+                  st == 200 and done.get("docstatus") == 1 and done.get("ppn_base") == 5_000_000, (st, r, done.get("docstatus")))
+    st, own = fm.create("sales_invoice", body(wages, fee_line))
+    st, r = fm.verb("sales_invoice", own["name"], "submit", {"force": True}) if st == 201 else (st, own)
+    check("finance_manager submits its own wage invoice (self-approved): 200", st == 200, (st, r))
+    st, ow = owner.create("sales_invoice", body(wages, fee_line))
+    st, r = owner.verb("sales_invoice", ow["name"], "submit", {"force": True}) if st == 201 else (st, ow)
+    check("the owner submits a wage invoice: 200", st == 200, (st, r))
+    st, plain = sm.create("sales_invoice", body(dict(wages, ppn_exclude=False), fee_line))
+    st, r = sm.verb("sales_invoice", plain["name"], "submit", {"force": True}) if st == 201 else (st, plain)
+    check("a sales_manager invoice with no wage line out of the base (PPN on 45.000.000) is not held: 200", st == 200, (st, r))
+    # a mark carried in by the kernel's order conversion (no field lock applies there) is held all the same
+    st, so = sm.create("customer_order", {"customer": cu["name"], "po_number": "PO-KUNCI-1", "po_date": "2031-08-01", "items": [wages, fee_line]})
+    st, r = sm.verb("customer_order", so["name"], "submit", {"force": True}) if st == 201 else (st, so)
+    son = (r or {}).get("name", (so or {}).get("name"))
+    st, r = sm.action("customer_order", son, "make_invoice", {}) if st == 200 else (st, r)
+    din = ((r or {}).get("open") or {}).get("name")
+    if check("sales_manager makes the invoice from its order", st == 200 and din, (st, r)):
+        st, r = sm.verb("sales_invoice", din, "submit", {"force": True})
+        check("the invoice from the order, wage line marked, submitted by the sales_manager: held for finance (202)", st == 202, (st, r))
+
+
+SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale, scenario_payroll_status_change, scenario_payroll_low_r2, scenario_ppn_fee_only, scenario_ppn_exclude_finance]
