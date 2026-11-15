@@ -3485,11 +3485,16 @@ def scenario_coretax(api):
     # card t_611be720: dibebaskan (08) and tidak dipungut (07) are faktur pajak with the facility's codes and the PPN
     # stated, not billed (DJP template v1.6.1; reports/keputusan-riset/coretax-fasilitas-07-08.md)
     i8 = inv(ca, may + "15", [(1, 6_720_000, {})], tax_rate=0, tax_rate_reason="exempt", coretax_facility="education_pp49")
+    # card t_a5ae7d89: goods freed by PP 49/2022 (beras, BKP strategis since PP 81/2015 was revoked) take the same 08 pair
+    g49 = inv(ca, may + "15", [(2, 1_680_000, {})], tax_rate=0, tax_rate_reason="exempt", coretax_facility="goods_pp49")
+    # export (PEB is its faktur): out of the XML, in the rekap as its own group (card t_ff34b55d)
+    ex = inv(ca, may + "21", [(1, 2_000_000, {})], tax_rate=0, tax_rate_reason="export")
     aju = "00000040000020260514000123"
     i7 = inv(ca, may + "17", [(1, 2_900_000, {})], tax_rate=0, tax_rate_reason="not_collected", coretax_facility="bonded_zone",
              customs_doc=aju, customs_doc_period="052031")
     for label, extra, want in (("exempt without a facility", {"tax_rate_reason": "exempt"}, "pilih fasilitasnya"),
                                ("exempt with a bonded-zone facility", {"tax_rate_reason": "exempt", "coretax_facility": "bonded_zone"}, "tidak cocok"),
+                               ("not collected with PP 49/2022 goods", {"tax_rate_reason": "not_collected", "coretax_facility": "goods_pp49"}, "tidak cocok"),
                                ("a customs period not MMYYYY", {"tax_rate_reason": "not_collected", "coretax_facility": "bonded_zone", "customs_doc": aju, "customs_doc_period": "2031-05"}, "BBTTTT")):
         st, resp = api.create("sales_invoice", {"customer": ca, "posting_date": may + "18", "due_date": may + "18", "tax_rate": 0,
                                                 "items": [{"item": svc["name"], "qty": 1, "rate": 1_000_000}], **extra})
@@ -3514,11 +3519,14 @@ def scenario_coretax(api):
     eq("08 invoice: code 08, TD.00510 / TD.01110, PPN stated at 12% but billed 0",
        (g8.get("efaktur_code"), g8.get("coretax_add_info"), g8.get("coretax_stamp"), g8.get("coretax_vat_rate"), g8.get("ppn")), ("08", "TD.00510", "TD.01110", 12, 0))
     eq("07 invoice: code 07, TD.00502 / TD.01102", (g7.get("efaktur_code"), g7.get("coretax_add_info"), g7.get("coretax_stamp")), ("07", "TD.00502", "TD.01102"))
+    gg = api.get("sales_invoice", g49)
+    eq("08 goods PP 49/2022: code 08, TD.00510 / TD.01110, PPN billed 0",
+       (gg.get("efaktur_code"), gg.get("coretax_add_info"), gg.get("coretax_stamp"), gg.get("coretax_vat_rate"), gg.get("ppn")), ("08", "TD.00510", "TD.01110", 12, 0))
     dp = inv(ca, may + "10", [(1, 5_000_000, {})], kind="down_payment")
     fin = inv(ca, may + "20", [(1, 20_000_000, {})], dp_invoice=dp, down_payment=5_000_000)
     inv(ca, "2031-04-30", [(1, 7_000_000, {})])
     inv(ca, "2031-06-01", [(1, 7_000_000, {})])
-    got = {n: api.get("sales_invoice", n) for n in (i1, i2, i3, dp, fin, i7, i8, r08, r07, f12, c08)}
+    got = {n: api.get("sales_invoice", n) for n in (i1, i2, i3, dp, fin, i7, i8, g49, r08, r07, f12, c08, i5, ex)}
     eq("e-Faktur codes: 04 (DPP nilai lain), 04, 02 (government collector)", [got[n].get("efaktur_code") for n in (i1, i2, i3)], ["04", "04", "02"])
     eq("buyer identity frozen on the invoice: NIK buyer", (got[i2].get("buyer_id_type"), got[i2].get("buyer_tin"), got[i2].get("buyer_doc_no"), got[i2].get("buyer_idtku")),
        ("National ID", "0" * 16, nik_b, "000000"))
@@ -3588,7 +3596,7 @@ def scenario_coretax(api):
     eq("root TaxInvoiceBulk with the seller NPWP", (root.tag, root.findtext("TIN")), ("TaxInvoiceBulk", seller))
     tis = root.findall("ListOfTaxInvoice/TaxInvoice")
     by_ref = {t.findtext("RefDesc").split(";")[0]: t for t in tis}
-    eq("the period's PPN invoices and the 07/08 ones, no cancelled, no Pasal 4A 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin, sen, i7, i8, r08, r07, f12, c08]))
+    eq("the period's PPN invoices and the 07/08 ones, no cancelled, no Pasal 4A 0% invoice, no other month", sorted(by_ref), sorted([i1, i2, i3, dp, fin, sen, i7, i8, g49, r08, r07, f12, c08]))
     fac = lambda t: (t.findtext("TrxCode"), t.findtext("AddInfo") or "", t.findtext("FacilityStamp") or "", t.findtext("CustomDoc") or "", t.findtext("CustomDocMonthYear") or "")
     eq("XML: raised 08, raised 07 with a customs document, 12% with a facility: 04 with empty facility elements (audit F1)",
        [fac(by_ref[n]) for n in (r08, r07, f12) if n in by_ref], [("04", "", "", "", "")] * 3)
@@ -3647,6 +3655,37 @@ def scenario_coretax(api):
     if f is not None:
         eq("settlement invoice: DPP net of the down payment, the DP named in RefDesc", (f.findtext("RefDesc"), sum(D(x.text) for x in f.iter("TaxBase"))),
            (f"{fin}; uang muka {dp}", D(15_000_000)))
+
+    # Rekap PPN (card t_ff34b55d): per SPT group the DPP, DPP nilai lain and PPN of the XML, next to the PPN booked; 07/08
+    # state PPN on the faktur pajak but book none, so they stand apart from the PPN collected
+    got[sen] = api.get("sales_invoice", sen)
+    st, page, _ = api.print_html("tax_period", tp["name"], "rekap_ppn")
+    check("rekap PPN prints", st == 200 and "Rekap PPN keluaran" in page, (st, page[:300]))
+    if st == 200:
+        attrs = lambda tag: dict(re.findall(r'data-([a-z]+)="([^"]*)"', tag))
+        rows = {a["group"]: a for a in (attrs(t) for t in re.findall(r"<tr[^>]*data-count=[^>]*>", page))}
+        detail = {a["invoice"]: a["group"] for a in (attrs(t) for t in re.findall(r"<tr[^>]*data-invoice=[^>]*>", page))}
+        want = {}
+        for ref, t in by_ref.items():
+            g = {"01": "A", "04": "A", "02": "B", "03": "B", "07": "C", "08": "D"}[t.findtext("TrxCode")]
+            w = want.setdefault(g, [0, Decimal(0), Decimal(0), Decimal(0), Decimal(0)])
+            w[0] += 1
+            for i, tag in ((1, "TaxBase"), (2, "OtherTaxBase"), (3, "VAT")):
+                w[i] += sum(D(x.text) for x in t.iter(tag))
+            w[4] += D(got[ref]["ppn"])
+        for g in "ABCD":
+            w = want.get(g, [0, Decimal(0), Decimal(0), Decimal(0), Decimal(0)])
+            r = rows.get(g, {})
+            eq(f"rekap group {g}: faktur, DPP, DPP nilai lain, PPN = the XML's; PPN billed = the books'",
+               (int(r.get("count", -1)), D(r.get("dpp", "-1")), D(r.get("otb", "-1")), D(r.get("vat", "-1")), D(r.get("ppn", "-1"))), tuple(w))
+        eq("rekap: 07 states PPN 2.900.000 x 11/12 x 12% = 319.000, 08 (two of 6.720.000, one of 3.360.000) 739.200 x 2 + 369.600; none billed",
+           (D(rows["C"]["vat"]), D(rows["D"]["vat"]), D(rows["C"]["ppn"]), D(rows["D"]["ppn"])), (D(319_000), D(1_848_000), D(0), D(0)))
+        tot = rows.get("total", {})
+        eq("rekap total = every faktur in the XML", (int(tot.get("count", -1)), D(tot.get("vat", "-1"))),
+           (len(by_ref), sum((D(x.text) for t in tis for x in t.iter("VAT")), Decimal(0))))
+        eq("rekap: export and Pasal 4A outside the XML, in their own groups", (detail.get(ex), detail.get(i5), rows["E"]["dpp"], rows["F"]["dpp"]),
+           ("E", "F", "2000000", "1000000"))
+        check("rekap names the 07/08 PPN as not billed", "Kode 07 dan 08 tidak ditagih" in page and "buku mencatat PPN 0" in page, page[-600:])
 
     # BPPU: the PPh 23 the firm withheld from vendor bills of the period
     st, va = api.create("vendor", {"vendor_name": "CV Tenaga Contoh", "npwp": tin_v, "pph23_object_code": "24-104-17"})

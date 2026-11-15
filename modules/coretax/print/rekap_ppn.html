@@ -1,0 +1,117 @@
+{{define "style"}}
+.sheet { display: flex; flex-direction: column; }
+.summary { order: -1; }
+.meta { margin: 0 0 4mm; }
+.meta td { border: 0; padding: 0.5mm 3mm 0.5mm 0; }
+table.rekap { margin: 2mm 0 5mm; font-size: 0.95em; }
+table.rekap th { border-bottom: 1px solid #1C1917; color: #57534E; }
+table.rekap tr.total td { border-top: 2px solid #1C1917; font-weight: 600; }
+table.rekap tr.facility td { background: #F5F5F4; }
+table.detail { font-size: 0.88em; }
+.code { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.note { margin: 0 0 2mm; font-size: 0.92em; }
+h2 { font-size: 1.05em; margin-top: 2mm; }
+{{end}}
+{{template "letterhead" .}}
+<h1>Rekap PPN keluaran masa {{.Doc.month}}/{{.Doc.year}}</h1>
+<table class="meta">
+  <tr><td>NPWP usaha</td><td>: {{.Doc.seller_tin}}</td></tr>
+  <tr><td>Untuk</td><td>: SPT Masa PPN dan pencocokan dengan XML Faktur Keluaran (Coretax)</td></tr>
+</table>
+{{- /* One pass over the invoices: the detail rows render in order, the summary renders after them (it needs the totals)
+  and CSS moves it above (.summary order -1). Per faktur pajak the DPP, DPP nilai lain and PPN are the coretax_faktur
+  XML's own: the same line split, rounding and rate (coretax_vat_rate for 07/08), so the rekap adds up to the file. */}}
+{{- $ac := "0"}}{{$at := "0"}}{{$ao := "0"}}{{$av := "0"}}{{$ap := "0"}}
+{{- $bc := "0"}}{{$bt := "0"}}{{$bo := "0"}}{{$bv := "0"}}{{$bp := "0"}}
+{{- $cc := "0"}}{{$ct := "0"}}{{$co := "0"}}{{$cv := "0"}}{{$cp := "0"}}
+{{- $dc := "0"}}{{$dt := "0"}}{{$do := "0"}}{{$dv := "0"}}{{$dp := "0"}}
+{{- $ec := "0"}}{{$et := "0"}}{{$fc := "0"}}{{$ft := "0"}}{{$gc := "0"}}{{$gt := "0"}}{{$gp := "0"}}{{$hc := "0"}}{{$ht := "0"}}
+{{- $pc := "0"}}{{$pt := "0"}}{{$pp := "0"}}
+<div class="sheet">
+<section class="detail-block">
+<h2>Rincian per faktur</h2>
+<table class="rekap detail">
+  <thead><tr><th>No. faktur</th><th>Tanggal</th><th>Kode</th><th class="num">DPP</th><th class="num">DPP nilai lain</th><th class="num">PPN di faktur pajak</th><th class="num">PPN ditagih (buku)</th></tr></thead>
+  <tbody>
+{{- range $inv := .Related.invoices}}
+{{- $c := .efaktur_code}}
+{{- $tb0 := .dpp}}{{$otb0 := "0"}}{{$vat0 := "0"}}
+{{- if $c}}
+{{- $fx := and .currency (ne .currency "IDR")}}
+{{- $pb := .dpp}}{{if .ppn_base}}{{$pb = .ppn_base}}{{end}}
+{{- $fee := ne (dec $pb 2) (dec .dpp 2)}}
+{{- $vr := .tax_rate}}{{if .coretax_vat_rate}}{{$vr = .coretax_vat_rate}}{{end}}
+{{- $s := "0"}}{{$n := "0"}}{{range .items}}{{if not (and $fee .ppn_exclude)}}{{$n = add $n 1}}{{if $fx}}{{$s = add $s .amount_fx_idr}}{{else}}{{$s = add $s .amount}}{{end}}{{end}}{{end}}
+{{- $r := sub $s $pb}}{{$k := "0"}}{{$acc := "0"}}
+{{- range $l := .items}}{{if not (and $fee $l.ppn_exclude)}}{{$k = add $k 1}}
+{{- $b := $l.amount}}{{if $fx}}{{$b = $l.amount_fx_idr}}{{end}}
+{{- $tb := round (sub $b (div (mul $r $b) $s)) 2}}{{if eq $k $n}}{{$tb = sub $pb $acc}}{{end}}{{$acc = add $acc $tb}}
+{{- $otb := round (div (mul $tb $inv.dpp_num) $inv.dpp_den) 2}}
+{{- $otb0 = add $otb0 $otb}}{{$vat0 = add $vat0 (round (div (mul $otb $vr) 100) 2)}}
+{{- end}}{{end}}
+{{- $tb0 = $acc}}
+{{- end}}
+{{- /* a replacement of an earlier period's invoice belongs to that period's SPT (Faktur Pengganti, pembetulan) */}}
+{{- $old := and .origin_posting_date (lt .origin_posting_date $.Doc.period_start)}}
+{{- $g := ""}}
+{{- if $old}}{{$g = "P"}}{{$pc = add $pc 1}}{{$pt = add $pt $tb0}}{{$pp = add $pp .ppn}}
+{{- else if or (eq $c "02") (eq $c "03")}}{{$g = "B"}}{{$bc = add $bc 1}}{{$bt = add $bt $tb0}}{{$bo = add $bo $otb0}}{{$bv = add $bv $vat0}}{{$bp = add $bp .ppn}}
+{{- else if eq $c "07"}}{{$g = "C"}}{{$cc = add $cc 1}}{{$ct = add $ct $tb0}}{{$co = add $co $otb0}}{{$cv = add $cv $vat0}}{{$cp = add $cp .ppn}}
+{{- else if eq $c "08"}}{{$g = "D"}}{{$dc = add $dc 1}}{{$dt = add $dt $tb0}}{{$do = add $do $otb0}}{{$dv = add $dv $vat0}}{{$dp = add $dp .ppn}}
+{{- else if $c}}{{$g = "A"}}{{$ac = add $ac 1}}{{$at = add $at $tb0}}{{$ao = add $ao $otb0}}{{$av = add $av $vat0}}{{$ap = add $ap .ppn}}
+{{- else if .ppn}}{{$g = "G"}}{{$gc = add $gc 1}}{{$gt = add $gt .dpp}}{{$gp = add $gp .ppn}}
+{{- else if eq .tax_rate_reason "export"}}{{$g = "E"}}{{$ec = add $ec 1}}{{$et = add $et .dpp}}
+{{- else if eq .tax_rate_reason "not_taxable"}}{{$g = "F"}}{{$fc = add $fc 1}}{{$ft = add $ft .dpp}}
+{{- else}}{{$g = "H"}}{{$hc = add $hc 1}}{{$ht = add $ht .dpp}}{{end}}
+  <tr data-invoice="{{.name}}" data-group="{{$g}}">
+    <td>{{.name}}</td>
+    <td>{{date .posting_date}}</td>
+    <td class="code">{{if $c}}{{$c}}{{else if eq $g "E"}}ekspor{{else if eq $g "F"}}4A{{else}}-{{end}}</td>
+    <td class="num">{{number $tb0 2}}</td>
+    <td class="num">{{if $c}}{{number $otb0 2}}{{end}}</td>
+    <td class="num">{{if $c}}{{number $vat0 2}}{{end}}</td>
+    <td class="num">{{number .ppn 2}}</td>
+  </tr>
+{{- else}}
+  <tr><td colspan="7" class="muted">Belum ada faktur penjualan yang diajukan di masa ini.</td></tr>
+{{- end}}
+  </tbody>
+</table>
+{{if .Truncated.invoices}}<p class="note"><strong>Daftar dipotong:</strong> hanya 1.000 faktur pertama yang dihitung, jadi rekap di atas lebih kecil dari yang sebenarnya.</p>{{end}}
+</section>
+
+<section class="summary">
+<h2>Penyerahan dengan faktur pajak (XML Faktur Keluaran)</h2>
+<table class="rekap">
+  <thead><tr><th>Kelompok</th><th class="num">Faktur</th><th class="num">DPP</th><th class="num">DPP nilai lain</th><th class="num">PPN di faktur pajak</th><th class="num">PPN ditagih (buku)</th></tr></thead>
+  <tbody>
+  <tr data-group="A" data-count="{{dec $ac 0}}" data-dpp="{{dec $at 2}}" data-otb="{{dec $ao 2}}" data-vat="{{dec $av 2}}" data-ppn="{{dec $ap 2}}">
+    <td>PPN dipungut sendiri (kode 01, 04)</td><td class="num">{{dec $ac 0}}</td><td class="num">{{number $at 2}}</td><td class="num">{{number $ao 2}}</td><td class="num">{{number $av 2}}</td><td class="num">{{number $ap 2}}</td></tr>
+  <tr data-group="B" data-count="{{dec $bc 0}}" data-dpp="{{dec $bt 2}}" data-otb="{{dec $bo 2}}" data-vat="{{dec $bv 2}}" data-ppn="{{dec $bp 2}}">
+    <td>PPN dipungut pemungut (kode 02, 03)</td><td class="num">{{dec $bc 0}}</td><td class="num">{{number $bt 2}}</td><td class="num">{{number $bo 2}}</td><td class="num">{{number $bv 2}}</td><td class="num">{{number $bp 2}}</td></tr>
+  <tr class="facility" data-group="C" data-count="{{dec $cc 0}}" data-dpp="{{dec $ct 2}}" data-otb="{{dec $co 2}}" data-vat="{{dec $cv 2}}" data-ppn="{{dec $cp 2}}">
+    <td>PPN tidak dipungut (kode 07)</td><td class="num">{{dec $cc 0}}</td><td class="num">{{number $ct 2}}</td><td class="num">{{number $co 2}}</td><td class="num">{{number $cv 2}}</td><td class="num">{{number $cp 2}}</td></tr>
+  <tr class="facility" data-group="D" data-count="{{dec $dc 0}}" data-dpp="{{dec $dt 2}}" data-otb="{{dec $do 2}}" data-vat="{{dec $dv 2}}" data-ppn="{{dec $dp 2}}">
+    <td>PPN dibebaskan (kode 08)</td><td class="num">{{dec $dc 0}}</td><td class="num">{{number $dt 2}}</td><td class="num">{{number $do 2}}</td><td class="num">{{number $dv 2}}</td><td class="num">{{number $dp 2}}</td></tr>
+  {{- $tc := add $ac $bc $cc $dc}}{{$tt := add $at $bt $ct $dt}}{{$to := add $ao $bo $co $do}}{{$tv := add $av $bv $cv $dv}}{{$tp := add $ap $bp $cp $dp}}
+  <tr class="total" data-group="total" data-count="{{dec $tc 0}}" data-dpp="{{dec $tt 2}}" data-otb="{{dec $to 2}}" data-vat="{{dec $tv 2}}" data-ppn="{{dec $tp 2}}">
+    <td>Jumlah di XML Faktur Keluaran</td><td class="num">{{dec $tc 0}}</td><td class="num">{{number $tt 2}}</td><td class="num">{{number $to 2}}</td><td class="num">{{number $tv 2}}</td><td class="num">{{number $tp 2}}</td></tr>
+  </tbody>
+</table>
+<p class="note"><strong>PPN yang kamu pungut dan setor sendiri:</strong> Rp {{number $ap 2}} (kode 01, 04, sebelum dikurangi PPN masukan). PPN kode 02 dan 03 dipungut dan disetor pembeli pemungut.</p>
+<p class="note"><strong>Kode 07 dan 08 tidak ditagih:</strong> faktur pajaknya mencantumkan PPN Rp {{number (add $cv $dv) 2}} karena faktur pajak menyatakan PPN yang tidak dipungut atau dibebaskan (tarif PPN usaha atas DPP nilai lain), tetapi pembeli tidak membayarnya dan buku mencatat PPN 0. Di SPT Masa PPN angka ini masuk penyerahan yang PPN-nya tidak dipungut (07) atau dibebaskan (08), bukan PPN yang harus disetor. Selisih XML dengan buku sebesar itu memang seharusnya ada.</p>
+
+<h2>Penyerahan tanpa faktur pajak di XML</h2>
+<table class="rekap">
+  <thead><tr><th>Kelompok</th><th class="num">Faktur</th><th class="num">DPP</th><th class="num">PPN ditagih (buku)</th><th>Dilaporkan lewat</th></tr></thead>
+  <tbody>
+  <tr data-group="E" data-count="{{dec $ec 0}}" data-dpp="{{dec $et 2}}"><td>Ekspor BKP/JKP (tarif 0)</td><td class="num">{{dec $ec 0}}</td><td class="num">{{number $et 2}}</td><td class="num">0</td><td>PEB atau dokumen ekspor, bukan faktur keluaran</td></tr>
+  <tr data-group="F" data-count="{{dec $fc 0}}" data-dpp="{{dec $ft 2}}"><td>Bukan objek PPN (Pasal 4A)</td><td class="num">{{dec $fc 0}}</td><td class="num">{{number $ft 2}}</td><td class="num">0</td><td>Tidak dilaporkan di SPT Masa PPN</td></tr>
+  <tr data-group="G" data-count="{{dec $gc 0}}" data-dpp="{{dec $gt 2}}" data-ppn="{{dec $gp 2}}"><td>Ditagih PPN tanpa kode faktur pajak</td><td class="num">{{dec $gc 0}}</td><td class="num">{{number $gt 2}}</td><td class="num">{{number $gp 2}}</td><td>Buat faktur pajaknya langsung di Coretax</td></tr>
+  <tr data-group="H" data-count="{{dec $hc 0}}" data-dpp="{{dec $ht 2}}"><td>Tarif 0 lain (usaha belum PKP atau tanpa dasar)</td><td class="num">{{dec $hc 0}}</td><td class="num">{{number $ht 2}}</td><td class="num">0</td><td>Periksa status PKP dan dasar tarif 0</td></tr>
+  <tr data-group="P" data-count="{{dec $pc 0}}" data-dpp="{{dec $pt 2}}" data-ppn="{{dec $pp 2}}"><td>Pengganti faktur masa sebelumnya</td><td class="num">{{dec $pc 0}}</td><td class="num">{{number $pt 2}}</td><td class="num">{{number $pp 2}}</td><td>Faktur Pengganti dan pembetulan SPT masa asalnya</td></tr>
+  </tbody>
+</table>
+<p class="note muted">Tidak termasuk: penjualan kasir eceran tanpa identitas pembeli (dilaporkan sebagai digunggung), faktur retensi, faktur yang dibatalkan, dan PPN masukan (dikreditkan dari data Coretax).</p>
+</section>
+</div>
