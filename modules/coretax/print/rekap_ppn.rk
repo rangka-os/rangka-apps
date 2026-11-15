@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Rekap PPN keluaran of the period for the SPT Masa PPN (card t_ff34b55d): every submitted sales invoice dated in the
+# period, grouped the way the SPT asks, with the DPP, DPP nilai lain and PPN that the Coretax XML (coretax_faktur) states
+# next to the PPN the invoice books. 07 (tidak dipungut) and 08 (dibebaskan) state PPN on the faktur pajak that is never
+# billed (the books hold ppn 0), so they stand apart from the PPN the firm collects (audit coretax-07-08, butir 7).
+# Retention invoices carry no PPN of their own and are out, as in the XML.
+name: rekap_ppn
+model: tax_period
+label: {id: Rekap PPN keluaran (SPT Masa PPN)}
+paper: A4
+template: rekap_ppn.html
+related:
+  invoices:
+    model: sales_invoice
+    range: {posting_date: [period_start, period_end]}
+    filter: "docstatus == 1 && kind != 'retention'"
+    sort: name
+    children: true
+    limit: 1000
+  # audit rekap F2: invoices whose chain started in this period but that were submitted in a later one (a replacement
+  # of a cancelled invoice of this period): their Faktur Pengganti belongs to this period's SPT
+  replacements:
+    model: sales_invoice
+    range: {origin_posting_date: [period_start, period_end]}
+    filter: "docstatus == 1 && kind != 'retention'"
+    sort: name
+    limit: 1000

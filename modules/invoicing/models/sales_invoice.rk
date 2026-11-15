@@ -155,7 +155,11 @@ fields:
     depends_on: tax_rate == 0 && (tax_rate_reason == 'exempt' || tax_rate_reason == 'not_collected')
     read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]
     options:
-      - {value: education_pp49, label: {id: 'Dibebaskan: jasa pendidikan, PP 49/2022 (kode 08)'}}
+      # PP 49/2022 (since 12 Dec 2022) replaced PP 81/2015 jo PP 48/2020 for BKP strategis: goods and services take the
+      # same 08 pair TD.00510 / TD.01110 (Kring Pajak for beras); the template's PP 81/2015 stamp TD.01108 is a revoked
+      # ground, so it is not offered (card t_a5ae7d89, reports/keputusan-riset/coretax-fasilitas-07-08.md)
+      - {value: education_pp49, label: {id: 'Dibebaskan: jasa tertentu PP 49/2022, mis. pendidikan, kesehatan medis, pelayanan sosial (kode 08)'}}
+      - {value: goods_pp49, label: {id: 'Dibebaskan: barang tertentu PP 49/2022, mis. beras dan bahan pokok, ternak, bibit, pakan, air bersih (kode 08)'}}
       - {value: bonded_zone, label: {id: 'Tidak dipungut: tempat penimbunan berikat (kode 07)'}}
       - {value: special_economic_zone, label: {id: 'Tidak dipungut: kawasan ekonomi khusus, PP 40/2021 (kode 07)'}}
       - {value: free_zone, label: {id: 'Tidak dipungut: kawasan bebas, PP 41/2021 (kode 07)'}}
@@ -181,12 +185,12 @@ fields:
     label: {id: Keterangan tambahan faktur pajak}
     depends_on: app_installed('coretax') && coretax_facility != ''
     # only on a 07/08 faktur: a facility left on a draft whose rate was raised is ignored (audit coretax-07-08 F1)
-    compute: "efaktur_code != '07' && efaktur_code != '08' ? '' : coretax_facility == 'education_pp49' ? 'TD.00510' : (coretax_facility == 'bonded_zone' ? 'TD.00502' : (coretax_facility == 'special_economic_zone' ? 'TD.00517' : (coretax_facility == 'free_zone' ? 'TD.00518' : '')))"
+    compute: "efaktur_code != '07' && efaktur_code != '08' ? '' : coretax_facility == 'education_pp49' || coretax_facility == 'goods_pp49' ? 'TD.00510' : (coretax_facility == 'bonded_zone' ? 'TD.00502' : (coretax_facility == 'special_economic_zone' ? 'TD.00517' : (coretax_facility == 'free_zone' ? 'TD.00518' : '')))"
   - name: coretax_stamp
     type: data
     label: {id: Cap fasilitas faktur pajak}
     depends_on: app_installed('coretax') && coretax_facility != ''
-    compute: "efaktur_code != '07' && efaktur_code != '08' ? '' : coretax_facility == 'education_pp49' ? 'TD.01110' : (coretax_facility == 'bonded_zone' ? 'TD.01102' : (coretax_facility == 'special_economic_zone' ? 'TD.01117' : (coretax_facility == 'free_zone' ? 'TD.01118' : '')))"
+    compute: "efaktur_code != '07' && efaktur_code != '08' ? '' : coretax_facility == 'education_pp49' || coretax_facility == 'goods_pp49' ? 'TD.01110' : (coretax_facility == 'bonded_zone' ? 'TD.01102' : (coretax_facility == 'special_economic_zone' ? 'TD.01117' : (coretax_facility == 'free_zone' ? 'TD.01118' : '')))"
   - {name: dpp_num, type: int, label: {id: DPP nilai lain (pembilang)}, default: 'tax.dpp_num', read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]}
   - {name: dpp_den, type: int, label: {id: DPP nilai lain (penyebut)}, default: 'tax.dpp_den', read_only_for: [sales_manager, sales_rep, field_sales, head_office, project_admin]}
   # The PPN base: the DPP, or with config tax.ppn_fee_only (kernel contract 0010 §8, default off) the fee part of it:
@@ -487,8 +491,8 @@ rules:
     message: {id: 'PPN dibebaskan atau tidak dipungut: pilih fasilitasnya (untuk kode dan cap fasilitas faktur pajak)'}
   - name: facility_matches_reason
     on: save
-    check: "coretax_facility == '' || tax_rate > 0 || (coretax_facility == 'education_pp49' ? tax_rate_reason == 'exempt' : tax_rate_reason == 'not_collected')"
-    message: {id: 'Fasilitas tidak cocok dengan dasar tarif 0: jasa pendidikan dibebaskan, kawasan berikat/KEK/kawasan bebas tidak dipungut'}
+    check: "coretax_facility == '' || tax_rate > 0 || (coretax_facility == 'education_pp49' || coretax_facility == 'goods_pp49' ? tax_rate_reason == 'exempt' : tax_rate_reason == 'not_collected')"
+    message: {id: 'Fasilitas tidak cocok dengan dasar tarif 0: jasa dan barang tertentu PP 49/2022 dibebaskan, kawasan berikat/KEK/kawasan bebas tidak dipungut'}
   - name: customs_doc_period_format
     on: save
     check: "customs_doc == '' || customs_doc_period.matches('^(0[1-9]|1[0-2])[0-9]{4}$')"

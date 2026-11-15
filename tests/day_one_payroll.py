@@ -709,6 +709,35 @@ def scenario_ppn_fee_only(api):
            (dp.get("ppn_base"), fin.get("dpp"), fin.get("ppn_lines_base"), fin.get("ppn_dp_base"), fin.get("ppn_base"), fin.get("ppn")),
            (5_000_000, 55_000_000, 10_000_000, 5_000_000, 5_000_000, 550_000))
         eq("PPN over the DP and the settlement = PPN on the fee (10.000.000 x 11/12 x 12%)", dp.get("ppn") + fin.get("ppn"), 1_100_000)
+    # Rekap PPN (audit coretax-rekap F4): an August fee-only invoice replaced in September is a Faktur Pengganti of August
+    # whose DPP is the PPN base (the fee), in August's list of replacements and under P in September, as the XML takes it
+    import re
+    st, ao = fee.create("sales_invoice", {"customer": cu, "posting_date": "2031-08-10", "due_date": "2031-08-10",
+                                          "items": [dict(lines[0], rate=40_000_000), dict(lines[2], rate=5_000_000)]})
+    if not check("fee-only PT: August invoice wages 40.000.000 + fee 5.000.000", st == 201, (st, ao)):
+        return
+    st, resp = fee.verb("sales_invoice", ao["name"], "submit", {"force": True})
+    an = (resp or {}).get("name", ao["name"])
+    fee.verb("sales_invoice", an, "cancel")
+    st, am = fee.verb("sales_invoice", an, "amend")
+    if not check("fee-only PT: amend the August invoice", st in (200, 201) and isinstance(am, dict), (st, am)):
+        return
+    fee.patch("sales_invoice", am["name"], {"posting_date": "2031-09-05", "due_date": "2031-09-05"})
+    st, resp = fee.verb("sales_invoice", am["name"], "submit", {"force": True})
+    sr = (resp or {}).get("name", am["name"])
+    eq("the September replacement: DPP 45.000.000, PPN base 5.000.000, PPN 550.000", (lambda x: (x.get("dpp"), x.get("ppn_base"), x.get("ppn")))(fee.get("sales_invoice", sr)),
+       (45_000_000, 5_000_000, 550_000))
+    rows = {}
+    for month in ("08", "09"):
+        st, tpm = fee.create("tax_period", {"year": "2031", "month": month, "seller_tin": seller, "seller_nitku": seller + "000000"})
+        st, page, _ = fee.print_html("tax_period", tpm.get("name", ""), "rekap_ppn")
+        check(f"fee-only PT: rekap PPN {month}/2031 prints", st == 200, (st, page[:300]))
+        rows[month] = {a.get("group"): a for a in (dict(re.findall(r'data-([a-z]+)="([^"]*)"', t)) for t in re.findall(r"<tr[^>]*data-count=[^>]*>", page))}
+        rows[month]["_reps"] = [(n, g_, re.search(r'class="num">([^<]*)<', tr).group(1))
+                                for n, g_, tr in re.findall(r'<tr data-replacement="([^"]*)" data-group="([^"]*)">(.*?)</tr>', page)]
+    eq("rekap August lists the September replacement as a Faktur Pengganti at DPP 5.000.000 (the fee), PPN 550.000",
+       (rows["08"]["_reps"], rows["08"].get("R", {}).get("dpp"), rows["08"].get("R", {}).get("ppn")), ([(sr, "R", "5.000.000,00")], "5000000", "550000"))
+    eq("rekap September holds it under P at the same DPP", (rows["09"].get("P", {}).get("count"), rows["09"].get("P", {}).get("dpp")), ("1", "5000000"))
 
 
 
