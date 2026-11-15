@@ -292,7 +292,9 @@ fields:
     type: text
     label: {id: Catatan untuk pelanggan}
   - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
-  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency; line `rate` stays the unit price
+  # IDR per 1 unit of the foreign currency; line `rate` stays the unit price. On a PKP invoice the submit waits for finance
+  # (approval fx_rate_check): PPN is assessed at the KMK kurs (PP 44/2022 art. 21).
+  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1', help: {id: 'Rupiah per 1 unit valas. PPN memakai kurs Menteri Keuangan (KMK) minggu tanggal faktur; bagian keuangan memeriksanya.'}}
   - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
   # Adjustments (discount_amount, down_payment) are entered in rupiah only, also on a foreign document: the ledger, the DP checks
   # and PPN read the IDR fields. Their foreign twins are derived here (IDR / exchange_rate), never entered.
@@ -571,6 +573,22 @@ approvals:
     when: "tax.pkp && kind != 'retention' && (tax_rate != tax.ppn_rate || dpp_num * tax.dpp_den != tax.dpp_num * dpp_den)"
     approvers: [finance_manager]
     label: {id: 'Tarif PPN atau DPP berbeda dari pengaturan pajak: perlu persetujuan keuangan', en: 'PPN rate or DPP differs from the tax settings: finance approval'}
+  # The PPN base is finance's too (cards t_98c8d504, t_aeea3903; audit invoice-tax-lock F3/F6). A field lock is not
+  # enough: ppn_exclude comes from orders, deliveries, payroll and amend copies, and a sales_manager must still draft a
+  # foreign invoice with its kurs. So the submit waits for finance instead; finance and the owner approve their own.
+  # - wages left out of the PPN base (tax.ppn_fee_only, PMK 83/2012): a ticked line shrinks ppn_base
+  - name: ppn_base_excludes
+    on: submit
+    when: "tax.pkp && kind != 'retention' && 'ppn_fee_only' in tax && tax.ppn_fee_only && items.map(i, i.ppn_exclude == true ? 1 : 0).sum() > 0"
+    approvers: [finance_manager]
+    label: {id: 'Ada baris upah di luar dasar PPN: perlu persetujuan keuangan', en: 'Wage lines left out of the PPN base: finance approval'}
+  # - a foreign invoice: DPP and PPN in rupiah follow its kurs, which must be the Kurs Menteri Keuangan (KMK, weekly)
+  #   in force when the faktur pajak is due (PP 44/2022 art. 21); finance checks it against the KMK of that week
+  - name: fx_rate_check
+    on: submit
+    when: "tax.pkp && kind != 'retention' && currency != '' && currency != 'IDR'"
+    approvers: [finance_manager]
+    label: {id: 'Faktur valas: kurs pajak (KMK) perlu diperiksa keuangan', en: 'Foreign-currency invoice: finance checks the tax rate (KMK)'}
 
 views:
   list:

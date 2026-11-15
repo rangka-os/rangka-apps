@@ -4055,6 +4055,49 @@ def scenario_tax_jasa(api):
         if check("F5 sales_manager cancels and amends finance's invoice at DPP 1/10", st in (200, 201) and (am or {}).get("name"), (st, am)):
             st, r = sm.verb("sales_invoice", am["name"], "submit", {"force": True})
             check("F5 the amendment at DPP 1/10 submitted by the sales_manager: held for finance (202)", st == 202, (st, r))
+        # card t_aeea3903 (audit invoice-tax-lock F6): the kurs of a foreign invoice sets its rupiah DPP and PPN, and PPN
+        # is assessed at the KMK kurs (PP 44/2022 art. 21). A sales_manager drafts it with any kurs; the submit waits for finance.
+        usd = lambda kurs: {"customer": customer, "currency": "USD", "exchange_rate": kurs, "items": [{"item": ndt, "qty": 1, "rate_fx": 10_000}]}
+        st, lo = sm.create("sales_invoice", usd(1.01))
+        eq("F6 sales_manager drafts USD 10.000 at kurs 1,01 (PPN Rp 1.111 on the draft)", (st, (lo or {}).get("ppn")), (201, 1_111))
+        if st == 201:
+            st, r = sm.verb("sales_invoice", lo["name"], "submit", {"force": True})
+            ap = (r or {}).get("approval") or {}
+            check("F6 the sales_manager's USD invoice at kurs 1,01: held for finance (202, fx_rate_check)",
+                  st == 202 and any(a.get("policy") == "fx_rate_check" and a.get("state") == "pending" for a in approvals_of(api, "sales_invoice", lo["name"])), (st, r))
+            pend = [a for a in approvals_of(api, "sales_invoice", lo["name"]) if a.get("state") == "pending"]
+            if pend:
+                st, r = decide(sm, pend[0]["id"])
+                check("F6 the sales_manager cannot approve its own kurs (403)", st == 403, (st, r))
+                st, r = decide(fm, pend[0]["id"], "reject", "Kurs KMK minggu ini 16.000")
+                check("F6 finance rejects the kurs 1,01 with a reason; the invoice stays a draft", st == 200 and api.get("sales_invoice", lo["name"]).get("docstatus") == 0, (st, r))
+            st, r = sm.call("PATCH", f"/api/v1/r/sales_invoice/{sm.q(lo['name'])}", {"exchange_rate": 16000, "items": [{"item": ndt, "qty": 1, "rate_fx": 5_000}]})
+            st, r = sm.verb("sales_invoice", lo["name"], "submit", {"force": True})
+            pend = [a for a in approvals_of(api, "sales_invoice", lo["name"]) if a.get("state") == "pending"]
+            st2, r2 = decide(fm, pend[0]["id"]) if st == 202 and pend else (st, r)
+            done = api.get("sales_invoice", lo["name"]) if st2 != 200 else api.get("sales_invoice", ((r2 or {}).get("record") or {}).get("name", lo["name"]))
+            trail = [(a.get("policy"), a.get("state"), bool(a.get("decided_by"))) for n in {lo["name"], done.get("name", lo["name"])} for a in approvals_of(api, "sales_invoice", n)]
+            check("F6 USD 5.000 at kurs 16.000, finance approves: submitted, PPN 8.800.000, the decision on record",
+                  st == 202 and st2 == 200 and done.get("docstatus") == 1 and done.get("ppn") == 8_800_000 and ("fx_rate_check", "approved", True) in trail, (st, st2, done.get("ppn"), trail))
+        st, fx = fm.create("sales_invoice", usd(16000))
+        st, r = fm.verb("sales_invoice", fx["name"], "submit", {"force": True}) if st == 201 else (st, fx)
+        check("F6 finance_manager submits its own USD invoice (self-approved): 200", st == 200, (st, r))
+        fxn = (r or {}).get("name", (fx or {}).get("name"))
+        st, r = api.create("sales_invoice", usd(16000))
+        st, r = api.verb("sales_invoice", r["name"], "submit", {"force": True}) if st == 201 else (st, r)
+        check("F6 the owner submits a USD invoice: 200", st == 200, (st, r))
+        st, r = sm.verb("sales_invoice", fxn, "cancel", {})
+        st, am = sm.verb("sales_invoice", fxn, "amend", {}) if st == 200 else (st, r)
+        if check("F6 sales_manager cancels and amends finance's USD invoice", st in (200, 201) and (am or {}).get("name"), (st, am)):
+            sm.call("PATCH", f"/api/v1/r/sales_invoice/{sm.q(am['name'])}", {"exchange_rate": 1.01})
+            st, r = sm.verb("sales_invoice", am["name"], "submit", {"force": True})
+            check("F6 the amendment at kurs 1,01 submitted by the sales_manager: held for finance (202)", st == 202, (st, r))
+        st, idr = sm.create("sales_invoice", invoice_body(customer, ndt))
+        st, r = sm.verb("sales_invoice", idr["name"], "submit", {"force": True}) if st == 201 else (st, idr)
+        check("F6 a rupiah invoice of the sales_manager at the config rate is not held: 200", st == 200, (st, r))
+        meta = ((sm.call("GET", "/api/v1/meta")[1] or {}).get("models") or {}).get("sales_invoice") or {}
+        helps = {f.get("name"): str(f.get("help")) for f in meta.get("fields", []) if isinstance(f, dict)}
+        check("F6 the kurs field says PPN takes the KMK kurs", "KMK" in helps.get("exchange_rate", ""), helps.get("exchange_rate"))
     st, resp = api.create("sales_invoice", dict(invoice_body(customer, ndt), tax_rate=100))
     check("the over-config message says how to fix an old draft", any("Draft lama" in m for m in messages(resp)), messages(resp))
     st, resp = api.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "T-8", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": -100_000}]})

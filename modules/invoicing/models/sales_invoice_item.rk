@@ -48,7 +48,7 @@ fields:
   - name: ppn_exclude
     type: check
     label: {id: Upah tenaga kerja (di luar dasar PPN)}
-    help: {id: 'Centang untuk baris upah pekerja yang dirinci terpisah; hanya berlaku bila usaha memakai PPN atas fee'}
+    help: {id: 'Centang untuk baris upah pekerja yang dirinci terpisah (bila PPN atas fee). Bagian keuangan memeriksa faktur ini.'}
     default: 'false'
 
   - {name: rate_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Harga (valas)}, default: '0'}
