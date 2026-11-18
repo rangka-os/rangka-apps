@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Monthly summary for the owner: 10 7 1 * * (scheduler.timezone), and by the owner from the flow list. One business_summary record per
+# period (summary_key is unique: a second run for the same period makes and tells nothing), then one notice to the
+# owner (monthly_summary, contract 0066) that links to it. The record keeps the exact figures; the notice text is the
+# record's `message` (short amounts), so the same text works for mail now and WhatsApp later.
+#   - period: one month back from the run day (run on the 1st: the whole previous month)
+#   - sales: submitted sales invoices (grand total), cashier receipts and daily outlet sales of the period. An outlet
+#     and day has one sales source (outlets/outlet_day), so receipts and daily sales never count the same sale twice.
+#   - money in: submitted customer payments, cashier receipts (paid at the counter) and daily takings of the period.
+#   - invoices: submitted, money still owed, due within 7 days from the run day, or already overdue.
+#   - low stock: open stock_reorder rows (stock/stock_low_alert).
+# Each source is read only when its module is installed (app_installed is checked first, so the variable of a skipped
+# step is never read). The owner switches a summary off in the one summary_setting record (made on the first run with
+# every summary on), and its mail in Pengaturan › Notifikasi. Digest mails are not a kernel feature (0066 "Not in this
+# contract"), so this is an app flow.
+# The run day is today, or event.as_of (YYYY-MM-DD) when the owner runs the flow by hand for another day (and in tests).
+name: summary_monthly
+label: {id: Ringkasan bulanan untuk pemilik, en: Monthly summary for the owner}
+description: {id: 'Tiap tanggal 1, pemilik menerima ringkasan sebulan terakhir: penjualan, uang masuk, faktur yang jatuh tempo dan stok yang menipis.'}
+schedule: '10 7 1 * *'
+steps:
+  - {find: summary_setting, as: cfg}
+  - create: summary_setting
+    if: cfg == null
+    set: {key: "'usaha'"}
+    as: cfg
+  - find: business_summary
+    where: "summary_key == 'monthly|' + string(('as_of' in event ? event.as_of : today()) - duration(1))"
+    as: old
+  - find_all: sales_invoice
+    if: "cfg.monthly && old == null && app_installed('invoicing')"
+    where: "docstatus == 1 && posting_date >= add_months(('as_of' in event ? event.as_of : today()), -1) && posting_date < ('as_of' in event ? event.as_of : today())"
+    as: inv
+  - find_all: pos_sale
+    if: "cfg.monthly && old == null && app_installed('pos')"
+    where: "docstatus == 1 && date >= add_months(('as_of' in event ? event.as_of : today()), -1) && date < ('as_of' in event ? event.as_of : today())"
+    as: receipts
+  - find_all: outlet_sales
+    if: "cfg.monthly && old == null && app_installed('outlet_sales')"
+    where: "docstatus == 1 && date >= add_months(('as_of' in event ? event.as_of : today()), -1) && date < ('as_of' in event ? event.as_of : today())"
+    as: daily
+  - find_all: outlet_takings
+    if: "cfg.monthly && old == null && app_installed('outlet_sales')"
+    where: "docstatus == 1 && date >= add_months(('as_of' in event ? event.as_of : today()), -1) && date < ('as_of' in event ? event.as_of : today())"
+    as: takings
+  - find_all: payment
+    if: "cfg.monthly && old == null && app_installed('payments')"
+    where: "docstatus == 1 && direction == 'receive' && payment_date >= add_months(('as_of' in event ? event.as_of : today()), -1) && payment_date < ('as_of' in event ? event.as_of : today())"
+    as: paid
+  - find_all: sales_invoice
+    if: "cfg.monthly && old == null && app_installed('invoicing')"
+    where: "docstatus == 1 && due_date <= ('as_of' in event ? event.as_of : today()) + duration(6) && due_date != '' && outstanding > 0"
+    as: owed
+  - find_all: stock_reorder
+    if: "cfg.monthly && old == null && app_installed('stock')"
+    where: open
+    as: low
+  - create: business_summary
+    if: "cfg.monthly && old == null"
+    set:
+      period: "'monthly'"
+      date_from: "add_months(('as_of' in event ? event.as_of : today()), -1)"
+      date_to: "('as_of' in event ? event.as_of : today()) - duration(1)"
+      summary_key: "'monthly|' + string(('as_of' in event ? event.as_of : today()) - duration(1))"
+      setting: cfg.name
+      sales_total: "(app_installed('invoicing') ? inv.map(i, i.grand_total).sum() : 0) + (app_installed('pos') ? receipts.map(i, i.grand_total).sum() : 0) + (app_installed('outlet_sales') ? daily.map(i, i.net_total).sum() : 0)"
+      sales_count: "(app_installed('invoicing') ? size(inv) : 0) + (app_installed('pos') ? size(receipts) : 0) + (app_installed('outlet_sales') ? size(daily) : 0)"
+      cash_in: "(app_installed('payments') ? paid.map(i, i.amount).sum() : 0) + (app_installed('pos') ? receipts.map(i, i.grand_total).sum() : 0) + (app_installed('outlet_sales') ? takings.map(i, i.received_total).sum() : 0)"
+      due_count: "app_installed('invoicing') ? owed.filter(i, i.due_date >= ('as_of' in event ? event.as_of : today())).size() : 0"
+      due_total: "app_installed('invoicing') ? owed.filter(i, i.due_date >= ('as_of' in event ? event.as_of : today())).map(i, i.outstanding).sum() : 0"
+      overdue_count: "app_installed('invoicing') ? owed.filter(i, i.due_date < ('as_of' in event ? event.as_of : today())).size() : 0"
+      overdue_total: "app_installed('invoicing') ? owed.filter(i, i.due_date < ('as_of' in event ? event.as_of : today())).map(i, i.outstanding).sum() : 0"
+      low_stock_count: "app_installed('stock') ? size(low) : 0"
+    as: s
+  - notify: owner
+    if: "cfg.monthly && old == null"
+    notice: monthly_summary
+    channel: email
+    record: s
+    id: "'monthly:' + string(s.date_to)"
+    title: '{s.title}'
+    template: '{s.message}'

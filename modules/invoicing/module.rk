@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: invoicing
-version: 1.11.0
+version: 1.12.0
 title: {id: Faktur, en: Invoicing}
 summary:
   id: Buat faktur penjualan, pilih cara bayar termasuk QRIS, dan kirim pengingat tagihan.
@@ -12,3 +12,16 @@ optional: {outlets: ^1.0, tax_id: ^1.0, currency: ^1.0, orders: ^1.0, projects: 
 # ledger.post_receivable is a core hook; this one is semantics fixed in docs/kernel-hooks.md.
 # invoicing.from_order is declared by the orders module, where the make_invoice action lives.
 hooks: [invoicing.reverse_receivable]
+# What this module tells people (contract 0066 §1.1), both from flow invoice_due_digest. A person switches the mail of
+# a kind off in Pengaturan › Notifikasi.
+notices:
+  - name: invoice_due
+    label: {id: Faktur jatuh tempo hari ini, en: Invoices due today}
+    description: {id: 'Faktur yang jatuh tempo hari ini dan belum lunas.'}
+    severity: info
+    to: [owner, finance_manager]
+  - name: invoice_overdue
+    label: {id: Faktur lewat jatuh tempo, en: Overdue invoices}
+    description: {id: 'Ada faktur yang baru lewat jatuh tempo dan belum lunas.'}
+    severity: warn
+    to: [owner, finance_manager]

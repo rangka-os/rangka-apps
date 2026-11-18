@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every morning at 07:15 (scheduler.timezone), and by the owner or finance from the flow list: each payroll run that is
+# not closed is checked, and finance and the owner are told (contract 0066). The flow only reads and tells: it makes
+# no slip, submits nothing and never closes or pays a run.
+#   - payroll_ready, once per run: the cut-off period is over, no attendance recap of the period is still a draft, no
+#     field attendance close is still a draft, and the run has at least one slip. Finance checks the draft slips,
+#     submits them and closes the period.
+#   - payroll_due, once a day from three days before the pay date until the pay date, while the run is not closed:
+#     what is ready (slips submitted) and what is missing (draft slips, attendance recaps not submitted, submitted
+#     recaps without a slip because the worker has no pay data, field attendance not closed).
+# Recaps are the monthly ones payroll reads (timesheet with period_to, paid per day), as payslip_from_recap does.
+# The day is today, or event.as_of (YYYY-MM-DD) when the flow is run by hand for another day (and in tests).
+# At most 100 open runs per run of the flow.
+name: payroll_reminder
+label: {id: Pengingat periode gaji, en: Payroll reminder}
+description: {id: 'Tiap pagi, bagian keuangan dan pemilik dikabari periode gaji yang siap diproses dan yang tanggal bayarnya tinggal tiga hari atau kurang, lengkap dengan yang masih kurang. Gaji tidak pernah dijalankan otomatis.'}
+schedule: '15 7 * * *'
+steps:
+  - find_all: payroll_run
+    where: "!closed"
+    sort: period_to
+    limit: 100
+    as: runs
+  - for_each: runs
+    as: run
+    do:
+      - {find: project, where: name == run.project, as: pj}
+      - find_all: payslip
+        where: payroll_run == run.name && docstatus != 2
+        as: slips
+      - find_all: timesheet
+        where: "project == run.project && docstatus != 2 && period_to != '' && rate_basis == 'day' && work_date >= run.period_from && work_date <= run.period_to"
+        as: recaps
+      - find_all: attendance_close
+        where: "project == run.project && docstatus == 0 && period_from <= run.period_to && period_to >= run.period_from"
+        as: closes
+      - if: "('as_of' in event ? event.as_of : today()) > run.period_to && size(slips) > 0 && recaps.filter(t, t.docstatus == 0).size() == 0 && size(closes) == 0"
+        notify: finance_manager
+        notice: payroll_ready
+        channel: email
+        record: run
+        id: "'ready:' + run.name"
+        title: 'Periode gaji {pj != null ? pj.project_name : run.project} siap diproses'
+        template: >-
+          Periode {run.period_from} sampai {run.period_to} sudah lewat dan semua rekap absen sudah diajukan.
+          Slip gaji: {slips.filter(s, s.docstatus == 0).size()} draft menunggu diperiksa, {slips.filter(s, s.docstatus == 1).size()} sudah diajukan.
+          Periksa slip, ajukan, lalu tutup periode gaji.
+      - if: "run.pay_date != '' && days_between(('as_of' in event ? event.as_of : today()), run.pay_date) >= 0 && days_between(('as_of' in event ? event.as_of : today()), run.pay_date) <= 3"
+        notify: finance_manager
+        notice: payroll_due
+        channel: email
+        record: run
+        id: "'due:' + run.name + ':' + ('as_of' in event ? event.as_of : today())"
+        title: "Gaji {pj != null ? pj.project_name : run.project} dibayar {days_between(('as_of' in event ? event.as_of : today()), run.pay_date) == 0 ? 'hari ini' : string(days_between(('as_of' in event ? event.as_of : today()), run.pay_date)) + ' hari lagi'}"
+        template: >-
+          Tanggal bayar {run.pay_date}. Siap: {slips.filter(s, s.docstatus == 1).size()} slip gaji sudah diajukan.
+          Belum: {slips.filter(s, s.docstatus == 0).size()} slip masih draft, {recaps.filter(t, t.docstatus == 0).size()} rekap absen belum diajukan,
+          {recaps.filter(t, t.docstatus == 1 && !slips.exists(s, s.timesheet == t.name)).size()} rekap belum jadi slip, {size(closes)} rekap absen lapangan belum diajukan.
+          Periode gaji belum ditutup.

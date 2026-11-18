@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One record per summary sent to the owner (flows summary_daily, summary_weekly, summary_monthly): the figures of the
+# period as they were on the morning of the run, kept so the notice can link to them and the owner can look back.
+# Written only by those flows; every field is read_only and no role but the owner reads it (the figures are the whole
+# business's sales and money). summary_key (period|date_to) is unique: one summary per period.
+# `message` is the text of the notice: amounts shortened (12,5 juta; 850 ribu) so it stays a short message for mail
+# now and WhatsApp later; the currency fields hold the exact figures.
+name: business_summary
+label: {id: Ringkasan usaha, en: Business summary}
+icon: bar-chart-box-line
+naming: RKS-{YYYY}-{#####}
+title_field: title
+fields:
+  - name: period
+    type: select
+    label: {id: Jenis ringkasan}
+    required: true
+    read_only: true
+    in_list: true
+    options:
+      - {value: daily, label: {id: Harian}}
+      - {value: weekly, label: {id: Mingguan}}
+      - {value: monthly, label: {id: Bulanan}}
+  - {name: date_from, type: date, label: {id: Dari tanggal}, read_only: true, in_list: true}
+  - {name: date_to, type: date, label: {id: Sampai tanggal}, read_only: true, in_list: true}
+  - {name: summary_key, type: data, label: {id: Kunci}, required: true, unique: true, read_only: true}
+  - {name: title, type: data, label: {id: Judul}, compute: "(period == 'daily' ? 'Ringkasan harian ' : (period == 'weekly' ? 'Ringkasan mingguan sampai ' : 'Ringkasan bulanan sampai ')) + string(date_to)"}
+  - {name: sales_total, type: currency, label: {id: Penjualan}, read_only: true, in_list: true}
+  - {name: sales_count, type: int, label: {id: Transaksi tercatat}, read_only: true, in_list: true}
+  - {name: cash_in, type: currency, label: {id: Uang masuk}, read_only: true, in_list: true}
+  - {name: due_count, type: int, label: {id: Faktur jatuh tempo 7 hari ke depan}, read_only: true, depends_on: app_installed('invoicing')}
+  - {name: due_total, type: currency, label: {id: Sisa tagihan jatuh tempo 7 hari ke depan}, read_only: true, depends_on: app_installed('invoicing')}
+  - {name: overdue_count, type: int, label: {id: Faktur lewat jatuh tempo}, read_only: true, depends_on: app_installed('invoicing')}
+  - {name: overdue_total, type: currency, label: {id: Sisa tagihan lewat jatuh tempo}, read_only: true, depends_on: app_installed('invoicing')}
+  - {name: low_stock_count, type: int, label: {id: Barang di bawah batas stok minimum}, read_only: true, depends_on: app_installed('stock')}
+  - name: message
+    type: text
+    label: {id: Ringkasan}
+    compute: >-
+      (period == 'daily' ? 'Kemarin' : (period == 'weekly' ? '7 hari terakhir' : 'Sebulan terakhir')) + ': penjualan Rp ' + (int(sales_total) >= 1000000000 ? string(int(sales_total) / 1000000000) + ',' + string(int(sales_total) / 100000000 % 10) + ' miliar' : (int(sales_total) >= 1000000 ? string(int(sales_total) / 1000000) + ',' + string(int(sales_total) / 100000 % 10) + ' juta' : (int(sales_total) >= 1000 ? string(int(sales_total) / 1000) + ' ribu' : string(int(sales_total))))) + ' dari ' + string(sales_count) + ' transaksi, uang masuk Rp ' + (int(cash_in) >= 1000000000 ? string(int(cash_in) / 1000000000) + ',' + string(int(cash_in) / 100000000 % 10) + ' miliar' : (int(cash_in) >= 1000000 ? string(int(cash_in) / 1000000) + ',' + string(int(cash_in) / 100000 % 10) + ' juta' : (int(cash_in) >= 1000 ? string(int(cash_in) / 1000) + ' ribu' : string(int(cash_in))))) + '.' + (app_installed('invoicing') ? ' Jatuh tempo 7 hari ke depan: ' + string(due_count) + ' faktur (Rp ' + (int(due_total) >= 1000000000 ? string(int(due_total) / 1000000000) + ',' + string(int(due_total) / 100000000 % 10) + ' miliar' : (int(due_total) >= 1000000 ? string(int(due_total) / 1000000) + ',' + string(int(due_total) / 100000 % 10) + ' juta' : (int(due_total) >= 1000 ? string(int(due_total) / 1000) + ' ribu' : string(int(due_total))))) + '). Lewat jatuh tempo: ' + string(overdue_count) + ' faktur (Rp ' + (int(overdue_total) >= 1000000000 ? string(int(overdue_total) / 1000000000) + ',' + string(int(overdue_total) / 100000000 % 10) + ' miliar' : (int(overdue_total) >= 1000000 ? string(int(overdue_total) / 1000000) + ',' + string(int(overdue_total) / 100000 % 10) + ' juta' : (int(overdue_total) >= 1000 ? string(int(overdue_total) / 1000) + ' ribu' : string(int(overdue_total))))) + ').' : '') + (app_installed('stock') ? ' Stok di bawah batas minimum: ' + string(low_stock_count) + ' barang.' : '')
+  - name: setting
+    type: link
+    to: summary_setting
+    label: {id: Pengaturan ringkasan}
+    help: {id: 'Buka untuk mematikan ringkasan harian, mingguan atau bulanan'}
+    read_only: true
+views:
+  list:
+    columns: [title, period, date_to, sales_total, sales_count, cash_in]
+    filters: [period]
+    sort: -date_to
+  form:
+    layout:
+      - section: {id: Ringkasan}
+        fields: [message]
+      - section: {id: Penjualan dan uang masuk}
+        columns:
+          - [period, date_from, date_to]
+          - [sales_total, sales_count, cash_in]
+      - section: {id: Tagihan dan stok}
+        columns:
+          - [due_count, due_total]
+          - [overdue_count, overdue_total, low_stock_count]
+      - section: {id: Pengaturan}
+        fields: [setting]
