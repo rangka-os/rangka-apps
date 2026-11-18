@@ -40,9 +40,11 @@ h2 { font-size: 1.05em; margin-top: 2mm; }
 {{- range $inv := .Related.invoices}}
 {{- $c := .efaktur_code}}
 {{- $tb0 := .dpp}}{{$otb0 := "0"}}{{$vat0 := "0"}}
-{{- /* in the XML exactly when coretax_faktur's filter takes it: 07/08, or a code with PPN charged (audit rekap F1: a coded
+{{- /* in the XML exactly when coretax_faktur's filter takes it: 07/08 with a PPN base above 0, or a code with PPN charged (audit rekap F1: a coded
   invoice with ppn 0, wages only under PPN on the fee or a settlement the down payment covers, is not a faktur pajak) */}}
-{{- $inx := or (eq $c "07") (eq $c "08") (and $c .ppn)}}
+{{- /* a 07/08 with PPN base 0 (wages only in a fee-only PT, a settlement the down payment covers) states no tax base,
+  so it is no faktur pajak either: counted under Z like a 04 with PPN 0 (card t_d3395a0a) */}}
+{{- $inx := or (and (or (eq $c "07") (eq $c "08")) .ppn_base) (and $c .ppn)}}
 {{- if $inx}}
 {{- $fx := and .currency (ne .currency "IDR")}}
 {{- $pb := .dpp}}{{if .ppn_base}}{{$pb = .ppn_base}}{{end}}
@@ -66,8 +68,8 @@ h2 { font-size: 1.05em; margin-top: 2mm; }
 {{- if and $old $inx}}{{$g = "P"}}{{$pc = add $pc 1}}{{$pt = add $pt $tb0}}{{$pp = add $pp .ppn}}
 {{- else if $old}}{{$g = "X"}}
 {{- else if or (eq $c "02") (eq $c "03")}}{{$g = "B"}}{{$bc = add $bc 1}}{{$bt = add $bt $tb0}}{{$bo = add $bo $otb0}}{{$bv = add $bv $vat0}}{{$bp = add $bp .ppn}}
-{{- else if eq $c "07"}}{{$g = "C"}}{{$cc = add $cc 1}}{{$ct = add $ct $tb0}}{{$co = add $co $otb0}}{{$cv = add $cv $vat0}}{{$cp = add $cp .ppn}}
-{{- else if eq $c "08"}}{{$g = "D"}}{{$dc = add $dc 1}}{{$dt = add $dt $tb0}}{{$do = add $do $otb0}}{{$dv = add $dv $vat0}}{{$dp = add $dp .ppn}}
+{{- else if and $inx (eq $c "07")}}{{$g = "C"}}{{$cc = add $cc 1}}{{$ct = add $ct $tb0}}{{$co = add $co $otb0}}{{$cv = add $cv $vat0}}{{$cp = add $cp .ppn}}
+{{- else if and $inx (eq $c "08")}}{{$g = "D"}}{{$dc = add $dc 1}}{{$dt = add $dt $tb0}}{{$do = add $do $otb0}}{{$dv = add $dv $vat0}}{{$dp = add $dp .ppn}}
 {{- else if $inx}}{{$g = "A"}}{{$ac = add $ac 1}}{{$at = add $at $tb0}}{{$ao = add $ao $otb0}}{{$av = add $av $vat0}}{{$ap = add $ap .ppn}}
 {{- else if $c}}{{$g = "Z"}}{{$zc = add $zc 1}}{{$zt = add $zt .dpp}}
 {{- else if .ppn}}{{$g = "G"}}{{$gc = add $gc 1}}{{$gt = add $gt .dpp}}{{$gp = add $gp .ppn}}
@@ -90,11 +92,11 @@ h2 { font-size: 1.05em; margin-top: 2mm; }
 </table></div>
 {{if .Truncated.invoices}}<p class="note"><strong>Daftar dipotong:</strong> hanya 1.000 faktur pertama yang dihitung, jadi rekap di atas lebih kecil dari yang sebenarnya.</p>{{end}}
 {{- /* audit rekap F2/F3: an invoice of this period cancelled and replaced in another period. With a faktur pajak (the
-  XML's own test: 07/08, or a code with PPN) its Faktur Pengganti goes to this period's pembetulan and is listed with its
+  XML's own test: 07/08 with a PPN base, or a code with PPN) its Faktur Pengganti goes to this period's pembetulan and is listed with its
   amounts; without one it is counted here in its group (export, Pasal 4A, PPN 0), where the original was */}}
 {{- $rn := "0"}}{{$rc := "0"}}{{$rt := "0"}}{{$rp := "0"}}
 {{- range .Related.replacements}}{{$pd := isodate .posting_date}}{{if or (gt $pd $.Doc.period_end) (lt $pd $.Doc.period_start)}}
-{{- $c := .efaktur_code}}{{$inx := or (eq $c "07") (eq $c "08") (and $c .ppn)}}
+{{- $c := .efaktur_code}}{{$inx := or (and (or (eq $c "07") (eq $c "08")) .ppn_base) (and $c .ppn)}}
 {{- if eq $rn "0"}}
 <h2>Faktur yang diganti di masa lain</h2>
 <p class="note">Faktur asalnya di masa ini sudah dibatalkan dan diganti dengan tanggal di masa lain. Yang punya faktur pajak: buat Faktur Pengganti di Coretax dan masukkan ke pembetulan SPT masa ini. Yang tidak punya faktur pajak dihitung di kelompoknya di rekap masa ini; bila faktur asalnya dulu sudah punya faktur pajak di Coretax, batalkan faktur pajak itu. DPP yang tercantum adalah DPP faktur pajak (tanpa upah bila PPN hanya atas fee).</p>

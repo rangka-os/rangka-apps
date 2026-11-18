@@ -12,8 +12,9 @@ related:
     model: sales_invoice
     range: {posting_date: [period_start, period_end]}
     # 07/08 (tidak dipungut, dibebaskan): a faktur pajak with PPN stated but not collected (card t_611be720); export
-    # (PEB is its faktur) and Pasal 4A (no faktur) stay out
-    filter: "docstatus == 1 && kind != 'retention' && ((tax_rate > 0 && ppn > 0) || efaktur_code == '07' || efaktur_code == '08')"
+    # (PEB is its faktur) and Pasal 4A (no faktur) stay out. A 07/08 with PPN base 0 (wages only in a fee-only PT, a
+    # settlement the down payment covers) has no tax base to state and is no faktur pajak, like a 04 with PPN 0 (card t_d3395a0a)
+    filter: "docstatus == 1 && kind != 'retention' && ((tax_rate > 0 && ppn > 0) || ((efaktur_code == '07' || efaktur_code == '08') && ppn_base > 0))"
     sort: name
     children: true
     limit: 1000
