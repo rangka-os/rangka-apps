@@ -44,6 +44,13 @@ For course schools, tutoring centres, online courses and company training. Site:
   hidden (contract 0027), as are students' phone, email, guardian and notes and programs' prices (students and programs
   have no row scope); no charges, invoices or the overview dashboard.
 
+## Upgrading
+- From courses before 1.3.0 (invoicing before 1.8.0) on a PKP site: a draft course invoice at 0% made by the old flow
+  has no ground (`tax_rate_reason`), and every save of a PKP invoice at 0% needs one (`zero_rate_needs_reason`). When
+  an amended charge replaces such a draft, the flow first gives it the ground it writes today (dibebaskan, education
+  under PP 49/2022) and then marks it replaced (card t_a010bbec). Any other 0% draft without a ground in a PKP org
+  (made by hand before invoicing 1.8.0) waits for the owner or finance to pick its ground before it can be saved.
+
 ## Known limits
 - On a PKP site a VAT-exempt course invoice has tax rate 0 but no Faktur Pajak code 08 (invoicing/coretax, audit L4).
 - Attendance does not refuse the same student twice in one session (the CEL validator has no nested lambdas); the

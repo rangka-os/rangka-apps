@@ -35,6 +35,15 @@ steps:
   - find: sales_invoice
     where: event.amended_from != '' && docstatus == 0 && notes.contains('[' + event.amended_from + ']')
     as: old
+  # card t_a010bbec (audit zero-rate-reason N3): a 0% draft this flow made before courses 1.3.0 has no tax_rate_reason,
+  # and in a PKP org every save of it is refused (zero_rate_needs_reason), so marking it replaced failed with a tax
+  # message the course admin cannot fix. Such a draft billed a VAT-exempt course (that was the only 0% path), so it gets
+  # the ground this flow writes today: dibebaskan, education under PP 49/2022. Only a 0% draft without a ground is touched.
+  - if: "old != null && tax.pkp && old.tax_rate == 0 && !(old.tax_rate_reason in ['export', 'exempt', 'not_collected', 'not_taxable'])"
+    update: old
+    set:
+      tax_rate_reason: "'exempt'"
+      coretax_facility: "'education_pp49'"
   - if: old != null
     update: old
     set:
