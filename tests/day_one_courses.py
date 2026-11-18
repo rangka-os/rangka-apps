@@ -525,34 +525,42 @@ def scenario_courses_pkp_old_draft(api):
         k = d1.Kernel("demo-kursus", state, site_dir=site_dir)
         k.start()
         own = Api(k.base)
-        st, c = own.create("course_charge", {"enrollment": "DFT-2026-00004", "invoice_date": "2026-11-07", "month": "2026-10"})
-        st, resp = own.verb("course_charge", c.get("name", ""), "submit") if st == 201 else (st, c)
-        if not check("N3: the school (not yet PKP) bills SPP 2026-10", st == 200, (st, resp)):
-            return
-        ch = submitted_name(resp, c["name"])
-        inv = invoice_of(own, ch, 0)
-        if not check("N3: its draft invoice", inv is not None, ch):
-            return
-        st, r = own.patch("sales_invoice", inv["name"], {"tax_rate_reason": "", "coretax_facility": ""})
-        old = own.get("sales_invoice", inv["name"])
-        eq("N3: the draft as courses 1.2 left it: 0%, no ground", (st, old.get("tax_rate"), old.get("tax_rate_reason") or ""), (200, 0, ""))
+        # SPP of a VAT-exempt program (PRG-002) and the full fee of a taxable one (PRG-003, Excel training), both billed
+        # while the school was not PKP: both drafts are 0% without a ground (audit F1 of the fix)
+        cases = (("exempt SPP", {"enrollment": "DFT-2026-00004", "month": "2026-10"}), ("taxable training", {"enrollment": "DFT-2026-00006"}))
+        drafts = {}
+        for label, body in cases:
+            st, c = own.create("course_charge", dict(body, invoice_date="2026-11-07"))
+            st, resp = own.verb("course_charge", c.get("name", ""), "submit") if st == 201 else (st, c)
+            if not check(f"N3 {label}: the school (not yet PKP) bills it", st == 200, (st, resp)):
+                return
+            ch = submitted_name(resp, c["name"])
+            inv = invoice_of(own, ch, 0)
+            if not check(f"N3 {label}: its draft invoice", inv is not None, ch):
+                return
+            st, r = own.patch("sales_invoice", inv["name"], {"tax_rate_reason": "", "coretax_facility": ""})
+            old = own.get("sales_invoice", inv["name"])
+            eq(f"N3 {label}: the draft as an old flow left it: 0%, no ground", (st, old.get("tax_rate"), old.get("tax_rate_reason") or ""), (200, 0, ""))
+            drafts[label] = (ch, inv["name"])
         k.stop_serve()
         open(cfg, "w").write(text.replace("pkp: false}", "pkp: true}"))
         k.serve()
-        st, r = own.patch("sales_invoice", inv["name"], {"due_date": "2026-11-30"})
+        st, r = own.patch("sales_invoice", drafts["exempt SPP"][1], {"due_date": "2026-11-30"})
         check("N3: in the PKP org a plain save of the old 0% draft asks for its ground (422, by design)", refused(st, r, "perlu dasar"), (st, r))
-        st, r = own.verb("course_charge", ch, "cancel")
-        am = amend(own, ch) if st == 200 else None
-        if not check("N3: the charge is cancelled (its invoice is a draft) and amended", am, (st, r)):
-            return
-        st, r, am_name = submit(own, "course_charge", am)
-        check("N3: the amended charge submits (200): the flow marking the old draft is no longer refused", st == 200, (st, r))
-        old = own.get("sales_invoice", inv["name"])
-        eq("N3: the old draft gets the ground the flow writes today (exempt, PP 49/2022 education) and says it was replaced",
-           (old.get("tax_rate"), old.get("tax_rate_reason"), old.get("coretax_facility"), "diganti" in (old.get("notes") or "")), (0, "exempt", "education_pp49", True))
-        new = invoice_of(own, am_name, 0) if st == 200 else None
-        check("N3: the amended charge has its own draft invoice at 0%, ground exempt",
-              new is not None and new.get("tax_rate") == 0 and new.get("tax_rate_reason") == "exempt", new)
+        want = {"exempt SPP": (0, "exempt", "education_pp49"), "taxable training": (12, "", "")}
+        for label, (ch, inv_name) in drafts.items():
+            st, r = own.verb("course_charge", ch, "cancel")
+            am = amend(own, ch) if st == 200 else None
+            if not check(f"N3 {label}: the charge is cancelled (its invoice is a draft) and amended", am, (st, r)):
+                continue
+            st, r, am_name = submit(own, "course_charge", am)
+            check(f"N3 {label}: the amended charge submits (200): the flow marking the old draft is no longer refused", st == 200, (st, r))
+            old = own.get("sales_invoice", inv_name)
+            eq(f"N3 {label}: the old draft gets what the flow writes today for the program and says it was replaced",
+               (old.get("tax_rate"), old.get("tax_rate_reason") or "", old.get("coretax_facility") or "", "diganti" in (old.get("notes") or "")), want[label] + (True,))
+            new = invoice_of(own, am_name, 0) if st == 200 else None
+            check(f"N3 {label}: the amended charge has its own draft invoice at the same rate and ground",
+                  new is not None and (new.get("tax_rate"), new.get("tax_rate_reason") or "") == want[label][:2], new)
     finally:
         if k is not None:
             k.stop()

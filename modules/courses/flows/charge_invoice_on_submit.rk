@@ -37,13 +37,19 @@ steps:
     as: old
   # card t_a010bbec (audit zero-rate-reason N3): a 0% draft this flow made before courses 1.3.0 has no tax_rate_reason,
   # and in a PKP org every save of it is refused (zero_rate_needs_reason), so marking it replaced failed with a tax
-  # message the course admin cannot fix. Such a draft billed a VAT-exempt course (that was the only 0% path), so it gets
-  # the ground this flow writes today: dibebaskan, education under PP 49/2022. Only a 0% draft without a ground is touched.
-  - if: "old != null && tax.pkp && old.tax_rate == 0 && !(old.tax_rate_reason in ['export', 'exempt', 'not_collected', 'not_taxable'])"
+  # message the course admin cannot fix. The old flow wrote 0% for a VAT-exempt course, and any course is 0% when it was
+  # billed before the school became PKP. So the draft gets what this flow writes today for the same program (the
+  # amendment's vat_exempt): exempt course -> ground dibebaskan, education under PP 49/2022; taxable course -> the
+  # company's PPN rate. Only a 0% draft without a ground is touched; it is marked replaced below and never submitted.
+  - if: "old != null && tax.pkp && old.tax_rate == 0 && !(old.tax_rate_reason in ['export', 'exempt', 'not_collected', 'not_taxable']) && event.vat_exempt"
     update: old
     set:
       tax_rate_reason: "'exempt'"
       coretax_facility: "'education_pp49'"
+  - if: "old != null && tax.pkp && old.tax_rate == 0 && !(old.tax_rate_reason in ['export', 'exempt', 'not_collected', 'not_taxable']) && !event.vat_exempt"
+    update: old
+    set:
+      tax_rate: tax.ppn_rate
   - if: old != null
     update: old
     set:
