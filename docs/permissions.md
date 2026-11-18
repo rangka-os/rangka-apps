@@ -98,6 +98,8 @@ least its value (a draft, held or cancelled PO counts as none), and an outgoing 
 (a PO, bill or payment in another currency than IDR always waits, whatever kurs the maker typed, and a bill does so
 even on an approved PO)
 (`custom/vendor_bill.rk`, `custom/payment.rk`), so the PO approval cannot be skipped by billing or paying directly.
+In a PKP org a foreign-currency `vendor_bill` with PPN waits for `finance_manager` on submit (`fx_rate_check`, like the
+`sales_invoice` one): its kurs sets the input PPN credited in the SPT, which must follow the KMK kurs.
 An approver who submits self-approves, so a quotation by a `project_admin` and a big invoice by a `sales_manager` are held;
 both hold: a PO is never approved by its maker.
 
