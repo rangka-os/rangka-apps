@@ -30,6 +30,7 @@ def bind(m):
     for k in ("ok", "fail", "check", "eq", "CTX", "Api", "messages", "rows_all", "dashboard", "num", "kernel_today", "denied", "secrets"):
         H[k] = getattr(m, k)
     globals().update(H)
+    globals()["D1"] = m   # Kernel and ROOT, for a scenario on its own kernel
     m.SITE_ORGS["demo-kursus"] = [("kursus_contoh", "demo-kursus")]
     m.SITE_MEMBERS["demo-kursus"] = [("ca", "course_admin"), ("ins", "instructor"), ("fm", "finance_manager")]
     m.MATRIX.update(COURSE_MATRIX)
@@ -504,5 +505,68 @@ def scenario_courses_roll(api):
             check("the course admin's save ticks nothing", api.get("course_session", s2["name"]).get("attendance_taken") is False, s2["name"])
 
 
+def scenario_courses_pkp_old_draft(api):
+    """Card t_a010bbec (audit zero-rate-reason N3): a 0% draft the courses flow made before courses 1.3.0 has no ground
+    (tax_rate_reason). In a PKP org every save of it is refused, and the flow saves it when an amended charge replaces
+    it. On its own kernel: the school bills a month while not PKP, the draft is set back to what the old flow wrote (0%,
+    no ground), the school becomes PKP, then the charge is cancelled, amended and submitted again."""
+    import os
+    import shutil
+    import tempfile
+    d1 = D1
+    state, k = None, None
+    try:
+        state = tempfile.mkdtemp(prefix="day-one-kursus-pkp-")
+        site_dir = os.path.join(state, "site")
+        shutil.copytree(os.path.join(d1.ROOT, "examples", "sites", "demo-kursus"), site_dir)
+        cfg = os.path.join(site_dir, "config.rk")
+        text = open(cfg).read()
+        assert text.count("tax: {pkp: false}") == 1 and "pkp: false}" in text
+        k = d1.Kernel("demo-kursus", state, site_dir=site_dir)
+        k.start()
+        own = Api(k.base)
+        # SPP of a VAT-exempt program (PRG-002) and the full fee of a taxable one (PRG-003, Excel training), both billed
+        # while the school was not PKP: both drafts are 0% without a ground (audit F1 of the fix)
+        cases = (("exempt SPP", {"enrollment": "DFT-2026-00004", "month": "2026-10"}), ("taxable training", {"enrollment": "DFT-2026-00006"}))
+        drafts = {}
+        for label, body in cases:
+            st, c = own.create("course_charge", dict(body, invoice_date="2026-11-07"))
+            st, resp = own.verb("course_charge", c.get("name", ""), "submit") if st == 201 else (st, c)
+            if not check(f"N3 {label}: the school (not yet PKP) bills it", st == 200, (st, resp)):
+                return
+            ch = submitted_name(resp, c["name"])
+            inv = invoice_of(own, ch, 0)
+            if not check(f"N3 {label}: its draft invoice", inv is not None, ch):
+                return
+            st, r = own.patch("sales_invoice", inv["name"], {"tax_rate_reason": "", "coretax_facility": ""})
+            old = own.get("sales_invoice", inv["name"])
+            eq(f"N3 {label}: the draft as an old flow left it: 0%, no ground", (st, old.get("tax_rate"), old.get("tax_rate_reason") or ""), (200, 0, ""))
+            drafts[label] = (ch, inv["name"])
+        k.stop_serve()
+        open(cfg, "w").write(text.replace("pkp: false}", "pkp: true}"))
+        k.serve()
+        st, r = own.patch("sales_invoice", drafts["exempt SPP"][1], {"due_date": "2026-11-30"})
+        check("N3: in the PKP org a plain save of the old 0% draft asks for its ground (422, by design)", refused(st, r, "perlu dasar"), (st, r))
+        want = {"exempt SPP": (0, "exempt", "education_pp49"), "taxable training": (12, "", "")}
+        for label, (ch, inv_name) in drafts.items():
+            st, r = own.verb("course_charge", ch, "cancel")
+            am = amend(own, ch) if st == 200 else None
+            if not check(f"N3 {label}: the charge is cancelled (its invoice is a draft) and amended", am, (st, r)):
+                continue
+            st, r, am_name = submit(own, "course_charge", am)
+            check(f"N3 {label}: the amended charge submits (200): the flow marking the old draft is no longer refused", st == 200, (st, r))
+            old = own.get("sales_invoice", inv_name)
+            eq(f"N3 {label}: the old draft gets what the flow writes today for the program and says it was replaced",
+               (old.get("tax_rate"), old.get("tax_rate_reason") or "", old.get("coretax_facility") or "", "diganti" in (old.get("notes") or "")), want[label] + (True,))
+            new = invoice_of(own, am_name, 0) if st == 200 else None
+            check(f"N3 {label}: the amended charge has its own draft invoice at the same rate and ground",
+                  new is not None and (new.get("tax_rate"), new.get("tax_rate_reason") or "") == want[label][:2], new)
+    finally:
+        if k is not None:
+            k.stop()
+        if state is not None:
+            shutil.rmtree(state, ignore_errors=True)
+
 SCENARIOS = [setup_demo_kursus, scenario_courses_fixtures, scenario_courses_quota, scenario_courses_race, scenario_courses_billing,
-             scenario_courses_audit, scenario_courses_attendance, scenario_courses_dashboard, scenario_courses_roll]
+             scenario_courses_audit, scenario_courses_attendance, scenario_courses_dashboard, scenario_courses_roll,
+             scenario_courses_pkp_old_draft]

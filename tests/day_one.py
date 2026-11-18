@@ -4179,6 +4179,54 @@ def scenario_tax_jasa(api):
         meta = ((sm.call("GET", "/api/v1/meta")[1] or {}).get("models") or {}).get("sales_invoice") or {}
         helps = {f.get("name"): str(f.get("help")) for f in meta.get("fields", []) if isinstance(f, dict)}
         check("F6 the kurs field says PPN takes the KMK kurs", "KMK" in helps.get("exchange_rate", ""), helps.get("exchange_rate"))
+        # card t_d7bf36b3 (audit ppn-base-fx N1): the purchase-side twin. The kurs of a foreign bill sets its rupiah DPP and
+        # the input PPN (PPN masukan) credited in the SPT; a purchasing_manager drafts it with any kurs, the submit waits for finance.
+        pm = CTX.get("pm")
+        if pm is None:
+            fail("vendor bill kurs: the purchasing_manager member", CTX.get("login_error", "not signed in"))
+        else:
+            ubill = lambda no, kurs, vendor="VND-0001", fx=10_000: {"vendor": vendor, "bill_no": no, "bill_date": "2026-11-10", "currency": "USD",
+                                                                     "exchange_rate": kurs, "items": [{"item": "BRG-0004", "qty": 1, "rate": 0, "rate_fx": fx}]}
+            held = lambda name: [a for a in approvals_of(api, "vendor_bill", name) if a.get("state") == "pending" and a.get("policy") == "fx_rate_check"]
+            st, vb = pm.create("vendor_bill", ubill("FXK-1", 1.01))
+            eq("N1 purchasing_manager drafts a PKP vendor's USD 10.000 bill at kurs 1,01 (PPN masukan Rp 1.111)", (st, (vb or {}).get("ppn")), (201, 1_111))
+            if st == 201:
+                st, r = pm.verb("vendor_bill", vb["name"], "submit")
+                pend = held(vb["name"])
+                check("N1 the purchasing_manager's USD bill at kurs 1,01: held for finance (202, fx_rate_check)", st == 202 and pend, (st, r, pend))
+                if pend:
+                    st, r = decide(pm, pend[0]["id"])
+                    check("N1 the purchasing_manager cannot approve its own kurs (403)", st == 403, (st, r))
+                    st, r = decide(fm, pend[0]["id"], "reject", "Kurs KMK minggu ini 16.000")
+                    check("N1 finance rejects the kurs 1,01 with a reason; the bill stays a draft", st == 200 and api.get("vendor_bill", vb["name"]).get("docstatus") == 0, (st, r))
+                pm.call("PATCH", f"/api/v1/r/vendor_bill/{pm.q(vb['name'])}", {"exchange_rate": 16000, "items": [{"item": "BRG-0004", "qty": 1, "rate": 0, "rate_fx": 5_000}]})
+                st, r = pm.verb("vendor_bill", vb["name"], "submit")
+                pend = held(vb["name"])
+                st2, r2 = decide(fm, pend[0]["id"]) if st == 202 and pend else (st, r)
+                done = api.get("vendor_bill", ((r2 or {}).get("record") or {}).get("name") or vb["name"])
+                trail = [(a.get("policy"), a.get("state"), bool(a.get("decided_by"))) for n in {vb["name"], done.get("name", vb["name"])} for a in approvals_of(api, "vendor_bill", n)]
+                check("N1 USD 5.000 at kurs 16.000, finance approves: submitted, PPN masukan 8.800.000, the decision on record",
+                      st == 202 and st2 == 200 and done.get("docstatus") == 1 and done.get("ppn") == 8_800_000 and ("fx_rate_check", "approved", True) in trail,
+                      (st, st2, done.get("ppn"), trail))
+            st, own = api.create("vendor_bill", ubill("FXK-2", 16000))
+            st, r = api.verb("vendor_bill", own["name"], "submit") if st == 201 else (st, own)
+            check("N1 the owner submits a USD bill with PPN: 200 (self-approved)", st == 200, (st, r))
+            ownn = (r or {}).get("name", (own or {}).get("name"))
+            st, r = pm.verb("vendor_bill", ownn, "cancel", {})
+            st, am = pm.verb("vendor_bill", ownn, "amend", {}) if st == 200 else (st, r)
+            if check("N1 purchasing_manager cancels and amends the owner's USD bill", st in (200, 201) and (am or {}).get("name"), (st, am)):
+                pm.call("PATCH", f"/api/v1/r/vendor_bill/{pm.q(am['name'])}", {"exchange_rate": 1.01})
+                st, r = pm.verb("vendor_bill", am["name"], "submit")
+                check("N1 the amendment at kurs 1,01 submitted by the purchasing_manager: held for finance (202, fx_rate_check)", st == 202 and held(am["name"]), (st, r))
+            st, idr = pm.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "FXK-3", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": 100_000}]})
+            st, r = pm.verb("vendor_bill", idr["name"], "submit") if st == 201 else (st, idr)
+            check("N1 a rupiah bill with PPN of the purchasing_manager is not held: 200", st == 200, (st, r))
+            st, np_ = pm.create("vendor_bill", ubill("FXK-4", 16000, vendor="VND-0002"))
+            st, r = pm.verb("vendor_bill", np_["name"], "submit") if st == 201 else (st, np_)
+            check("N1 a USD bill of a non-PKP vendor (no PPN masukan) is not held by fx_rate_check: 200", st == 200 and not held((r or {}).get("name", np_.get("name"))), (st, r))
+            vmeta = ((pm.call("GET", "/api/v1/meta")[1] or {}).get("models") or {}).get("vendor_bill") or {}
+            vhelps = {f.get("name"): str(f.get("help")) for f in vmeta.get("fields", []) if isinstance(f, dict)}
+            check("N1 the bill's kurs field says PPN masukan takes the KMK kurs", "KMK" in vhelps.get("exchange_rate", ""), vhelps.get("exchange_rate"))
     st, resp = api.create("sales_invoice", dict(invoice_body(customer, ndt), tax_rate=100))
     check("the over-config message says how to fix an old draft", any("Draft lama" in m for m in messages(resp)), messages(resp))
     st, resp = api.create("vendor_bill", {"vendor": "VND-0001", "bill_no": "T-8", "bill_date": "2026-11-10", "items": [{"item": "BRG-0004", "qty": 1, "rate": -100_000}]})

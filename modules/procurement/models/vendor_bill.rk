@@ -182,7 +182,9 @@ fields:
     type: text
     label: {id: Catatan}
   - {name: currency, type: data, label: {id: Mata uang}, default: "'IDR'"}
-  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency
+  # IDR per 1 unit of the foreign currency. With PPN on the bill in a PKP org the submit waits for finance (approval
+  # fx_rate_check): the rupiah DPP and input PPN (PPN masukan) follow this kurs, which must be the KMK kurs (PP 44/2022 art. 21).
+  - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1', help: {id: 'Rupiah per 1 unit valas. PPN masukan memakai kurs Menteri Keuangan (KMK) minggu tanggal faktur; bagian keuangan memeriksanya.'}}
   - {name: subtotal_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Subtotal (valas)}, compute: "sum(items.map(i, i.amount_fx))"}
   - {name: dpp_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: DPP (valas)}, compute: "subtotal_fx"}
   - {name: ppn_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: PPN (valas)}, compute: "round(dpp_fx * dpp_num / dpp_den * tax_rate / 100, 2)"}
@@ -255,6 +257,17 @@ rules:
     on: save
     check: "items.map(i, i.rate < 0 || i.rate_fx < 0 ? 1 : 0).sum() == 0"
     message: {id: Harga tidak boleh negatif}
+approvals:
+  # The kurs of a foreign bill sets its rupiah DPP and the input PPN credited in the SPT (card t_d7bf36b3; audit
+  # ppn-base-fx N1, the purchase-side twin of sales_invoice fx_rate_check). A purchasing_manager must still draft the
+  # bill with its kurs, so the submit waits for finance instead of a field lock; read from the stored draft, so amend
+  # copies and drafts from before the upgrade are covered. Finance and the owner approve their own. A bill without PPN
+  # (non-PKP vendor or org) credits no PPN masukan and is left to the site's own spending approvals.
+  - name: fx_rate_check
+    on: submit
+    when: "tax.pkp && tax_rate > 0 && currency != '' && currency != 'IDR'"
+    approvers: [finance_manager]
+    label: {id: 'Tagihan valas dengan PPN: kurs pajak (KMK) perlu diperiksa keuangan', en: 'Foreign-currency bill with PPN: finance checks the tax rate (KMK)'}
 views:
   list:
     columns: [name, vendor, bill_no, bill_date, due_date, status, amount_due, outstanding]

@@ -12,7 +12,9 @@
 {{- range .Related.invoices}}{{$inv := .}}
 {{- $fx := and .currency (ne .currency "IDR")}}
 {{- /* an invoice submitted before ppn_base existed has none (the kernel leaves such computes empty on frozen documents):
-  its PPN was taken on the whole DPP */}}
+  its PPN was taken on the whole DPP. A 0 base never reaches here: a code with PPN has a base above 0, and a 07/08 with
+  base 0 (wages only in a fee-only PT, or a settlement the down payment covers) is filtered out as no faktur pajak
+  (card t_d3395a0a); every 07/08 has a stored base, which is older than the 07/08 codes */}}
 {{- $pb := .dpp}}{{if .ppn_base}}{{$pb = .ppn_base}}{{end}}
 {{- $fee := ne (dec $pb 2) (dec .dpp 2)}}
 {{- /* 07/08: the faktur states the PPN the facility leaves uncollected at the company's rate (coretax_vat_rate, frozen on

@@ -670,6 +670,22 @@ def scenario_ppn_fee_only(api):
     if check("fee-only PT: wages-only invoice", st == 201 and wo.get("ppn_base") == 0 and wo.get("ppn") == 0, (st, wo)):
         check_print("wages-only invoice print", fee, "sales_invoice", wo["name"], "",
                     ["Upah tenaga kerja di luar dasar PPN (PMK 83/2012)", "-Rp 50.000.000", "Dasar PPN", "Rp 0"], must_not=["Rp 45.833.333"])
+    # card t_d3395a0a (audit coretax-rekap N9): a 07 (tidak dipungut, bonded zone) in the fee-only PT. With wages only its
+    # PPN base is 0: no tax base to state, so no faktur pajak (like a 04 with PPN 0), not a faktur at the wage DPP. With a
+    # fee line the faktur states the fee only.
+    f07 = {"tax_rate": 0, "tax_rate_reason": "not_collected", "coretax_facility": "bonded_zone", "customs_doc_period": "072031"}
+    w07 = fee.create("sales_invoice", dict(f07, customer=cu, posting_date="2031-07-20", due_date="2031-07-20", customs_doc="00000040000020310714000201",
+                                           items=[dict(lines[0], rate=30_000_000)]))[1]
+    st, resp = fee.verb("sales_invoice", w07.get("name", ""), "submit", {"force": True})
+    w07 = fee.get("sales_invoice", (resp or {}).get("name", w07.get("name"))) if st == 200 else {}
+    eq("fee-only PT: wages-only 07 invoice submitted: code 07, DPP 30.000.000, PPN base 0, PPN 0",
+       (st, w07.get("efaktur_code"), w07.get("dpp"), w07.get("ppn_base"), w07.get("ppn")), (200, "07", 30_000_000, 0, 0))
+    m07 = fee.create("sales_invoice", dict(f07, customer=cu, posting_date="2031-07-21", due_date="2031-07-21", customs_doc="00000040000020310714000202",
+                                           items=[dict(lines[0], rate=40_000_000), dict(lines[2], rate=5_000_000)]))[1]
+    st, resp = fee.verb("sales_invoice", m07.get("name", ""), "submit", {"force": True})
+    m07 = fee.get("sales_invoice", (resp or {}).get("name", m07.get("name"))) if st == 200 else {}
+    eq("fee-only PT: 07 invoice wages 40.000.000 + fee 5.000.000 submitted: PPN base 5.000.000, PPN 0",
+       (st, m07.get("efaktur_code"), m07.get("ppn_base"), m07.get("ppn")), (200, "07", 5_000_000, 0))
     # Coretax: the fee-only faktur carries BPJS + fee only
     seller = "9" + "0" * 13 + "99"   # a made-up NPWP
     st, tp = fee.create("tax_period", {"year": "2031", "month": "07", "seller_tin": seller, "seller_nitku": seller + "000000"})
@@ -692,6 +708,19 @@ def scenario_ppn_fee_only(api):
         check("OtherTaxBase = TaxBase x 11/12, VAT = OtherTaxBase x 12%", r2(Decimal(g_.findtext("TaxBase")) * 11 / 12) == Decimal(g_.findtext("OtherTaxBase"))
               and r2(Decimal(g_.findtext("OtherTaxBase")) * 12 / 100) == Decimal(g_.findtext("VAT")), [(c.tag, c.text) for c in g_])
     check("RefDesc says the wages are outside the DPP (PMK 83/2012)", "PMK 83/2012" in t.findtext("RefDesc"), t.findtext("RefDesc"))
+    refs = {t_.findtext("RefDesc").split(";")[0]: t_ for t_ in ET.fromstring(body.encode()).findall("ListOfTaxInvoice/TaxInvoice")}
+    check("t_d3395a0a: the wages-only 07 (PPN base 0) is not in the faktur XML", w07.get("name") and w07["name"] not in refs, sorted(refs))
+    t7 = refs.get(m07.get("name"))
+    if check("t_d3395a0a: the 07 with a fee line is in the faktur XML", t7 is not None, sorted(refs)):
+        eq("t_d3395a0a: its faktur states the fee only: code 07, one line at TaxBase 5.000.000",
+           (t7.findtext("TrxCode"), [g_.findtext("TaxBase") for g_ in t7.findall("ListOfGoodService/GoodService")]), ("07", ["5000000"]))
+    st, page, _ = fee.print_html("tax_period", tp["name"], "rekap_ppn")
+    import re as _re
+    grp = dict(_re.findall(r'<tr data-invoice="([^"]*)" data-group="([^"]*)">', page)) if st == 200 else {}
+    eq("t_d3395a0a: rekap July: the wages-only 07 under Z (no faktur pajak), the 07 with a fee line under C",
+       (grp.get(w07.get("name")), grp.get(m07.get("name"))), ("Z", "C"))
+    c_row = {a.get("group"): a for a in (dict(_re.findall(r'data-([a-z]+)="([^"]*)"', t_)) for t_ in _re.findall(r"<tr[^>]*data-count=[^>]*>", page))}.get("C", {})
+    eq("t_d3395a0a: rekap July group C: one faktur at DPP 5.000.000, as the XML", (c_row.get("count"), Decimal(c_row.get("dpp") or "0")), ("1", Decimal(5_000_000)))
     # audit C1-3 H2: a settlement deducting a down payment subtracts the PPN base the DP invoice already taxed (its own
     # ppn_base in proportion), like PPh 23. Contract: wages 100.000.000 + fee 10.000.000; DP 55.000.000 billed as
     # wages 50.000.000 + fee 5.000.000. PPN base over both invoices = the fee 10.000.000.
