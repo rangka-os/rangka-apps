@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A voided sale gives its promos back: one reverse row (the amount negated) for each post row the sale wrote, so a
+# voucher use and a coupon are free again and the promo's cost shrinks. The amounts come from the cancelled sale
+# itself (the same expressions as promotion_on_sale), since the ledger's money is hidden from the cashier. An amended
+# sale posts again under its own name when it is paid.
+name: promotion_on_sale_cancel
+label: {id: 'Transaksi kasir dibatalkan: kembalikan promo'}
+on: pos_sale.cancelled
+if: app_installed('pos')
+steps:
+  - if: "event.promotion != ''"
+    then:
+      - find: promotion_ledger
+        where: "entry_key == event.name + '|' + event.promotion + '|post'"
+        as: bp
+      - create: promotion_ledger
+        if: bp != null
+        set:
+          promotion: event.promotion
+          sale: event.name
+          sale_outlet: event.outlet
+          date: event.date
+          code: bp.code
+          amount: 0 - (event.bill_promo + event.gift_value)
+          entry: "'reverse'"
+          entry_key: "event.name + '|' + event.promotion + '|reverse'"
+  - for_each: "event.items.filter(l, l.promotion != '' && l.promo_discount > 0 && event.items.filter(y, y.promotion == l.promotion && y.idx < l.idx).size() == 0)"
+    as: l
+    do:
+      - find: promotion_ledger
+        where: "entry_key == event.name + '|' + l.promotion + '|post'"
+        as: lp
+      - create: promotion_ledger
+        if: lp != null
+        set:
+          promotion: l.promotion
+          sale: event.name
+          sale_outlet: event.outlet
+          date: event.date
+          code: "''"
+          amount: "0 - event.items.filter(y, y.promotion == l.promotion).map(y, y.promo_discount).sum()"
+          entry: "'reverse'"
+          entry_key: "event.name + '|' + l.promotion + '|reverse'"

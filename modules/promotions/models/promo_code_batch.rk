@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A batch of single-use coupons for a promo with code_mode unique: submitting it makes count coupons (flow
+# promo_code_batch_on_submit), each prefix + 8 random characters. Export the list to print or send the codes.
+name: promo_code_batch
+label: {id: Kiriman kupon, en: Coupon batch}
+icon: tag
+is_submittable: true
+naming: KPB-{####}
+title_field: promotion
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, export: true, print: true}
+fields:
+  - {name: promotion, type: link, to: promotion, label: {id: Promo}, required: true, in_list: true}
+  - {name: count, type: int, label: {id: Jumlah kupon}, default: '20', required: true, in_list: true}
+  - name: prefix
+    type: data
+    label: {id: Awalan kode}
+    help: {id: 'Boleh kosong. 0 sampai 6 huruf besar atau angka, misalnya HUT'}
+  - {name: note, type: text, label: {id: Catatan}}
+rules:
+  - name: unique_promo
+    on: save
+    check: promotion.code_mode == 'unique'
+    message: {id: 'Kupon sekali pakai hanya untuk promo dengan Kode Kupon sekali pakai'}
+  - name: count_range
+    on: save
+    check: count >= 1 && count <= 1000
+    message: {id: Jumlah kupon 1 sampai 1000 per kiriman}
+  - name: prefix_format
+    on: save
+    check: "prefix == '' || prefix.matches('^[A-Z0-9]{1,6}$')"
+    message: {id: 'Awalan kode 1 sampai 6 huruf besar atau angka, tanpa spasi'}
+views:
+  list:
+    columns: [name, promotion, count, status]
+    sort: -name

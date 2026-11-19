@@ -145,6 +145,50 @@ fields:
     label: {id: Kode barang/jasa Coretax}
     help: {id: '6 angka dari referensi kode barang/jasa Coretax. Kosongkan bila tidak tahu (000000)'}
     depends_on: app_installed('coretax')
+  # Promo (module promotions): the live all-outlet item promo with the highest priority that covers this item, written only by
+  # flow promotion_apply (every 5 minutes and when a promo is saved) and cleared when it ends. A sale line computes its
+  # promo from these fields as it computes its price from rate, so a paired device pulls them with the catalogue and
+  # computes the same total offline (rangka-os contract 0058 §10). promo is a promotion's name as text: catalogue does
+  # not link a module above it. promo_invoice_pct is the live percent promo for invoices (channel invoice or both, all
+  # outlets), the default line discount of a new sales invoice line.
+  - {name: promo, type: data, label: {id: Promo aktif}, read_only: true, in_list: true, depends_on: app_installed('promotions')}
+  - {name: promo_name, type: data, label: {id: Nama promo}, read_only: true, depends_on: app_installed('promotions')}
+  - name: promo_kind
+    type: select
+    label: {id: Jenis promo}
+    read_only: true
+    depends_on: app_installed('promotions')
+    options:
+      - {value: pct, label: {id: Diskon persen}}
+      - {value: 'off', label: {id: Potongan rupiah}}
+      - {value: buy_get, label: {id: Beli X gratis Y}}
+  - {name: promo_pct, type: float, label: {id: 'Diskon promo %'}, read_only: true, depends_on: app_installed('promotions')}
+  - {name: promo_off, type: currency, label: {id: Potongan promo per barang}, read_only: true, depends_on: app_installed('promotions')}
+  - {name: promo_buy, type: int, label: {id: Promo beli}, read_only: true, depends_on: app_installed('promotions')}
+  - {name: promo_get, type: int, label: {id: Promo gratis}, read_only: true, depends_on: app_installed('promotions')}
+  - {name: promo_outlet, type: data, label: {id: Outlet promo}, read_only: true, depends_on: app_installed('promotions')}
+  - {name: promo_until, type: date, label: {id: Promo sampai}, read_only: true, depends_on: app_installed('promotions')}
+  - {name: promo_invoice_pct, type: float, label: {id: 'Diskon promo faktur %'}, read_only: true, depends_on: app_installed('promotions')}
+  # the live promo of one outlet that beats the all-outlet one above there (same priority or higher); a sale at that
+  # outlet takes it, every other outlet keeps promo. Two outlet promos on one item at once: the higher priority one
+  # holds this slot (promotion.help says so).
+  - {name: promo_o, type: data, label: {id: Promo outlet}, read_only: true, depends_on: app_installed('promotions')}
+  - {name: promo_o_name, type: data, label: {id: Nama promo outlet}, read_only: true, depends_on: app_installed('promotions')}
+  - name: promo_o_kind
+    type: select
+    label: {id: Jenis promo outlet}
+    read_only: true
+    depends_on: app_installed('promotions')
+    options:
+      - {value: pct, label: {id: Diskon persen}}
+      - {value: 'off', label: {id: Potongan rupiah}}
+      - {value: buy_get, label: {id: Beli X gratis Y}}
+  - {name: promo_o_pct, type: float, label: {id: 'Diskon promo outlet %'}, read_only: true, depends_on: app_installed('promotions')}
+  - {name: promo_o_off, type: currency, label: {id: Potongan promo outlet}, read_only: true, depends_on: app_installed('promotions')}
+  - {name: promo_o_buy, type: int, label: {id: Promo outlet beli}, read_only: true, depends_on: app_installed('promotions')}
+  - {name: promo_o_get, type: int, label: {id: Promo outlet gratis}, read_only: true, depends_on: app_installed('promotions')}
+  - {name: promo_o_outlet, type: data, label: {id: Outlet promo khusus}, read_only: true, depends_on: app_installed('promotions')}
+  - {name: promo_o_until, type: date, label: {id: Promo outlet sampai}, read_only: true, depends_on: app_installed('promotions')}
   # Records already linked by documents cannot be deleted (kernel: 409 linked); one no longer used is switched off
   # instead and kept for its history. Hiding it from link pickers is a kernel follow-up (web).
   - name: active

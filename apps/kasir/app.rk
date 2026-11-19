@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
 name: kasir
-version: 1.0.0
+version: 1.1.0
 title: {id: Kasir, en: Cashier}
 label: {id: Rangka Kasir, en: Rangka Cashier}
 summary:
@@ -19,6 +19,10 @@ modules:
   outlets: ^1.2
   stock: ^1.2
   pos: ^1.0
+# promotions (rangka-apps#103) is added per site (config.modules, contract 0032): the kernel lists its models in their
+# own menu group, and the dashboard shows its widgets only where it is installed
+optional:
+  promotions: ^1.0
 dashboards: [kasir_ringkas]
 roles: [cashier, head_office]
 home: {model: pos_sale}

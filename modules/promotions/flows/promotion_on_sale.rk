@@ -1,0 +1,95 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Runs inside a sale's submit (the payment), as the cashier, also for a sale a paired device sends later (contract
+# 0058 §10 turns the sale's own rules into exceptions there, but a record this flow writes still refuses). So the bill
+# promo is checked again here: active, in its dates, outlet and hours (clock() at the sale's time), its code (a shared
+# voucher's code, a single-use coupon of this promo), and a free gift line (the gift promo, its minimum spend, item,
+# quantity in stock units, no pack). A voucher's uses are counted per promo and a coupon's per code, as post rows minus
+# reverse rows of promotion_ledger read under the ledger's flow lock (contract 0025), so two sales racing for the last
+# use or one coupon run one after the other and the second is refused (promo_guard), rolling its payment back.
+# Then one ledger row per promo used: the bill promo (bill_promo + the free gift's price) and each item promo that
+# still exists (the sum of its lines' promo_discount).
+name: promotion_on_sale
+label: {id: 'Transaksi kasir dibayar: cek dan catat promo'}
+on: pos_sale.submitted
+if: app_installed('pos')
+steps:
+  - if: "event.promotion != ''"
+    then:
+      - find: promotion
+        where: name == event.promotion
+        as: p
+      - if: >-
+          p == null || !p.active || p.valid_from > event.date || p.valid_until < event.date
+          || (p.only_outlet != '' && p.only_outlet != event.outlet)
+          || (p.days != '' && !p.days.contains(string(days_between('2024-01-01', event.date) % 7 + 1)))
+          || (p.time_from != '' && (clock() < p.time_from || clock() >= p.time_until))
+        create: promo_guard
+        set: {reason: "'promo_ended'", document: event.name}
+      - if: "p.code_mode == 'shared' && event.promo_code.trim().upperAscii() != p.code"
+        create: promo_guard
+        set: {reason: "'code_unknown'", document: event.name}
+      - if: "event.bill_promo + event.gift_value > 0 && p.code_mode == 'shared' && p.max_uses > 0"
+        then:
+          # every use of this voucher so far, whatever code was typed, under the ledger's lock (contract 0025)
+          - find_all: promotion_ledger
+            where: promotion == event.promotion
+            as: uses
+          - if: "uses.filter(u, u.entry == 'post').size() - uses.filter(u, u.entry == 'reverse').size() >= p.max_uses"
+            create: promo_guard
+            set: {reason: "'code_limit'", document: event.name}
+      - if: "p.code_mode == 'unique'"
+        then:
+          - find: promo_code
+            where: "promotion == event.promotion && code == event.promo_code.trim().upperAscii()"
+            as: c
+          - if: c == null
+            create: promo_guard
+            set: {reason: "'code_unknown'", document: event.name}
+          - find_all: promotion_ledger
+            where: "promotion == event.promotion && code == event.promo_code.trim().upperAscii()"
+            as: used
+          - if: "used.filter(u, u.entry == 'post').size() - used.filter(u, u.entry == 'reverse').size() > 0"
+            create: promo_guard
+            set: {reason: "'code_used'", document: event.name}
+      - create: promotion_ledger
+        if: "event.bill_promo + event.gift_value > 0"
+        set:
+          promotion: event.promotion
+          sale: event.name
+          sale_outlet: event.outlet
+          date: event.date
+          code: "p.code_mode == 'none' || p.code_mode == '' ? '' : event.promo_code.trim().upperAscii()"
+          amount: event.bill_promo + event.gift_value
+          entry: "'post'"
+          entry_key: "event.name + '|' + event.promotion + '|post'"
+  # a free gift line, checked again for a sale whose rules a device's replay overrode
+  - if: "event.items.filter(l, l.is_gift).size() > 0"
+    then:
+      - find: promotion
+        if: "event.promotion != ''"
+        where: name == event.promotion
+        as: gp
+      - if: >-
+          event.promotion == '' || gp == null || gp.kind != 'free_gift' || event.subtotal < gp.min_spend
+          || event.items.filter(l, l.is_gift && (l.item != gp.gift_item || l.packing != '')).size() > 0
+          || event.items.filter(l, l.is_gift).map(l, l.stock_qty).sum() > gp.gift_qty
+        create: promo_guard
+        set: {reason: "'gift_invalid'", document: event.name}
+  # one row per item promo still there: its first line stands for all of its lines
+  - for_each: "event.items.filter(l, l.promotion != '' && l.promo_discount > 0 && event.items.filter(y, y.promotion == l.promotion && y.idx < l.idx).size() == 0)"
+    as: l
+    do:
+      - find: promotion
+        where: name == l.promotion
+        as: lpr
+      - create: promotion_ledger
+        if: lpr != null
+        set:
+          promotion: l.promotion
+          sale: event.name
+          sale_outlet: event.outlet
+          date: event.date
+          code: "''"
+          amount: "event.items.filter(y, y.promotion == l.promotion).map(y, y.promo_discount).sum()"
+          entry: "'post'"
+          entry_key: "event.name + '|' + l.promotion + '|post'"

@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Never stored: a promo flow refuses a sale by creating one (as pos_guard does), and the rule of its reason fails
+# with the cashier's message, so the sale's submit rolls back with its stock moves and number.
+name: promo_guard
+label: {id: Penjaga promo, en: Promotion guard}
+icon: check
+naming: PPG-{######}
+title_field: reason
+permissions:
+  - {role: head_office, create: true}
+  - {role: cashier, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: code_used, label: {id: Kupon sudah dipakai}}
+      - {value: code_unknown, label: {id: Kupon tidak dikenal}}
+      - {value: code_limit, label: {id: Kuota voucher habis}}
+      - {value: promo_ended, label: {id: Promo tidak berlaku}}
+      - {value: gift_invalid, label: {id: Produk gratis tidak sesuai}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: code_used
+    on: save
+    check: reason != 'code_used'
+    message: {id: 'Kode kupon ini sudah dipakai'}
+  - name: code_unknown
+    on: save
+    check: reason != 'code_unknown'
+    message: {id: 'Kode kupon ini tidak ada untuk promo yang dipilih'}
+  - name: code_limit
+    on: save
+    check: reason != 'code_limit'
+    message: {id: 'Kuota voucher ini sudah habis'}
+  - name: promo_ended
+    on: save
+    check: reason != 'promo_ended'
+    message: {id: 'Promo ini tidak berlaku di outlet, tanggal atau jam ini'}
+  - name: gift_invalid
+    on: save
+    check: reason != 'gift_invalid'
+    message: {id: 'Produk gratis tidak sesuai promo hadiah: cek promo, minimal belanja, barang dan jumlahnya'}
