@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # Every morning at 07:15 (scheduler.timezone), and by the owner or finance from the flow list: each payroll run that is
-# not closed is checked, and finance and the owner are told (contract 0066). The flow only reads and tells: it makes
-# no slip, submits nothing and never closes or pays a run.
-#   - payroll_ready, once per run: the cut-off period is over, no attendance recap of the period is still a draft, no
+# not closed is checked, and finance and the owner are told (contract 0066). The flow only reads and tells (its one
+# write is the run's own ready_told mark): it makes no slip, submits nothing and never closes or pays a run.
+#   - payroll_ready, once per run (the run is then marked ready_told): the cut-off period is over, no attendance recap of the period is still a draft, no
 #     field attendance close is still a draft, and the run has at least one slip. Finance checks the draft slips,
 #     submits them and closes the period.
 #   - payroll_due, once a day from three days before the pay date until the pay date, while the run is not closed:
@@ -34,7 +34,7 @@ steps:
       - find_all: attendance_close
         where: "project == run.project && docstatus == 0 && period_from <= run.period_to && period_to >= run.period_from"
         as: closes
-      - if: "('as_of' in event ? event.as_of : today()) > run.period_to && size(slips) > 0 && recaps.filter(t, t.docstatus == 0).size() == 0 && size(closes) == 0"
+      - if: "!run.ready_told && ('as_of' in event ? event.as_of : today()) > run.period_to && size(slips) > 0 && recaps.filter(t, t.docstatus == 0).size() == 0 && size(closes) == 0"
         notify: finance_manager
         notice: payroll_ready
         channel: email
@@ -45,6 +45,10 @@ steps:
           Periode {run.period_from} sampai {run.period_to} sudah lewat dan semua rekap absen sudah diajukan.
           Slip gaji: {slips.filter(s, s.docstatus == 0).size()} draft menunggu diperiksa, {slips.filter(s, s.docstatus == 1).size()} sudah diajukan.
           Periksa slip, ajukan, lalu tutup periode gaji.
+      # the notify step above ran exactly when this is true: the run is marked, so it is announced once
+      - if: "!run.ready_told && ('as_of' in event ? event.as_of : today()) > run.period_to && size(slips) > 0 && recaps.filter(t, t.docstatus == 0).size() == 0 && size(closes) == 0"
+        update: run
+        set: {ready_told: 'true'}
       - if: "run.pay_date != '' && days_between(('as_of' in event ? event.as_of : today()), run.pay_date) >= 0 && days_between(('as_of' in event ? event.as_of : today()), run.pay_date) <= 3"
         notify: finance_manager
         notice: payroll_due

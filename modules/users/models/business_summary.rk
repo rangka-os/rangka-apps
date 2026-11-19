@@ -10,6 +10,8 @@ label: {id: Ringkasan usaha, en: Business summary}
 icon: bar-chart-box-line
 naming: RKS-{YYYY}-{#####}
 title_field: title
+# An empty list: the model is closed to every role, so only the owner (and the flows the kernel starts) reads it.
+permissions: []
 fields:
   - name: period
     type: select

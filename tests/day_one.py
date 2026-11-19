@@ -3168,6 +3168,9 @@ MATRIX = {
     "cash_advance": {"finance_manager": _ALL, "project_admin": _R},   # kasbon: finance gives it
     "payslip": {"finance_manager": _ALL, "project_admin": {"read", "create"}},
     "payroll_guard": {"finance_manager": {"create"}, "project_admin": {"create"}, "sales_manager": {"create"}},   # never stored (a flow's refusal; recaps are cancelled by the project admin)
+    # owner automation pack: the summaries and their switches are the owner's alone; reorder rows are written by flows
+    "business_summary": {}, "summary_setting": {},
+    "stock_reorder": {"head_office": {"read", "export"}, "purchasing_manager": {"read", "export"}},
 }
 _CHECKED = ("read", "create", "write", "delete", "submit", "cancel", "amend", "export", "import", "print")
 
@@ -4765,24 +4768,24 @@ def scenario_stock(api):
     listed = api.find("stock_balance", "negative == true")
     check("head office list 'Stok minus' (filter negative == true) holds the balance", any(r["outlet"] == neg and r["item"] == m for r in listed), listed)
     check("a positive balance is not in the 'Stok minus' list", not any(r["outlet"] == DAGO and r["item"] == m for r in listed), listed)
-    # the alert flow: runs when handed the move, but nothing hands it over yet
-    alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
+    # the alert flow (notice stock_negative, mail on by default: channel email)
+    alerts = [e for e in api.audit("notify.email") if e.get("target") == "flow/stock_negative_alert"]
     if not alerts:
         fail("stock_negative_alert notifies head_office when a move turns negative",
-             "no notify.in_app audit entry: the kernel did not run the `on: stock_move.created` flow")
+             "no notify.email audit entry: the kernel did not run the `on: stock_move.created` flow")
     else:
         ok("stock_negative_alert notified head_office on its own")
     st, resp = api.call("POST", "/api/v1/flows/stock_negative_alert/run", {"event": mv[0]} if mv else {})
-    alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
+    alerts = [e for e in api.audit("notify.email") if e.get("target") == "flow/stock_negative_alert"]
     item_label, outlet_label = api.get("item", m)["item_name"], api.get("outlet", neg)["outlet_name"]
     check("stock_negative_alert, run with the move as its event, names the item and the outlet (find steps), not their ids",
           st == 200 and any(f"Stok {item_label} di {outlet_label} minus (-10)" in e.get("summary", "") for e in alerts), (st, resp, alerts[-1:]))
     st, resp = api.call("POST", "/api/v1/flows/stock_negative_alert/run", {"event": dict(mv[0], item="BRG-9999", outlet="OUT-99")} if mv else {})
-    alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
+    alerts = [e for e in api.audit("notify.email") if e.get("target") == "flow/stock_negative_alert"]
     check("stock_negative_alert falls back to the plain names when the records are not found",
           st == 200 and any("Stok BRG-9999 di OUT-99 minus (-10)" in e.get("summary", "") for e in alerts), (st, resp, alerts[-1:]))
     st, resp = api.call("POST", "/api/v1/flows/stock_negative_alert/run", {"event": dict(mv[0], negative=False)} if mv else {})
-    check("stock_negative_alert is silent for a move that is not negative", len([e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]) == len(alerts), resp)
+    check("stock_negative_alert is silent for a move that is not negative", len([e for e in api.audit("notify.email") if e.get("target") == "flow/stock_negative_alert"]) == len(alerts), resp)
     # cancel restores
     st, resp = api.verb("outlet_sales", sn, "cancel")
     check("cancel the sale", st == 200, (st, resp))
@@ -5892,6 +5895,7 @@ import day_one_doku  # noqa: E402
 import day_one_kitchen  # noqa: E402
 import day_one_attendance  # noqa: E402
 import day_one_staff  # noqa: E402
+import day_one_automation  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5907,6 +5911,7 @@ day_one_doku.bind(sys.modules[__name__])
 day_one_kitchen.bind(sys.modules[__name__])
 day_one_attendance.bind(sys.modules[__name__])
 day_one_staff.bind(sys.modules[__name__])
+day_one_automation.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5930,6 +5935,10 @@ for _site in ("demo-jasa", "demo-fnb"):
     SCENARIOS[_site] += day_one_doku.SCENARIOS
 # staff dashboards (A5): after the site's own scenarios, before the permission matrix
 for _site, _extra in day_one_staff.SCENARIOS.items():
+    _i = SCENARIOS[_site].index(scenario_permissions)
+    SCENARIOS[_site][_i:_i] = _extra
+# owner automation pack (notices, summaries, reorder point, payroll reminder): after the site's own scenarios
+for _site, _extra in day_one_automation.SCENARIOS.items():
     _i = SCENARIOS[_site].index(scenario_permissions)
     SCENARIOS[_site][_i:_i] = _extra
 # accounting last: it checks the books against every document the scenarios above submitted

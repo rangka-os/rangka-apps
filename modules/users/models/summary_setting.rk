@@ -8,6 +8,8 @@ label: {id: Pengaturan ringkasan, en: Summary settings}
 icon: settings-3-line
 naming: RKP-{##}
 title_field: title
+# An empty list: the model is closed to every role, so only the owner reads and changes it.
+permissions: []
 fields:
   - {name: key, type: data, label: {id: Kunci}, default: "'usaha'", required: true, unique: true, read_only: true}
   - {name: title, type: data, label: {id: Nama}, compute: "'Pengaturan ringkasan'"}
