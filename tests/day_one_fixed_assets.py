@@ -33,6 +33,8 @@ MATRIX = {
                        "purchasing_manager": {"read"}, "rental_staff": {"read"}},
     "fixed_asset_setting": {"finance_manager": {"read", "create", "write"}, "head_office": {"read", "create", "write"}, "purchasing_manager": {"read"}},
     "asset_guard": {"finance_manager": {"create"}, "head_office": {"create"}, "purchasing_manager": {"create"}},   # never stored
+    # written by the bill's flow only (every field read_only), read by the asset's submit
+    "asset_bill_line": {"finance_manager": {"read", "create"}, "head_office": {"read", "create"}, "purchasing_manager": {"read", "create"}},
 }
 
 
@@ -173,6 +175,16 @@ def scenario_fixed_assets_register(api):
     _asset("lost", fm, "lighting kit to be written off", {"cost": 4_000_000, "residual": 0, "life": 4, "start": D(2023, 11, 1)},
            asset_name="Lampu Contoh", category=cat, acquisition_date="2023-10-05", cost=4_000_000, useful_life_months=4, residual_value=0,
            source="other", paid_from="cash")
+    # rounded down (audit F3): Rp 10.000.000 over 48 months, 208.333 a month, the 48th month takes 208.349
+    _asset("down", fm, "Rp 10.000.000 over 48 months (rounded down)", {"cost": 10_000_000, "residual": 0, "life": 48, "start": D(2023, 11, 1)},
+           asset_name="Kulkas Contoh", category=cat, acquisition_date="2023-10-21", cost=10_000_000, useful_life_months=48, residual_value=0,
+           source="other", paid_from="bank")
+    # an old asset already fully depreciated when the books start (audit F7): Habis disusutkan, never in a run
+    z = _asset("done", fm, "old asset already fully depreciated", {"cost": 6_000_000, "residual": 0, "life": 24, "start": D(2023, 10, 1), "opening": 6_000_000},
+               asset_name="Meja Contoh lama", category=cat, acquisition_date="2019-01-01", book_date="2023-09-30", cost=6_000_000,
+               useful_life_months=24, residual_value=0, source="opening", opening_accumulated=6_000_000)
+    if z:
+        eq("fully depreciated old asset: register row Habis disusutkan", book(api, z["name"]).get("state"), "fully_depreciated")
     # a residual value: (cost - residual) / life, never depreciated below the residual
     _asset("resid", fm, "car with a 20% residual", {"cost": 150_000_000, "residual": 30_000_000, "life": 96, "start": D(2023, 11, 1)},
            asset_name="Mobil box Contoh", category=S.get("cats", {}).get("Kendaraan", {}).get("name"), acquisition_date="2023-10-25",
@@ -319,6 +331,10 @@ def _write_off(api, fm):
     eq("written off with book value 2.000.000: 4-9300 debit 2.000.000", gl(api, "asset_disposal", r["name"]),
        {"12900": exp["12900"], "12100": exp["12100"], "49300": exp["49300"]})
     eq("written-off asset: register row Dihapus", book(api, S["lost"]["doc"]["name"]).get("state"), "written_off")
+    st, rep = api.create("financial_report", {"period_from": "2023-12-01", "period_to": "2023-12-31"})
+    rep = rec(rep)
+    eq("December 2023 report: the write-off lowers other income by 2.000.000, tax expense untouched, books balance",
+       (rep.get("other_income"), rep.get("tax_expense"), rep.get("balanced")), (-2_000_000, 0, True))
     st, again = fm.create("asset_disposal", {"book": b["name"], "disposal_date": "2024-01-31", "kind": "written_off"})
     check("an asset already written off cannot be disposed of again (asset_in_use)", st == 422 and "asset_in_use" in rules(again), (st, again))
     S["lost"]["o"]["gone"] = True
@@ -357,18 +373,10 @@ def scenario_fixed_assets_cancel_and_lock(api):
         return
     period = max(p for p, r in runs.items() if r)
     run = runs[period]
-    # a stale draft: an amount changed by hand is refused at submit
-    nxt = O.add_months(period, 1)
-    st, dr = fm.create("depreciation_run", {"period": iso(nxt)})
-    dr = fm.get("depreciation_run", rec(dr).get("name", "x")) or {}
-    if dr.get("lines"):
-        lines = [dict(l) for l in dr["lines"]]
-        lines[0]["amount"] += 1
-        fm.patch("depreciation_run", dr["name"], {"lines": lines})
-        st, r = submit(fm, "depreciation_run", dr["name"])
-        check("a run whose amount was changed by hand: refused 422 (run_stale)", st == 422 and "run_stale" in rules(r), (st, r))
-    if dr:
-        fm.call("DELETE", f"/api/v1/r/depreciation_run/{Api.q(dr['name'])}")
+    # the current month is not over: no run for it (audit F4)
+    today = datetime.date.today()
+    st, r = fm.create("depreciation_run", {"period": iso(datetime.date(today.year, today.month, 1))})
+    check("a run for the current month: refused 422 (period_over)", st == 422 and "period_over" in rules(r), (st, r))
     # Tutup buku up to the run's month: its cancel would post into a closed period
     st, pc = api.create("period_close", {"closed_until": run["posting_date"]})
     st, pcs = api.verb("period_close", rec(pc).get("name", "x"), "submit")
@@ -392,6 +400,17 @@ def scenario_fixed_assets_cancel_and_lock(api):
         st, again = fm.create("depreciation_run", {"period": iso(period)})
         again = fm.get("depreciation_run", rec(again).get("name", "x")) or {}
         eq("the month made again lists the same lines", _lines(again), _lines(run))
+        # a draft changed by hand is refused at submit: an amount, or the outlet or project its journal carries (audit F6)
+        orig = [dict(l) for l in again.get("lines", [])]
+        for field, value in (("amount", (again.get("lines") or [{}])[0].get("amount", 0) + 1), ("project", "FAKE-PROJ")):
+            lines = [dict(l) for l in again.get("lines", [])]
+            if not lines:
+                break
+            lines[0][field] = value
+            fm.patch("depreciation_run", again["name"], {"lines": lines})
+            st, r = submit(fm, "depreciation_run", again["name"])
+            check(f"a run whose line {field} was changed by hand: refused 422 (run_stale)", st == 422 and "run_stale" in rules(r), (st, r))
+            fm.patch("depreciation_run", again["name"], {"lines": orig})
         st, s = submit(fm, "depreciation_run", again.get("name", "x"))
         check("and submits -> 200", st == 200, (st, s))
     # a run that holds an asset disposed of later cannot be cancelled before the disposal
@@ -483,7 +502,13 @@ def _bill_assets(cl, label, pkp):
     a0 = drafts[0] if drafts else {}
     st, r = cl.patch("fixed_asset", a0.get("name", "x"), {"category": cat, "useful_life_months": 48, "cost": a0.get("cost", 0) + 1})
     st, r = submit(cl, "fixed_asset", a0.get("name", "x"))
-    check(f"{label}: an asset whose cost differs from its bill line: refused 422 (bill_source)", st == 422 and "bill_source" in rules(r), (st, r))
+    check(f"{label}: an asset whose cost differs from its bill line: refused 422 (bill_cost)", st == 422 and "bill_cost" in rules(r), (st, r))
+    # a draft typed by hand that claims a bill line (audit F1): the cost recorded by the bill's flow wins
+    st, fake = cl.create("fixed_asset", {"asset_name": "Palsu", "category": cat, "useful_life_months": 48, "source": "vendor_bill", "vendor_bill": bill["name"],
+                                         "bill_line": 2, "cost": 50_000_000, "acquisition_date": bill["bill_date"], "book_date": bill["bill_date"]})
+    st, r2 = submit(cl, "fixed_asset", rec(fake).get("name", "x"))
+    check(f"{label}: a hand-typed asset claiming a bill line at another cost: refused 422 (bill_cost)", st == 422 and "bill_cost" in rules(r2), (st, r2))
+    cl.call("DELETE", f"/api/v1/r/fixed_asset/{Api.q(rec(fake).get('name', 'x'))}")
     cl.patch("fixed_asset", a0.get("name", "x"), {"cost": a0.get("cost", 0)})
     st, r = submit(cl, "fixed_asset", a0.get("name", "x"))
     if check(f"{label}: finance completes and submits the laptop -> 200", st == 200, (st, r)):

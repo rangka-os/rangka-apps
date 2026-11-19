@@ -20,6 +20,9 @@ fields:
       - {value: bill_currency, label: {id: Tagihan valas}}
       - {value: bill_line_taken, label: {id: Baris tagihan sudah jadi aset}}
       - {value: bill_has_asset, label: {id: Tagihan sudah jadi aset}}
+      - {value: bill_cost, label: {id: Harga tidak sama dengan baris tagihan}}
+      - {value: opening_twice, label: {id: Aset tetap di saldo awal dua kali}}
+      - {value: disposal_stale, label: {id: Nilai aset berubah}}
       - {value: unit_taken, label: {id: Unit sewa sudah jadi aset lain}}
       - {value: asset_in_use, label: {id: Aset sudah disusutkan atau dilepas}}
       - {value: run_exists, label: {id: Penyusutan bulan itu sudah ada}}
@@ -45,6 +48,18 @@ rules:
     on: save
     check: reason != 'bill_has_asset'
     message: {id: 'Tagihan ini sudah menjadi aset tetap yang diajukan. Batalkan asetnya dulu.'}
+  - name: bill_cost
+    on: save
+    check: reason != 'bill_cost'
+    message: {id: 'Harga perolehan aset dari tagihan harus sama dengan nilai baris tagihannya (termasuk bagian PPN bila usaha bukan PKP).'}
+  - name: opening_twice
+    on: save
+    check: reason != 'opening_twice'
+    message: {id: 'Aset tetap sudah tercatat di Saldo awal dan per aset sekaligus. Pakai salah satu saja.'}
+  - name: disposal_stale
+    on: save
+    check: reason != 'disposal_stale'
+    message: {id: 'Penyusutan aset ini berubah sejak pelepasan dibuat. Simpan ulang pelepasan supaya nilainya terbaru, lalu ajukan lagi.'}
   - name: unit_taken
     on: save
     check: reason != 'unit_taken'

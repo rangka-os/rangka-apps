@@ -39,6 +39,12 @@ rules:
     on: save
     check: "string(period) == truncate(string(period), 7) + '-01'"
     message: {id: Bulan penyusutan diisi tanggal 1 bulan itu}
+  # a month is depreciated once it is over: never the current month or a later one (audit F4: a run dated in the future
+  # would post ahead and block every earlier month)
+  - name: period_over
+    on: save
+    check: "string(period) < truncate(string(today()), 7) + '-01'"
+    message: {id: 'Penyusutan dibuat setelah bulannya selesai: pilih bulan lalu atau sebelumnya'}
   - name: amounts_positive
     on: save
     check: "lines.map(l, l.amount <= 0 ? 1 : 0).sum() == 0"

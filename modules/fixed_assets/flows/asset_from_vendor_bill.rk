@@ -2,7 +2,8 @@
 # A vendor bill submitted as "Aset tetap" (posting asset; its journal debits 1-2100): one draft fixed asset per bill
 # line, its cost the line amount; a business that is not PKP cannot credit the input PPN, so the bill put the PPN in
 # 1-2100 too and each asset takes its share of it (by cumulative line amounts, so the shares add up to the PPN
-# exactly). Finance adds the category and life and submits each draft. Refused (the bill's submit rolls back): a
+# exactly); that cost is kept per line in asset_bill_line, which only this flow writes. Finance adds the category and
+# life and submits each draft. Refused (the bill's submit rolls back): a
 # foreign-currency bill (assets in a foreign currency are not in v1), or a line below the capitalisation threshold
 # (that purchase is an expense: split the bill). Runs as whoever submits the bill.
 name: asset_from_vendor_bill
@@ -15,19 +16,23 @@ steps:
     create: asset_guard
     set: {reason: "'bill_currency'", document: event.name}
   - {find: fixed_asset_setting, as: cfg}
-  - if: "cfg != null && event.items.exists(l, l.amount < cfg.capitalisation_threshold)"
+  - if: "event.items.exists(l, l.amount < (cfg != null ? cfg.capitalisation_threshold : 1000000))"
     create: asset_guard
     set: {reason: "'below_threshold'", document: event.name}
   - for_each: event.items
     as: l
     do:
+      - create: asset_bill_line
+        set:
+          vendor_bill: event.name
+          bill_line: l.idx
+          cost: "l.amount + (tax.pkp ? 0 : round(event.ppn * event.items.filter(y, y.idx <= l.idx).map(y, y.amount).sum() / event.subtotal) - round(event.ppn * event.items.filter(y, y.idx < l.idx).map(y, y.amount).sum() / event.subtotal))"
       - create: fixed_asset
         set:
           asset_name: "l.description != '' ? truncate(l.description, 140) : l.item"
           source: "'vendor_bill'"
           vendor_bill: event.name
           bill_line: l.idx
-          bill_line_cost: "l.amount + (tax.pkp ? 0 : round(event.ppn * event.items.filter(y, y.idx <= l.idx).map(y, y.amount).sum() / event.subtotal) - round(event.ppn * event.items.filter(y, y.idx < l.idx).map(y, y.amount).sum() / event.subtotal))"
           cost: "l.amount + (tax.pkp ? 0 : round(event.ppn * event.items.filter(y, y.idx <= l.idx).map(y, y.amount).sum() / event.subtotal) - round(event.ppn * event.items.filter(y, y.idx < l.idx).map(y, y.amount).sum() / event.subtotal))"
           acquisition_date: event.bill_date
           book_date: event.bill_date

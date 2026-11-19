@@ -278,4 +278,5 @@ rows live in `tests/day_one_fixed_assets.py`.
 | asset_disposal | r c w d s x a e p | r c w d s x a e p | none | none |
 | asset_category | r c w d e | r c w d e | r | r |
 | fixed_asset_setting | r c w | r c w | r | none |
+| asset_bill_line (written by the bill's flow only; every field read-only) | r c | r c | r c | none |
 | asset_guard (never stored; a flow's refusal) | c | c | c | none |

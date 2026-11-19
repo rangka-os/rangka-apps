@@ -41,10 +41,9 @@ fields:
     to: vendor_bill
     label: {id: Tagihan pemasok}
     depends_on: app_installed('procurement') && source == 'vendor_bill'
-  # the bill line this asset came from (its idx) and its cost (the line plus its share of PPN for a business that is not
-  # PKP), written by flow asset_from_vendor_bill: the asset's cost must stay the amount the bill put in 1-2100
+  # the bill line this asset came from (its idx): its submit checks the cost against asset_bill_line, which only the
+  # bill's flow writes (audit F1: a cost typed by hand never reaches the register)
   - {name: bill_line, type: int, label: {id: Baris tagihan}, hidden: true}
-  - {name: bill_line_cost, type: currency, label: {id: Nilai baris tagihan}, hidden: true, hidden_for: [rental_staff]}
   - name: paid_from
     type: select
     label: {id: Dibayar dari}
@@ -119,6 +118,10 @@ rules:
     on: submit
     check: useful_life_months > 0 && useful_life_months <= 600
     message: {id: Umur manfaat antara 1 dan 600 bulan}
+  - name: depreciation_positive
+    on: submit
+    check: monthly_depreciation > 0 || opening_accumulated >= cost - residual_value
+    message: {id: 'Penyusutan per bulan 0 rupiah: harga dikurangi nilai sisa terlalu kecil untuk umur manfaatnya'}
   - name: start_is_month_start
     on: save
     check: "string(depreciation_start) == truncate(string(depreciation_start), 7) + '-01'"
@@ -137,10 +140,8 @@ rules:
     message: {id: 'Akumulasi penyusutan sebelumnya hanya untuk aset lama, dan tidak boleh melebihi harga dikurangi nilai sisa'}
   - name: bill_source
     on: submit
-    check: >-
-      source != 'vendor_bill' || (vendor_bill != '' && vendor_bill.docstatus == 1 && vendor_bill.posting == 'asset'
-        && cost == bill_line_cost)
-    message: {id: 'Aset dari tagihan pemasok: tagihannya sudah diajukan sebagai Aset tetap, dan harga perolehan sama dengan nilai baris tagihannya'}
+    check: "source != 'vendor_bill' || (vendor_bill != '' && vendor_bill.docstatus == 1 && vendor_bill.posting == 'asset')"
+    message: {id: 'Aset dari tagihan pemasok: tagihannya harus sudah diajukan sebagai Aset tetap'}
   - name: bill_only_from_bill
     on: save
     check: source == 'vendor_bill' || vendor_bill == ''

@@ -43,7 +43,10 @@ def run_line(asset, period):
     if nxt > period or left <= 0:
         return None
     months = month_index(period) - month_index(nxt) + 1
-    return months, min(monthly(asset["cost"], asset["residual"], asset["life"]) * months, left)
+    due = monthly(asset["cost"], asset["residual"], asset["life"]) * months
+    # the last month takes what is left: also when the monthly amount was rounded down and a few rupiah would remain
+    # (the drift of rounding down is at most half a rupiah per month of life, a true last month at least half a month)
+    return months, left if 2 * (left - due) < monthly(asset["cost"], asset["residual"], asset["life"]) else due
 
 
 def apply(asset, period):
@@ -81,6 +84,10 @@ def _self_test():
     r = {"cost": 10_000_000, "residual": 0, "life": 36, "start": datetime.date(2026, 1, 1)}
     amts = [apply(r, add_months(r["start"], k))[1] for k in range(36)]
     assert amts[:35] == [277_778] * 35 and amts[35] == 277_770 and sum(amts) == 10_000_000
+    # rounded down: Rp 10.000.000 over 48 months is 208.333 a month; month 48 takes 208.349, no month 49
+    q = {"cost": 10_000_000, "residual": 0, "life": 48, "start": datetime.date(2026, 1, 1)}
+    amts = [apply(q, add_months(q["start"], k)) for k in range(49)]
+    assert [a[1] for a in amts[:47]] == [208_333] * 47 and amts[47][1] == 208_349 and amts[48] is None and book_value(q) == 0
     # catch-up: an asset from January whose first run is March takes three months at once
     c = {"cost": 12_000_000, "residual": 0, "life": 12, "start": datetime.date(2026, 1, 1)}
     assert apply(c, datetime.date(2026, 3, 1)) == (3, 3_000_000)

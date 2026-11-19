@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside a Saldo awal's submit (module accounting): refused when it carries fixed assets or their depreciation while
+# old assets were already brought in one by one (fixed_asset source opening), which post the same 1-2100, 1-2900 and
+# 3-1900 (audit F5). One way only: the per-asset register or the one number.
+name: opening_balance_asset_guard
+label: {id: Saldo awal tidak memuat aset lama dua kali}
+on: opening_balance.submitted
+if: "'docstatus' in event && event.docstatus == 1 && (event.fixed_assets != 0 || event.accumulated_depreciation != 0)"
+steps:
+  - find: fixed_asset
+    where: docstatus == 1 && source == 'opening'
+    as: fa
+  - if: fa != null
+    create: asset_guard
+    set: {reason: "'opening_twice'", document: fa.name}

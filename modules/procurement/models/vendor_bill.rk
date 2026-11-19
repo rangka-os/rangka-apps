@@ -199,8 +199,8 @@ rules:
     message: {id: Tagihan barang dagang hanya untuk usaha yang mencatat stok; pilih Beban operasional atau Biaya proyek}
   - name: posting_asset_needs_module
     on: save
-    check: "posting != 'asset' || (app_installed('fixed_assets') && (currency == '' || currency == 'IDR'))"
-    message: {id: 'Tagihan aset tetap hanya untuk usaha yang memakai modul Aset tetap, dan dalam rupiah'}
+    check: "posting != 'asset' || (app_installed('fixed_assets') && (currency == '' || currency == 'IDR') && (goods_receipt == '' || !app_installed('stock')))"
+    message: {id: 'Tagihan aset tetap hanya untuk usaha yang memakai modul Aset tetap, dalam rupiah, dan tanpa penerimaan barang ke stok'}
   - name: posting_project_needs_project
     on: save
     check: (posting != 'project' || project != '') && (project == '' || posting == 'project' || posting == null)

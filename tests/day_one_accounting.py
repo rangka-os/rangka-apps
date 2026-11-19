@@ -494,13 +494,21 @@ def scenario_period_close_and_opening(api, gl):
     draft = api.get("opening_balance", name)
     eq("accounting: imported Saldo awal: equity difference = assets - liabilities - modal", draft.get("opening_equity"),
        2_000_000 + 15_000_000 + 7_000_000 + 40_000_000 - 10_000_000 - 3_000_000 - 20_000_000 - 20_000_000)
+    opening_assets = 30_000_000
+    if docs(api, "fixed_asset", "docstatus == 1 && source == 'opening'"):
+        # module fixed_assets: old assets were brought in one by one, so Saldo awal may not carry them again (audit F5)
+        st, s = api.verb("opening_balance", name, "submit")
+        check("accounting: Saldo awal with fixed assets after per-asset opening assets: refused 422 (opening_twice)",
+              st == 422 and "opening_twice" in str(s), (st, str(s)[:300]))
+        api.patch("opening_balance", name, {"fixed_assets": 0, "accumulated_depreciation": 0})
+        opening_assets = 0
     st, s = api.verb("opening_balance", name, "submit")
     check("accounting: imported Saldo awal submits", st == 200, (st, str(s)[:300]))
     name = ((s or {}).get("record", s) or {}).get("name", name)
     last = max(r["posting_date"] for r in rows(api, "gl_entry"))
     st, rep = report(api, day, last)
     eq("accounting: with the opening balance the balance sheet still balances", (rep.get("balanced"), rep.get("difference")), (True, 0))
-    eq("accounting: fixed assets net of depreciation in the balance sheet", rep.get("fixed_assets_net"), 30_000_000 + fixed_assets_net(api, last))
+    eq("accounting: fixed assets net of depreciation in the balance sheet", rep.get("fixed_assets_net"), opening_assets + fixed_assets_net(api, last))
     eq("accounting: opening stock value (a business with stock before the books) in Persediaan",
        sum(l["amount"] for l in rows(api, "gl_entry", f"voucher == '{name}' && account == '11400'")), 7_000_000)
 

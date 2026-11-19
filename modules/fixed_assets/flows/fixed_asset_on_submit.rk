@@ -1,6 +1,9 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # Inside a fixed asset's submit: refuses an asset below the capitalisation threshold (fixed_asset_setting; 0 = no
-# threshold), a bill line already made into another live asset, or a rental unit that is already another live asset;
+# threshold; Rp 1.000.000 until the setting exists, e.g. in an org the daily setup flow does not reach), an asset from a
+# bill whose cost is not the cost the bill's flow recorded for its line (asset_bill_line, audit F1) or whose line is
+# already another live asset, an old asset while Saldo awal already carries fixed assets as one number (audit F5), or a
+# rental unit that is already another live asset;
 # then opens its row in the register (asset_book, the values the runs and disposals move) and links the rental unit
 # back to it. Reads in the order fixed_asset_setting, fixed_asset, asset_book, rental_unit (contract 0025).
 name: fixed_asset_on_submit
@@ -9,9 +12,16 @@ on: fixed_asset.submitted
 if: "'docstatus' in event && event.docstatus == 1"
 steps:
   - {find: fixed_asset_setting, as: cfg}
-  - if: "cfg != null && event.cost < cfg.capitalisation_threshold"
+  - if: "event.cost < (cfg != null ? cfg.capitalisation_threshold : 1000000)"
     create: asset_guard
     set: {reason: "'below_threshold'", document: event.name}
+  - find: asset_bill_line
+    if: event.source == 'vendor_bill'
+    where: vendor_bill == event.vendor_bill && bill_line == event.bill_line
+    as: bl
+  - if: "event.source == 'vendor_bill' && (bl == null || bl.cost != event.cost)"
+    create: asset_guard
+    set: {reason: "'bill_cost'", document: event.vendor_bill}
   - find: fixed_asset
     if: event.source == 'vendor_bill'
     where: name != event.name && docstatus == 1 && vendor_bill == event.vendor_bill && bill_line == event.bill_line
@@ -19,6 +29,13 @@ steps:
   - if: event.source == 'vendor_bill' && twin != null
     create: asset_guard
     set: {reason: "'bill_line_taken'", document: twin.name}
+  - find: opening_balance
+    if: event.source == 'opening'
+    where: docstatus == 1 && (fixed_assets != 0 || accumulated_depreciation != 0)
+    as: ob
+  - if: event.source == 'opening' && ob != null
+    create: asset_guard
+    set: {reason: "'opening_twice'", document: ob.name}
   - find: asset_book
     if: event.rental_unit != ''
     where: rental_unit == event.rental_unit && state != 'cancelled'
@@ -41,7 +58,8 @@ steps:
       depreciation_start: event.depreciation_start
       opening_accumulated: event.opening_accumulated
       accumulated: '0'
-      state: "'active'"
+      # an old asset brought in already fully depreciated is not depreciated again (audit F7)
+      state: "event.cost - event.opening_accumulated <= event.residual_value ? 'fully_depreciated' : 'active'"
   - find: rental_unit
     if: event.rental_unit != ''
     where: name == event.rental_unit
