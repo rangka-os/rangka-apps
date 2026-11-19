@@ -236,4 +236,25 @@ a receipt waits for head office (approval `big_discount`). `MATRIX` rows live in
 | pos_guard (never stored; a flow's refusal; outlet_staff: c) | c | c |
 | item, item_category (the counter's category tabs), uom, uom_conversion, outlet, stock_balance, period_close, outlet_sales, outlet_takings | r | (as above) |
 | gl_entry | r (lines of `pos_sale`; `pos_shift_close` lines created, not read) | (as above) |
+| customer (pick or sign up at the counter's checkout; money, credit and tax identity hidden, credit and terms read-only) | r c | (as before) |
+
+### Promotions (module promotions, next to the kasir piece)
+
+Promos are the owner's and head office's: they set them up, switch them off and make coupon batches; the cashier only
+picks a live bill promo at the counter and types its code. Item promos apply by themselves from the item's promo
+fields (written by flow `promotion_apply`, which runs as the system on its schedule and as head office when a promo is
+saved). The promo flows of a sale run as the cashier, so the cashier reads promotions and coupons and creates
+`promotion_ledger` rows; the ledger is append-only (contract 0026: no create, edit or delete by hand, the owner
+included), its money is `hidden_for: [cashier]`, and it carries `sale_outlet` instead of `outlet` so a shared voucher's
+uses are counted across outlets. `promotion` names its outlet `only_outlet` for the same reason (the cashier's row
+scope would hide a promo of every outlet). A promo set up by the owner never waits for approval; `big_discount` looks at
+the cashier's manual discounts only (`manual_discount_total`). `MATRIX` rows live in `tests/day_one_promotions.py`.
+
+| Model | cashier | outlet_staff | head_office |
+| --- | --- | --- | --- |
+| promotion (a used promo cannot be deleted: its ledger rows link it; the voucher `code` is hidden from cashier and outlet staff) | r | r | r c w d e p |
+| promo_code_batch (submit makes the coupons) | none | none | r c w d s e p |
+| promo_code (made by the batch, every field read-only; `code` hidden from the cashier, so unissued coupons cannot be listed) | r | none | r c e p |
+| promotion_ledger (append-only; written by the sale's flows) | r c (amount hidden) | none | r e |
+| promo_guard (never stored; a flow's refusal) | c | none | c |
 

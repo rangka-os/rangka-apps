@@ -38,9 +38,41 @@ fields:
     label: {id: Harga}
     compute: round(qty * rate)
   - {name: discount_pct, type: float, label: {id: 'Diskon %'}, default: '0'}
+  # Promo (module promotions, rangka-apps#103): the item's live promo (kept on the item by flow promotion_apply): the
+  # promo of this sale's outlet (parent.outlet, rangka-os contract 0069 §2) when the item has one, else the all-outlet
+  # one; never on a free gift line. Percent off the line; rupiah off per stock unit and buy X get Y per stock unit (a
+  # dus of 24 counts 24, free units at the item's unit price, never more than the line). The cashier's manual
+  # discount_pct applies after the promo and counts as a manual discount (big_discount).
+  - name: promo_slot
+    type: data
+    label: {id: Sumber promo}
+    hidden: true
+    depends_on: app_installed('promotions')
+    compute: "is_gift ? '' : (item.promo_o != '' && item.promo_o_outlet == parent.outlet ? 'o' : (item.promo != '' && (item.promo_outlet == '' || item.promo_outlet == parent.outlet) ? 'a' : ''))"
+  - {name: promotion, type: data, label: {id: Promo}, depends_on: app_installed('promotions'), compute: "promo_slot == 'o' ? item.promo_o : (promo_slot == 'a' ? item.promo : '')"}
+  - {name: promo_name, type: data, label: {id: Nama promo}, hidden: true, depends_on: app_installed('promotions'), compute: "promo_slot == 'o' ? item.promo_o_name : (promo_slot == 'a' ? item.promo_name : '')"}
+  - {name: promo_kind, type: data, label: {id: Jenis promo}, hidden: true, depends_on: app_installed('promotions'), compute: "promo_slot == 'o' ? item.promo_o_kind : (promo_slot == 'a' ? item.promo_kind : '')"}
+  - {name: promo_pct, type: float, label: {id: 'Promo %'}, hidden: true, depends_on: app_installed('promotions'), compute: "promo_slot == 'o' ? item.promo_o_pct : (promo_slot == 'a' ? item.promo_pct : 0)"}
+  - {name: promo_off, type: currency, label: {id: Potongan promo per satuan}, hidden: true, depends_on: app_installed('promotions'), compute: "promo_slot == 'o' ? item.promo_o_off : (promo_slot == 'a' ? item.promo_off : 0)"}
+  - {name: promo_buy, type: int, label: {id: Promo beli}, hidden: true, depends_on: app_installed('promotions'), compute: "promo_slot == 'o' ? item.promo_o_buy : (promo_slot == 'a' ? item.promo_buy : 0)"}
+  - {name: promo_get, type: int, label: {id: Promo gratis}, hidden: true, depends_on: app_installed('promotions'), compute: "promo_slot == 'o' ? item.promo_o_get : (promo_slot == 'a' ? item.promo_get : 0)"}
+  # the promo's last day as it was when the line was computed: rule line_promo_live reads it (a rule sees the rows'
+  # stored values, not their links)
+  - {name: promo_until, type: date, label: {id: Promo sampai}, hidden: true, depends_on: app_installed('promotions'), compute: "promo_slot == 'o' ? item.promo_o_until : (promo_slot == 'a' ? item.promo_until : null)"}
+  - name: promo_discount
+    type: currency
+    label: {id: Potongan promo}
+    depends_on: app_installed('promotions')
+    compute: "promotion == '' ? 0 : (promo_kind == 'pct' ? round(gross * promo_pct / 100) : (promo_kind == 'off' ? min(gross, round(stock_qty * promo_off)) : (promo_kind == 'buy_get' && promo_buy + promo_get > 0 ? min(gross, round(int(stock_qty / (promo_buy + promo_get)) * promo_get * item.rate)) : 0)))"
+  # the free gift of a bill promo (kind free_gift): a line of the gift item at 0, its stock and cost still out
+  - name: is_gift
+    type: check
+    label: {id: Produk gratis promo}
+    default: 'false'
+    depends_on: app_installed('promotions')
   - name: amount
     type: currency
     label: {id: Jumlah}
-    compute: round(qty * rate * (100 - discount_pct) / 100)
+    compute: "is_gift ? 0 : (promo_discount == 0 ? round(qty * rate * (100 - discount_pct) / 100) : round((gross - promo_discount) * (100 - discount_pct) / 100))"
   - {name: note, type: data, label: {id: Catatan}, help: {id: 'Misalnya kurang manis, tanpa es'}}
   - {name: cogs, type: currency, label: {id: Harga pokok}, read_only: true, hidden_for: [cashier, outlet_staff]}

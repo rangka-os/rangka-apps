@@ -13,6 +13,9 @@ permissions:
   # outlet staff pick customers (POS, outlet sales, returns) but never see their money, credit or tax identity: the
   # money and identity fields are hidden_for outlet_staff (contract 0027; card t_5ba74e22)
   - {role: outlet_staff, read: true}
+  # the cashier picks a customer at the counter or signs a new one up (module pos, rangka-apps#103): name and number
+  # only; money, credit and tax identity stay hidden from it like from outlet staff
+  - {role: cashier, read: true, create: true}
   - {role: sales_rep, read: true, create: true, write: true}
   # credit_limit, credit_hold, credit_hold_reason, payment_days and price_tier (the customer's credit and terms) are
   # decided by the sales and finance managers (and the owner):
@@ -68,19 +71,19 @@ fields:
     label: {id: Tempo (hari)}
     default: '30'
     in_list: true
-    read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin]
+    read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin, cashier]
   - name: credit_limit
     type: currency
     label: {id: Batas kredit}
     default: '25000000'
-    hidden_for: [outlet_staff]
-    read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin]
+    hidden_for: [outlet_staff, cashier]
+    read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin, cashier]
   - name: outstanding
     type: currency
     label: {id: Piutang}
     read_only: true
     in_list: true
-    hidden_for: [outlet_staff]
+    hidden_for: [outlet_staff, cashier]
   # Distributor sales (module distribution): the salesman who visits the customer, the route, the price tier, and
   # the credit control that holds its orders (customer_order approvals). oldest_open_due is the earliest due date of
   # its open invoices, kept by the distribution flows; an order is held while it is before today.
@@ -108,42 +111,42 @@ fields:
       - {value: retail, label: {id: Eceran}}
       - {value: wholesale, label: {id: Grosir}}
       - {value: agent, label: {id: Agen}}
-    read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin]
+    read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin, cashier]
   - name: credit_hold
     type: check
     label: {id: Tahan kredit}
     help: {id: Semua pesanan pelanggan ini butuh persetujuan sampai dicentang lagi}
     depends_on: app_installed('distribution')
-    read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin]
-    hidden_for: [outlet_staff]
+    read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin, cashier]
+    hidden_for: [outlet_staff, cashier]
   - name: credit_hold_reason
     type: data
     label: {id: Alasan tahan kredit}
     depends_on: app_installed('distribution')
-    hidden_for: [outlet_staff]
-    read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin]
+    hidden_for: [outlet_staff, cashier]
+    read_only_for: [purchasing_manager, project_admin, head_office, sales_rep, course_admin, cashier]
   - name: oldest_open_due
     type: date
     label: {id: Jatuh tempo tertua yang belum lunas}
     read_only: true
     depends_on: app_installed('distribution')
-    hidden_for: [outlet_staff]
+    hidden_for: [outlet_staff, cashier]
   - name: open_orders
     type: currency
     label: {id: Pesanan belum ditagih (dengan PPN)}
     read_only: true
     depends_on: app_installed('distribution')
-    hidden_for: [outlet_staff]
+    hidden_for: [outlet_staff, cashier]
   - name: uninvoiced_deliveries
     type: currency
     label: {id: Terkirim belum ditagih (dengan PPN)}
     read_only: true
     depends_on: app_installed('delivery')
-    hidden_for: [outlet_staff]
+    hidden_for: [outlet_staff, cashier]
   - name: npwp
     type: npwp
     label: {id: NPWP}
-    hidden_for: [outlet_staff]
+    hidden_for: [outlet_staff, cashier]
   # Tax identity for e-Faktur (module coretax, contract 0029): a buyer is identified by NPWP 16 digits plus its NITKU
   # (22 digits, NPWP + 000000 for the head office), else NIK, else a passport. vat_collector sets the transaction
   # code (02 government, 03 other collectors such as BUMN).
@@ -152,32 +155,32 @@ fields:
     label: {id: NITKU}
     help: {id: 'ID TKU 22 digit dari Coretax. Kosongkan bila pusat (NPWP + 000000)'}
     depends_on: app_installed('coretax')
-    hidden_for: [outlet_staff]
+    hidden_for: [outlet_staff, cashier]
   - name: nik
     type: data
     label: {id: NIK}
     help: {id: 'Untuk pembeli orang pribadi tanpa NPWP'}
     depends_on: app_installed('coretax')
-    hidden_for: [outlet_staff]
+    hidden_for: [outlet_staff, cashier]
   - name: passport_no
     type: data
     label: {id: No. paspor}
     help: {id: 'Untuk pembeli warga negara asing tanpa NPWP/NIK'}
     depends_on: app_installed('coretax')
-    hidden_for: [outlet_staff]
+    hidden_for: [outlet_staff, cashier]
   - name: country
     type: data
     label: {id: Kode negara}
     help: {id: 'Kode 3 huruf, IDN untuk Indonesia'}
     default: "'IDN'"
     depends_on: app_installed('coretax')
-    read_only_for: [sales_manager, purchasing_manager, project_admin, head_office, sales_rep, course_admin]
+    read_only_for: [sales_manager, purchasing_manager, project_admin, head_office, sales_rep, course_admin, cashier]
   - name: vat_collector
     type: select
     label: {id: Pemungut PPN}
     default: "'none'"
     depends_on: app_installed('coretax')
-    read_only_for: [sales_manager, purchasing_manager, project_admin, head_office, sales_rep, course_admin]
+    read_only_for: [sales_manager, purchasing_manager, project_admin, head_office, sales_rep, course_admin, cashier]
     options:
       - {value: none, label: {id: Bukan pemungut}}
       - {value: government, label: {id: Instansi pemerintah}}

@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: promotions
+version: 1.0.0
+title: {id: Promo, en: Promotions}
+summary:
+  id: Promo diskon, beli X gratis Y, voucher dan kupon di kasir.
+  en: Discounts, buy X get Y, vouchers and coupons at the counter.
+category: sales
+icon: price-tag-3-line
+# Owner-defined promotions (rangka-apps#103). Item promos (percent, rupiah off per unit, buy X get Y) are written onto
+# the items they cover by flow promotion_apply while they are live (dates, days, hours), so a sale line computes its
+# promo from the item like its price, also on an offline device (rangka-os contract 0058 §10). Bill promos (percent
+# with a cap, rupiah off, a free gift) are picked at the counter's checkout (rangka-os contract 0069), optionally with
+# a shared voucher code (a use limit) or a single-use coupon from a generated batch; flow promotion_on_sale checks the
+# code and the limit under the ledger's lock and writes promotion_ledger, the promo's cost per sale. The books need no
+# new account: a promo lowers the sale's grand_total, which the accounting module posts net. Invoices take an item
+# promo of channel invoice or both as the default line discount (module invoicing).
+# outlets is optional: a services site (invoices only, no outlets) can use invoice promos
+requires: {rangka: '>=0.5', users: ^1.2, catalogue: ^1.5}
+optional: {outlets: ^1.5, pos: ^1.4, invoicing: ^1.13}

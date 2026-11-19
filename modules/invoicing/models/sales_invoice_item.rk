@@ -26,10 +26,13 @@ fields:
     type: currency
     label: {id: Harga}
     default: item.rate
+  # a new line takes the item's live invoice promo (module promotions: a percent promo of channel invoice or both, for
+  # all outlets, kept on item.promo_invoice_pct) as its default discount; the user can still change it, and lines
+  # already saved keep theirs
   - name: discount
     type: percent
     label: {id: Diskon %}
-    default: '0'
+    default: "app_installed('promotions') ? item.promo_invoice_pct : 0"
   - name: amount
     type: currency
     label: {id: Jumlah}

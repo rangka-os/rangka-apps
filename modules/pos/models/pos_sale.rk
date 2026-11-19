@@ -49,6 +49,21 @@ fields:
     label: {id: Pembeli atau meja}
     help: {id: 'Boleh kosong. Nama pembeli, nomor meja atau nomor antrean'}
     in_list: true
+  # the customer of record (contacts), picked or signed up at the counter's checkout; buyer stays for a name, table or
+  # queue number. Shared with module loyalty (rangka-apps#102).
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, help: {id: 'Boleh kosong. Pilih pelanggan terdaftar'}}
+  # Bill promo (module promotions): picked at the checkout with its code; the sale's rules check its window, outlet,
+  # code and gift lines, and flow promotion_on_sale checks a voucher's limit and a coupon's single use.
+  - name: promotion
+    type: link
+    to: promotion
+    label: {id: Promo nota}
+    help: {id: 'Promo untuk seluruh nota, misalnya diskon 10% minimal belanja Rp 50.000'}
+    depends_on: app_installed('promotions')
+  - name: promo_code
+    type: data
+    label: {id: Kode voucher atau kupon}
+    depends_on: app_installed('promotions')
   # WhatsApp receipt (module whatsapp_receipt): the buyer's number and their yes, asked at the counter ("Kirim struk ke
   # WhatsApp?"). Nothing is sent without the tick. wa_number is the number in one form (digits with the country code).
   - name: wa_phone
@@ -86,14 +101,41 @@ fields:
     label: {id: Diskon nota}
     help: {id: 'Potongan rupiah untuk seluruh nota, setelah diskon per barang'}
     default: '0'
+  # Promos (module promotions): item promos are inside subtotal already (the lines' amount); a free gift line is at 0;
+  # the bill promo comes off the subtotal (after item promos) when it reaches the promo's minimum spend, a percent one
+  # up to its cap. Stacking: item promos and one bill promo add up; the cashier's manual discounts come on top and are
+  # the only part big_discount looks at (a promo the owner set up never waits for head office).
+  - {name: line_promo_total, type: currency, label: {id: Promo per barang}, depends_on: app_installed('promotions'), compute: "items.map(l, l.promo_discount).sum()"}
+  - {name: gift_value, type: currency, label: {id: Harga produk gratis}, depends_on: app_installed('promotions'), compute: "items.map(l, l.is_gift ? l.gross : 0).sum()"}
+  - name: bill_promo
+    type: currency
+    label: {id: Promo nota}
+    depends_on: app_installed('promotions')
+    # nothing off while the promo cannot apply (switched off, outside its dates or outlet, a wrong shared code), so
+    # the counter's total never shows a discount the payment would refuse; hours are rule promo_valid's (clock())
+    compute: "promotion == '' || subtotal < promotion.min_spend || !promotion.active || promotion.valid_from > date || promotion.valid_until < date || (promotion.only_outlet != '' && promotion.only_outlet != outlet) || (promotion.code_mode == 'shared' && promo_code.trim().upperAscii() != promotion.code) ? 0 : (promotion.kind == 'bill_pct' ? (promotion.max_discount > 0 ? min(promotion.max_discount, round(subtotal * promotion.pct / 100)) : round(subtotal * promotion.pct / 100)) : (promotion.kind == 'bill_off' ? min(subtotal, promotion.amount_off) : 0))"
+  # what the cart still lacks for the bill promo's minimum spend: the counter shows it under the order only while it is
+  # above 0 (its depends_on), so the cashier can tell the buyer "kurang Rp 2.400"
+  - name: promo_shortfall
+    type: currency
+    label: {id: Kurang belanja untuk promo}
+    depends_on: app_installed('promotions') && promo_shortfall > 0
+    compute: "promotion == '' ? 0 : max(0, promotion.min_spend - subtotal)"
+  - {name: promo_name, type: data, label: {id: Nama promo nota}, hidden: true, depends_on: app_installed('promotions'), compute: "promotion != '' ? promotion.promo_name : ''"}
+  - {name: promo_total, type: currency, label: {id: Promo}, depends_on: app_installed('promotions'), compute: line_promo_total + gift_value + bill_promo}
   - name: discount_total
     type: currency
     label: {id: Total diskon}
-    compute: gross_total - subtotal + discount_amount
+    compute: gross_total - subtotal + discount_amount + bill_promo
+  - name: manual_discount_total
+    type: currency
+    label: {id: Diskon kasir}
+    help: {id: 'Diskon yang diberi kasir, di luar promo'}
+    compute: discount_total - promo_total
   - name: grand_total
     type: currency
     label: {id: Total}
-    compute: subtotal - discount_amount
+    compute: subtotal - bill_promo - discount_amount
     in_list: true
   # Payment (table payments, rows of pos_payment): no row means exact cash; a cash row is what the buyer handed over,
   # a QRIS row is paid exactly. Change comes only out of cash, so QRIS may not exceed the total.
@@ -145,14 +187,14 @@ fields:
     type: currency
     label: {id: 'PPh final 0,5%'}
     compute: round((grand_total - ppn_in_sales) * 5 / 1000)
-# Cashier controls (audit kasir M5): a receipt whose discounts exceed 20% of its price waits for head office
+# Cashier controls (audit kasir M5): a receipt whose manual discounts exceed 20% of its price after promos waits for head office
 # (contract 0007; the owner may always approve). A void is not held: an approved verb runs again as a requester
 # without their outlets, so the flow's own-shift check cannot run (kernel card t_7782ebb1 follow-up); voids stay
 # same day, open shift, own shift, and are counted on the shift and the dashboard.
 approvals:
   - name: big_discount
     on: submit
-    when: "discount_total * 100 > gross_total * 20 && !('head_office' in user.roles) && !('owner' in user.roles)"
+    when: "manual_discount_total * 100 > (gross_total - promo_total) * 20 && !('head_office' in user.roles) && !('owner' in user.roles)"
     approvers: [head_office]
     label: {id: Persetujuan kantor pusat untuk diskon di atas 20%, en: Head office approves a discount above 20%}
 stock:
@@ -207,8 +249,65 @@ rules:
     message: {id: 'Ada barang tanpa harga jual; isi Harga jual di data barang'}
   - name: receipt_discount_range
     on: save
-    check: discount_amount >= 0 && discount_amount <= subtotal
+    check: discount_amount >= 0 && discount_amount <= subtotal - bill_promo
     message: {id: Diskon nota tidak boleh negatif atau melebihi subtotal}
+  # Bill promo (module promotions): a bill kind, active, in its dates, days and hours now (clock(), the site's wall
+  # clock; rangka-os contract 0069 §3) and at this outlet. Day 1 is Monday (2024-01-01 was one).
+  - name: promo_is_bill
+    on: save
+    check: "promotion == '' || promotion.is_bill"
+    message: {id: 'Promo ini otomatis per barang; untuk nota pilih promo nota'}
+  - name: promo_valid
+    on: save
+    check: >-
+      promotion == '' || promotion.active && promotion.valid_from <= date && promotion.valid_until >= date
+      && (promotion.only_outlet == '' || promotion.only_outlet == outlet)
+      && (promotion.days == '' || promotion.days.contains(string(days_between('2024-01-01', date) % 7 + 1)))
+      && (promotion.time_from == '' || clock() >= promotion.time_from && clock() < promotion.time_until)
+    message: {id: 'Promo ini tidak berlaku di outlet, tanggal atau jam ini'}
+  - name: promo_min_spend
+    on: save
+    level: warn
+    check: "promotion == '' || subtotal >= promotion.min_spend"
+    message: {id: 'Belanja belum mencapai minimal promo; promo nota belum dipotong'}
+  - name: promo_code_needed
+    on: save
+    check: "promotion == '' || promotion.code_mode == 'none' || promotion.code_mode == '' || promo_code.trim() != ''"
+    message: {id: 'Masukkan kode voucher atau kupon untuk promo ini'}
+  - name: promo_code_shared
+    on: save
+    check: "promotion == '' || promotion.code_mode != 'shared' || promo_code.trim().upperAscii() == promotion.code"
+    message: {id: 'Kode voucher tidak cocok dengan promo ini'}
+  - name: promo_code_without_promo
+    on: save
+    check: "promo_code.trim() == '' || promotion != ''"
+    message: {id: 'Pilih promo nota untuk kode ini'}
+  # a free gift line, told apart so the cashier knows what is missing (promo_shortfall shows how much to spend)
+  - name: gift_needs_promo
+    on: save
+    check: "items.map(l, l.is_gift ? 1 : 0).sum() == 0 || promotion != '' && promotion.kind == 'free_gift'"
+    message: {id: 'Produk gratis perlu promo hadiah: pilih promonya di Promo nota, atau matikan Produk gratis promo di barisnya'}
+  - name: gift_min_spend
+    on: save
+    check: "items.map(l, l.is_gift ? 1 : 0).sum() == 0 || promotion == '' || promotion.kind != 'free_gift' || subtotal >= promotion.min_spend"
+    message: {id: 'Belanja belum mencapai minimal promo hadiah; kekurangannya tertulis di Kurang belanja untuk promo'}
+  - name: gift_item
+    on: save
+    check: "promotion == '' || promotion.kind != 'free_gift' || items.map(l, l.is_gift && l.item != promotion.gift_item ? 1 : 0).sum() == 0"
+    message: {id: 'Barang ini bukan produk gratis promo yang dipilih'}
+  - name: gift_qty
+    on: save
+    check: "promotion == '' || promotion.kind != 'free_gift' || items.map(l, l.is_gift ? l.stock_qty : 0).sum() <= promotion.gift_qty"
+    message: {id: 'Jumlah produk gratis melebihi yang diberikan promo'}
+  # a gift is given in the item's own unit, never a pack (audit F1: a dus of 24 is 24 gifts)
+  - name: gift_no_packing
+    on: save
+    check: "items.map(l, l.is_gift && l.packing != '' ? 1 : 0).sum() == 0"
+    message: {id: 'Produk gratis diberikan per satuan barang; kosongkan Satuan lain di baris hadiah'}
+  - name: line_promo_live
+    on: submit
+    check: "items.map(l, l.promotion != '' && l.promo_until != '' && l.promo_until < date ? 1 : 0).sum() == 0"
+    message: {id: 'Promo ini sudah tidak berlaku hari ini; hapus barangnya lalu tambahkan lagi'}
   - name: payment_positive
     on: save
     check: "payments.map(p, p.amount <= 0 ? 1 : 0).sum() == 0"
@@ -234,8 +333,12 @@ views:
     layout:
       - section: {id: Transaksi}
         columns:
-          - [shift, outlet, date]
+          - [shift, outlet, date, customer]
           - [buyer, wa_phone, wa_receipt]
+      - section: {id: Promo}
+        columns:
+          - [promotion]
+          - [promo_code]
       - section: {id: Barang}
         fields: [items]
       - section: {id: Bayar}
@@ -246,5 +349,5 @@ views:
         fields: [payments]
       - section: {id: Ringkasan}
         columns:
-          - [gross_total, discount_total, cogs_total, margin]
-          - [ppn_in_sales, pph_final]
+          - [gross_total, promo_total, line_promo_total, gift_value, bill_promo]
+          - [manual_discount_total, discount_total, promo_shortfall, cogs_total, margin, ppn_in_sales, pph_final]
