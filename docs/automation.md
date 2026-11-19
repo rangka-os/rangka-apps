@@ -16,7 +16,7 @@ A notice goes to the kernel inbox (the bell) of everyone it names, and from ther
 - on a kernel without a host and `notify.email` `driver: smtp`, the kernel mails it (§4.2), one plain-text mail per
   person: title, text, the link, and the line to Pengaturan › Notifikasi.
 
-Every step says `channel: email`, which only sets the kind's mail default to on. A person switches the mail of a kind
+Every step but `stock_negative_alert` says `channel: email`, which only sets the kind's mail default to on. A person switches the mail of a kind
 off in Pengaturan › Notifikasi (`rk_notice_prefs`), or on the host's page when the host manages mail.
 
 The texts are written for any short-message channel: plain text, at most 300 characters, no formatting, amounts
@@ -30,7 +30,7 @@ title and text without a change to a flow.
 | `kernel.approval.requested` | kernel (contract 0066 §5) | a document or flow waits for approval | the policy's approvers and the owner, never the requester | warn |
 | `app.invoicing.invoice_due` | invoicing, `invoice_due_digest` | 08:00 Monday to Saturday, when submitted invoices with money owed are due that day | owner, finance_manager | info |
 | `app.invoicing.invoice_overdue` | invoicing, `invoice_due_digest` | the same run, only when an invoice became overdue since the last run | owner, finance_manager | warn |
-| `app.stock.stock_negative` | stock, `stock_negative_alert` | a stock move leaves a balance below zero; once per balance and day | owner, head_office (people limited to other outlets are left out) | high |
+| `app.stock.stock_negative` | stock, `stock_negative_alert` | a stock move leaves a balance below zero; once per balance and day; mail off by default (`in_app` step) | owner, head_office (people limited to other outlets are left out) | high |
 | `app.stock.stock_low` | stock, `stock_low_alert` | 06:30, when a balance newly fell below its item's reorder level | owner, head_office, purchasing_manager (those who may read the reorder row) | warn |
 | `app.procurement.reorder_draft` | procurement, `reorder_draft_po` | 06:40, one per draft purchase order made | owner, purchasing_manager, head_office (those who may read purchase orders) | warn |
 | `app.payroll.payroll_ready` | payroll, `payroll_reminder` | 07:15, once per run: cut-off over, recaps submitted, slips to check | owner, finance_manager | info |
@@ -83,6 +83,10 @@ is how the tests fix the clock, and how an owner gets the summary of a day the s
 - The kernel sends at most 60 notices a minute per organisation and drops the rest (contract 0066 §3). A large import
   that leaves hundreds of balances below zero tells about the first 60.
 - Dates in texts are `YYYY-MM-DD`; CEL has no date or money formatting.
-- Cashier refunds (`pos_refund`) are not taken off the summary's sales and money in.
+- Sales in the summary are before returns: sales returns (`sales_return`) and cashier refunds (`pos_refund`) are not
+  taken off (daily outlet sales already net their refunds). "Potong retur" payments are not money in.
+- `stock_low_alert` reads the first 500 below-level balances (by item) per run.
+- Anyone who may run a date flow by hand may pass `as_of`; notice ids are per day, so a run tells nobody twice.
+- Invoice and stock texts give totals over all outlets; the read check is on the one linked record.
 - On a Monday the owner gets the daily and the weekly summary, on the 1st also the monthly one (07:00, 07:05, 07:10).
   Each can be switched off in the summary settings.

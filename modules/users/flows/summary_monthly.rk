@@ -4,9 +4,9 @@
 # owner (monthly_summary, contract 0066) that links to it. The record keeps the exact figures; the notice text is the
 # record's `message` (short amounts), so the same text works for mail now and WhatsApp later.
 #   - period: one month back from the run day (run on the 1st: the whole previous month)
-#   - sales: submitted sales invoices (grand total), cashier receipts and daily outlet sales of the period. An outlet
+#   - sales: submitted sales invoices (grand total, before sales returns), cashier receipts and daily outlet sales of the period. An outlet
 #     and day has one sales source (outlets/outlet_day), so receipts and daily sales never count the same sale twice.
-#   - money in: submitted customer payments, cashier receipts (cash, QRIS or card, all taken at the counter) and daily
+#   - money in: submitted customer payments (not "Potong retur", method sales_return: no money moves), cashier receipts (cash, QRIS or card, all taken at the counter) and daily
 #     takings of the period.
 #   - invoices: submitted, money still owed, due within 7 days from the run day, or already overdue.
 #   - low stock: open stock_reorder rows (stock/stock_low_alert).
@@ -46,7 +46,7 @@ steps:
     as: takings
   - find_all: payment
     if: "cfg.monthly && old == null && app_installed('payments')"
-    where: "docstatus == 1 && direction == 'receive' && payment_date >= add_months(('as_of' in event ? event.as_of : today()), -1) && payment_date < ('as_of' in event ? event.as_of : today())"
+    where: "docstatus == 1 && direction == 'receive' && method != 'sales_return' && payment_date >= add_months(('as_of' in event ? event.as_of : today()), -1) && payment_date < ('as_of' in event ? event.as_of : today())"
     as: paid
   - find_all: sales_invoice
     if: "cfg.monthly && old == null && app_installed('invoicing')"

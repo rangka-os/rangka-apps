@@ -2,21 +2,23 @@
 name: stock_negative_alert
 label: {id: Peringatan stok minus}
 description: {id: 'Kalau stok sebuah barang di outlet jadi minus, pemilik dan kantor pusat langsung dikabari.'}
-# The kernel passes the stock_move record as `event` (name, outlet, item, qty, balance_qty, negative, ...).
-# The find steps turn the record names into item and outlet names for the message; when a record cannot be found
-# (deleted, or outside the actor's scope) the text falls back to the plain names. The notice (stock_negative, contract
-# 0066) is about the balance: it links there, people limited to other outlets are left out, and one balance tells
-# its people once per day (id), however many moves keep it below zero that day.
+# The kernel passes the stock_move record as `event` (name, outlet, item, qty, balance_qty, negative, ...). The flow
+# runs inside the writer's submit, as the writer (a sales manager's delivery note, a purchasing manager's receipt), so
+# it reads only models every such writer may read: item and outlet, for the names in the message. When a record cannot
+# be found (deleted, or outside the actor's scope) the text falls back to the plain names. It must not read
+# stock_balance: a find on a model the writer may not read refuses the whole submit (audit owner-automation-pack 1).
+# The notice (stock_negative, contract 0066) leaves out people limited to other outlets and tells once per balance and
+# day (id), however many moves keep it below zero that day. The step stays `in_app`: on a kernel that mails by SMTP a
+# `channel: email` step also queues the older notify_email mail on every run, without the id or the outlet. So mail is
+# off by default for this kind; a person who wants it switches it on in Pengaturan › Notifikasi.
 on: stock_move.created
 if: event.negative == true
 steps:
   - {find: item, where: name == event.item, as: it}
   - {find: outlet, where: name == event.outlet, as: ou}
-  - {find: stock_balance, where: outlet == event.outlet && item == event.item, as: bal}
   - notify: head_office
     notice: stock_negative
-    channel: email
-    record: bal
+    channel: in_app
     outlet: event.outlet
     id: "'neg:' + event.outlet + ':' + event.item + ':' + string(today())"
     title: {id: 'Stok {it != null ? it.item_name : event.item} minus'}

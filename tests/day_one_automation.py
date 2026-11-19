@@ -224,10 +224,38 @@ def scenario_reorder_point(api):
     eq("an item no longer watched (level 0) has its rows closed", sorted(r["open"] for r in mine() if r["item"] == B), [False, False])
     st, kinds = api.call("GET", "/api/v1/notices/prefs")
     by_kind = {k["kind"]: k for k in (kinds or {}).get("kinds", [])}
-    eq("Pengaturan › Notifikasi lists the stock and purchasing kinds, mail on by default",
+    eq("Pengaturan › Notifikasi lists the stock and purchasing kinds; negative stock is in the bell only by default (in_app step)",
        [(k, by_kind.get(k, {}).get("label"), by_kind.get(k, {}).get("mail")) for k in ("app.stock.stock_low", "app.stock.stock_negative", "app.procurement.reorder_draft")],
-       [("app.stock.stock_low", "Stok di bawah batas minimum", True), ("app.stock.stock_negative", "Stok minus", True),
+       [("app.stock.stock_low", "Stok di bawah batas minimum", True), ("app.stock.stock_negative", "Stok minus", False),
         ("app.procurement.reorder_draft", "Draft pesanan pembelian stok menipis", True)])
+
+
+def scenario_negative_by_other_roles(api):
+    """A sales manager's delivery note that leaves a balance below zero still goes through: the negative stock flow runs
+    as the writer and reads nothing a sales manager may not read (audit owner-automation-pack 1)."""
+    room_for_notices(api)
+    sm = CTX.get("sm")
+    if not sm:
+        fail("negative stock by a sales manager: members", CTX.get("login_error", "members missing"))
+        return
+    uom = api.list("uom", limit=1)[0]["name"]
+    outlet = sorted(o["name"] for o in api.list("outlet", limit=10))[0]
+    cust = api.list("customer", limit=1)[0]["name"]
+    st, it = api.create("item", {"item_name": "Barang uji kirim minus", "kind": "good", "stock_uom": uom, "rate": 10_000})
+    if not check("negative by a sales manager setup: an item with no stock", st == 201, (st, it)):
+        return
+    st, so = api.create("customer_order", {"customer": cust, "po_number": "PO-UJI-MINUS", "po_date": "2026-11-03", "items": [{"item": it["name"], "qty": 5}]})
+    if not check("setup: an order of 5", st == 201, (st, so)):
+        return
+    son = submit(api, "customer_order", so["name"], "setup: submit the order")
+    st, dn = sm.create("delivery_note", {"customer_order": son, "outlet": outlet, "items": [{"item": it["name"], "qty": 2}]})
+    if not check("the sales manager drafts a delivery note of 2 from an empty shelf", st == 201, (st, dn)):
+        return
+    st, resp = sm.verb("delivery_note", dn["name"], "submit", {"force": True})
+    check("and submits it -> 200 (a negative balance is allowed and does not refuse the writer)", st == 200, (st, resp))
+    bal = api.find("stock_balance", f"outlet == '{outlet}' && item == '{it['name']}'")
+    eq("the balance is -2", [b["qty"] for b in bal], [-2])
+    check("the owner is told", any(n["title"] == "Stok Barang uji kirim minus minus" for n in inbox(api, "app.stock.stock_negative")), inbox(api, "app.stock.stock_negative")[:2])
 
 
 # ---------- invoices due and overdue (demo-grosir)
@@ -323,7 +351,7 @@ def summary_oracle(api, start, end, as_of):
     pos = every(api, "pos_sale", between("date"))
     daily = every(api, "outlet_sales", between("date"))
     takings = every(api, "outlet_takings", between("date"))
-    paid = every(api, "payment", between("payment_date") + " && direction == 'receive'")
+    paid = every(api, "payment", between("payment_date") + " && direction == 'receive' && method != 'sales_return'")
     owed = [r for r in open_invoices(api) if r["due_date"] <= day(as_of, 6)] if inv is not None else []
     low = every(api, "stock_reorder", "open")
     s = lambda rows, f: sum(r[f] for r in rows or [])
@@ -465,6 +493,10 @@ def scenario_stock_negative_notice(api):
     if not check("negative stock setup: an item", st == 201, (st, it)):
         return
     kind = "app.stock.stock_negative"
+    st, resp = api.call("PUT", "/api/v1/notices/prefs", {"kinds": {kind: True}})
+    check("the owner switches the mail of negative stock on (Pengaturan › Notifikasi; off by default)", st == 200, (st, resp))
+    st, prefs = api.call("GET", "/api/v1/notices/prefs")
+    eq("and the choice is kept", [k.get("mail") for k in (prefs or {}).get("kinds", []) if k.get("kind") == kind], [True])
     n0 = len(inbox(api, kind))
     for qty, label in [(2, "2 taken out of an empty shelf"), (1, "1 more the same day")]:
         st, adj = api.create("stock_adjustment", {"outlet": outlet, "reason": "damage", "items": [{"item": it["name"], "qty": qty}]})
@@ -475,10 +507,10 @@ def scenario_stock_negative_notice(api):
         return
     notes = inbox(api, kind)
     if check("the owner got one notice for the balance, however many moves kept it below zero that day", len(notes) == n0 + 1, (n0, len(notes))):
-        eq("it is high, names the item and links to the balance",
-           (notes[0]["severity"], notes[0]["title"], notes[0]["link"]), ("high", "Stok Bahan uji stok minus minus", rec_link("stock_balance", bal[0]["name"])))
+        eq("it is high and names the item (no link: the flow reads only what every writer may read)",
+           (notes[0]["severity"], notes[0]["title"], notes[0]["link"]), ("high", "Stok Bahan uji stok minus minus", ""))
         check("its text names the outlet and the balance", "minus (-2)" in notes[0]["text"] and " di " in notes[0]["text"], notes[0]["text"])
-    check("head office got it", len(inbox(hq, kind, rec_link("stock_balance", bal[0]["name"]))) == 1, inbox(hq, kind)[:2])
+    check("head office got it", len([n for n in inbox(hq, kind) if n["title"] == "Stok Bahan uji stok minus minus"]) == 1, inbox(hq, kind)[:2])
     check("outlet staff are not a role of the notice", not inbox(dago, kind) and not inbox(braga, kind), (inbox(dago, kind)[:1], inbox(braga, kind)[:1]))
 
 
@@ -571,7 +603,7 @@ def scenario_payroll_reminder(api):
 
 
 SCENARIOS = {
-    "demo-grosir": [scenario_reorder_point, scenario_invoice_notices, scenario_summaries],
+    "demo-grosir": [scenario_reorder_point, scenario_negative_by_other_roles, scenario_invoice_notices, scenario_summaries],
     "demo-manpower": [scenario_payroll_reminder],
     "demo-fnb": [scenario_stock_negative_notice, scenario_summary_today],
     "demo-kasir": [scenario_summary_today],

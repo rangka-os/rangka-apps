@@ -4771,24 +4771,24 @@ def scenario_stock(api):
     listed = api.find("stock_balance", "negative == true")
     check("head office list 'Stok minus' (filter negative == true) holds the balance", any(r["outlet"] == neg and r["item"] == m for r in listed), listed)
     check("a positive balance is not in the 'Stok minus' list", not any(r["outlet"] == DAGO and r["item"] == m for r in listed), listed)
-    # the alert flow (notice stock_negative, mail on by default: channel email)
-    alerts = [e for e in api.audit("notify.email") if e.get("target") == "flow/stock_negative_alert"]
+    # the alert flow (notice stock_negative; an in_app step, mail off by default)
+    alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
     if not alerts:
         fail("stock_negative_alert notifies head_office when a move turns negative",
-             "no notify.email audit entry: the kernel did not run the `on: stock_move.created` flow")
+             "no notify.in_app audit entry: the kernel did not run the `on: stock_move.created` flow")
     else:
         ok("stock_negative_alert notified head_office on its own")
     st, resp = api.call("POST", "/api/v1/flows/stock_negative_alert/run", {"event": mv[0]} if mv else {})
-    alerts = [e for e in api.audit("notify.email") if e.get("target") == "flow/stock_negative_alert"]
+    alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
     item_label, outlet_label = api.get("item", m)["item_name"], api.get("outlet", neg)["outlet_name"]
     check("stock_negative_alert, run with the move as its event, names the item and the outlet (find steps), not their ids",
           st == 200 and any(f"Stok {item_label} di {outlet_label} minus (-10)" in e.get("summary", "") for e in alerts), (st, resp, alerts[-1:]))
     st, resp = api.call("POST", "/api/v1/flows/stock_negative_alert/run", {"event": dict(mv[0], item="BRG-9999", outlet="OUT-99")} if mv else {})
-    alerts = [e for e in api.audit("notify.email") if e.get("target") == "flow/stock_negative_alert"]
+    alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
     check("stock_negative_alert falls back to the plain names when the records are not found",
           st == 200 and any("Stok BRG-9999 di OUT-99 minus (-10)" in e.get("summary", "") for e in alerts), (st, resp, alerts[-1:]))
     st, resp = api.call("POST", "/api/v1/flows/stock_negative_alert/run", {"event": dict(mv[0], negative=False)} if mv else {})
-    check("stock_negative_alert is silent for a move that is not negative", len([e for e in api.audit("notify.email") if e.get("target") == "flow/stock_negative_alert"]) == len(alerts), resp)
+    check("stock_negative_alert is silent for a move that is not negative", len([e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]) == len(alerts), resp)
     # cancel restores
     st, resp = api.verb("outlet_sales", sn, "cancel")
     check("cancel the sale", st == 200, (st, resp))
