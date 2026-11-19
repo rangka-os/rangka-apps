@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# On the 1st at 06:00 (scheduler.timezone): drafts last month's depreciation run when there is none yet and an asset is
+# due, with its lines (the same list and amounts as flow depreciation_run_fill, which a record made by a flow does not
+# start), and tells finance and the owner. A person checks and submits it: nothing posts by itself, so a wrong asset
+# can be fixed before the books move (DECISIONS.md, rangka-apps#113). Scheduled flows run for the default org only
+# (contract 0031).
+name: depreciation_run_monthly
+label: {id: Draft penyusutan bulanan, en: Monthly depreciation draft}
+description: {id: 'Tiap tanggal 1 pagi, draft penyusutan bulan lalu dibuat dan bagian keuangan dikabari untuk memeriksa dan mengajukannya.'}
+schedule: '0 6 1 * *'
+steps:
+  - find: depreciation_run
+    where: period == add_months(truncate(string(today()), 7) + '-01', -1) && docstatus != 2
+    as: done
+  - find_all: asset_book
+    where: state == 'active' && depreciation_start <= add_months(truncate(string(today()), 7) + '-01', -1)
+    sort: asset
+    limit: 900
+    as: books
+  - if: "done == null && books.exists(b, b.state == 'active' && (b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)) <= add_months(truncate(string(today()), 7) + '-01', -1) && (b.book_value - b.residual_value) > 0)"
+    create: depreciation_run
+    set:
+      period: "add_months(truncate(string(today()), 7) + '-01', -1)"
+      lines: >-
+        books.filter(b, b.state == 'active' && (b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)) <= add_months(truncate(string(today()), 7) + '-01', -1) && (b.book_value - b.residual_value) > 0).map(b, {'asset': b.asset,
+          'months': (int((double(days_between((b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)), add_months(truncate(string(today()), 7) + '-01', -1))) + 15.0) / 30.436875) + 1), 'amount': (2 * ((b.book_value - b.residual_value) - b.monthly_depreciation * (int((double(days_between((b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)), add_months(truncate(string(today()), 7) + '-01', -1))) + 15.0) / 30.436875) + 1)) < b.monthly_depreciation ? (b.book_value - b.residual_value) : b.monthly_depreciation * (int((double(days_between((b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)), add_months(truncate(string(today()), 7) + '-01', -1))) + 15.0) / 30.436875) + 1)),
+          'outlet': b.outlet, 'project': b.project, 'prev_through': b.depreciated_through})
+    as: run
+  - if: "done == null && books.exists(b, b.state == 'active' && (b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)) <= add_months(truncate(string(today()), 7) + '-01', -1) && (b.book_value - b.residual_value) > 0)"
+    notify: finance_manager
+    notice: depreciation_ready
+    id: "'depreciation:' + add_months(truncate(string(today()), 7) + '-01', -1)"
+    title: Penyusutan bulan lalu siap diajukan
+    template: >-
+      Draft penyusutan bulan {truncate(add_months(truncate(string(today()), 7) + '-01', -1), 7)} sudah dibuat untuk {books.filter(b, b.state == 'active' && (b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)) <= add_months(truncate(string(today()), 7) + '-01', -1) && (b.book_value - b.residual_value) > 0).size()} aset, total
+      Rp {books.filter(b, b.state == 'active' && (b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)) <= add_months(truncate(string(today()), 7) + '-01', -1) && (b.book_value - b.residual_value) > 0).map(b, (2 * ((b.book_value - b.residual_value) - b.monthly_depreciation * (int((double(days_between((b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)), add_months(truncate(string(today()), 7) + '-01', -1))) + 15.0) / 30.436875) + 1)) < b.monthly_depreciation ? (b.book_value - b.residual_value) : b.monthly_depreciation * (int((double(days_between((b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)), add_months(truncate(string(today()), 7) + '-01', -1))) + 15.0) / 30.436875) + 1))).sum()}. Periksa lalu ajukan di Penyusutan bulanan.

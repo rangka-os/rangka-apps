@@ -1,0 +1,97 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Pelepasan aset: an asset sold or written off (lost, broken beyond repair), picked from the register (asset_book). Its
+# cost, depreciation and book value are read from the register while it is a draft and frozen at submit; the submit
+# journals them (accounting flow gl_asset_disposal_post: the gain or loss on 4-9300) and marks the register row (flow
+# asset_disposal_on_submit, which refuses a second disposal of the same asset). A disposal dated before the end of the
+# asset's last depreciated month is refused: cancel that run first, or date the disposal after it.
+name: asset_disposal
+label: {id: Pelepasan aset, en: Asset disposal}
+icon: logout-box-r-line
+is_submittable: true
+naming: ADS-{YYYY}-{####}
+title_field: book
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+fields:
+  - name: book
+    type: link
+    to: asset_book
+    label: {id: Aset}
+    required: true
+    in_list: true
+    peek: [asset_name, book_value, state]
+  # the asset document behind the register row (journal party); the form shows the register row as Aset
+  - {name: asset, type: link, to: fixed_asset, label: {id: Dokumen aset}, compute: book.asset, hidden: true}
+  - {name: disposal_date, type: date, label: {id: Tanggal}, required: true, default: today(), in_list: true}
+  - name: kind
+    type: select
+    label: {id: Jenis}
+    required: true
+    default: "'sold'"
+    in_list: true
+    options:
+      - {value: sold, label: {id: Dijual}}
+      - {value: written_off, label: {id: 'Dihapus (hilang, rusak)'}}
+  - name: proceeds
+    type: currency
+    label: {id: Harga jual}
+    default: '0'
+    depends_on: kind == 'sold'
+  - name: received_in
+    type: select
+    label: {id: Diterima di}
+    default: "'bank'"
+    depends_on: kind == 'sold'
+    options:
+      - {value: cash, label: {id: Kas}}
+      - {value: bank, label: {id: Bank}}
+      - {value: receivable, label: {id: Belum dibayar (piutang)}}
+  - {name: buyer, type: data, label: {id: Pembeli}, depends_on: kind == 'sold'}
+  - {name: outlet, type: data, label: {id: Cabang}, hidden: true, compute: book.outlet}
+  - {name: project, type: data, label: {id: Proyek}, hidden: true, compute: book.project}
+  - {name: cost, type: currency, label: {id: Harga perolehan}, compute: book.cost}
+  - name: accumulated_total
+    type: currency
+    label: {id: Akumulasi penyusutan}
+    compute: book.opening_accumulated + book.accumulated
+  - {name: book_value, type: currency, label: {id: Nilai buku}, compute: cost - accumulated_total, in_list: true}
+  - name: gain_loss
+    type: currency
+    label: {id: Laba (rugi) pelepasan}
+    compute: proceeds - book_value
+    in_list: true
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: asset_in_use
+    on: save
+    check: book.state in ['active', 'fully_depreciated']
+    message: {id: 'Aset ini belum diajukan, atau sudah dijual atau dihapus'}
+  - name: not_before_purchase
+    on: save
+    check: disposal_date >= book.acquisition_date
+    message: {id: Tanggal pelepasan tidak boleh sebelum aset dicatat}
+  - name: after_last_run
+    on: save
+    check: book.depreciated_through == '' || disposal_date >= add_months(string(book.depreciated_through), 1) - duration(1)
+    message: {id: 'Aset sudah disusutkan sampai bulan setelah tanggal ini. Batalkan penyusutan bulan itu dulu, atau ubah tanggalnya'}
+  - name: proceeds_by_kind
+    on: save
+    check: proceeds >= 0 && (kind == 'sold' || proceeds == 0)
+    message: {id: 'Harga jual tidak boleh negatif, dan aset yang dihapus tidak punya harga jual'}
+views:
+  list:
+    columns: [name, book, disposal_date, kind, book_value, proceeds, gain_loss, status]
+    sort: -disposal_date
+  form:
+    layout:
+      - section: {id: Aset}
+        columns:
+          - [book, disposal_date, kind]
+          - [proceeds, received_in, buyer]
+      - section: {id: Nilai}
+        columns:
+          - [cost, accumulated_total, book_value]
+          - [gain_loss]
+      - section: {id: Catatan}
+        fields: [notes]

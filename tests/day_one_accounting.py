@@ -127,6 +127,8 @@ def expected_pl(api, d0, d1):
             e["project_costs"] += b["dpp"] + ppn
         elif kind == "expense":
             e["operating_expenses"] += b["dpp"] + ppn
+        elif kind == "asset":                            # module fixed_assets: Aset tetap, PPN of a non-PKP org included
+            pass
         else:
             e["cogs"] += ppn
     for t in docs(api, "outlet_takings"):
@@ -135,6 +137,12 @@ def expected_pl(api, d0, d1):
     for r in docs(api, "rental_return"):                # late fee and damage kept from a rental deposit (4-9200)
         if inm(r["return_date"]):
             e["other_income"] += r["covered_late"] + r["covered_damage"]
+    for r in docs(api, "depreciation_run"):             # module fixed_assets: Beban penyusutan (6-1950)
+        if inm(r["posting_date"]):
+            e["operating_expenses"] += r["total_depreciation"]
+    for x in docs(api, "asset_disposal"):               # gain (+) or loss (-) on selling or writing off (4-9300)
+        if inm(x["disposal_date"]):
+            e["other_income"] += x["gain_loss"]
     e["net_revenue"] = e["revenue"] - e["sales_returns"]
     e["net_profit"] = (e["net_revenue"] - e["cogs"] - e["stock_loss"] - e["direct_labour"] - e["project_costs"]
                        - e["operating_expenses"] - e["tax_expense"] + e["other_income"])
@@ -155,6 +163,8 @@ def bill_kind(b, stock):
     or a consignment bill, which the consignment flow marks stock); else an expense."""
     if b.get("posting") == "expense":            # the person chose an expense account
         return "expense"
+    if b.get("posting") == "asset":              # module fixed_assets: a fixed asset (1-2100)
+        return "asset"
     if b.get("project"):
         return "project"
     if stock and (b.get("goods_receipt") or b.get("purchase_order") or b.get("posting") == "stock"):
@@ -188,6 +198,9 @@ def expected_balances(api, d1):
     for b in docs(api, "vendor_bill"):
         if upto(b["bill_date"]):
             pay += b["amount_due"] - (b["dpp"] if bill_kind(b, stock) == "stock" else 0)
+    for x in docs(api, "asset_disposal"):                # an asset sold on credit (module fixed_assets)
+        if upto(x["disposal_date"]) and x.get("received_in") == "receivable":
+            recv += x["proceeds"]
     for k in docs(api, "cash_advance"):                  # kasbon given to a worker: Piutang karyawan
         if upto(k["advance_date"]):
             recv += k["amount"]
@@ -204,6 +217,25 @@ def expected_balances(api, d1):
         else:
             pay -= p["amount"] + p["withheld_total"]
     return {"inventory": inv, "receivables": recv, "trade_payables": pay}
+
+
+def fixed_assets_net(api, d1):
+    """Aset tetap minus Akumulasi penyusutan at d1 from the documents of module fixed_assets (0 without it)."""
+    upto = lambda d: (d or "") <= d1
+    net, pkp_org = 0, org_pkp(api)
+    for a in docs(api, "fixed_asset"):              # bought without a bill, or brought in with its old depreciation
+        if a["source"] != "vendor_bill" and upto(a["book_date"]):
+            net += a["cost"] - a["opening_accumulated"]
+    for b in docs(api, "vendor_bill", "docstatus == 1 && posting == 'asset'"):
+        if upto(b["bill_date"]):
+            net += b["dpp"] + (0 if pkp_org else b["ppn"])
+    for r in docs(api, "depreciation_run"):
+        if upto(r["posting_date"]):
+            net -= r["total_depreciation"]
+    for x in docs(api, "asset_disposal"):
+        if upto(x["disposal_date"]):
+            net -= x["book_value"]
+    return net
 
 
 def report(api, d0, d1, **extra):
@@ -462,13 +494,21 @@ def scenario_period_close_and_opening(api, gl):
     draft = api.get("opening_balance", name)
     eq("accounting: imported Saldo awal: equity difference = assets - liabilities - modal", draft.get("opening_equity"),
        2_000_000 + 15_000_000 + 7_000_000 + 40_000_000 - 10_000_000 - 3_000_000 - 20_000_000 - 20_000_000)
+    opening_assets = 30_000_000
+    if docs(api, "fixed_asset", "docstatus == 1 && source == 'opening'"):
+        # module fixed_assets: old assets were brought in one by one, so Saldo awal may not carry them again (audit F5)
+        st, s = api.verb("opening_balance", name, "submit")
+        check("accounting: Saldo awal with fixed assets after per-asset opening assets: refused 422 (opening_twice)",
+              st == 422 and "opening_twice" in str(s), (st, str(s)[:300]))
+        api.patch("opening_balance", name, {"fixed_assets": 0, "accumulated_depreciation": 0})
+        opening_assets = 0
     st, s = api.verb("opening_balance", name, "submit")
     check("accounting: imported Saldo awal submits", st == 200, (st, str(s)[:300]))
     name = ((s or {}).get("record", s) or {}).get("name", name)
     last = max(r["posting_date"] for r in rows(api, "gl_entry"))
     st, rep = report(api, day, last)
     eq("accounting: with the opening balance the balance sheet still balances", (rep.get("balanced"), rep.get("difference")), (True, 0))
-    eq("accounting: fixed assets net of depreciation in the balance sheet", rep.get("fixed_assets_net"), 30_000_000)
+    eq("accounting: fixed assets net of depreciation in the balance sheet", rep.get("fixed_assets_net"), opening_assets + fixed_assets_net(api, last))
     eq("accounting: opening stock value (a business with stock before the books) in Persediaan",
        sum(l["amount"] for l in rows(api, "gl_entry", f"voucher == '{name}' && account == '11400'")), 7_000_000)
 

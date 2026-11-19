@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: fixed_assets
+version: 1.0.0
+title: {id: Aset tetap, en: Fixed assets}
+summary:
+  id: Catat aset tetap dan susutkan otomatis tiap bulan.
+  en: Record fixed assets and depreciate them every month.
+category: finance
+icon: building-2-line
+# Fixed assets and their straight-line monthly depreciation (garis lurus, with a residual value), rangka-apps#113.
+# An asset comes in three ways (fixed_asset.source): bought on a vendor bill whose posting is "Aset tetap" (the bill
+# debits 1-2100 and flow asset_from_vendor_bill drafts one asset per bill line; the asset posts nothing itself), an old
+# asset brought in with the depreciation it already had (opening, against 3-1900), or bought without a bill (cash or
+# bank). Depreciation is a document per month (depreciation_run): flow depreciation_run_fill lists every asset due and
+# its amount when the draft is made, and its submit journals 6-1950 Beban penyusutan against 1-2900 Akumulasi
+# penyusutan per asset (with its outlet and project) and moves each asset's accumulated depreciation. On the 1st at
+# 06:00 flow depreciation_run_monthly drafts last month's run and tells finance; a person submits it (nothing posts by
+# itself). Selling or writing off an asset (asset_disposal) takes its cost and depreciation out and books the gain or
+# loss on one signed account 4-9300. Journals are those of the accounting module (scripts/gen_accounting_flows.py).
+# Fiscal depreciation (PMK 72/2023 groups, declining balance) is stored per category for later Coretax reports only.
+# One setting per business (fixed_asset_setting): the capitalisation threshold, below which a purchase is an expense.
+requires: {rangka: '>=0.5', users: ^1.2, accounting: ^1.4}
+optional: {procurement: ^1.0, rental: ^1.0, outlets: ^1.0, projects: ^1.0}
+notices:
+  - name: depreciation_ready
+    label: {id: Penyusutan bulanan siap diajukan, en: Monthly depreciation ready}
+    description: {id: 'Tiap tanggal 1: draft penyusutan bulan lalu sudah dibuat dan menunggu diperiksa dan diajukan.'}
+    severity: info
+    to: [owner, finance_manager, head_office]
+    can: {model: depreciation_run, action: read}
