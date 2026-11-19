@@ -1,12 +1,50 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
-# Morning list of invoices to chase: submitted, money still owed, due today or earlier. Goes to the owner today
-# (notify writes the audit log and email); the WhatsApp reminder to the customer waits for the connector runtime.
+# Morning collection notices, Monday to Saturday at 08:00 (scheduler.timezone), to the owner and finance (contract 0066):
+#   - invoice_due: the submitted invoices due today with money still owed. One notice for the day, linked to the
+#     first of them. The WhatsApp reminder to the customer stays a person's click (print "Pesan tagihan WA").
+#   - invoice_overdue: only on a morning when at least one invoice became overdue since the last run (due yesterday;
+#     on Monday also Saturday's, since the flow does not run on Sunday). It gives the whole overdue position and
+#     links to the oldest invoice. A morning without a new overdue invoice sends nothing: the standing position is in
+#     the owner's daily summary (users/summary_daily).
+# Each notice has one id per day, so running the flow twice tells nobody twice.
+# The day is today, or event.as_of (YYYY-MM-DD) when the owner runs the flow by hand for another day (and in tests).
+# Amounts are shortened (12,5 juta; 850 ribu) so the text stays a short message for mail now and WhatsApp later; the
+# exact figures are on the invoices. `2024-01-01` was a Monday: days_between(...) % 7 == 0 is a Monday.
 name: invoice_due_digest
 label: {id: Daftar tagih pagi, en: Morning collection list}
+description: {id: 'Tiap pagi, pemilik dan bagian keuangan dikabari faktur yang jatuh tempo hari ini dan yang baru lewat jatuh tempo.'}
 schedule: 0 8 * * 1-6
 steps:
-  - {find_all: sales_invoice, where: "docstatus == 1 && outstanding > 0 && due_date <= today()", sort: due_date, as: due}
-  - if: size(due) > 0
-    notify: owner
-    channel: email
-    template: {id: 'Tagih hari ini: {size(due)} faktur jatuh tempo, sisa Rp {due.map(i, i.outstanding).sum()}. Cetak "Pesan tagihan WA" di tiap faktur.'}
+  - find_all: sales_invoice
+    where: "docstatus == 1 && due_date == ('as_of' in event ? event.as_of : today()) && outstanding > 0"
+    sort: name
+    as: due
+  - find_all: sales_invoice
+    where: "docstatus == 1 && due_date < ('as_of' in event ? event.as_of : today()) && due_date != '' && outstanding > 0"
+    sort: due_date
+    as: late
+  - for_each: "size(due) > 0 ? [due[0]] : []"
+    as: first
+    do:
+      - notify: finance_manager
+        notice: invoice_due
+        channel: email
+        record: first
+        id: "'due:' + ('as_of' in event ? event.as_of : today())"
+        title: 'Tagih hari ini: {size(due)} faktur jatuh tempo'
+        template: >-
+          Sisa tagihan Rp {(int(due.map(i, i.outstanding).sum()) >= 1000000000 ? string(int(due.map(i, i.outstanding).sum()) / 1000000000) + ',' + string(int(due.map(i, i.outstanding).sum()) / 100000000 % 10) + ' miliar' : (int(due.map(i, i.outstanding).sum()) >= 1000000 ? string(int(due.map(i, i.outstanding).sum()) / 1000000) + ',' + string(int(due.map(i, i.outstanding).sum()) / 100000 % 10) + ' juta' : (int(due.map(i, i.outstanding).sum()) >= 1000 ? string(int(due.map(i, i.outstanding).sum()) / 1000) + ' ribu' : string(int(due.map(i, i.outstanding).sum())))))}. Mulai dari {first.name}.
+          Cetak "Pesan tagihan WA" di faktur untuk mengingatkan pelanggan.
+  - for_each: "late.filter(i, days_between(i.due_date, ('as_of' in event ? event.as_of : today())) <= (days_between('2024-01-01', ('as_of' in event ? event.as_of : today())) % 7 == 0 ? 2 : 1)).size() > 0 ? [late[0]] : []"
+    as: oldest
+    do:
+      - notify: finance_manager
+        notice: invoice_overdue
+        channel: email
+        record: oldest
+        id: "'late:' + ('as_of' in event ? event.as_of : today())"
+        title: >-
+          {late.filter(i, days_between(i.due_date, ('as_of' in event ? event.as_of : today())) <= (days_between('2024-01-01', ('as_of' in event ? event.as_of : today())) % 7 == 0 ? 2 : 1)).size()} faktur baru lewat jatuh tempo
+        template: >-
+          Sekarang {size(late)} faktur lewat jatuh tempo, sisa tagihan Rp {(int(late.map(i, i.outstanding).sum()) >= 1000000000 ? string(int(late.map(i, i.outstanding).sum()) / 1000000000) + ',' + string(int(late.map(i, i.outstanding).sum()) / 100000000 % 10) + ' miliar' : (int(late.map(i, i.outstanding).sum()) >= 1000000 ? string(int(late.map(i, i.outstanding).sum()) / 1000000) + ',' + string(int(late.map(i, i.outstanding).sum()) / 100000 % 10) + ' juta' : (int(late.map(i, i.outstanding).sum()) >= 1000 ? string(int(late.map(i, i.outstanding).sum()) / 1000) + ' ribu' : string(int(late.map(i, i.outstanding).sum())))))}.
+          Paling lama {oldest.name}, telat {days_between(oldest.due_date, ('as_of' in event ? event.as_of : today()))} hari.

@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every morning at 06:40 (scheduler.timezone, ten minutes after stock/stock_low_alert), and by the owner from the flow
+# list: the open stock_reorder rows that have a supplier (item.default_vendor) and are not on a draft yet become
+# DRAFT purchase orders, one per supplier and outlet, and the purchasing role is told (notice reorder_draft) with a
+# link to each draft. The flow never submits, approves or sends anything: a person checks quantities and prices and
+# submits the draft, where the site's own approval policy (custom/purchase_order.rk) applies as for any other PO.
+#   - quantity: item.reorder_qty, else up to the reorder level (stock_reorder.order_qty, fixed when the row opened);
+#   - price: the outlet's average cost of the item when the row opened (0 when it was never received);
+#   - one episode gives one draft: the row is ticked `drafted`, so deleting the draft does not make a new one until
+#     the stock recovered and fell again. An item without a supplier is only in the stock_low notice.
+# A site without the stock module has no rows: the flow is skipped (if:).
+# At most 500 rows per run.
+name: reorder_draft_po
+label: {id: Draft pesanan pembelian dari stok di bawah batas minimum, en: Draft purchase orders for low stock}
+description: {id: 'Tiap pagi, barang di bawah batas minimum yang punya pemasok utama dimasukkan ke draft pesanan pembelian per pemasok. Draft tidak pernah diajukan otomatis.'}
+schedule: '40 6 * * *'
+if: app_installed('stock')
+steps:
+  - find_all: stock_reorder
+    where: "open && !drafted && vendor != '' && order_qty > 0"
+    sort: item
+    limit: 500
+    as: need
+  - find_all: vendor
+    if: size(need) > 0
+    as: vendors
+  - find_all: outlet
+    if: size(need) > 0
+    as: outlets
+  - for_each: "size(need) > 0 ? vendors.filter(v, need.exists(r, r.vendor == v.name)) : []"
+    as: v
+    do:
+      - for_each: "outlets.filter(o, need.exists(r, r.vendor == v.name && r.outlet == o.name))"
+        as: o
+        do:
+          - create: purchase_order
+            set:
+              vendor: v.name
+              outlet: o.name
+              notes: "'Dibuat otomatis dari stok di bawah batas minimum. Periksa jumlah dan harga sebelum diajukan.'"
+              items: "need.filter(r, r.vendor == v.name && r.outlet == o.name).map(r, {'item': r.item, 'qty': r.order_qty, 'rate': r.rate})"
+            as: po
+          - for_each: "need.filter(r, r.vendor == v.name && r.outlet == o.name)"
+            as: row
+            do:
+              - update: row
+                set: {drafted: 'true', draft_ref: po.name}
+          - notify: purchasing_manager
+            notice: reorder_draft
+            channel: email
+            record: po
+            outlet: o.name
+            id: "'po:' + po.name"
+            title: 'Draft pesanan pembelian untuk {v.vendor_name}'
+            template: >-
+              {need.filter(r, r.vendor == v.name && r.outlet == o.name).size()} barang di {o.outlet_name} di bawah batas stok minimum.
+              Draft {po.name} sudah disiapkan. Periksa jumlah dan harganya, lalu ajukan kalau sudah benar. Draft ini tidak dikirim ke pemasok sebelum kamu ajukan.

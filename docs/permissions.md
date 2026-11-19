@@ -51,6 +51,8 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 | goods_receipt | | | all | | all + i (`opening_stock` import) | r c w s | |
 | stock_move, stock_balance (written by hooks only; sales_manager reads the moves of delivery notes and sales returns, for the accounting flow of a return) | r (stock_move only) | | | | r e | r | |
 | stock_transfer | | | | | all | r | |
+| stock_reorder (written by flows `stock_low_alert` and `reorder_draft_po` only; docs/automation.md) | | | r e | | r e | | |
+| business_summary, summary_setting (the owner's summaries and their switches: `permissions: []`, no role) | | | | | | | |
 | stock_transfer_receipt | | | | | all | r c w s x | |
 | stock_count, stock_adjustment | | | | | all | r c w s | |
 | stock_adjustment_value (`append_only`, contract 0026: rows written by flows only, nobody edits or deletes one; old adjustments by the schedule of flow `adjustment_value_backfill`) | | | | | r c e | r c | |

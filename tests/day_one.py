@@ -1945,9 +1945,12 @@ def scenario_money_rail(api):
     st, draft = api.create("sales_invoice", invoice_body(customer, item, rate=1000))
     st, resp = api.create("invoice_reminder", {"sales_invoice": draft["name"]})
     check("invoice_reminder refuses a draft invoice", st == 422, (st, resp))
-    st, run = api.call("POST", "/api/v1/flows/invoice_due_digest/run", {})
+    # the morning after its due date (Tuesday 6 Jan) the invoice is newly overdue: the overdue notice gives the position
+    # (an invoice long overdue is not told again each morning; the owner's daily summary carries it, docs/automation.md)
+    st, run = api.call("POST", "/api/v1/flows/invoice_due_digest/run", {"as_of": "2026-01-06"})
     texts = [n.get("text", "") for n in (run or {}).get("notifications", [])]
-    check("invoice_due_digest lists the overdue invoice to the owner", st == 200 and any("faktur jatuh tempo" in t for t in texts), (st, run))
+    check("invoice_due_digest tells the owner and finance the morning an invoice becomes overdue",
+          st == 200 and any("faktur lewat jatuh tempo" in t and "telat 1 hari" in t for t in texts), (st, run))
 
     # 2. bayar lewat gateway (a Xendit callback turned into a payment): gateway_ref is unique
     body = {"direction": "receive", "customer": customer, "amount": 990_000, "method": "va", "gateway": "xendit",
@@ -3168,6 +3171,9 @@ MATRIX = {
     "cash_advance": {"finance_manager": _ALL, "project_admin": _R},   # kasbon: finance gives it
     "payslip": {"finance_manager": _ALL, "project_admin": {"read", "create"}},
     "payroll_guard": {"finance_manager": {"create"}, "project_admin": {"create"}, "sales_manager": {"create"}},   # never stored (a flow's refusal; recaps are cancelled by the project admin)
+    # owner automation pack: the summaries and their switches are the owner's alone; reorder rows are written by flows
+    "business_summary": {}, "summary_setting": {},
+    "stock_reorder": {"head_office": {"read", "export"}, "purchasing_manager": {"read", "export"}},
 }
 _CHECKED = ("read", "create", "write", "delete", "submit", "cancel", "amend", "export", "import", "print")
 
@@ -4765,7 +4771,7 @@ def scenario_stock(api):
     listed = api.find("stock_balance", "negative == true")
     check("head office list 'Stok minus' (filter negative == true) holds the balance", any(r["outlet"] == neg and r["item"] == m for r in listed), listed)
     check("a positive balance is not in the 'Stok minus' list", not any(r["outlet"] == DAGO and r["item"] == m for r in listed), listed)
-    # the alert flow: runs when handed the move, but nothing hands it over yet
+    # the alert flow (notice stock_negative; an in_app step, mail off by default)
     alerts = [e for e in api.audit("notify.in_app") if e.get("target") == "flow/stock_negative_alert"]
     if not alerts:
         fail("stock_negative_alert notifies head_office when a move turns negative",
@@ -5894,6 +5900,7 @@ import day_one_pos_export  # noqa: E402
 import day_one_kitchen  # noqa: E402
 import day_one_attendance  # noqa: E402
 import day_one_staff  # noqa: E402
+import day_one_automation  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5911,6 +5918,7 @@ day_one_pos_export.bind(sys.modules[__name__])
 day_one_kitchen.bind(sys.modules[__name__])
 day_one_attendance.bind(sys.modules[__name__])
 day_one_staff.bind(sys.modules[__name__])
+day_one_automation.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5937,6 +5945,10 @@ for _site in ("demo-jasa", "demo-fnb"):
     SCENARIOS[_site] += day_one_doku.SCENARIOS + day_one_midtrans.SCENARIOS
 # staff dashboards (A5): after the site's own scenarios, before the permission matrix
 for _site, _extra in day_one_staff.SCENARIOS.items():
+    _i = SCENARIOS[_site].index(scenario_permissions)
+    SCENARIOS[_site][_i:_i] = _extra
+# owner automation pack (notices, summaries, reorder point, payroll reminder): after the site's own scenarios
+for _site, _extra in day_one_automation.SCENARIOS.items():
     _i = SCENARIOS[_site].index(scenario_permissions)
     SCENARIOS[_site][_i:_i] = _extra
 # accounting last: it checks the books against every document the scenarios above submitted
