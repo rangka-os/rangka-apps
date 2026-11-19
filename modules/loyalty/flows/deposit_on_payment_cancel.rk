@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A deposit payment cancelled: what it spent is the member's again (the invoices open again through the payments
+# module's own unallocate hook).
+name: deposit_on_payment_cancel
+label: {id: 'Pembayaran dari deposit dibatalkan: saldo member kembali'}
+on: payment.cancelled
+if: app_installed('payments')
+steps:
+  - if: "event.method == 'deposit'"
+    then:
+      - find_all: deposit_entry
+        where: source == event.name && source_type == 'payment' && kind == 'spend'
+        limit: 1
+        as: spent
+      - find: loyalty_account
+        where: "spent.size() > 0 && name == spent[0].account"
+        as: a
+      - create: deposit_entry
+        if: a != null
+        set:
+          account: a.name
+          kind: "'reverse'"
+          amount: 0 - spent[0].amount
+          balance_after: a.deposit_balance - spent[0].amount
+          date: today()
+          source_type: "'payment'"
+          source: event.name
+          entry_key: "event.name + '|reverse'"
+      - update: a
+        if: a != null
+        set:
+          deposit_balance: a.deposit_balance - spent[0].amount

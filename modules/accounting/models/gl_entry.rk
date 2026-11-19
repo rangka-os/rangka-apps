@@ -25,6 +25,8 @@ permissions:
   # a cashier reads the lines of its receipts; the close's lines (cash difference) are created by its flow but not read
   # by the cashier (blind count, audit kasir M4)
   - {role: cashier, read: true, create: true, if: "voucher_type == 'pos_sale'"}
+  # a deposit top-up taken at the counter (module loyalty) and its void
+  - {role: cashier, read: true, create: true, if: "voucher_type == 'deposit_topup'"}
   - {role: cashier, create: true, if: "voucher_type == 'pos_shift_close'"}
 fields:
   - name: posting_date

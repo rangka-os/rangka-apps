@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# 1 January 01:00 (site timezone): the year's spend becomes last year's and starts again at 0, and every member gets
+# the highest active tier last year's spend reaches (up or down; the base tier when none). Runs only on 1 January (the
+# day is today, or event.as_of when run by hand, as in tests), once per member per year (reviewed_on). The tier is
+# set first, from the spend before it is rolled over.
+name: loyalty_yearly
+label: {id: 'Tinjauan tier member tahunan'}
+schedule: '0 1 1 1 *'
+steps:
+  - find_all: member_tier
+    where: active
+    sort: -min_spend
+    as: tiers
+  - find_all: loyalty_account
+    where: active
+    as: members
+  - for_each: "('as_of' in event ? event.as_of : string(today())).endsWith('-01-01') ? members.filter(m, m.reviewed_on != ('as_of' in event ? event.as_of : string(today()))) : []"
+    as: m
+    do:
+      - for_each: "tiers.filter(t, t.min_spend <= m.spend_this_year).size() > 0 ? [tiers.filter(t, t.min_spend <= m.spend_this_year)[0]] : []"
+        as: t
+        do:
+          - update: m
+            set:
+              tier: t.name
+              tier_name: t.tier_name
+              earn_spend: t.earn_spend
+              earn_multiplier_pct: t.earn_multiplier_pct
+              point_value: t.point_value
+              max_redeem_pct: t.max_redeem_pct
+              member_discount_pct: t.member_discount_pct
+              expiry_months: t.expiry_months
+      - update: m
+        set:
+          spend_last_year: m.spend_this_year
+          spend_this_year: 0
+          reviewed_on: "'as_of' in event ? event.as_of : today()"

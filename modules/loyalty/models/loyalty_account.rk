@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A member: one per WhatsApp number per org (wa_number unique; contract 0010 keeps every org apart, so a deposit never
+# crosses orgs). Signed up by a cashier at the counter (the checkout's member picker, "Buat member baru") or at the
+# desk. Flow loyalty_account_on_create links the customer (the one picked, else a new one with this name and number)
+# and gives the member the base tier with its figures. The balances, the year's spend and the tier are written only
+# by the loyalty flows (read_only): the ledgers (loyalty_entry, deposit_entry) hold every change, and flow
+# loyalty_check compares them every night.
+# The outlet field is joined_outlet, not outlet: the cashier role is scoped by outlet (contract 0010 §5), and a member
+# must be found at every outlet of the shop.
+name: loyalty_account
+label: {id: Member, en: Member}
+icon: vip-crown-line
+naming: MBR-{#####}
+title_field: member_name
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true, print: true}
+  # the payment flows (invoice paid from the deposit) run as the finance or sales manager and update the balance
+  - {role: finance_manager, read: true, write: true, export: true}
+  - {role: sales_manager, read: true, write: true}
+  # the cashier signs members up and its sale's flow updates the balances (every balance is read_only)
+  - {role: cashier, read: true, create: true, write: true, print: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - {name: member_name, type: data, label: {id: Nama member}, required: true, in_list: true}
+  - name: phone
+    type: phone
+    label: {id: Nomor WhatsApp}
+    help: {id: 'Satu nomor untuk satu member. Dipakai untuk mencari member di kasir'}
+    required: true
+    in_list: true
+  # the number in one form (digits with the country code), the rule of customer.wa_number; unique: one member per number
+  - name: wa_number
+    type: data
+    label: {id: Nomor WhatsApp (seragam)}
+    hidden: true
+    unique: true
+    compute: "(phone.trim().startsWith('+') ? ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')).matches('^[1-9][0-9]{7,14}$') ? (phone.trim().startsWith('+') ? ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')) : ''"
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    help: {id: 'Kosongkan: pelanggan baru dibuat dengan nama dan nomor ini'}
+    read_only_for: [cashier]
+  - {name: joined_outlet, type: link, to: outlet, label: {id: Daftar di outlet}, depends_on: app_installed('outlets'), default: "user.outlets.size() > 0 ? user.outlets[0] : ''"}
+  - {name: joined_on, type: date, label: {id: Tanggal daftar}, default: today(), read_only: true, in_list: true}
+  - {name: active, type: check, label: {id: Aktif}, help: {id: 'Member nonaktif tidak bisa dipilih di kasir. Saldonya tetap'}, default: 'true', in_list: true, in_filter: true, read_only_for: [cashier]}
+  # the tier and its figures, copied by the flows (one hop for a sale's computes)
+  - {name: tier, type: link, to: member_tier, label: {id: Tier}, read_only: true, in_list: true, in_filter: true}
+  - {name: tier_name, type: data, label: {id: Nama tier}, read_only: true}
+  - {name: earn_spend, type: currency, label: {id: Belanja per 1 poin}, read_only: true}
+  - {name: earn_multiplier_pct, type: int, label: {id: Pengali poin (%)}, read_only: true}
+  - {name: point_value, type: currency, label: {id: Nilai 1 poin}, read_only: true}
+  - {name: max_redeem_pct, type: int, label: {id: Maksimal nota dibayar poin (%)}, read_only: true}
+  - {name: member_discount_pct, type: float, label: {id: Diskon member (%)}, read_only: true}
+  - {name: expiry_months, type: int, label: {id: Poin hangus setelah (bulan)}, read_only: true}
+  - {name: points_balance, type: int, label: {id: Poin}, read_only: true, in_list: true}
+  - {name: deposit_balance, type: currency, label: {id: Saldo deposit}, help: {id: 'Uang pelanggan yang dititipkan; dipakai untuk bayar di kasir atau faktur'}, read_only: true, in_list: true}
+  - {name: spend_this_year, type: currency, label: {id: Belanja tahun ini}, read_only: true}
+  - {name: spend_last_year, type: currency, label: {id: Belanja tahun lalu}, read_only: true}
+  - {name: last_activity, type: date, label: {id: Terakhir belanja}, read_only: true}
+  # the 1 January review this member last had (flow loyalty_yearly runs once per member per year)
+  - {name: reviewed_on, type: date, label: {id: Tinjauan tier terakhir}, read_only: true, hidden: true}
+  # what the open points would take off bills if all were redeemed today: the dashboard's points liability (off-book)
+  - {name: points_worth, type: currency, label: {id: Nilai poin}, compute: points_balance * point_value, hidden_for: [cashier, outlet_staff]}
+  - name: points_expire_on
+    type: date
+    label: {id: Poin hangus pada}
+    help: {id: 'Kalau tidak belanja sampai tanggal ini'}
+    compute: "points_balance > 0 && expiry_months > 0 && last_activity != '' ? add_months(last_activity, expiry_months) : ''"
+rules:
+  - name: phone_valid
+    on: save
+    check: wa_number != ''
+    message: {id: 'Nomor WhatsApp belum benar, misalnya 0812 3456 7890'}
+views:
+  list:
+    columns: [name, member_name, phone, tier, points_balance, deposit_balance, active]
+    filters: [tier, active]
+    sort: -name
+  form:
+    layout:
+      - section: {id: Member}
+        columns:
+          - [member_name, phone, customer]
+          - [joined_outlet, joined_on, active]
+      - section: {id: Poin dan saldo}
+        columns:
+          - [points_balance, points_expire_on, points_worth]
+          - [deposit_balance, last_activity]
+      - section: {id: Tier}
+        columns:
+          - [tier, tier_name, member_discount_pct, spend_this_year, spend_last_year]
+          - [earn_spend, earn_multiplier_pct, point_value, max_redeem_pct, expiry_months]

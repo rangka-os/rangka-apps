@@ -10,11 +10,11 @@ steps:
     limit: 1
     as: locks
   - create: gl_entry
-    if: "(event.grand_total) != 0"
+    if: "(event.grand_total - event.deposit_used) != 0"
     set:
       posting_date: "event.date"
       account: "'11150'"
-      amount: "event.grand_total"
+      amount: "event.grand_total - event.deposit_used"
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
@@ -91,5 +91,17 @@ steps:
       voucher: event.name
       entry: "'post'"
       line: "'7'"
+      outlet: "event.outlet"
+      lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
+  - create: gl_entry
+    if: "(event.deposit_used) != 0"
+    set:
+      posting_date: "event.date"
+      account: "'21400'"
+      amount: "event.deposit_used"
+      voucher_type: event.model
+      voucher: event.name
+      entry: "'post'"
+      line: "'8'"
       outlet: "event.outlet"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
