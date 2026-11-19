@@ -68,7 +68,14 @@ fields:
     read_only: true
     depends_on: app_installed('attendance')
   # Made by an attendance fill (not typed): only such a draft is refreshed by a later fill when its summary is gone.
+  # Made by an attendance fill (not typed). The fill also stores what the summaries said (att_*), so finance may still
+  # edit days, lateness or overtime on the draft, and payslip_attendance_guard refuses the submit when the worker's
+  # current summaries in the run's period no longer add up to that snapshot (a period cancelled or resubmitted since);
+  # a later fill refreshes such a draft. Audit 101b RF2.
   - {name: from_fill, type: check, label: {id: Dari isi absen, en: From an attendance fill}, default: 'false', read_only: true, hidden: true}
+  - {name: att_days, type: float, label: {id: Hari hadir menurut rekap}, default: '0', read_only: true, hidden: true}
+  - {name: att_late, type: int, label: {id: Menit telat menurut rekap}, default: '0', read_only: true, hidden: true}
+  - {name: att_ot, type: float, label: {id: Jam lembur menurut rekap}, default: '0', read_only: true, hidden: true}
   - {name: tax_year, type: int, label: {id: Tahun pajak}, default: payroll_run.tax_year}
   - {name: tax_month, type: int, label: {id: Bulan pajak}, default: payroll_run.tax_month}
   # December, or the month the worker leaves: PPh 21 is recomputed for the year (Pasal 17).

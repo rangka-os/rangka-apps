@@ -6,7 +6,8 @@ one fill, three triggers.
 
 payroll_run_fill and payroll_run_fill_on_create run when finance saves an internal payroll run with "Isi slip dari
 absen" ticked (on an update or at create); they run as that person. payslip_from_attendance runs every morning as the
-system, once per open internal run (auto_filled), when the period is over, no staff attendance period over it is still
+system for each open internal run (new slips on its first fill only, auto_filled; drafts refreshed on later
+mornings), when the period is over, no staff attendance period over it is still
 a draft and, with the attendance module, the submitted summaries reach the period's first and last day.
 
 The fill of one run (rangka-apps#101 slice b):
@@ -35,16 +36,30 @@ FALLBACK = "(run.outlet == '' && p.pay_basis == 'monthly' && !app_installed('pro
 ONE_PROFILE = "profs.filter(q, q.worker == p.worker)[0].name == p.name"
 NEW = (f"workers.exists(w, w.name == p.worker && (({HAS}) || {FALLBACK}))"
        f" && !taken.exists(t, t.worker == p.worker) && {ONE_PROFILE}")
+EMP0 = "workers.filter(w, w.name == p.worker)[0].employee"
+MINE0 = f"sums.filter(s, s.employee == {EMP0})"
+SUMD, SUML, SUMO = (f"{MINE0}.map(s, s.days_present).sum()", f"{MINE0}.map(s, s.late_min_total).sum()",
+                    f"{MINE0}.map(s, s.overtime_hours).sum()")
+# a draft the fill made whose snapshot (att_*) no longer equals the worker's current summaries, or whose link is not one
+# of them; only while the worker still has attendance that pays (a daily worker left with 0 days keeps the draft, which
+# payslip_attendance_guard then refuses at submit)
 REFRESH = (f"workers.exists(w, w.name == p.worker && ({HAS}))"
-           " && own.exists(d, d.worker == p.worker && !sums.exists(s, s.name == d.attendance_summary))")
+           f" && own.exists(d, d.worker == p.worker && (d.att_days != {SUMD} || d.att_late != {SUML} || d.att_ot != {SUMO}"
+           " || !sums.exists(s, s.name == d.attendance_summary)))")
 SKIPPED = (f"workers.exists(w, w.name == p.worker && ({HAS}))"
            " && taken.exists(t, t.worker == p.worker && t.payroll_run != run.name)")
-EMP = "workers.filter(w, w.name == p.worker)[0].employee"
-MINE = f"sums.filter(s, s.employee == {EMP})"
+EMP, MINE = EMP0, MINE0
+# morning flow only: the run's attendance is complete (no draft attendance period over it; with the attendance module the
+# submitted summaries reach the period's first and last day). It gates the first fill (new slips), not the refresh.
+GATE = ("size(open_periods) == 0 && (!app_installed('attendance') || (sums.exists(s, s.period_from == run.period_from)"
+        " && sums.exists(s, s.period_to == run.period_to)))")
 ATTENDANCE = f'''attendance_summary: "size({MINE}) > 0 ? {MINE}[size({MINE}) - 1].name : ''"
 days: "{MINE}.map(s, s.days_present).sum()"
 late_min_total: "{MINE}.map(s, s.late_min_total).sum()"
-overtime_hours: "{MINE}.map(s, s.overtime_hours).sum()"'''
+overtime_hours: "{MINE}.map(s, s.overtime_hours).sum()"
+att_days: "{MINE}.map(s, s.days_present).sum()"
+att_late: "{MINE}.map(s, s.late_min_total).sum()"
+att_ot: "{MINE}.map(s, s.overtime_hours).sum()"'''
 
 
 def indent(text, n):
@@ -76,8 +91,25 @@ def reads():
 
 
 def fill(auto):
-    """The fill of one internal run `run` (a variable), then the run's note (and auto_filled for the morning flow)."""
-    done = "\n    auto_filled: 'true'" if auto else ""
+    """The fill of one internal run `run` (a variable), then the run's note (and auto_filled for the morning flow). The
+    morning flow makes new slips only on its first fill of a run (auto_filled), and refreshes drafts on every later
+    morning while the run is open: attendance of another outlet submitted after the first fill still reaches the slips
+    (audit 101b RF1), while drafts finance deleted are not made again (F3)."""
+    first = f"!run.auto_filled && {GATE}"
+    new = f"{first} && {NEW}" if auto else NEW
+    done = f"\n    auto_filled: \"run.auto_filled || ({GATE})\"" if auto else ""
+    note_if = (f"- if: \"({first}) || size(profs.filter(p, {REFRESH})) > 0\"\n  then:\n" if auto else "")
+    upd = f'''- update: run
+  set:
+    fill_from_attendance: 'false'{done}
+    fill_note: >-
+      string(size(profs.filter(p, {new}))) + ' slip baru, '
+      + string(size(profs.filter(p, {REFRESH}))) + ' slip diperbarui, '
+      + string(size(profs.filter(p, {SKIPPED}))) + ' karyawan sudah punya slip di periode lain bulan pajak ini, '
+      + string(size(sums)) + ' rekap absen dibaca, ' + string(size(straddle)) + ' rekap melewati awal atau akhir periode tidak dibaca, '
+      + ('as_of' in event ? event.as_of : today())
+'''
+    tail = (note_if + indent(upd, 4)) if auto else upd
     return f'''- find_all: payroll_profile
   where: active
   sort: name
@@ -97,7 +129,7 @@ def fill(auto):
 - for_each: profs
   as: p
   do:
-    - if: "{NEW}"
+    - if: "{new}"
       then:
         - find_all: cash_advance
           where: worker == p.worker && docstatus == 1
@@ -146,16 +178,7 @@ def fill(auto):
           as: d
         - update: d
           set:
-{indent(ATTENDANCE, 12)}- update: run
-  set:
-    fill_from_attendance: 'false'{done}
-    fill_note: >-
-      string(size(profs.filter(p, {NEW}))) + ' slip baru, '
-      + string(size(profs.filter(p, {REFRESH}))) + ' slip diperbarui, '
-      + string(size(profs.filter(p, {SKIPPED}))) + ' karyawan sudah punya slip di periode lain bulan pajak ini, '
-      + string(size(sums)) + ' rekap absen dibaca, ' + string(size(straddle)) + ' rekap melewati awal atau akhir periode tidak dibaca, '
-      + ('as_of' in event ? event.as_of : today())
-'''
+{indent(ATTENDANCE, 12)}{tail}'''
 
 
 HDR = "# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json\n"
@@ -186,20 +209,23 @@ if: "event.fill_from_attendance && event.run_kind == 'internal' && !event.closed
 ''' + STEPS
 
 auto = HDR + '''# Every morning at 07:00 (before payroll_reminder at 07:15, which then sees the slips), and by the owner or finance from
-# the flow list: each open internal payroll run not yet filled by this flow (auto_filled), whose period is over, that no
-# draft staff attendance period overlaps (its outlet's or the whole business's) and, with the attendance module, whose
-# submitted summaries reach the period's first and last day, gets the fill described in scripts/gen_payroll_fill_flows.py
-# (which writes this file), once: drafts deleted or slips cancelled afterwards are not made again. Runs as the system;
-# it makes or refreshes drafts only and never submits, closes or pays. The day is today, or event.as_of (YYYY-MM-DD)
-# when run by hand.
+# the flow list, for each open internal payroll run whose period is over (newest first, at most 100), the fill described
+# in scripts/gen_payroll_fill_flows.py (which writes this file):
+# - new slips once, on the first morning the run's attendance is complete: no draft staff attendance period overlaps it
+#   (its outlet's or the whole business's) and, with the attendance module, the submitted summaries reach the period's
+#   first and last day. auto_filled is then set, so drafts deleted or slips cancelled afterwards are not made again;
+# - on every morning, drafts the fill made whose summaries changed since (another outlet submitted late, a period
+#   cancelled) are refreshed; the note is written only when something was done.
+# Runs as the system; it makes or refreshes drafts only and never submits, closes or pays. The day is today, or
+# event.as_of (YYYY-MM-DD) when run by hand.
 name: payslip_from_attendance
 label: {id: Slip gaji dari rekap absen karyawan, en: Payslips from staff attendance}
 description: {id: 'Tiap pagi, periode gaji karyawan sendiri yang sudah lewat dan rekap absennya sudah lengkap diisi slip gaji draft dari rekap absen, sekali per periode. Slip tidak pernah diajukan atau dibayar otomatis.'}
 schedule: '0 7 * * *'
 steps:
   - find_all: payroll_run
-    where: "run_kind == 'internal' && !closed && !auto_filled && period_to < ('as_of' in event ? event.as_of : today())"
-    sort: period_to
+    where: "run_kind == 'internal' && !closed && period_to < ('as_of' in event ? event.as_of : today())"
+    sort: -period_to
     limit: 100
     as: runs
   - for_each: runs
@@ -214,10 +240,7 @@ steps:
     - find_all: payslip
       where: "name == ''"
       as: open_periods
-''' + reads() + '''# with the attendance module: no draft period over the run, and the submitted summaries reach both ends of the period
-- if: "size(open_periods) == 0 && (!app_installed('attendance') || (sums.exists(s, s.period_from == run.period_from) && sums.exists(s, s.period_to == run.period_to)))"
-  then:
-''' + indent(fill(True), 4), 6)
+''' + reads() + fill(True), 6)
 
 for name, text in (("payroll_run_fill", manual), ("payroll_run_fill_on_create", on_create), ("payslip_from_attendance", auto)):
     with open(os.path.join(out, name + ".rk"), "w") as f:

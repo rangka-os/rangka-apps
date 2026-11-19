@@ -155,6 +155,14 @@ def scenario_karyawan_month(api):
     check("Citra (shop supervisor) clocks a full day: submitted", st == 200, (st, resp))
     st, resp, _ = full_day(eko, y, KITCHEN, "05:58", "14:00")
     check("Eko (baker, daily) clocks a full day at the kitchen: submitted", st == 200, (st, resp))
+    eko_days = 1
+    if y.day > 1:   # Eko also worked the day before, entered late: held until head office approves (a second day in the month)
+        st, resp, _ = full_day(eko, y - datetime.timedelta(days=1), KITCHEN, "06:00", "14:00", reason="Lupa absen kemarin")
+        pend = [a for a in (resp or {}).get("approvals", []) if a.get("state") == "pending"] if isinstance(resp, dict) else []
+        if check("Eko enters the day before late: held (202)", st == 202 and pend, (st, resp)):
+            st, resp = decide(hq, pend[0]["id"])
+            eko_days += 1 if check("head office approves Eko's day before", st == 200 and rec(resp).get("docstatus") == 1, (st, resp)) else 0
+    CTX["eko_days"] = eko_days
     st, resp, bagas_log = full_day(bagas, y, KITCHEN, "06:12", "16:00", overtime_hours=2, reason="Pesanan roti ulang tahun")
     pend = [a for a in (resp or {}).get("approvals", []) if a.get("state") == "pending"] if isinstance(resp, dict) else []
     if check("Bagas clocks in 06:12 with 2 overtime hours: waits for approval (202)", st == 202 and pend, (st, resp)):
@@ -256,7 +264,9 @@ def scenario_karyawan_month(api):
     eq("by hand: Bagas's net 175.000 - JHT 58.000 - Kesehatan 29.000 = 88.000 (late 7 minutes cost nothing at rate 0)",
        (b.get("bpjs_base"), b.get("jht_employee"), b.get("jp_employee"), b.get("kes_employee"), b.get("late_deduction"), b.get("other_deduction"), b.get("net_pay")),
        (2_900_000, 58_000, 0, 29_000, 0, 0, 88_000))
-    eq("by hand: Eko's net 110.000 + 15.000 - 87.000 = 38.000", (e.get("cash_gross"), e.get("employee_bpjs"), e.get("net_pay")), (125_000, 87_000, 38_000))
+    n = CTX.get("eko_days", 1)
+    eq(f"by hand: Eko's net {n} x (110.000 + 15.000) - 87.000", (e.get("days"), e.get("cash_gross"), e.get("employee_bpjs"), e.get("net_pay")),
+       (n, n * 125_000, 87_000, n * 125_000 - 87_000))
     f = slips.get("USR-007") or {}
     eq("Fajar's slip has no account: left out of the transfer", (f.get("bank_account") or "", f.get("account_holder")), ("", "Fajar Contoh"))
     eq("Ayu's slip carries her account (leading zeros kept), holder and note",
@@ -339,7 +349,7 @@ def scenario_karyawan_outlet_run(api):
     bagas = next((s_ for s_ in slips if s_["employee"] == "USR-004"), {})
     st, resp = fm.verb("payslip", bagas.get("name", "x"), "submit", {"force": True})
     rules = [e.get("rule") for e in (resp or {}).get("errors", [])] if isinstance(resp, dict) else []
-    check("a draft filled from a cancelled attendance period cannot be submitted", st == 422 and "attendance_still_valid" in rules, (st, resp))
+    check("a draft filled from a cancelled attendance period cannot be submitted", st == 422 and ("attendance_still_valid" in rules or "attendance_changed" in rules), (st, resp))
     st, per = hq.create("attendance_period", {"period_from": pf, "period_to": pt})
     st, resp = hq.verb("attendance_period", (per or {}).get("name", "x"), "submit") if st == 201 else (st, per)
     if not check("head office submits the corrected attendance period", st == 200, (st, resp)):
@@ -351,9 +361,43 @@ def scenario_karyawan_outlet_run(api):
     eq("the tick refreshes both drafts from the corrected summaries", (st, sorted((s_["employee"], s_.get("attendance_summary")) for s_ in slips),
                                                                        str(fm.get("payroll_run", R).get("fill_note", "")).split(", ")[:2]),
        (200, sorted((u, new_sums.get(u)) for u in ("USR-004", "USR-006")), ["0 slip baru", "2 slip diperbarui"]))
-    for s_ in slips:
+    if pf < pt:
+        multi_period(api, fm, hq, R, P2, pf, pt)
+    for s_ in fm.find("payslip", f"payroll_run == '{R}'"):
         fm.call("DELETE", f"/api/v1/r/payslip/{Api.q(s_['name'])}")
     eq("the draft slips are deleted again", len(fm.find("payslip", f"payroll_run == '{R}'")), 0)
+
+
+def multi_period(api, fm, hq, R, P2, pf, pt):
+    """Audit 101b RF2 and RF1: the month's attendance in two periods (up to the day before, and yesterday). The morning
+    flow fills the kitchen run once (Eko: two days, from two summaries). Head office cancels the first period: Eko's draft
+    still links the valid second summary, but its snapshot no longer adds up, so the submit is refused; the next morning
+    the flow, although the run is already auto_filled, refreshes it to the remaining day."""
+    y = datetime.date.fromisoformat(pt)
+    d1 = str(y - datetime.timedelta(days=1))
+    st, resp = hq.verb("attendance_period", P2, "cancel")
+    check("head office cancels the corrected period again", st == 200, (st, resp))
+    periods = []
+    for a, b in ((pf, d1), (pt, pt)):
+        st, per = hq.create("attendance_period", {"period_from": a, "period_to": b})
+        st, resp = hq.verb("attendance_period", (per or {}).get("name", "x"), "submit") if st == 201 else (st, per)
+        periods.append(rec(resp).get("name") or (per or {}).get("name", "x"))
+        check(f"head office submits the attendance period {a}..{b}", st == 200, (st, resp))
+    asof = str(kernel_today())
+    st, resp = api.call("POST", "/api/v1/flows/payslip_from_attendance/run", {"event": {"as_of": asof}})
+    eko = next((s_ for s_ in fm.find("payslip", f"payroll_run == '{R}'") if s_["employee"] == "USR-006"), {})
+    eq("the morning flow refreshes Eko's draft from both periods (two days) and marks the run filled",
+       (st, eko.get("days"), eko.get("att_days"), fm.get("payroll_run", R).get("auto_filled")), (200, CTX.get("eko_days", 1), CTX.get("eko_days", 1), True))
+    st, resp = hq.verb("attendance_period", periods[0], "cancel")
+    check("head office cancels the first period (Eko's day before)", st == 200, (st, resp))
+    st, resp = fm.verb("payslip", eko.get("name", "x"), "submit", {"force": True})
+    rules = [e.get("rule") for e in (resp or {}).get("errors", [])] if isinstance(resp, dict) else []
+    check("the draft still links a valid summary but no longer adds up: the submit is refused (attendance_changed)", st == 422 and "attendance_changed" in rules, (st, resp))
+    st, resp = api.call("POST", "/api/v1/flows/payslip_from_attendance/run", {"event": {"as_of": asof}})
+    eko = fm.get("payslip", eko.get("name", "x"))
+    eq("the next morning (run already auto_filled) refreshes the draft to the remaining day, and the note says so",
+       (st, eko.get("days"), eko.get("att_days"), str(fm.get("payroll_run", R).get("fill_note", "")).split(", ")[:2]),
+       (200, CTX.get("eko_days", 1) - 1, CTX.get("eko_days", 1) - 1, ["0 slip baru", "1 slip diperbarui"]))
 
 
 SCENARIOS = [scenario_karyawan_month, scenario_karyawan_outlet_run]

@@ -92,12 +92,15 @@ steps:
               days: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.days_present).sum()"
               late_min_total: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.late_min_total).sum()"
               overtime_hours: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.overtime_hours).sum()"
+              att_days: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.days_present).sum()"
+              att_late: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.late_min_total).sum()"
+              att_ot: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.overtime_hours).sum()"
               ytd_gross: "prev.map(x, x.gross_taxable).sum()"
               ytd_pph21: "prev.map(x, x.pph21).sum()"
               ytd_pension: "prev.map(x, x.jht_employee + x.jp_employee).sum()"
               ytd_months: "size(prev)"
               open_advance: "kas.exists(k, repaid.map(x, x.cash_advance == k.name ? x.other_deduction : 0).sum() < k.amount) ? kas.filter(k, repaid.map(x, x.cash_advance == k.name ? x.other_deduction : 0).sum() < k.amount)[0].name : ''"
-      - if: "workers.exists(w, w.name == p.worker && (w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee) : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0))) && own.exists(d, d.worker == p.worker && !sums.exists(s, s.name == d.attendance_summary))"
+      - if: "workers.exists(w, w.name == p.worker && (w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee) : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0))) && own.exists(d, d.worker == p.worker && (d.att_days != sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.days_present).sum() || d.att_late != sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.late_min_total).sum() || d.att_ot != sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.overtime_hours).sum() || !sums.exists(s, s.name == d.attendance_summary)))"
         then:
           - find: payslip
             where: payroll_run == run.name && worker == p.worker && docstatus == 0 && from_fill
@@ -108,12 +111,15 @@ steps:
               days: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.days_present).sum()"
               late_min_total: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.late_min_total).sum()"
               overtime_hours: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.overtime_hours).sum()"
+              att_days: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.days_present).sum()"
+              att_late: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.late_min_total).sum()"
+              att_ot: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.overtime_hours).sum()"
   - update: run
     set:
       fill_from_attendance: 'false'
       fill_note: >-
         string(size(profs.filter(p, workers.exists(w, w.name == p.worker && ((w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee) : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0)) || (run.outlet == '' && p.pay_basis == 'monthly' && !app_installed('projects')))) && !taken.exists(t, t.worker == p.worker) && profs.filter(q, q.worker == p.worker)[0].name == p.name))) + ' slip baru, '
-        + string(size(profs.filter(p, workers.exists(w, w.name == p.worker && (w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee) : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0))) && own.exists(d, d.worker == p.worker && !sums.exists(s, s.name == d.attendance_summary))))) + ' slip diperbarui, '
+        + string(size(profs.filter(p, workers.exists(w, w.name == p.worker && (w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee) : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0))) && own.exists(d, d.worker == p.worker && (d.att_days != sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.days_present).sum() || d.att_late != sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.late_min_total).sum() || d.att_ot != sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.overtime_hours).sum() || !sums.exists(s, s.name == d.attendance_summary)))))) + ' slip diperbarui, '
         + string(size(profs.filter(p, workers.exists(w, w.name == p.worker && (w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee) : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0))) && taken.exists(t, t.worker == p.worker && t.payroll_run != run.name)))) + ' karyawan sudah punya slip di periode lain bulan pajak ini, '
         + string(size(sums)) + ' rekap absen dibaca, ' + string(size(straddle)) + ' rekap melewati awal atau akhir periode tidak dibaca, '
         + ('as_of' in event ? event.as_of : today())

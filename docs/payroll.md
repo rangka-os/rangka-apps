@@ -50,14 +50,17 @@ Tests: `tests/day_one_payroll.py` against the hand-written oracle `tests/payroll
   monthly worker without a summary (an owner or manager who does not clock in), except where the `projects` module is
   installed (monthly workers there may be outsourced staff paid by client runs). The tick is cleared and `fill_note`
   says what was done.
-- A draft the fill made earlier in the run whose summary link is empty or no longer valid (filled before the attendance
-  was submitted, or the attendance period was cancelled) is refreshed from the current summaries on the next fill. A
-  draft typed by hand, or one linked to a valid summary, is never rewritten. A slip whose summary was cancelled cannot
-  be submitted (`attendance_still_valid`).
-- Every morning at 07:00 (before the reminder at 07:15) flow `payslip_from_attendance` runs the same fill as the
-  system, once per run (`auto_filled`), for each open internal run whose period is over, that no draft staff attendance
-  period overlaps and whose submitted summaries reach the period's first and last day (with the attendance module).
-  Drafts deleted or slips cancelled afterwards are not made again; ticking again does.
+- A slip made by a fill stores what the summaries said (`att_days`, `att_late`, `att_ot`). A later fill refreshes such
+  a draft when the worker's current summaries no longer add up to that snapshot or its link is not one of them (filled
+  before the attendance was submitted, a period cancelled or submitted again). Finance may still edit days, lateness or
+  overtime on the draft; a draft typed by hand is never rewritten. At submit `payslip_attendance_guard` refuses a filled
+  slip whose snapshot no longer matches the current summaries (`attendance_changed`), and a slip linking a cancelled
+  summary is refused by `attendance_still_valid`.
+- Every morning at 07:00 (before the reminder at 07:15) flow `payslip_from_attendance` runs the same fill as the system
+  for each open internal run whose period is over: new slips once (`auto_filled`), on the first morning no draft staff
+  attendance period overlaps the run and the submitted summaries reach the period's first and last day (with the
+  attendance module); on every morning after, drafts whose summaries changed are refreshed (attendance of another outlet
+  submitted late reaches them). Drafts deleted or slips cancelled are not made again; ticking again does.
 - From the summaries (summed when the period holds several): `days` = days present, `late_min_total`, `overtime_hours`,
   and the link `attendance_summary` (the last one). Not filled: `unpaid_days` (an absence is not unpaid leave until leave
   is recorded, rangka-apps#114: finance types it) and `overtime_days` (a summary has no count of days with overtime, so
