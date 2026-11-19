@@ -37,7 +37,6 @@ body { font-size: 8.5pt; }
 <div class="rule"></div>
 {{if or .Doc.discount_amount .Doc.bill_promo}}<div class="row"><span>Subtotal</span><span class="num">{{rupiah .Doc.subtotal}}</span></div>{{end}}
 {{if .Doc.bill_promo}}<div class="row"><span>Promo nota {{.Doc.promo_name}}</span><span class="num">-{{rupiah .Doc.bill_promo}}</span></div>{{end}}
-{{if and .Doc.promo_name .Doc.gift_value}}<div class="row"><span>Hadiah {{.Doc.promo_name}}</span><span class="num">Gratis</span></div>{{end}}
 {{if .Doc.discount_amount}}<div class="row"><span>Diskon nota</span><span class="num">-{{rupiah .Doc.discount_amount}}</span></div>{{end}}
 {{if .Doc.promo_total}}<div class="row muted"><span>Hemat dari promo</span><span class="num">{{rupiah .Doc.promo_total}}</span></div>{{end}}
 <div class="row big"><span>Total</span><span class="num">{{rupiah .Doc.grand_total}}</span></div>
