@@ -9,6 +9,6 @@ fields:
   - {name: asset_name, type: data, label: {id: Nama aset}}
   - {name: months, type: int, label: {id: Bulan}, default: '1'}
   - {name: amount, type: currency, label: {id: Penyusutan}, required: true}
-  - {name: outlet, type: link, to: outlet, label: {id: Cabang}}
-  - {name: project, type: data, label: {id: Proyek}}
+  - {name: outlet, type: link, to: outlet, label: {id: Cabang}, depends_on: app_installed('outlets')}
+  - {name: project, type: data, label: {id: Proyek}, depends_on: app_installed('projects')}
   - {name: prev_through, type: date, label: {id: Sebelumnya disusutkan sampai}, hidden: true}

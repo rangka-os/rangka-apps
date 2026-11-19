@@ -9,7 +9,7 @@ name: depreciation_run
 label: {id: Penyusutan bulanan, en: Monthly depreciation}
 icon: line-chart-line
 is_submittable: true
-naming: DEP-{YYYY}-{MM}-{##}
+naming: 'DEP-{period_key}-{##}'
 title_field: title
 permissions:
   - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, export: true, print: true}
@@ -22,13 +22,16 @@ fields:
     in_list: true
     default: "add_months(truncate(string(today()), 7) + '-01', -1)"
   - {name: title, type: data, label: {id: Judul}, compute: "'Penyusutan ' + truncate(string(period), 7)"}
+  # the month as YYYY-MM, for the document number (DEP-2026-10-01: the first run of October 2026)
+  - {name: period_key, type: data, label: {id: Kode bulan}, hidden: true, compute: "truncate(string(period), 7)"}
   - name: posting_date
     type: date
     label: {id: Tanggal jurnal}
     compute: "add_months(string(period), 1) - duration(1)"
     in_list: true
   - {name: lines, type: table, of: depreciation_line, label: {id: Aset yang disusutkan}}
-  - {name: total, type: currency, label: {id: Total penyusutan}, compute: "lines.map(l, l.amount).sum()", in_list: true}
+  # not named `total`: the web app reads a field `total` as an amount to be paid (docSummary)
+  - {name: total_depreciation, type: currency, label: {id: Total penyusutan}, compute: "lines.map(l, l.amount).sum()", in_list: true}
   - {name: asset_count, type: int, label: {id: Jumlah aset}, compute: size(lines), in_list: true}
   - {name: notes, type: text, label: {id: Catatan}}
 rules:
@@ -42,14 +45,14 @@ rules:
     message: {id: Nilai penyusutan per aset harus lebih dari 0}
 views:
   list:
-    columns: [name, period, posting_date, asset_count, total, status]
+    columns: [name, period, posting_date, asset_count, total_depreciation, status]
     sort: -period
   form:
     layout:
       - section: {id: Bulan}
         columns:
           - [period, posting_date]
-          - [asset_count, total]
+          - [asset_count, total_depreciation]
       - section: {id: Aset yang disusutkan}
         fields: [lines]
       - section: {id: Catatan}

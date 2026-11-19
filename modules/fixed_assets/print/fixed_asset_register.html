@@ -12,7 +12,7 @@
 <h1>Daftar aset tetap</h1>
 <table class="meta">
   <tr><td>Penyusutan bulan</td><td>: {{date .Doc.period}} s.d. {{date .Doc.posting_date}}</td><td>Dicetak</td><td>: {{date .Printed}}</td></tr>
-  <tr><td>Penyusutan bulan ini</td><td>: {{rupiah .Doc.total}} ({{.Doc.asset_count}} aset)</td><td>Status</td><td>: {{.Doc.status}}</td></tr>
+  <tr><td>Penyusutan bulan ini</td><td>: {{rupiah .Doc.total_depreciation}} ({{.Doc.asset_count}} aset)</td><td></td><td></td></tr>
 </table>
 <table class="items">
   <thead><tr><th>Aset</th><th>Kelompok</th><th>Tanggal beli</th><th class="num">Harga perolehan</th><th class="num">Akumulasi penyusutan</th><th class="num">Nilai buku</th><th>Status</th></tr></thead>
@@ -20,12 +20,12 @@
   {{range $b := .Related.books}}
   <tr>
     <td>{{$b.asset_name}}<br><small>{{$b.asset}}</small></td>
-    <td>{{$b.category}}</td>
+    <td>{{$b.category_name}}</td>
     <td>{{date $b.acquisition_date}}</td>
     <td class="num">{{rupiah $b.cost}}</td>
     <td class="num">{{rupiah $b.accumulated_total}}</td>
     <td class="num">{{rupiah $b.book_value}}</td>
-    <td>{{$b.state}}</td>
+    <td>{{$b.state_label}}</td>
   </tr>
   {{end}}
   <tr class="total"><td colspan="3">Total</td><td class="num">{{rupiah (sum .Related.books "cost")}}</td><td class="num">{{rupiah (sum .Related.books "accumulated_total")}}</td><td class="num">{{rupiah (sum .Related.books "book_value")}}</td><td></td></tr>
@@ -38,7 +38,7 @@
   {{range $l := .Doc.lines}}
   <tr><td>{{$l.asset_name}}<br><small>{{$l.asset}}</small></td><td class="num">{{$l.months}}</td><td class="num">{{rupiah $l.amount}}</td></tr>
   {{end}}
-  <tr class="total"><td colspan="2">Total</td><td class="num">{{rupiah .Doc.total}}</td></tr>
+  <tr class="total"><td colspan="2">Total</td><td class="num">{{rupiah .Doc.total_depreciation}}</td></tr>
   </tbody>
 </table>
 {{if .Truncated.books}}<p class="note"><strong>Daftar dipotong:</strong> hanya 1.000 aset pertama yang ditampilkan.</p>{{end}}

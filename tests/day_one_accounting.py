@@ -139,7 +139,7 @@ def expected_pl(api, d0, d1):
             e["other_income"] += r["covered_late"] + r["covered_damage"]
     for r in docs(api, "depreciation_run"):             # module fixed_assets: Beban penyusutan (6-1950)
         if inm(r["posting_date"]):
-            e["operating_expenses"] += r["total"]
+            e["operating_expenses"] += r["total_depreciation"]
     for x in docs(api, "asset_disposal"):               # gain (+) or loss (-) on selling or writing off (4-9300)
         if inm(x["disposal_date"]):
             e["other_income"] += x["gain_loss"]
@@ -231,7 +231,7 @@ def fixed_assets_net(api, d1):
             net += b["dpp"] + (0 if pkp_org else b["ppn"])
     for r in docs(api, "depreciation_run"):
         if upto(r["posting_date"]):
-            net -= r["total"]
+            net -= r["total_depreciation"]
     for x in docs(api, "asset_disposal"):
         if upto(x["disposal_date"]):
             net -= x["book_value"]

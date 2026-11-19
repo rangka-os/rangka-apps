@@ -59,9 +59,16 @@ fields:
       - {value: written_off, label: {id: Dihapus}}
       - {value: cancelled, label: {id: Batal}}
   - {name: disposal, type: link, to: asset_disposal, label: {id: Pelepasan}, read_only: true}
+  # words for the register print (a print reads option labels of its own model only)
+  - {name: category_name, type: data, label: {id: Nama kelompok}, hidden: true, compute: category.category_name}
+  - name: state_label
+    type: data
+    label: {id: Status (teks)}
+    hidden: true
+    compute: "state == 'active' ? 'Aktif' : (state == 'fully_depreciated' ? 'Habis disusutkan' : (state == 'sold' ? 'Dijual' : (state == 'written_off' ? 'Dihapus' : 'Batal')))"
 views:
   list:
-    columns: [asset, asset_name, category, outlet, cost, accumulated_total, book_value, state]
+    columns: [asset, category, outlet, book_value, cost, accumulated_total, state]
     filters: [category, outlet, state]
     sort: asset
   form:
