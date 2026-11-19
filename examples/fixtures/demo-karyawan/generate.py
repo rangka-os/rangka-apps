@@ -5,7 +5,8 @@ karyawan_gaji with absen_karyawan, rangka-apps#101).
 One kitchen that is also head office and one shop; seven employees who sign in and clock in from their phones, each
 with a worker record (who is paid) linked to the employee record (worker.employee, contract 0056) and pay data:
 four monthly (one under the fictional UMK, one without an account number, so the transfer list leaves them out) and
-two bakers paid per day (casual, one with a weighted overtime rate, one without). The finance member does not clock
+three kitchen staff paid per day (casual: one baker with a weighted overtime rate, one without, and a helper who
+signs in but does not come this month, so a summary of 0 days gives no slip). The finance member does not clock
 in (attendance_exempt) and gets a slip without attendance. Names, NIK, accounts and every number are made up.
 Deterministic, Python stdlib only.
 
@@ -33,6 +34,7 @@ STAFF = [
     ("USR-005", "Citra Contoh", "outlet_supervisor", "citra", "OUT-02", False, "Kepala toko", "monthly", 4_000_000, 300_000, 0, 0, 0, "permanent", "k0", "0011000005"),
     ("USR-006", "Eko Contoh", "employee", "eko", "OUT-01", False, "Pembuat roti", "daily", 0, 0, 110_000, 15_000, 0, "casual", "tk1", "0011000006"),
     ("USR-007", "Fajar Contoh", "outlet_staff", "fajar", "OUT-02", False, "Pramuniaga", "monthly", 2_800_000, 0, 0, 0, 0, "permanent", "tk0", ""),
+    ("USR-008", "Gita Contoh", "employee", "gita", "OUT-01", False, "Pembantu dapur", "daily", 0, 0, 100_000, 15_000, 0, "casual", "tk0", "0011000008"),
 ]
 DOMAIN = "contohroti.test"
 

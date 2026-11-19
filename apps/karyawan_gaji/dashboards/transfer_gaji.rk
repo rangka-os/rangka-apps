@@ -14,4 +14,4 @@ cache: 1m
 widgets:
   - {name: total, type: number, label: {id: Total ditransfer}, model: payslip, aggregate: sum, field: net_pay, filter: "docstatus == 1 && bank_account != '' && net_pay > 0", period: pay_date, compact: true, span: 6}
   - {name: count, type: number, label: {id: Jumlah transfer}, model: payslip, filter: "docstatus == 1 && bank_account != '' && net_pay > 0", period: pay_date, span: 6}
-  - {name: transfers, type: list, label: {id: Daftar transfer gaji}, model: payslip, filter: "docstatus == 1 && bank_account != '' && net_pay > 0", period: pay_date, columns: [bank_account, account_holder, bank_name, net_pay, transfer_note, payroll_run], sort: account_holder, limit: 50, span: 12}
+  - {name: transfers, type: list, label: {id: Daftar transfer gaji}, model: payslip, filter: "docstatus == 1 && bank_account != '' && net_pay > 0", period: pay_date, columns: [bank_account, account_holder, bank_name, net_pay, transfer_note], sort: account_holder, limit: 50, span: 12}

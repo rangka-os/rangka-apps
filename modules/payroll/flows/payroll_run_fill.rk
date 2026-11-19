@@ -1,16 +1,12 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
-# Finance ticks "Isi slip dari absen" on an internal payroll run and saves it: one draft payslip per active worker with
-# pay data whose employee record has a staff attendance summary (module attendance) inside the run's period, of the
-# run's outlet when it names one; on a run of every outlet also each monthly worker without a summary (an owner or a
-# manager who does not clock in), so the run holds the whole staff. The tick is cleared and fill_note says how many slips
-# were made. Workers who already have a live slip in the tax month are skipped, so ticking again only adds the missing.
-# Runs as the person saving (finance_manager or the owner) and only makes drafts: finance checks and submits them. The
-# same steps run every morning for runs whose period is over (payslip_from_attendance); both are written by
-# scripts/gen_payroll_fill_flows.py (edit the script, not this file). A summary straddling the run's start or end is not
-# read.
+# Finance saves an internal payroll run with "Isi slip dari absen" ticked: draft payslips from the staff attendance
+# summaries of the period, as described in scripts/gen_payroll_fill_flows.py, which writes this file (edit the script,
+# not this file). The tick is cleared and fill_note says what was done. Runs as the person saving (finance_manager or
+# the owner) and only makes or refreshes drafts: finance checks and submits them. The same fill runs once by itself the
+# morning after the period's attendance is complete (payslip_from_attendance).
 name: payroll_run_fill
 label: {id: Isi slip gaji dari absen, en: Fill payslips from attendance}
-description: {id: 'Saat periode gaji karyawan sendiri dicentang "Isi slip dari absen" dan disimpan, slip gaji draft dibuat dari rekap absen karyawan periode itu, juga untuk karyawan bulanan yang tidak absen. Slip yang sudah ada tidak diubah.'}
+description: {id: 'Saat periode gaji karyawan sendiri disimpan dengan centang "Isi slip dari absen", slip gaji draft dibuat dari rekap absen karyawan periode itu, juga untuk karyawan bulanan yang tidak absen. Slip yang diketik sendiri tidak diubah.'}
 on: payroll_run.updated
 if: "event.fill_from_attendance && event.run_kind == 'internal' && !event.closed"
 steps:
@@ -23,11 +19,19 @@ steps:
         where: "!cancelled && period_from >= run.period_from && period_to <= run.period_to && (run.outlet == '' || outlet == run.outlet)"
         sort: period_from
         as: sums
+      - find_all: attendance_summary
+        where: >-
+          !cancelled && period_from <= run.period_to && period_to >= run.period_from && (run.outlet == '' || outlet == run.outlet)
+          && (period_from < run.period_from || period_to > run.period_to)
+        as: straddle
     else:
-      # no attendance module: an empty list (a find on a model that is not installed fails)
+      # no attendance module: empty lists (a find on a model that is not installed fails)
       - find_all: payslip
         where: "name == ''"
         as: sums
+      - find_all: payslip
+        where: "name == ''"
+        as: straddle
   - find_all: payroll_profile
     where: active
     sort: name
@@ -36,14 +40,18 @@ steps:
     where: active
     as: workers
   # every live slip of the tax month: one slip per worker per tax month (the slip's key), so a worker who has one, in
-  # this run or another, is skipped instead of refused
+  # this run or another, gets no new one
   - find_all: payslip
     where: "tax_year == run.tax_year && tax_month == run.tax_month && docstatus != 2"
     as: taken
+  # the drafts this fill made earlier in this run (from_fill): refreshed when their summary is gone or was never there
+  - find_all: payslip
+    where: "payroll_run == run.name && docstatus == 0 && from_fill"
+    as: own
   - for_each: profs
     as: p
     do:
-      - if: "workers.exists(w, w.name == p.worker && (w.employee != '' && sums.exists(s, s.employee == w.employee) || (run.outlet == '' && p.pay_basis == 'monthly'))) && !taken.exists(t, t.worker == p.worker) && profs.filter(q, q.worker == p.worker)[0].name == p.name"
+      - if: "workers.exists(w, w.name == p.worker && ((w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee) : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0)) || (run.outlet == '' && p.pay_basis == 'monthly' && !app_installed('projects')))) && !taken.exists(t, t.worker == p.worker) && profs.filter(q, q.worker == p.worker)[0].name == p.name"
         then:
           - find_all: cash_advance
             where: worker == p.worker && docstatus == 1
@@ -79,6 +87,7 @@ steps:
             set:
               payroll_run: run.name
               profile: p.name
+              from_fill: 'true'
               attendance_summary: "size(sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee)) > 0 ? sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee)[size(sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee)) - 1].name : ''"
               days: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.days_present).sum()"
               late_min_total: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.late_min_total).sum()"
@@ -88,7 +97,23 @@ steps:
               ytd_pension: "prev.map(x, x.jht_employee + x.jp_employee).sum()"
               ytd_months: "size(prev)"
               open_advance: "kas.exists(k, repaid.map(x, x.cash_advance == k.name ? x.other_deduction : 0).sum() < k.amount) ? kas.filter(k, repaid.map(x, x.cash_advance == k.name ? x.other_deduction : 0).sum() < k.amount)[0].name : ''"
+      - if: "workers.exists(w, w.name == p.worker && (w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee) : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0))) && own.exists(d, d.worker == p.worker && !sums.exists(s, s.name == d.attendance_summary))"
+        then:
+          - find: payslip
+            where: payroll_run == run.name && worker == p.worker && docstatus == 0 && from_fill
+            as: d
+          - update: d
+            set:
+              attendance_summary: "size(sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee)) > 0 ? sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee)[size(sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee)) - 1].name : ''"
+              days: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.days_present).sum()"
+              late_min_total: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.late_min_total).sum()"
+              overtime_hours: "sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.overtime_hours).sum()"
   - update: run
     set:
       fill_from_attendance: 'false'
-      fill_note: "string(size(profs.filter(p, workers.exists(w, w.name == p.worker && (w.employee != '' && sums.exists(s, s.employee == w.employee) || (run.outlet == '' && p.pay_basis == 'monthly'))) && !taken.exists(t, t.worker == p.worker) && profs.filter(q, q.worker == p.worker)[0].name == p.name))) + ' slip baru, ' + string(size(sums)) + ' rekap absen dibaca, ' + ('as_of' in event ? event.as_of : today())"
+      fill_note: >-
+        string(size(profs.filter(p, workers.exists(w, w.name == p.worker && ((w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee) : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0)) || (run.outlet == '' && p.pay_basis == 'monthly' && !app_installed('projects')))) && !taken.exists(t, t.worker == p.worker) && profs.filter(q, q.worker == p.worker)[0].name == p.name))) + ' slip baru, '
+        + string(size(profs.filter(p, workers.exists(w, w.name == p.worker && (w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee) : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0))) && own.exists(d, d.worker == p.worker && !sums.exists(s, s.name == d.attendance_summary))))) + ' slip diperbarui, '
+        + string(size(profs.filter(p, workers.exists(w, w.name == p.worker && (w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee) : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0))) && taken.exists(t, t.worker == p.worker && t.payroll_run != run.name)))) + ' karyawan sudah punya slip di periode lain bulan pajak ini, '
+        + string(size(sums)) + ' rekap absen dibaca, ' + string(size(straddle)) + ' rekap melewati awal atau akhir periode tidak dibaca, '
+        + ('as_of' in event ? event.as_of : today())

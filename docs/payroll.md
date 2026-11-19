@@ -42,23 +42,38 @@ Tests: `tests/day_one_payroll.py` against the hand-written oracle `tests/payroll
   Bulanan/Harian, BPJS Ya/Tidak).
 
 ### Slips from staff attendance (payroll 2.1, app karyawan_gaji)
-- Finance ticks **Isi slip dari absen** (`fill_from_attendance`) on an internal run and saves it: flow
-  `payroll_run_fill` makes one draft slip per active worker with pay data whose employee record (`worker.employee`) has a
-  non-cancelled `attendance_summary` inside the run's period, of the run's outlet when it names one. A run of every
-  outlet also gets a slip for each monthly worker without a summary (an owner or manager who does not clock in, or a
-  site without the attendance module). The tick is cleared and `fill_note` says how many slips were made.
-- Every morning at 07:00 (before the reminder at 07:15) flow `payslip_from_attendance` does the same, as the system, for
-  each open internal run whose period is over and that no draft staff attendance period overlaps.
+- Finance saves an internal run with **Isi slip dari absen** (`fill_from_attendance`) ticked, at create or later: flows
+  `payroll_run_fill_on_create` / `payroll_run_fill` make one draft slip (`from_fill`) per active worker with pay data
+  whose employee record (`worker.employee`) has a non-cancelled `attendance_summary` inside the run's period, of the
+  run's outlet when it names one. A daily worker needs at least one day present (a 0-day slip would leave the
+  employee's BPJS share as a negative net pay, which is refused). A run of every outlet also gets a slip for each
+  monthly worker without a summary (an owner or manager who does not clock in), except where the `projects` module is
+  installed (monthly workers there may be outsourced staff paid by client runs). The tick is cleared and `fill_note`
+  says what was done.
+- A draft the fill made earlier in the run whose summary link is empty or no longer valid (filled before the attendance
+  was submitted, or the attendance period was cancelled) is refreshed from the current summaries on the next fill. A
+  draft typed by hand, or one linked to a valid summary, is never rewritten. A slip whose summary was cancelled cannot
+  be submitted (`attendance_still_valid`).
+- Every morning at 07:00 (before the reminder at 07:15) flow `payslip_from_attendance` runs the same fill as the
+  system, once per run (`auto_filled`), for each open internal run whose period is over, that no draft staff attendance
+  period overlaps and whose submitted summaries reach the period's first and last day (with the attendance module).
+  Drafts deleted or slips cancelled afterwards are not made again; ticking again does.
 - From the summaries (summed when the period holds several): `days` = days present, `late_min_total`, `overtime_hours`,
   and the link `attendance_summary` (the last one). Not filled: `unpaid_days` (an absence is not unpaid leave until leave
   is recorded, rangka-apps#114: finance types it) and `overtime_days` (a summary has no count of days with overtime, so
   without a weighted overtime rate every hour counts 2x, never less than PP 35/2021 asks, until finance enters the
-  days). A summary straddling the run's start or end is not read.
-- A worker who already has a live slip in the tax month (in this run or another) is skipped, so ticking again or the
-  morning run only adds what is missing; a flow's writes start no flows, so the year to date and the open kasbon are
-  read by the fill itself, as `payslip_from_recap` does. Both flows are written by `scripts/gen_payroll_fill_flows.py`.
+  days).
+- One slip per worker per tax month: a worker who already has a live slip in the tax month (in this run or another) gets
+  no new one. With one run per outlet, days a worker spent at a second outlet are therefore not paid by the second run;
+  `fill_note` counts these workers, and summaries straddling the period's start or end (not read). Use one run of every
+  outlet when staff move between outlets.
+- A flow's writes start no flows, so the year to date and the open kasbon are read by the fill itself, as
+  `payslip_from_recap` does. All three flows are written by `scripts/gen_payroll_fill_flows.py`.
 - Finance reads the summaries (`attendance_summary` grants `finance_manager` read in attendance 1.0.2), never the logs
-  with position and selfie.
+  with position and selfie. Which user's attendance pays which worker follows `worker.employee`, which head office may
+  also edit (workforce grants, unchanged).
+- A slip already submitted keeps its pay when its attendance period is cancelled later (the summaries are marked
+  cancelled, the link stays as the trail); cancel and amend the slip to correct it.
 
 ### Salary transfer list (`bank_transfer_csv`)
 - Each slip carries `bank_name`, `bank_account`, `account_holder` (the worker's name), `pay_date` and `transfer_note`

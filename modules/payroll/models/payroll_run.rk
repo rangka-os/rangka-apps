@@ -149,10 +149,12 @@ fields:
     type: currency
     label: {id: Potongan telat per menit, en: Lateness deduction per minute}
     default: '0'
-  # Tick and save on an internal run: flow payroll_run_fill makes the draft payslips from the staff attendance summaries of
-  # the period (and for monthly staff without one), then clears the tick and writes what it did in fill_note. Slips
-  # already in the run, or of the same worker in the same tax month, are kept as they are. The same filling runs every
-  # morning by itself for an internal run whose period is over (flow payslip_from_attendance).
+  # Tick and save on an internal run (also at create): flows payroll_run_fill(_on_create) make the draft payslips from the
+  # staff attendance summaries of the period (and for monthly staff without one), refresh the drafts they made earlier
+  # whose summary is gone, then clear the tick and write what they did in fill_note. Slips typed by hand, or of a worker
+  # who has another slip in the tax month, are kept as they are. The same fill runs once by itself the morning after
+  # the period's attendance is complete (flow payslip_from_attendance, which then sets auto_filled). Rules:
+  # docs/payroll.md and scripts/gen_payroll_fill_flows.py.
   - name: fill_from_attendance
     type: check
     label: {id: Isi slip dari absen, en: Fill payslips from attendance}
@@ -160,6 +162,7 @@ fields:
     default: 'false'
     depends_on: run_kind == 'internal' && !closed
   - {name: fill_note, type: data, label: {id: Pengisian slip terakhir, en: Last fill}, read_only: true, depends_on: "run_kind == 'internal'"}
+  - {name: auto_filled, type: check, label: {id: Sudah diisi otomatis, en: Filled by the morning run}, default: 'false', read_only: true, hidden: true}
   - {name: closed, type: check, label: {id: Sudah ditutup}, default: 'false', read_only: true, in_list: true}
   # Set by flow payroll_reminder on the morning it told finance the period is ready (notice payroll_ready), so a run is
   # announced once and the daily check sends nothing more about it.

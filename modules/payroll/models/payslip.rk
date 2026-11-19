@@ -67,6 +67,8 @@ fields:
     label: {id: Rekap absen karyawan, en: Staff attendance summary}
     read_only: true
     depends_on: app_installed('attendance')
+  # Made by an attendance fill (not typed): only such a draft is refreshed by a later fill when its summary is gone.
+  - {name: from_fill, type: check, label: {id: Dari isi absen, en: From an attendance fill}, default: 'false', read_only: true, hidden: true}
   - {name: tax_year, type: int, label: {id: Tahun pajak}, default: payroll_run.tax_year}
   - {name: tax_month, type: int, label: {id: Bulan pajak}, default: payroll_run.tax_month}
   # December, or the month the worker leaves: PPh 21 is recomputed for the year (Pasal 17).
@@ -325,6 +327,12 @@ fields:
   - {name: pay_date, type: date, label: {id: Tanggal bayar, en: Pay date}, compute: payroll_run.pay_date}
   - {name: transfer_note, type: data, label: {id: Berita transfer, en: Transfer note}, compute: "'Gaji ' + payroll_run.tax_ym"}
 rules:
+  # The attendance period the slip was filled from was cancelled: tick "Isi slip dari absen" again (a slip the fill made is
+  # refreshed from the corrected attendance) or clear the days by hand. Audit 101b F2.
+  - name: attendance_still_valid
+    on: submit
+    check: "attendance_summary == '' || !attendance_summary.cancelled"
+    message: {id: 'Rekap absen slip ini sudah dibatalkan: isi ulang slip dari absen sebelum diajukan'}
   - name: run_open
     on: submit
     check: "!payroll_run.closed"
@@ -397,7 +405,8 @@ views:
     layout:
       - section: {id: Slip}
         columns:
-          - [payroll_run, profile, worker, employee, timesheet]
+          # worker and employee name the same person as the pay data: kept on the record and the list, not repeated here
+          - [payroll_run, profile, timesheet]
           - [tax_year, tax_month, last_month, ptkp_status, has_tax_id]
       - section: {id: Kehadiran dan upah}
         columns:

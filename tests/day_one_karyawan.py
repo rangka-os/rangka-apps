@@ -29,7 +29,8 @@ MEMBERS = [("fm", "rina@contohroti.test", "finance_manager", KITCHEN, "USR-001",
            ("ayu", "ayu@contohroti.test", "cashier", SHOP, "USR-003", "Ayu Contoh"),
            ("bagas", "bagas@contohroti.test", "employee", KITCHEN, "USR-004", "Bagas Contoh"),
            ("citra", "citra@contohroti.test", "outlet_supervisor", SHOP, "USR-005", "Citra Contoh"),
-           ("eko", "eko@contohroti.test", "employee", KITCHEN, "USR-006", "Eko Contoh")]
+           ("eko", "eko@contohroti.test", "employee", KITCHEN, "USR-006", "Eko Contoh"),
+           ("gita", "gita@contohroti.test", "employee", KITCHEN, "USR-008", "Gita Contoh")]
 TRANSFER_COLUMNS = "bank_account,account_holder,bank_name,net_pay,transfer_note"
 
 
@@ -145,8 +146,11 @@ def scenario_karyawan_month(api):
     t = kernel_today()
     y = t - datetime.timedelta(days=1)
     # staff clock yesterday: Ayu at the shop, Citra at the shop, Bagas 06:12 at the kitchen with 2 overtime hours, Eko on time
-    st, resp, ayu_log = full_day(ayu, y, SHOP, "08:00", "17:00")
-    check("Ayu (cashier) clocks a full day at the shop: submitted", st == 200 and rec(resp).get("docstatus") == 1, (st, resp))
+    st, resp, ayu_log = full_day(ayu, y, SHOP, "08:00", "18:00", overtime_hours=1, reason="Stok opname akhir bulan")
+    pend = [a for a in (resp or {}).get("approvals", []) if a.get("state") == "pending"] if isinstance(resp, dict) else []
+    if check("Ayu (cashier) clocks a full day with 1 overtime hour: waits for the shop supervisor (202)", st == 202 and pend, (st, resp)):
+        st, resp = decide(citra, pend[0]["id"])
+        check("Citra approves Ayu's overtime: the log is submitted", st == 200 and rec(resp).get("docstatus") == 1, (st, resp))
     st, resp, _ = full_day(citra, y, SHOP, "07:55", "17:05")
     check("Citra (shop supervisor) clocks a full day: submitted", st == 200, (st, resp))
     st, resp, _ = full_day(eko, y, KITCHEN, "05:58", "14:00")
@@ -169,46 +173,68 @@ def scenario_karyawan_month(api):
         return
     R = run["name"]
     CTX["karyawan_run"] = R
-    st, per = hq.create("attendance_period", {"period_from": str(y), "period_to": str(y)})
-    check("head office drafts the attendance period of yesterday", st == 201, (st, per))
-    P = (per or {}).get("name", "x")
     asof = str(t)
-    st, resp = api.call("POST", "/api/v1/flows/payslip_from_attendance/run", {"event": {"as_of": asof}})
-    eq("the morning flow waits while the attendance period is a draft: no slip", (st, len(fm.find("payslip", f"payroll_run == '{R}'"))), (200, 0))
+
+    def morning():
+        st, resp = api.call("POST", "/api/v1/flows/payslip_from_attendance/run", {"event": {"as_of": asof}})
+        return st, {s_["employee"]: s_ for s_ in fm.find("payslip", f"payroll_run == '{R}'")}
+
+    # audit 101b F1: the morning after the period, before head office has even drafted the attendance period
+    st, early = morning()
+    eq("the morning flow fills nothing while no attendance of the period is submitted", (st, len(early), fm.get("payroll_run", R).get("auto_filled")), (200, 0, False))
+    # finance ticks too early: monthly staff get drafts without attendance, daily staff none yet
+    st, resp = fm.patch("payroll_run", R, {"fill_from_attendance": True})
+    early = {s_["employee"]: s_ for s_ in fm.find("payslip", f"payroll_run == '{R}'")}
+    eq("an early tick drafts the monthly staff only, with 0 days and no summary",
+       (st, sorted(early), sorted({(x.get("days"), x.get("attendance_summary") or "", x.get("from_fill")) for x in early.values()})),
+       (200, sorted(x[0] for x in g.STAFF if x[7] == "monthly"), [(0, "", True)]))
+    st, per = hq.create("attendance_period", {"period_from": str(pf), "period_to": str(pt)})
+    check("head office drafts the attendance period of the month", st == 201, (st, per))
+    P = (per or {}).get("name", "x")
+    st, before = morning()
+    eq("the morning flow waits while the attendance period is a draft", (st, len(before), fm.get("payroll_run", R).get("auto_filled")), (200, len(early), False))
     st, resp = hq.verb("attendance_period", P, "submit")
     if not check("head office submits the attendance period", st == 200, (st, resp)):
         return
     P = rec(resp).get("name") or P
-    sums = {s["employee"]: s for s in hq.find("attendance_summary", f"attendance_period == '{P}'")}
-    check("summaries for the four who clocked in (Rina is exempt)", {"USR-003", "USR-004", "USR-005", "USR-006"} <= set(sums) and "USR-001" not in sums, sorted(sums))
-
+    CTX["karyawan_period"] = (P, str(pf), str(pt))
+    sums = {s_["employee"]: s_ for s_ in hq.find("attendance_summary", f"attendance_period == '{P}'")}
+    check("summaries for those who clocked in (Rina is exempt)", {"USR-003", "USR-004", "USR-005", "USR-006"} <= set(sums) and "USR-001" not in sums, sorted(sums))
     # Dodi (head office) may not tick the fill: the run is finance's
     st, resp = hq.patch("payroll_run", R, {"fill_from_attendance": True})
     check("head office cannot write the payroll run (403)", denied(st, resp), (st, resp))
-    st, resp = fm.patch("payroll_run", R, {"fill_from_attendance": True})
-    if not check("finance ticks Isi slip dari absen and saves", st == 200, (st, resp)):
-        return
+    st, slips = morning()
     r = fm.get("payroll_run", R)
-    slips = {s["employee"]: s for s in fm.find("payslip", f"payroll_run == '{R}'")}
-    users_with_slip = sorted(slips)
-    # who gets one: an employee with a summary in the period, or a monthly worker without one (a run of every outlet)
-    want = sorted(set(u for u in sums if not sums[u].get("cancelled")) | {s[0] for s in g.STAFF if s[7] == "monthly"})
-    eq("one draft slip per employee with a summary, plus monthly staff without one", users_with_slip, want)
-    check("the tick is cleared and the note says how many", r.get("fill_from_attendance") is False and str(r.get("fill_note", "")).startswith(f"{len(want)} slip baru"),
-          (r.get("fill_from_attendance"), r.get("fill_note")))
-    check("all slips are drafts", all(s.get("docstatus") == 0 for s in slips.values()), [s.get("docstatus") for s in slips.values()])
+    basis = {x[0]: x[7] for x in g.STAFF}
+    # who gets one: an employee with a summary in the period (daily: at least one day), or a monthly worker without one
+    want = sorted(set(u for u, sm in sums.items() if not sm.get("cancelled") and (basis.get(u) == "monthly" or sm.get("days_present", 0) > 0))
+                  | {u for u, b in basis.items() if b == "monthly"})
+    eq("the morning after the attendance is complete: one draft per employee with a summary, plus monthly staff without one", sorted(slips), want)
+    refreshed = sum(1 for u in early if u in sums)
+    check("the early monthly drafts are refreshed from the summaries, the daily ones made, once (auto_filled), and the note says so",
+          r.get("auto_filled") is True and str(r.get("fill_note", "")).startswith(f"{len(want) - len(early)} slip baru, {refreshed} slip diperbarui"), r.get("fill_note"))
+    check("Gita (daily, signed in, never came) has a 0-day summary and no slip: no negative net pay to refuse the fill",
+          (sums.get("USR-008") or {}).get("days_present") == 0 and "USR-008" not in slips, (sums.get("USR-008"), sorted(slips)))
+    check("all slips are drafts", all(s_.get("docstatus") == 0 for s_ in slips.values()), [s_.get("docstatus") for s_ in slips.values()])
     for u in ("USR-003", "USR-004", "USR-006"):
-        s, sm = slips.get(u) or {}, sums.get(u) or {}
+        s_, sm = slips.get(u) or {}, sums.get(u) or {}
         eq(f"{u}: days, minutes late and overtime hours come from the summary, and the slip links it",
-           (s.get("days"), s.get("late_min_total"), s.get("overtime_hours"), s.get("attendance_summary"), s.get("unpaid_days")),
+           (s_.get("days"), s_.get("late_min_total"), s_.get("overtime_hours"), s_.get("attendance_summary"), s_.get("unpaid_days")),
            (sm.get("days_present"), sm.get("late_min_total"), sm.get("overtime_hours"), sm.get("name"), 0))
-    eq("Rina (monthly, exempt) gets a slip without attendance: 0 days, no summary",
+    eq("Ayu's early draft now carries her approved overtime hour", (slips.get("USR-003") or {}).get("overtime_hours"), 1)
+    eq("Rina (monthly, exempt) keeps a slip without attendance: 0 days, no summary",
        ((slips.get("USR-001") or {}).get("days"), (slips.get("USR-001") or {}).get("attendance_summary") or ""), (0, ""))
     st, resp = fm.patch("payroll_run", R, {"fill_from_attendance": True})
-    eq("ticking again adds no slip", (st, len(fm.find("payslip", f"payroll_run == '{R}'")), str(fm.get("payroll_run", R).get("fill_note", "")).split(" ")[0]),
-       (200, len(want), "0"))
-    st, resp = api.call("POST", "/api/v1/flows/payslip_from_attendance/run", {"event": {"as_of": asof}})
-    eq("the morning flow (period over, attendance submitted) adds no slip either", (st, len(fm.find("payslip", f"payroll_run == '{R}'"))), (200, len(want)))
+    eq("ticking again adds and refreshes nothing", (st, len(fm.find("payslip", f"payroll_run == '{R}'")), str(fm.get("payroll_run", R).get("fill_note", "")).split(", ")[:2]),
+       (200, len(want), ["0 slip baru", "0 slip diperbarui"]))
+    # audit 101b F3: a draft finance deletes is not made again by the next morning (the run is filled once)
+    rina = (slips.get("USR-001") or {}).get("name", "x")
+    st, resp = fm.call("DELETE", f"/api/v1/r/payslip/{Api.q(rina)}")
+    st2, again = morning()
+    eq("a deleted draft does not come back the next morning", (st in (200, 204), "USR-001" in again), (True, False))
+    st, resp = fm.patch("payroll_run", R, {"fill_from_attendance": True})
+    slips = {s_["employee"]: s_ for s_ in fm.find("payslip", f"payroll_run == '{R}'")}
+    eq("ticking makes Rina's draft again (finance asked for it)", (st, sorted(slips)), (200, want))
 
     # every amount equals the oracle; then submit (warnings confirmed with force, as finance does in the web app)
     o = oracle_run()
@@ -223,6 +249,14 @@ def scenario_karyawan_month(api):
     # Bagas: 1 day x 120.000 + 15.000 allowance + 2 h x 20.000 weighted overtime = 175.000 cash; casual, daily TER 0% under 450.000
     eq("by hand: Bagas earns 120.000 + 15.000 + 40.000 overtime = 175.000, daily TER 0%", (b.get("base_pay"), b.get("allowance_pay"), b.get("overtime_pay"), b.get("cash_gross"), b.get("pph21")),
        (120_000, 15_000, 40_000, 175_000, 0))
+    # The BPJS base is the wage, never below the UMK (docs/payroll.md; the consultant item for daily workers of a few days
+    # is open in the project's NEEDS-ZEIN.md): 2.900.000 x (JHT 2% + Kesehatan 1%) = 87.000 off a 1-day slip; no JP for
+    # casual staff, no late deduction at the default rate 0, no kasbon.
+    e = slips.get("USR-006") or {}
+    eq("by hand: Bagas's net 175.000 - JHT 58.000 - Kesehatan 29.000 = 88.000 (late 7 minutes cost nothing at rate 0)",
+       (b.get("bpjs_base"), b.get("jht_employee"), b.get("jp_employee"), b.get("kes_employee"), b.get("late_deduction"), b.get("other_deduction"), b.get("net_pay")),
+       (2_900_000, 58_000, 0, 29_000, 0, 0, 88_000))
+    eq("by hand: Eko's net 110.000 + 15.000 - 87.000 = 38.000", (e.get("cash_gross"), e.get("employee_bpjs"), e.get("net_pay")), (125_000, 87_000, 38_000))
     f = slips.get("USR-007") or {}
     eq("Fajar's slip has no account: left out of the transfer", (f.get("bank_account") or "", f.get("account_holder")), ("", "Fajar Contoh"))
     eq("Ayu's slip carries her account (leading zeros kept), holder and note",
@@ -277,28 +311,48 @@ def scenario_karyawan_month(api):
 
 
 def scenario_karyawan_outlet_run(api):
-    """A run of one outlet reads only that outlet's summaries and makes no slip for staff without one there; without
-    the attendance module the fill would make slips only for monthly staff (checked by tests/day_one_payroll.py's site
-    without it). Slips here stay drafts and are deleted."""
-    got = members("fm")
-    if not got:
+    """A kitchen-only run saved with the tick at create (audit 101b F7) reads only the kitchen's summaries and makes no
+    slip for staff without one there (no monthly fallback in an outlet run). Then head office cancels the attendance
+    period (audit 101b F2): a draft filled from it cannot be submitted; a corrected period submitted and the tick again
+    refresh the drafts the fill made. The drafts are deleted at the end (the main run already paid these days)."""
+    got = members("fm", "hq")
+    if not got or not CTX.get("karyawan_period"):
+        fail("outlet run: members and the month's attendance period", CTX.get("login_error") or "no period")
         return
-    fm, = got
+    fm, hq = got
+    P, pf, pt = CTX["karyawan_period"]
     g = gen()
-    t = kernel_today()
-    y = t - datetime.timedelta(days=1)
+    y = datetime.date.fromisoformat(pt)
     nm = (y.replace(day=1) + datetime.timedelta(days=32)).replace(day=1)   # the month after: the first run holds this tax month
-    body = dict(g.RUN, outlet=KITCHEN, period_from=str(y), period_to=str(y), tax_year=nm.year, tax_month=nm.month, pay_date=str(nm))
+    body = dict(g.RUN, outlet=KITCHEN, period_from=pf, period_to=pt, tax_year=nm.year, tax_month=nm.month, pay_date=str(nm), fill_from_attendance=True)
     st, run = fm.create("payroll_run", body)
-    if not check("finance opens a kitchen-only run of yesterday paid next month", st == 201, (st, run)):
+    if not check("finance opens a kitchen-only run of the month, paid next month, with the tick set at create", st == 201, (st, run)):
         return
     R = run["name"]
+    slips = fm.find("payslip", f"payroll_run == '{R}'")
+    r = fm.get("payroll_run", R)
+    eq("filled at create: only the kitchen staff with days there (Bagas, Eko); no monthly fallback in an outlet run; tick cleared",
+       (sorted(s_["employee"] for s_ in slips), r.get("fill_from_attendance")), (["USR-004", "USR-006"], False))
+    st, resp = hq.verb("attendance_period", P, "cancel")
+    if not check("head office cancels the month's attendance period", st == 200, (st, resp)):
+        return
+    bagas = next((s_ for s_ in slips if s_["employee"] == "USR-004"), {})
+    st, resp = fm.verb("payslip", bagas.get("name", "x"), "submit", {"force": True})
+    rules = [e.get("rule") for e in (resp or {}).get("errors", [])] if isinstance(resp, dict) else []
+    check("a draft filled from a cancelled attendance period cannot be submitted", st == 422 and "attendance_still_valid" in rules, (st, resp))
+    st, per = hq.create("attendance_period", {"period_from": pf, "period_to": pt})
+    st, resp = hq.verb("attendance_period", (per or {}).get("name", "x"), "submit") if st == 201 else (st, per)
+    if not check("head office submits the corrected attendance period", st == 200, (st, resp)):
+        return
+    P2 = rec(resp).get("name") or per["name"]
+    new_sums = {s_["employee"]: s_["name"] for s_ in hq.find("attendance_summary", f"attendance_period == '{P2}'")}
     st, resp = fm.patch("payroll_run", R, {"fill_from_attendance": True})
     slips = fm.find("payslip", f"payroll_run == '{R}'")
-    eq("only the kitchen staff with a summary there (Bagas, Eko); no monthly fallback in an outlet run",
-       (st, sorted(s["employee"] for s in slips)), (200, ["USR-004", "USR-006"]))
-    for s in slips:
-        fm.call("DELETE", f"/api/v1/r/payslip/{Api.q(s['name'])}")
+    eq("the tick refreshes both drafts from the corrected summaries", (st, sorted((s_["employee"], s_.get("attendance_summary")) for s_ in slips),
+                                                                       str(fm.get("payroll_run", R).get("fill_note", "")).split(", ")[:2]),
+       (200, sorted((u, new_sums.get(u)) for u in ("USR-004", "USR-006")), ["0 slip baru", "2 slip diperbarui"]))
+    for s_ in slips:
+        fm.call("DELETE", f"/api/v1/r/payslip/{Api.q(s_['name'])}")
     eq("the draft slips are deleted again", len(fm.find("payslip", f"payroll_run == '{R}'")), 0)
 
 
