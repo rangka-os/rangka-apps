@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every morning at 10:00 (scheduler.timezone): head office and the owner are told which outlet staff have not clocked in
+# today (contract 0066 notice, in-app and email; WhatsApp once paid WhatsApp credits exist). Only employees with access
+# active, an outlet and not attendance_exempt are expected; without shifts (rangka-apps#120) every such employee is
+# expected every day, so a day off shows here too. The flow only reads and tells. Scheduled flows run for the default
+# org only until rangka-os#263 slice a lands.
+name: attendance_missing_digest
+label: {id: Karyawan belum absen masuk, en: Staff not clocked in}
+description: {id: 'Tiap pagi jam 10, kantor pusat dan pemilik dikabari karyawan outlet yang belum absen masuk hari ini.'}
+schedule: '0 10 * * *'
+steps:
+  - find_all: user
+    where: access == 'active' && !attendance_exempt && size(outlets) > 0
+    sort: full_name
+    limit: 300
+    as: emps
+  - find_all: staff_attendance
+    where: work_date == today() && docstatus != 2 && clock_in != ''
+    as: logs
+  - if: "emps.filter(u, !logs.exists(l, l.employee == u.name)).size() > 0"
+    notify: head_office
+    notice: attendance_missing
+    channel: email
+    id: "'missing:' + string(today())"
+    title: '{emps.filter(u, !logs.exists(l, l.employee == u.name)).size()} karyawan belum absen masuk hari ini'
+    template: >-
+      Belum absen masuk per jam 10: {emps.filter(u, !logs.exists(l, l.employee == u.name)).map(u, u.full_name).join(', ')}.
+      Cek dasbor Absen hari ini.

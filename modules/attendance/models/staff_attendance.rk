@@ -1,0 +1,281 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: staff_attendance
+label: {id: Absen karyawan, en: Staff attendance}
+icon: clock
+is_submittable: true
+naming: ABK-{YYYY}{MM}-{#####}
+title_field: employee_name
+# One employee, one day at one outlet: clocked in and out from the phone with its position and a selfie (screen
+# absen_outlet, contract 0030 §2 clock). The shape is the project field attendance (projects/models/attendance_log.rk),
+# keyed on the employee (users.user, contract 0056) and the outlet instead of the worker, the assignment and the work site.
+# The employee creates it at clock-in (draft), fills the clock-out and the screen submits it. A submitted log is one day
+# present; attendance_period turns the days of a period into one attendance_summary per employee.
+#
+# Outside the outlet radius, without a position, entered more than a day late or with overtime: saved with a reason and
+# the submit waits for the outlet supervisor or head office (approvals below). Never refused for being far away
+# (contract 0030 §4). Lateness is measured, not held: it is a fact for the summary (and later for payroll rules).
+#
+# Distance: distance_m (haversine) between the phone's geo position and the outlet's point; 1e9 without a position, so
+# "no position" counts as outside. A faked position (fake GPS) is not detected; the selfie and the approver are the check.
+#
+# Clock times, positions and photos are set_once: nobody moves a measured value. A wrong log is corrected by head office
+# cancelling it and making a new one (source manual); the cancelled log stays as the trail.
+#
+# Privacy: positions and selfies are personal data (UU PDP). Staff read only their own logs (permission if: below, which
+# also filters lists and dashboards); the outlet supervisor reads the logs of their outlets (row scope outlet); head
+# office reads all. The selfie is an attachment of this record and is readable by whoever can read the record.
+permissions:
+  # Staff: only their own logs, at their own outlets (cashier and outlet_staff are also row scoped by outlet). No cancel,
+  # no delete.
+  - {role: cashier, read: true, create: true, write: true, submit: true, if: "employee == user.name"}
+  - {role: outlet_staff, read: true, create: true, write: true, submit: true, if: "employee == user.name"}
+  - {role: employee, read: true, create: true, write: true, submit: true, if: "employee == user.name"}
+  # The outlet supervisor reads and prints the logs of their outlets and decides the held submits; they clock in too.
+  - {role: outlet_supervisor, read: true, print: true}
+  - {role: outlet_supervisor, create: true, write: true, submit: true, if: "employee == user.name"}
+  # No amend: a wrong log is cancelled and replaced by a manual log, so a measured clock-in, position and selfie can
+  # never be carried over to another employee, outlet or day (audit 2026-11-19 F1). Delete removes a stuck draft.
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, export: true, print: true}
+fields:
+  # The member's own employee record (contract 0056). Rule employee_self: only head office names someone else.
+  - name: employee
+    type: link
+    to: user
+    label: {id: Karyawan}
+    required: true
+    in_list: true
+    default: user.name
+    # set once: the position and selfie of a log can never be moved to another person (audit 2026-11-19 F1)
+    set_once: true
+  - name: employee_name
+    type: data
+    label: {id: Nama}
+    read_only: true
+    in_list: true
+    compute: "employee != '' ? employee.full_name : ''"
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    required: true
+    in_list: true
+    default: "user.outlets.size() > 0 ? user.outlets[0] : ''"
+    set_once: true
+  - name: work_date
+    type: date
+    label: {id: Tanggal}
+    required: true
+    default: today()
+    in_list: true
+    set_once: true
+  # phone: the clock screen; manual: a head office correction (no selfie needed, always held: it has no position).
+  # kiosk is kept for the shared outlet tablet (contract 0048), not accepted yet (rule source_allowed).
+  - name: source
+    type: select
+    label: {id: Sumber}
+    default: "'phone'"
+    options:
+      - {value: phone, label: {id: HP karyawan}}
+      - {value: manual, label: {id: Koreksi kantor pusat}}
+      - {value: kiosk, label: {id: Tablet outlet}}
+  # Clock-in (set by the clock screen together with the photo; set_once)
+  - name: clock_in
+    type: datetime
+    label: {id: Jam masuk}
+    set_once: true
+    in_list: true
+  - {name: in_pos, type: geo, label: {id: Posisi masuk}, set_once: true}
+  - {name: in_photo, type: image, label: {id: Foto masuk}, set_once: true}
+  # Clock-out
+  - name: clock_out
+    type: datetime
+    label: {id: Jam keluar}
+    set_once: true
+    in_list: true
+  - {name: out_pos, type: geo, label: {id: Posisi keluar}, set_once: true}
+  - {name: out_photo, type: image, label: {id: Foto keluar}, set_once: true}
+  - name: overtime_hours
+    type: float
+    label: {id: Jam lembur}
+    default: '0'
+  - name: reason
+    type: text
+    label: {id: Alasan}
+  # The outlet's point, radius, UTC offset and hours at the time of the log (frozen at submit with the rest of the record,
+  # so moving an outlet later leaves old logs measured where they were taken). An outlet without a radius uses 100 m.
+  - {name: site_point, type: geo, label: {id: Titik outlet}, hidden: true, read_only: true, compute: "outlet != '' ? outlet.point : ''"}
+  - {name: site_radius_m, type: int, label: {id: Radius outlet (m)}, read_only: true, compute: "outlet != '' && outlet.radius_m > 0 ? outlet.radius_m : 100"}
+  - {name: utc_offset, type: data, label: {id: Zona waktu}, hidden: true, read_only: true, compute: "outlet == '' ? '+07:00' : (outlet.time_zone == 'wita' ? '+08:00' : (outlet.time_zone == 'wit' ? '+09:00' : '+07:00'))"}
+  - {name: grace_min, type: int, label: {id: Toleransi terlambat (menit)}, hidden: true, read_only: true, compute: "outlet != '' && outlet.late_grace_min > 0 ? outlet.late_grace_min : 0"}
+  # The schedule of the day: the outlet's default hours (shifts, rangka-apps#120, will fill it per employee). Empty when
+  # the outlet has no hours: then no lateness or early leave is measured. A work_end before work_start ends the next day.
+  - name: sched_start
+    type: datetime
+    label: {id: Jadwal masuk}
+    read_only: true
+    compute: "outlet != '' && outlet.work_start != '' ? string(work_date) + 'T' + outlet.work_start + ':00' + utc_offset : ''"
+  - name: sched_end
+    type: datetime
+    label: {id: Jadwal pulang}
+    read_only: true
+    compute: >-
+      outlet == '' || outlet.work_end == '' ? ''
+        : ((outlet.work_start != '' && outlet.work_end <= outlet.work_start ? string(work_date + duration(1)) : string(work_date))
+           + 'T' + outlet.work_end + ':00' + utc_offset)
+  # distance_m is 1e9 without a position (contract 0030 §4): "no position" counts as far.
+  - {name: in_m, type: float, label: {id: Jarak masuk dari titik (m)}, hidden: true, read_only: true, compute: "distance_m(in_pos, site_point)"}
+  - {name: in_located, type: check, label: {id: Lokasi masuk ada}, read_only: true, compute: "in_m < 100000000.0"}
+  - {name: in_inside, type: check, label: {id: Masuk di dalam radius}, read_only: true, compute: "in_located && in_m <= site_radius_m"}
+  # Text, empty without a position (GPS failed or refused): an int would show 0 m, which reads as "at the outlet".
+  - {name: in_site_m, type: data, label: {id: Jarak masuk dari outlet (m)}, read_only: true, compute: "in_located ? string(int(round(in_m))) : ''"}
+  - {name: out_m, type: float, label: {id: Jarak keluar dari titik (m)}, hidden: true, read_only: true, compute: "distance_m(out_pos, site_point)"}
+  - {name: out_located, type: check, label: {id: Lokasi keluar ada}, read_only: true, compute: "out_m < 100000000.0"}
+  - {name: out_inside, type: check, label: {id: Keluar di dalam radius}, read_only: true, compute: "out_located && out_m <= site_radius_m"}
+  - {name: out_site_m, type: data, label: {id: Jarak keluar dari outlet (m)}, read_only: true, compute: "out_located ? string(int(round(out_m))) : ''"}
+  - name: outside_site
+    type: check
+    label: {id: Di luar radius}
+    read_only: true
+    in_list: true
+    chip: true
+    compute: "!in_inside || (clock_out != '' && !out_inside)"
+  # Whole minutes after the scheduled start, less the outlet's grace (08:25 against 08:00 with 10 minutes grace = 15).
+  - name: late_min
+    type: int
+    label: {id: Terlambat (menit)}
+    read_only: true
+    in_list: true
+    compute: "clock_in == '' || sched_start == '' || (epoch(clock_in) - epoch(sched_start)) / 60 <= grace_min ? 0 : (epoch(clock_in) - epoch(sched_start)) / 60 - grace_min"
+  - name: early_min
+    type: int
+    label: {id: Pulang cepat (menit)}
+    read_only: true
+    compute: "clock_out == '' || sched_end == '' || epoch(clock_out) >= epoch(sched_end) ? 0 : (epoch(sched_end) - epoch(clock_out)) / 60"
+  - name: worked_min
+    type: int
+    label: {id: Lama kerja (menit)}
+    read_only: true
+    compute: "clock_in == '' || clock_out == '' || epoch(clock_out) <= epoch(clock_in) ? 0 : (epoch(clock_out) - epoch(clock_in)) / 60"
+  # One live log per employee per day (flows staff_attendance_guard_*: a cancelled one frees the day).
+  - name: day_key
+    type: data
+    label: {id: Kunci hari}
+    hidden: true
+    read_only: true
+    compute: "employee + ':' + string(work_date)"
+rules:
+  - name: source_allowed
+    on: save
+    check: "source == 'phone' || (source == 'manual' && ('head_office' in user.roles || 'owner' in user.roles))"
+    message: {id: 'Absen manual hanya dibuat kantor pusat'}
+  - name: employee_self
+    on: save
+    check: "employee == user.name || 'head_office' in user.roles || 'owner' in user.roles"
+    message: {id: 'Kamu hanya bisa absen untuk diri sendiri'}
+  - name: own_outlet
+    on: save
+    check: "outlet in user.outlets || 'head_office' in user.roles || 'owner' in user.roles"
+    message: {id: 'Kamu hanya bisa absen di outlet tempatmu bekerja. Kalau outletnya belum ada, minta kantor pusat menambahkannya di Tim'}
+  - name: not_future
+    on: save
+    check: work_date <= today()
+    message: {id: 'Tidak bisa absen untuk tanggal yang belum datang'}
+  # The clock-in falls on the work date at the outlet's local time (a UTC or a local clock-in string alike).
+  - name: clock_in_on_work_date
+    on: save
+    check: >-
+      clock_in == '' || (epoch(clock_in) >= epoch(string(work_date) + 'T00:00:00' + utc_offset)
+        && epoch(clock_in) < epoch(string(work_date) + 'T00:00:00' + utc_offset) + 86400)
+    message: {id: 'Jam masuk harus di tanggal absen'}
+  - name: out_after_in
+    on: save
+    check: clock_out == '' || (clock_in != '' && epoch(clock_out) > epoch(clock_in))
+    message: {id: 'Jam keluar harus sesudah jam masuk. Kalau tadi salah tekan masuk, minta kantor pusat membatalkan absennya.'}
+  - name: overtime_range
+    on: save
+    check: overtime_hours >= 0 && overtime_hours <= 12
+    message: {id: 'Jam lembur 0 sampai 12 jam per hari'}
+  # Asked at clock-in, when the clock screen shows the reason box (outside or no position).
+  - name: reason_when_outside
+    on: save
+    check: "in_inside || size(reason) >= 5"
+    message: {id: 'Kamu di luar radius outlet (atau lokasi tidak terbaca): tulis alasannya'}
+  - name: reason_when_overtime
+    on: save
+    check: overtime_hours == 0 || size(reason) >= 5
+    message: {id: 'Tulis alasan atau pekerjaan lemburnya'}
+  - name: out_photo_own
+    on: save
+    check: out_photo == '' || out_photo != in_photo
+    message: {id: 'Foto keluar harus foto baru, bukan foto masuk'}
+  - name: clocked_in
+    on: submit
+    check: clock_in != ''
+    message: {id: 'Isi jam masuk dulu (absen masuk) sebelum diajukan'}
+  - name: clocked_out
+    on: submit
+    check: clock_out != ''
+    message: {id: 'Isi jam keluar dulu (absen pulang) sebelum diajukan'}
+  - name: photo_required
+    on: submit
+    check: in_photo != '' || source == 'manual'
+    message: {id: 'Absen butuh foto masuk'}
+# Held for the outlet supervisor or head office (contract 0007); the owner may always approve. The verb then runs as the
+# employee who asked.
+approvals:
+  # An outlet supervisor's own log goes to head office, never to themselves or a fellow supervisor (audit 2026-11-19 F2).
+  # Head office and the owner are approvers of their own logs (contract 0007): their corrections count at once.
+  - name: outside_site
+    on: submit
+    when: "outside_site && !('outlet_supervisor' in user.roles)"
+    approvers: [outlet_supervisor, head_office]
+    label: {id: Absen di luar radius outlet, en: Clock-in outside the outlet radius}
+  - name: late_entry
+    on: submit
+    when: "days_between(work_date, today()) > 1 && !('outlet_supervisor' in user.roles)"
+    approvers: [outlet_supervisor, head_office]
+    label: {id: Absen diisi lebih dari sehari kemudian, en: Attendance entered more than a day late}
+  - name: overtime
+    on: submit
+    when: "overtime_hours > 0 && !('outlet_supervisor' in user.roles)"
+    approvers: [outlet_supervisor, head_office]
+    label: {id: Lembur, en: Overtime}
+  - name: supervisor_outside_site
+    on: submit
+    when: "outside_site && 'outlet_supervisor' in user.roles"
+    approvers: [head_office]
+    label: {id: Absen kepala outlet di luar radius, en: Outlet supervisor clock-in outside the radius}
+  - name: supervisor_late_entry
+    on: submit
+    when: "days_between(work_date, today()) > 1 && 'outlet_supervisor' in user.roles"
+    approvers: [head_office]
+    label: {id: Absen kepala outlet diisi terlambat, en: Outlet supervisor attendance entered late}
+  - name: supervisor_overtime
+    on: submit
+    when: "overtime_hours > 0 && 'outlet_supervisor' in user.roles"
+    approvers: [head_office]
+    label: {id: Lembur kepala outlet, en: Outlet supervisor overtime}
+views:
+  list:
+    columns: [name, employee_name, outlet, work_date, clock_in, clock_out, late_min, outside_site, status]
+    sort: -work_date
+  form:
+    layout:
+      - section: {id: Absen}
+        columns:
+          - [employee, outlet, work_date]
+          - [source, overtime_hours, outside_site]
+      - section: {id: Masuk}
+        columns:
+          - [clock_in, in_photo]
+          - [in_pos, in_site_m, in_inside]
+      - section: {id: Keluar}
+        columns:
+          - [clock_out, out_photo]
+          - [out_pos, out_site_m, out_inside]
+      - section: {id: Jadwal}
+        columns:
+          - [sched_start, late_min]
+          - [sched_end, early_min, worked_min]
+      - section: {id: Alasan}
+        fields: [reason]

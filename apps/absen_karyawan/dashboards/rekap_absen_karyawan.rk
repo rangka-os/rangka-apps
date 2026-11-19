@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: rekap_absen_karyawan
+label: {id: Rekap absen karyawan, en: Staff attendance summary}
+description: {id: 'Rekap absen yang sudah diajukan kantor pusat. Hanya absen yang sudah sah yang dihitung.'}
+# Reads attendance_summary, written when head office submits an attendance_period: a summary is a closed period, not a
+# live count (absen_hari_ini is live). The period selector picks the rekap periods that ended in the last N days.
+default_period: 31
+periods: [31, 92, 365]
+roles: [head_office, outlet_supervisor]
+cache: 5m
+widgets:
+  - {name: summaries, type: list, label: {id: Ringkasan per karyawan per periode rekap}, description: {id: 'Absen hari ini dan yang menunggu persetujuan belum masuk rekap'}, model: attendance_summary, filter: "!cancelled", period: period_to, columns: [employee_name, outlet, period_from, period_to, days_present, late_min_total], sort: -period_to, limit: 50, span: 12}

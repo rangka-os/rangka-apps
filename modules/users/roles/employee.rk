@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: employee
+label: {id: Karyawan}
+description: {id: 'Karyawan yang hanya absen dari HP dan melihat absennya sendiri (staf dapur, gudang, kantor)'}
+# Works from the phone: the clock screen full screen (work shell, contract 0030 §3), no sidebar. No row scope: every
+# model that grants this role reads only the member's own rows through its permission if: (employee == user.name).
+# Kept as a role once the member grant of the employee app (rangka-os#261) lands.
+desk: false

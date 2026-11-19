@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+name: absen_outlet
+type: clock
+label: {id: Absen, en: Clock in}
+icon: clock
+# Outlet staff clock in and out at their outlet from their phone (contract 0030 §2 clock). The outlets offered are the
+# member's own (the outlets set in Tim; only head office or the owner without outlets sees every active outlet), with the outlet's point and
+# radius. A clock-in outside the radius or without a position is saved with the reason and waits for the outlet
+# supervisor or head office (staff_attendance approvals); the record's computes decide, not the phone. No offline queue:
+# every clock-in carries a selfie, which needs the connection (contract 0030 §7). The kitchen role is not listed, so the
+# module installs without module kitchen: kitchen staff clock in with the employee role (docs/attendance.md).
+roles: [cashier, outlet_staff, employee, outlet_supervisor, head_office]
+device: phone
+needs: [location, photo]
+clock:
+  record: {model: staff_attendance, filter: "docstatus == 0 && employee == user.name"}
+  in: {field: clock_in, location: in_pos, photo: in_photo}
+  out: {field: clock_out, location: out_pos, photo: out_photo}
+  site: {model: outlet, link: outlet, filter: "active && (name in user.outlets || (user.outlets.size() == 0 && ('head_office' in user.roles || 'owner' in user.roles)))", title: outlet_name, location: point, radius_m: radius_m}
+  reason: reason
+  submit: true
