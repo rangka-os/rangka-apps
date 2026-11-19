@@ -1,17 +1,19 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 name: appointment_sale_on_submit
 label: {id: 'Tagihan janji dibayar: janji lunas'}
-description: {id: 'Hanya tagihan kasir yang dibuat dari janji (dan masih berlaku) yang bisa dibayar. Setelah dibayar janjinya lunas.'}
+description: {id: 'Hanya tagihan kasir yang dibuat dari janji (dan masih berlaku, dengan potongan uang muka yang sama) yang bisa dibayar. Setelah dibayar janjinya lunas.'}
 # A pos_sale whose buyer carries "(JNJ-...)" is an appointment's bill. The draft's number (DRAFT-...) becomes the
-# receipt number at submit, so the slot is found by the tag, and the receipt is paid only while that slot is billed:
-# a second draft carrying the same tag (an amendment of a voided bill) is refused once the slot is paid or back to
-# done. Then the slot is paid and keeps the receipt number. Runs as the cashier paying it.
+# receipt number at submit, so the slot is found by the tag, and the receipt is paid only while that slot is billed,
+# only when it is not an amended copy (an amendment of a voided bill copies its tag and its deposit discount, which
+# may have been refunded since: audit 2026-11-20 F1) and only when its receipt discount is exactly the deposit the bill
+# took off (deposit_applied: a discount edited on the draft would charge the deposit twice or lock its refund, F2).
+# Then the slot is paid and keeps the receipt number. Runs as the cashier paying it.
 on: pos_sale.submitted
 if: event.buyer.contains('JNJ-')
 steps:
   - {find: appointment_slot, where: "state == 'billed' && event.buyer.contains('(' + appointment + ')')", as: s}
   - create: appointment_guard
-    if: s == null
+    if: s == null || event.amended_from != '' || event.discount_amount != s.deposit_applied
     set: {reason: "'sale_stale'", document: event.name}
   - update: s
     if: s != null

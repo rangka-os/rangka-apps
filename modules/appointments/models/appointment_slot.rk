@@ -74,6 +74,7 @@ fields:
     options:
       - {value: forfeited, label: {id: Hangus}}
       - {value: refund_due, label: {id: Perlu dikembalikan}}
+      - {value: refunded, label: {id: Sudah dikembalikan}}
   - {name: sale, type: data, label: {id: Transaksi kasir}, read_only: true, in_list: true}
   - {name: arrived_at, type: datetime, label: {id: Datang pada}, read_only: true}
   - {name: done_at, type: datetime, label: {id: Selesai pada}, read_only: true}

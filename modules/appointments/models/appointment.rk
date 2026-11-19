@@ -126,7 +126,8 @@ rules:
     on: save
     check: "deposit >= 0 && (deposit == 0 || (kind == 'service' && deposit <= service_total))"
     message: {id: 'Uang muka hanya untuk janji layanan, dan tidak lebih dari total harga layanan'}
-  # the deposit is a draft invoice made by the submit's flow, as the person submitting: only roles that make invoices
+  # the deposit is a draft invoice made by the submit's flow, as the person submitting: only the roles that both submit
+# appointments and make invoices (finance_manager makes invoices but does not book)
   # the deposit invoice's rate is the deposit as it is: an invoice adds PPN on top while the cashier's prices include it,
   # so for a PKP business the deposit and the bill would not add up to the catalogue price (Dede note, follow-up)
   - name: deposit_not_pkp
@@ -135,8 +136,8 @@ rules:
     message: {id: 'Uang muka janji belum bisa dipakai usaha PKP. Kosongkan uang mukanya'}
   - name: deposit_by_invoicing_role
     on: submit
-    check: "deposit == 0 || 'owner' in user.roles || 'sales_manager' in user.roles || 'finance_manager' in user.roles"
-    message: {id: 'Janji dengan uang muka diajukan oleh pemilik atau admin penjualan, karena uang muka dibuatkan faktur'}
+    check: "deposit == 0 || 'owner' in user.roles || 'sales_manager' in user.roles"
+    message: {id: 'Janji dengan uang muka diajukan oleh pemilik atau manajer penjualan, karena uang muka dibuatkan faktur'}
 views:
   list:
     columns: [name, customer, kind, date, start_time, end_time, staff, resource, status]

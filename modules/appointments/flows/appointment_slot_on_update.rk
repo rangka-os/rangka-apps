@@ -47,7 +47,7 @@ steps:
       deposit_applied: "event.state == 'billed' && event.deposit_state == 'invoiced' ? min(event.deposit, event.service_total) : s.deposit_applied"
       arrived_at: "event.state == 'arrived' && event.before.state == 'booked' ? now() : (event.state == 'booked' ? null : s.arrived_at)"
       done_at: "event.state == 'done' && event.before.state == 'arrived' ? now() : (event.state == 'arrived' || event.state == 'booked' ? null : s.done_at)"
-      deposit_action: "event.state == 'no_show' && event.deposit_state == 'invoiced' ? (cfg != null && cfg.no_show_deposit == 'refund' ? 'refund_due' : 'forfeited') : (event.state == 'booked' ? '' : s.deposit_action)"
+      deposit_action: "event.state == 'no_show' && event.deposit_state == 'invoiced' ? (cfg != null && cfg.no_show_deposit == 'refund' ? 'refund_due' : 'forfeited') : (event.state == 'booked' && s.deposit_action != 'refunded' ? '' : s.deposit_action)"
   - if: event.state == 'no_show' && event.deposit_state == 'invoiced' && cfg != null && cfg.no_show_deposit == 'refund'
     notify: head_office
     notice: deposit_refund_due

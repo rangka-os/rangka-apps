@@ -6,7 +6,7 @@ description: {id: 'Faktur uang muka hanya bisa diajukan untuk janji yang masih b
 # the appointment is submitted and its slot is neither cancelled nor billed without the deposit (the bill already
 # charged the full price), when its total equals the deposit and no other submitted invoice carries the same number;
 # then the slot records it as invoiced (and which invoice, so an amended invoice takes over), and the bill takes it
-# off. Runs as the person submitting the invoice (sales_manager, finance_manager, owner).
+# off; a deposit invoiced after a no-show gets its no-show action (and notice) too. Runs as the person submitting the invoice (sales_manager, finance_manager, owner).
 on: sales_invoice.submitted
 if: event.notes.contains('JNJ-')
 steps:
@@ -25,6 +25,19 @@ steps:
       || event.grand_total != s.deposit || twin != null)
     create: appointment_guard
     set: {reason: "'invoice_stale'", document: event.name}
+  - {find: appointment_setting, where: key == 'usaha', as: cfg}
   - update: s
     if: a != null && s != null
-    set: {deposit_state: "'invoiced'", deposit_invoice: event.name}
+    set:
+      deposit_state: "'invoiced'"
+      deposit_invoice: event.name
+      deposit_action: "s.state == 'no_show' ? (cfg != null && cfg.no_show_deposit == 'refund' ? 'refund_due' : 'forfeited') : s.deposit_action"
+  - if: a != null && s != null && s.state == 'no_show' && cfg != null && cfg.no_show_deposit == 'refund'
+    notify: head_office
+    notice: deposit_refund_due
+    channel: email
+    id: "'refund:' + a.name"
+    title: 'Uang muka {s.customer_name} perlu dikembalikan'
+    template: >-
+      {s.customer_name} tidak datang ke janji {s.date} jam {s.start_time}. Pengaturan janji temu meminta uang mukanya
+      dikembalikan: batalkan faktur uang muka {event.name}, lalu kembalikan uangnya.

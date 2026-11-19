@@ -3,7 +3,7 @@ name: appointment_invoice_on_cancel
 label: {id: Faktur uang muka janji dibatalkan}
 description: {id: 'Faktur uang muka yang sudah dipotong di transaksi kasir tidak bisa dibatalkan sebelum transaksinya dibatalkan.'}
 # Cancelling the deposit invoice is its refund. While a live receipt (billed or paid) took the deposit off, the
-# cancel is refused: the customer would get the deposit back twice. Otherwise the slot records it as cancelled.
+# cancel is refused: the customer would get the deposit back twice. Otherwise the slot records it as cancelled, and a no-show's deposit as refunded.
 on: sales_invoice.cancelled
 if: event.notes.contains('JNJ-')
 steps:
@@ -13,4 +13,6 @@ steps:
     set: {reason: "'deposit_used'", document: event.name}
   - update: s
     if: s != null
-    set: {deposit_state: "'cancelled'"}
+    set:
+      deposit_state: "'cancelled'"
+      deposit_action: "s.deposit_action == 'refund_due' || s.deposit_action == 'forfeited' ? 'refunded' : s.deposit_action"

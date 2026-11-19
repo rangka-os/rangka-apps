@@ -283,11 +283,13 @@ rows live in `tests/day_one_fixed_assets.py`.
 
 ### Appointments (module appointments, piece janji_temu)
 
-rangka-apps#118 v1. The front desk (cashier, head office, sales manager) books; only the roles that make invoices
-(owner, sales_manager, finance_manager) may submit an appointment with a deposit, because the deposit is a draft
+rangka-apps#118 v1. The front desk (cashier, head office, sales manager) books; only the owner and sales_manager (who
+both book and make invoices) may submit an appointment with a deposit, because the deposit is a draft
 `sales_invoice`. `appointment_slot` is written by the submit's flow as the submitter (hence create), and its fields are
 read-only except `state`, which flow `appointment_slot_on_update` lets move one step at a time; paid and cancelled are
-set by flows only. Billing runs as the cashier (it drafts the `pos_sale` on the cashier's own open shift). The cashier's
+set by flows only. Billing runs as the cashier (it drafts the `pos_sale` on the cashier's own open shift); a `pos_sale` with an
+appointment tag made by hand or by amending a voided bill is refused, and a bill is paid only with the deposit
+discount the flow drafted. The cashier's
 outlet scope covers the slot's `outlet`, so a cashier sees only the slots of their outlets. `service_staff` has no row
 scope and no money. `MATRIX` rows live in `tests/day_one_appointments.py`.
 

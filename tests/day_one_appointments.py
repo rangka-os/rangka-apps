@@ -288,6 +288,43 @@ def scenario_appt_salon_day(api):
     check("cancelling the deposit invoice after the bill took it off -> 422 deposit_used", st == 422 and "deposit_used" in rules(r), (st, r))
     CTX["ayu_slot"] = s
 
+    # audit 2026-11-20 F1/F2: no hand-made bill, no amended copy of a voided bill, no edited deposit discount
+    st, r = nina.create("pos_sale", {"shift": shift, "buyer": f"Ayu Contoh ({a['name']})", "items": [{"item": "BRG-0001", "qty": 1}]})
+    check("a hand-made sale with an appointment tag -> 422 sale_tag", st == 422 and "sale_tag" in rules(r), (st, r))
+    receipt = s.get("sale")
+    st, r = nina.verb("pos_sale", receipt, "cancel")
+    if st == 202:
+        st, r = decide(maya, r["approval"]["id"])
+    check("Nina voids Ayu's bill (head office approves) -> 200", st == 200, (st, r))
+    s = slot_of(api, a["name"])
+    eq("the voided bill puts the slot back to done, nothing deducted", (s.get("state"), s.get("sale"), s.get("deposit_applied")), ("done", "", 0))
+    st, am = nina.verb("pos_sale", receipt, "amend")
+    am = rec(am) if st in (200, 201) else {}
+    if check("Nina amends the voided bill -> a draft copy with the deposit discount", am.get("docstatus") == 0 and am.get("discount_amount") == 50_000, (st, am)):
+        st, r = nina.verb("pos_sale", am["name"], "submit")
+        if st == 202:   # its discount waits for head office first (big_discount); the approval runs the submit
+            st, r = decide(maya, r["approval"]["id"])
+        check("paying the amended copy is refused -> 422 sale_stale (the slot is not billed by it)", st == 422 and "sale_stale" in rules(r), (st, r))
+        check("the amended copy stays a draft", nina.get("pos_sale", am["name"]).get("docstatus") == 0, "")
+        nina.call("DELETE", f"/api/v1/r/pos_sale/{am['name']}")
+    st, r = move(nina, s, "billed")
+    check("Nina bills it again from Pesanan terbuka -> 200", st == 200, (st, r))
+    s = slot_of(api, a["name"])
+    bill = s.get("sale")
+    st, r = nina.patch("pos_sale", bill, {"discount_amount": 0, "payments": [{"method": "cash", "amount": 195_000}]})
+    check("Nina removes the deposit discount on the draft -> 200 (a draft)", st == 200, (st, r))
+    st, r = nina.verb("pos_sale", bill, "submit")
+    check("paying it without the deposit the bill took off -> 422 sale_stale", st == 422 and "sale_stale" in rules(r), (st, r))
+    nina.patch("pos_sale", bill, {"discount_amount": 50_000, "payments": [{"method": "cash", "amount": 150_000}]})
+    st, r = nina.verb("pos_sale", bill, "submit")
+    if st == 202:
+        st, r = decide(maya, r["approval"]["id"])
+    check("with the deposit discount back it is paid -> 200", st == 200, (st, r))
+    s = slot_of(api, a["name"])
+    live = nina.find("pos_sale", f"buyer == 'Ayu Contoh ({a['name']})' && docstatus == 1")
+    check("one live receipt of 145.000 and the slot paid with 50.000 deducted",
+          len(live) == 1 and live[0].get("grand_total") == 145_000 and s.get("state") == "paid" and s.get("deposit_applied") == 50_000, (live, s))
+
 
 def scenario_appt_bill_without_deposit(api):
     """Bima's 11:45 cut is billed while its deposit invoice is still a draft: full price, and that invoice can no
@@ -349,8 +386,19 @@ def scenario_appt_cancel_no_show(api):
     check("Maya sets no-show deposits to be refunded -> 201", st == 201, (st, cfg))
     s = no_show("16:00", "refund setting")
     eq("with the setting the deposit is flagged for refund", s.get("deposit_action"), "refund_due")
+    st, r = rudi.verb("sales_invoice", s["deposit_invoice"], "cancel")
+    check("Rudi cancels the deposit invoice (the refund) -> 200, the slot says refunded",
+          st == 200 and slot_of(api, s["appointment"]).get("deposit_action") == "refunded", (st, r, slot_of(api, s["appointment"])))
+    st, a2 = book(rudi, CITRA, "19:00", [POTONG], staff=PUTRI, resource=KURSI2, deposit=30_000)
+    if check("late deposit: Citra 19:00 with Putri, 30.000 -> 200", st == 200, (st, a2)):
+        s2 = slot_of(api, a2["name"])
+        move(putri, s2, "no_show")
+        st, r = rudi.verb("sales_invoice", s2["deposit_invoice"], "submit")
+        check("the deposit invoiced after the no-show -> 200, flagged for refund (owner's setting)",
+              st == 200 and slot_of(api, a2["name"]).get("deposit_action") == "refund_due", (st, r, slot_of(api, a2["name"])))
+    s = slot_of(api, s["appointment"])
     st, r = move(putri, s, "booked")
-    check("Urungkan the no-show -> 200, flag cleared", st == 200 and not slot_of(api, s["appointment"]).get("deposit_action"), (st, r))
+    check("Urungkan the no-show -> 200; a refund already made stays recorded", st == 200 and slot_of(api, s["appointment"]).get("deposit_action") == "refunded", (st, r))
 
 
 def scenario_appt_table(api):
