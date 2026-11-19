@@ -9,17 +9,19 @@ on_cancel: [stock.reverse_moves]
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: outlet_staff, read: true}
+  # rangka-apps#104: the warehouse drafts, sends and cancels transfers (no row scope, see roles/warehouse_staff.rk)
+  - {role: warehouse_staff, read: true, create: true, write: true, delete: true, submit: true, cancel: true, print: true}
 fields:
   - name: from_outlet
     type: link
     to: outlet
-    label: {id: Dari outlet}
+    label: {id: Dari lokasi}
     required: true
     in_list: true
   - name: to_outlet
     type: link
     to: outlet
-    label: {id: Ke outlet}
+    label: {id: Ke lokasi}
     required: true
     in_list: true
   - name: transfer_date
@@ -46,11 +48,21 @@ fields:
   - name: notes
     type: text
     label: {id: Catatan}
+  # The request this transfer fulfils, set by flow stock_request_decided (rangka-apps#104); empty on a transfer made by hand.
+  - {name: stock_request, type: link, to: stock_request, label: {id: Dari permintaan}, read_only: true, in_list: true}
+  # warehouse>store, store>warehouse, warehouse>vehicle (a canvas load), ...: for list filters. A compute through a link
+  # is stored when the transfer is saved.
+  - name: route
+    type: data
+    label: {id: Rute}
+    hidden: true
+    in_filter: true
+    compute: "(from_outlet.location_type == '' ? 'store' : from_outlet.location_type) + '>' + (to_outlet.location_type == '' ? 'store' : to_outlet.location_type)"
 rules:
   - name: different_outlets
     on: save
     check: from_outlet != to_outlet
-    message: {id: Outlet asal dan tujuan tidak boleh sama}
+    message: {id: Lokasi asal dan tujuan tidak boleh sama}
   - name: qty_positive
     on: save
     check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
@@ -64,6 +76,7 @@ views:
       - section: {id: Transfer}
         columns:
           - [from_outlet, to_outlet, transfer_date, state]
+          - [stock_request]
       - section: {id: Barang}
         fields: [items]
       - section: {id: Catatan}

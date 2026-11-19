@@ -8,10 +8,10 @@ uom:
   - {name: UOM-005, uom_name: Porsi}
   - {name: UOM-006, uom_name: Pak}
 outlet:
-  - {name: OUT-01, outlet_name: Gudang pusat Warung Rasa, code: HO, city: Bandung, is_head_office: true, active: true}
-  - {name: OUT-02, outlet_name: Toko Contoh Dago, code: DGO, city: Bandung, address: Jl. Contoh Dago No. 9, sales_source: kasir, active: true}
-  - {name: OUT-03, outlet_name: Kedai Contoh Riau, code: RIU, city: Bandung, address: Jl. Contoh Riau No. 3, sales_source: kasir, active: true}
-  - {name: OUT-04, outlet_name: Toko Contoh Cimahi, code: CMH, city: Cimahi, address: Jl. Contoh Cimahi No. 4, sales_source: form, active: true}
+  - {name: OUT-01, outlet_name: Gudang pusat Warung Rasa, code: HO, location_type: warehouse, city: Bandung, is_head_office: true, active: true}
+  - {name: OUT-02, outlet_name: Toko Contoh Dago, code: DGO, location_type: store, supply_from: OUT-01, city: Bandung, address: Jl. Contoh Dago No. 9, sales_source: kasir, active: true}
+  - {name: OUT-03, outlet_name: Kedai Contoh Riau, code: RIU, location_type: store, supply_from: OUT-01, city: Bandung, address: Jl. Contoh Riau No. 3, sales_source: kasir, active: true}
+  - {name: OUT-04, outlet_name: Toko Contoh Cimahi, code: CMH, location_type: store, supply_from: OUT-01, city: Cimahi, address: Jl. Contoh Cimahi No. 4, sales_source: form, active: true}
 item_category:
   - {name: KTG-001, category_name: Minuman kopi}
   - {name: KTG-002, category_name: Makanan}

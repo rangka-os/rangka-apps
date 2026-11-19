@@ -1,0 +1,94 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A store (or a van, or a production room) asks its warehouse for goods (rangka-apps#104). The warehouse sets
+# Keputusan gudang to Proses and flow stock_request_transfer drafts the stock_transfer from it; the transfer's own lines
+# are what was sent (the warehouse may send less). State is written by flows only: open -> sent (transfer submitted)
+# -> received (all of it received), or rejected. Not submittable, so the flows can move its state (contract 0022 §2).
+# The requesting location is `outlet`, inside outlet_staff's row scope; the warehouse is `supply_outlet`, outside it, so
+# store staff can address a warehouse they do not work at (contract 0010 §5: writes need every scoped field).
+name: stock_request
+label: {id: Permintaan barang ke gudang, en: Stock request}
+icon: stock
+naming: REQ-{YYYY}-{#####}
+title_field: outlet
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true, print: true}
+  - {role: outlet_staff, read: true, create: true, write: true, print: true}
+  - {role: warehouse_staff, read: true, write: true, print: true}
+fields:
+  - {name: outlet, type: link, to: outlet, label: {id: Lokasi peminta}, required: true, in_list: true}
+  - name: supply_outlet
+    type: link
+    to: outlet
+    label: {id: Diminta dari gudang}
+    help: {id: 'Terisi dari Gudang pemasok di data outlet'}
+    default: outlet.supply_from
+    required: true
+    in_list: true
+  - {name: request_date, type: date, label: {id: Tanggal minta}, default: today(), required: true, in_list: true}
+  - {name: needed_by, type: date, label: {id: Dibutuhkan tanggal}}
+  - {name: items, type: table, of: stock_request_item, label: {id: Barang}, min_rows: 1}
+  - name: state
+    type: select
+    label: {id: Status}
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: open, label: {id: Menunggu gudang}}
+      - {value: sent, label: {id: Dikirim}}
+      - {value: received, label: {id: Diterima}}
+      - {value: rejected, label: {id: Ditolak}}
+  # Set by the warehouse; store staff cannot (read_only_for). Proses drafts the transfer, Tolak needs a reason.
+  - name: decision
+    type: select
+    label: {id: Keputusan gudang}
+    read_only_for: [outlet_staff, cashier]
+    options:
+      - {value: accept, label: {id: Proses}}
+      - {value: reject, label: {id: Tolak}}
+  - {name: reject_reason, type: text, label: {id: Alasan ditolak}, read_only_for: [outlet_staff, cashier]}
+  - {name: stock_transfer, type: link, to: stock_transfer, label: {id: Transfer}, read_only: true}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: different_locations
+    on: save
+    check: outlet != supply_outlet
+    message: {id: 'Lokasi peminta dan gudang tidak boleh sama'}
+  - name: supply_is_warehouse
+    on: save
+    check: "supply_outlet.location_type == 'warehouse'"
+    message: {id: 'Permintaan barang ditujukan ke lokasi berjenis Gudang'}
+  - name: requester_can_hold_stock
+    on: save
+    check: "outlet.location_type in ['', 'store', 'vehicle', 'production']"
+    message: {id: 'Lokasi peminta harus toko, mobil kanvas, atau ruang produksi'}
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: reject_needs_reason
+    on: save
+    check: "decision != 'reject' || reject_reason != ''"
+    message: {id: 'Tulis alasan permintaan ditolak'}
+  - name: decided_once
+    on: save
+    check: "state == '' || state == 'open' || decision != ''"
+    message: {id: 'Permintaan yang sudah dikirim atau ditolak tidak bisa dikosongkan keputusannya'}
+views:
+  list:
+    columns: [name, outlet, supply_outlet, request_date, needed_by, state]
+    filters: [outlet, supply_outlet, state]
+    sort: -request_date
+  form:
+    layout:
+      - section: {id: Permintaan}
+        columns:
+          - [outlet, supply_outlet, request_date, needed_by]
+          - [state, stock_transfer]
+      - section: {id: Barang}
+        fields: [items]
+      - section: {id: Keputusan gudang}
+        columns:
+          - [decision, reject_reason]
+      - section: {id: Catatan}
+        fields: [notes]

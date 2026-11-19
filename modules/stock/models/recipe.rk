@@ -7,6 +7,7 @@ title_field: recipe_name
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, export: true}
   - {role: outlet_staff, read: true}
+  - {role: warehouse_staff, read: true}
 fields:
   - name: product
     type: link

@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
 name: outlet
 naming: OUT-{##}
-label: {id: Outlet}
+label: {id: Outlet dan gudang, en: Outlets and warehouses}
 icon: store
 title_field: outlet_name
 permissions:
@@ -11,6 +11,7 @@ permissions:
   - {role: project_admin, read: true, create: true, write: true, print: true}
   - {role: head_office, read: true, create: true, write: true, print: true}
   - {role: outlet_staff, read: true}
+  - {role: warehouse_staff, read: true}
   - {role: sales_rep, read: true}
   - {role: field_sales, read: true}
   - {role: cashier, read: true}
@@ -32,6 +33,41 @@ fields:
     type: data
     label: {id: Kota}
     in_list: true
+  # rangka-apps#104: an outlet row is any stock location (contract 0021 keeps every move on `outlet`), so the type
+  # tells a shop from a warehouse, a canvas van, a damaged-goods room or a production room. Empty on rows written
+  # before outlets 1.7.0 reads as a store.
+  - name: location_type
+    type: select
+    label: {id: Jenis lokasi, en: Location type}
+    help: {id: 'Hanya Toko yang memakai kuota outlet paket. Gudang, mobil kanvas, dan ruang lain gratis'}
+    default: "'store'"
+    in_list: true
+    chip: true
+    options:
+      - {value: store, label: {id: Toko / outlet, en: Store}}
+      - {value: warehouse, label: {id: Gudang, en: Warehouse}}
+      - {value: vehicle, label: {id: Mobil kanvas, en: Canvas van}}
+      - {value: quarantine, label: {id: Barang rusak / karantina, en: Quarantine}}
+      - {value: production, label: {id: Ruang produksi, en: Production room}}
+  # The plan's outlets limit counts only rows where is_store is true (module.rk limit_scope, rangka-os contract 0057 §5):
+  # warehouses are free. rangka migrate fills it on old rows (new compute column), so they stay stores.
+  - {name: is_store, type: check, label: {id: Toko}, hidden: true, compute: "location_type == '' || location_type == 'store'"}
+  # A van sells on the road (delivery notes, a paired device); the others only hold stock.
+  - {name: can_sell, type: check, label: {id: Boleh jual}, hidden: true, compute: "location_type == '' || location_type == 'store' || location_type == 'vehicle'"}
+  - name: parent_location
+    type: link
+    to: outlet
+    label: {id: Induk lokasi, en: Parent location}
+    help: {id: 'Opsional: gudang tempat mobil kanvas pulang, atau toko pemilik ruang belakang'}
+    depends_on: location_type != '' && location_type != 'store'
+  # The warehouse a store asks goods from (stock_request.supply_outlet defaults to it). A store with a supplying
+  # warehouse is not put on supplier purchase-order drafts by procurement/reorder_draft_po.
+  - name: supply_from
+    type: link
+    to: outlet
+    label: {id: Gudang pemasok, en: Supplying warehouse}
+    help: {id: 'Gudang yang mengirim barang ke toko ini. Kalau diisi, stok minimum toko ini tidak dijadikan draft pesanan ke pemasok'}
+    depends_on: location_type == '' || location_type == 'store'
   - name: address
     type: text
     label: {id: Alamat}
@@ -47,7 +83,7 @@ fields:
     type: data
     label: {id: Nama outlet di Moka}
     help: {id: 'Persis seperti kolom Outlet di ekspor Moka, misalnya "Tahu Contoh - Dago". Kosongkan kalau outlet ini tidak pakai Moka'}
-    depends_on: app_installed('outlet_sales')
+    depends_on: app_installed('outlet_sales') && (location_type == '' || location_type == 'store')
   # Moka's outlet id (connector moka, rangka-connectors): the poll per outlet emits it with every transaction, and flow
   # moka_transaction_staged finds the outlet by it, else by moka_name (Moka's outlet name). While the moka connector is
   # switched on, every outlet whose id or name matches receives its API sales; an outlet that should keep the export
@@ -75,8 +111,8 @@ fields:
     type: select
     label: {id: Sumber penjualan}
     help: {id: 'Untuk outlet yang tidak pakai Moka. Kosong berarti formulir harian'}
-    depends_on: app_installed('outlet_sales') && moka_name == ''
-    default: "app_installed('pos') && moka_name == '' ? 'kasir' : ''"
+    depends_on: app_installed('outlet_sales') && moka_name == '' && (location_type == '' || location_type == 'store')
+    default: "app_installed('pos') && moka_name == '' && (location_type == '' || location_type == 'store') ? 'kasir' : ''"
     options:
       - {value: form, label: {id: Formulir harian}}
       - {value: file, label: {id: File POS (template Juragan)}}
@@ -89,7 +125,7 @@ fields:
     type: currency
     label: {id: Modal kas kasir}
     help: {id: 'Uang kembalian di laci tiap sesi kasir dibuka. Kosongkan kalau kasir yang mengisi'}
-    depends_on: app_installed('pos')
+    depends_on: app_installed('pos') && (location_type == '' || location_type == 'store' || location_type == 'vehicle')
   # module attendance (staff clock-in per outlet): the outlet's point and radius are the geofence of the clock screen
   # (screens/absen_outlet.rk), and the default hours are the schedule lateness is measured against when the employee has
   # no shift. Decimal degrees, as a phone's GPS or a map gives them (Bandung is about -6.9, 107.6).
@@ -141,6 +177,20 @@ fields:
     default: '10'
     depends_on: app_installed('attendance')
 rules:
+  # rangka-apps#104: the warehouse a store asks goods from is a warehouse; a location is not its own parent; a row
+  # that is not a store has no sales source (Moka, daily form, POS file), so no daily sales are booked at a warehouse.
+  - name: supply_is_warehouse
+    on: save
+    check: "supply_from == '' || supply_from.location_type == 'warehouse'"
+    message: {id: 'Gudang pemasok harus lokasi berjenis Gudang'}
+  - name: not_own_parent
+    on: save
+    check: "parent_location == '' || parent_location != name"
+    message: {id: 'Induk lokasi tidak boleh lokasi ini sendiri'}
+  - name: store_fields_only
+    on: save
+    check: "location_type == '' || location_type == 'store' || (moka_name == '' && sales_source == '')"
+    message: {id: 'Gudang tidak punya sumber penjualan: kosongkan Nama outlet di Moka dan Sumber penjualan'}
   # The code is part of document numbers (cashier receipts STRK-<code>-..., kernel contract 0009 §2a), which take it
   # as it is: capital letters and digits, parts joined by "-".
   - name: code_shape

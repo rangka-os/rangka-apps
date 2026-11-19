@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: stock_request_item
+is_child: true
+fields:
+  - {name: item, type: link, to: item, label: {id: Barang}, required: true}
+  - {name: description, type: text, label: {id: Uraian}, default: item.item_name}
+  - {name: qty, type: float, label: {id: Qty diminta}, required: true, stock: true}
+  - {name: uom, type: link, to: uom, label: {id: Satuan}, default: "packing != '' ? packing.uom : item.stock_uom"}
+  - name: packing
+    type: link
+    to: uom_conversion
+    label: {id: Kemasan}
+    help: {id: 'Isi bila qty dalam kemasan (mis. karung); faktornya menentukan qty stok'}
+  - {name: stock_qty, type: float, label: {id: Qty stok}, compute: "packing == '' ? qty : qty * packing.factor"}
+  # Filled by flow stock_request_on_create from the requesting location's balance; informational only.
+  - {name: on_hand, type: float, label: {id: Stok di lokasi saat diminta}, read_only: true}

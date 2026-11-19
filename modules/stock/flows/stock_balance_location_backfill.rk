@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# stock_balance.location_type is a compute through outlet, stored when the balance is written (rangka-apps#104). A
+# balance written before stock 1.5.0, or of an outlet retyped since, keeps the old value until its next move. Every
+# run rewrites up to 50 such balances with nothing changed, which recomputes the field. Safe to run again: a
+# balance already right is not touched.
+name: stock_balance_location_backfill
+label: {id: Perbarui jenis lokasi di saldo stok, en: Refresh location type on stock balances}
+description: {id: 'Tiap 10 menit, saldo stok yang jenis lokasinya belum sama dengan data outlet diperbarui, 50 baris sekali jalan.'}
+schedule: "*/10 * * * *"
+steps:
+  - {find_all: outlet, as: locs}
+  - find_all: stock_balance
+    where: "locs.exists(o, o.name == outlet && (o.location_type == '' ? 'store' : o.location_type) != location_type)"
+    limit: 50
+    as: stale
+  - for_each: stale
+    as: b
+    do:
+      - update: b
+        set: {last_move: b.last_move}

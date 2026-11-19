@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A new request (rangka-apps#104): opens it, notes on each line the stock the requesting location holds now (for the
+# warehouse's eyes only, nothing is reserved) and tells the warehouse and head office (notice stock_request).
+name: stock_request_on_create
+label: {id: Permintaan barang baru dikabarkan ke gudang, en: New stock request}
+description: {id: 'Permintaan barang dari toko dibuka, stok toko saat itu dicatat, lalu staf gudang dan kantor pusat dikabari.'}
+on: stock_request.created
+steps:
+  - {find_all: stock_balance, where: outlet == event.outlet, as: bal}
+  - {find: stock_request, where: name == event.name, as: req}
+  - update: req
+    set:
+      state: "'open'"
+      items: "event.items.map(i, {'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'packing': i.packing, 'on_hand': bal.filter(b, b.item == i.item).map(b, b.qty).sum()})"
+  - {find: outlet, where: name == event.outlet, as: o}
+  - notify: warehouse_staff
+    notice: stock_request
+    channel: email
+    record: req
+    outlet: event.supply_outlet
+    id: "'req:' + event.name"
+    title: 'Permintaan barang dari {o.outlet_name}'
+    template: >-
+      {o.outlet_name} meminta {size(event.items)} barang. Buka permintaan {event.name}, pilih Proses untuk menyiapkan
+      transfer, atau Tolak dengan alasannya.
+  - notify: head_office
+    notice: stock_request
+    channel: email
+    record: req
+    outlet: event.supply_outlet
+    id: "'req-ho:' + event.name"
+    title: 'Permintaan barang dari {o.outlet_name}'
+    template: '{o.outlet_name} meminta {size(event.items)} barang ke gudang ({event.name}).'

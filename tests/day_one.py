@@ -3078,7 +3078,7 @@ _JASA = ("sales_manager", "finance_manager", "purchasing_manager", "project_admi
 _MASTER = dict({r: _RCWP for r in _JASA + ("head_office",)}, outlet_staff=_R)
 _PIPE = dict({r: _R for r in ("finance_manager", "purchasing_manager", "project_admin", "head_office", "outlet_staff")},
              sales_manager=_ALL, sales_rep={"read", "create", "write"})          # sales_rep: own records (if: owner == user.name)
-_STOCK_DOC = {"head_office": _ALL, "outlet_staff": _RCWS}
+_STOCK_DOC = {"head_office": _ALL, "outlet_staff": _RCWS, "warehouse_staff": _RCWS}
 MATRIX = {
     **{m: _MASTER for m in ("vendor", "uom_conversion", "price_list", "tax_code", "currency", "exchange_rate")},
     # worker carries pay (hidden_for since 0027, and no model read): not readable by sales or purchasing (audit L1)
@@ -3153,11 +3153,13 @@ MATRIX = {
     "opening_balance": {"finance_manager": _ALL | {"import"}, "head_office": _ALL | {"import"}},
     "financial_report": {"finance_manager": {"read", "create", "write", "delete", "export", "print"},
                          "head_office": {"read", "create", "write", "delete", "export", "print"}},
-    "stock_balance": {"head_office": {"read", "export"}, "outlet_staff": _R},
-    "stock_transfer": {"head_office": _ALL, "outlet_staff": _R},
-    "stock_transfer_receipt": {"head_office": _ALL, "outlet_staff": _RCWS | {"cancel"}},
+    "stock_balance": {"head_office": {"read", "export"}, "outlet_staff": _R, "warehouse_staff": _R},
+    "stock_transfer": {"head_office": _ALL, "outlet_staff": _R, "warehouse_staff": {"read", "create", "write", "delete", "submit", "cancel", "print"}},
+    # rangka-apps#104: a store asks its warehouse; the warehouse decides (decision is read_only_for outlet_staff)
+    "stock_request": {"head_office": {"read", "create", "write", "delete", "export", "print"}, "outlet_staff": _RCWP, "warehouse_staff": _RP | {"write"}},
+    "stock_transfer_receipt": {"head_office": _ALL, "outlet_staff": _RCWS | {"cancel"}, "warehouse_staff": _RCWS | {"cancel"}},
     "stock_count": _STOCK_DOC, "stock_adjustment": _STOCK_DOC,
-    "stock_adjustment_value": {"head_office": {"read", "create", "export"}, "outlet_staff": {"read", "create"}},
+    "stock_adjustment_value": {"head_office": {"read", "create", "export"}, "outlet_staff": {"read", "create"}, "warehouse_staff": {"read", "create"}},
     "outlet_sales": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     "outlet_takings": {"head_office": _ALL | {"import"}, "outlet_staff": _RCWS},
     # one sales source per outlet and day (outlets): written by the flows of the daily form, setoran and cashier
@@ -5910,6 +5912,7 @@ import day_one_staff  # noqa: E402
 import day_one_automation  # noqa: E402
 import day_one_staff_attendance  # noqa: E402
 import day_one_promotions  # noqa: E402
+import day_one_warehouses  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5931,6 +5934,7 @@ day_one_staff.bind(sys.modules[__name__])
 day_one_automation.bind(sys.modules[__name__])
 day_one_staff_attendance.bind(sys.modules[__name__])   # also adds the demo-fnb members of outlet attendance
 day_one_promotions.bind(sys.modules[__name__])   # after day_one_pos and day_one_kitchen (their members)
+day_one_warehouses.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5969,6 +5973,10 @@ for _site, _extra in day_one_automation.SCENARIOS.items():
     SCENARIOS[_site][_i:_i] = _extra
 # outlet staff attendance (module attendance, rangka-apps#100): after the site's own scenarios, before the permission matrix
 for _site, _extra in day_one_staff_attendance.SCENARIOS.items():
+    _i = SCENARIOS[_site].index(scenario_permissions)
+    SCENARIOS[_site][_i:_i] = _extra
+# warehouses apart from stores (rangka-apps#104): after the site's own scenarios, before the permission matrix
+for _site, _extra in day_one_warehouses.SCENARIOS.items():
     _i = SCENARIOS[_site].index(scenario_permissions)
     SCENARIOS[_site][_i:_i] = _extra
 # accounting last: it checks the books against every document the scenarios above submitted
@@ -6025,6 +6033,7 @@ def main():
         day_one_pos.setup_demo_kasir(api, k)
         day_one_kitchen.setup(api, k)
         day_one_staff.setup_kasir(api, k)
+        day_one_warehouses.setup_kasir(api, k)
     for sc in SCENARIOS[a.site]:
         if a.only and a.only not in sc.__name__:
             continue

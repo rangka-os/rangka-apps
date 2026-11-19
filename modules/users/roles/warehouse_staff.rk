@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: warehouse_staff
+label: {id: Staf gudang stok}
+description: {id: 'Menerima barang, memproses permintaan toko, mengirim transfer, dan opname di gudang'}
+# No row scope in v1 (rangka-apps#104, DECISIONS [otonom] 19 Nov): contract 0010 §5 lets a scoped member write a
+# record only when every filled scope field is theirs, so a member scoped to the warehouse could not submit the
+# warehouse -> store transfer a request asks for. Like rental_staff, it suits the common case of one central warehouse;
+# costs stay hidden as for outlet_staff. Lists and the warehouse dashboard narrow to the member's outlets by filter.
