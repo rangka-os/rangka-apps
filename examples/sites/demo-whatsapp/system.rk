@@ -21,6 +21,8 @@ auth:
       redirect_uris: [http://localhost:3000/auth/callback]
       public: true
       scopes: [openid, profile, email, rangka.mcp]
-secrets: {driver: env}
+# rangka_whatsapp is a host connector: its values are written by Rangka Cloud through secrets:host, which needs the
+# db driver (RANGKA_MASTER_KEY; tests/day_one_whatsapp.py makes a throwaway one)
+secrets: {driver: db}
 audit: {enabled: true, retention_days: 365}
 observability: {log_level: info, metrics: true}

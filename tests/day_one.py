@@ -99,6 +99,12 @@ SITE_ORGS = {
 }
 
 
+# Environment a site's kernel needs (a callable returning a dict, applied before start) and a site's own setup after
+# start, registered by the scenario modules that own the site (day_one_whatsapp: the host connector).
+SITE_ENV = {}
+SITE_SETUP = {}
+
+
 class Kernel:
     """A temp Postgres plus `rangka serve` for one site."""
 
@@ -5889,6 +5895,7 @@ import day_one_subscriptions  # noqa: E402
 import day_one_pos  # noqa: E402
 import day_one_moka  # noqa: E402
 import day_one_doku  # noqa: E402
+import day_one_whatsapp  # noqa: E402
 import day_one_kitchen  # noqa: E402
 import day_one_attendance  # noqa: E402
 import day_one_staff  # noqa: E402
@@ -5904,6 +5911,7 @@ day_one_subscriptions.bind(sys.modules[__name__])
 day_one_pos.bind(sys.modules[__name__])      # also registers demo-kasir
 day_one_moka.bind(sys.modules[__name__])
 day_one_doku.bind(sys.modules[__name__])
+day_one_whatsapp.bind(sys.modules[__name__])   # also registers demo-whatsapp (orgs, kernel env, setup)
 day_one_kitchen.bind(sys.modules[__name__])
 day_one_attendance.bind(sys.modules[__name__])
 day_one_staff.bind(sys.modules[__name__])
@@ -5925,6 +5933,7 @@ SCENARIOS = {
     "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-kepingan-keuangan": day_one_keuangan.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
+SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS
 SCENARIOS["demo-fnb"] += day_one_moka.SCENARIOS
 for _site in ("demo-jasa", "demo-fnb"):
     SCENARIOS[_site] += day_one_doku.SCENARIOS
@@ -5947,6 +5956,8 @@ def main():
     if a.site not in SCENARIOS:
         sys.exit(f"no scenarios for site {a.site} yet")
     state = tempfile.mkdtemp(prefix="day-one-")
+    if a.site in SITE_ENV:
+        os.environ.update(SITE_ENV[a.site]())
     k = Kernel(a.site, state)
     atexit.register(k.stop)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))   # a stopped --keep demo still removes its database (atexit)
@@ -5978,6 +5989,8 @@ def main():
         day_one_rental.setup_demo_sewa(api, k)
     if a.site == "demo-kepingan-keuangan":
         day_one_keuangan.setup_demo_keuangan(api, k)
+    if a.site in SITE_SETUP:
+        SITE_SETUP[a.site](api, k)
     if a.site == "demo-kasir":
         day_one_pos.setup_demo_kasir(api, k)
         day_one_kitchen.setup(api, k)

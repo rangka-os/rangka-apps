@@ -13,11 +13,13 @@ permissions:
   - {role: head_office, read: true, create: true, export: true}
   - {role: sales_manager, read: true, create: true}
   - {role: finance_manager, read: true, create: true}
-  - {role: sales_rep, create: true}
-  - {role: purchasing_manager, create: true}
-  - {role: project_admin, create: true}
-  - {role: course_admin, create: true}
+  # the roles whose writes run the WhatsApp flows read the list (the flows look a number up before every send)
+  - {role: sales_rep, read: true, create: true}
+  - {role: purchasing_manager, read: true, create: true}
+  - {role: project_admin, read: true, create: true}
+  - {role: course_admin, read: true, create: true}
   - {role: cashier, read: true}
+  - {role: kitchen, read: true}
 fields:
   # digits with the country code, the form customer.wa_number computes (62812…)
   - {name: number, type: data, label: {id: Nomor WhatsApp}, required: true, unique: true, read_only: true, in_list: true}

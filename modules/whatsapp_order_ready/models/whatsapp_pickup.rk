@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Who to tell when the order of a receipt is ready: written when the receipt is paid (flow whatsapp_pickup_on_sale,
+# as the cashier), read when the kitchen marks a ticket Siap (flow whatsapp_ticket_ready, as the kitchen). The kitchen
+# may not read a receipt (it carries money), so the buyer's name, number and outlet are copied here, and nothing else.
+name: whatsapp_pickup
+label: {id: Kabar pesanan siap (tujuan), en: Order-ready recipient}
+icon: send-plane-line
+naming: WAPU-{#####}
+title_field: sale
+permissions:
+  - {role: head_office, read: true, create: true}
+  - {role: cashier, read: true, create: true}
+  - {role: kitchen, read: true}
+fields:
+  # the receipt's number as text: a link would make the kitchen's read of this row load the receipt
+  - {name: sale, type: data, label: {id: Struk}, required: true, unique: true, read_only: true, in_list: true}
+  - {name: buyer, type: data, label: {id: Pembeli}, read_only: true}
+  - {name: number, type: data, label: {id: Nomor WhatsApp (seragam)}, required: true, read_only: true, hidden: true}
+  - {name: outlet_name, type: data, label: {id: Outlet}, read_only: true}

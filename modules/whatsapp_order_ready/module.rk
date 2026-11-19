@@ -9,5 +9,6 @@ category: sales
 icon: send-plane-line
 # One message type of the WhatsApp service (module whatsapp): installing this module is switching "Kabar pesanan siap"
 # on. The buyer's yes is the one asked at the kasir (pos_sale.wa_receipt, "Kirim struk ke WhatsApp"), so it needs
-# whatsapp_receipt for the number and the tick.
+# whatsapp_receipt for the number and the tick. The kitchen never reads the receipt: at payment the buyer's name,
+# number and outlet are copied to whatsapp_pickup, which is what the kitchen's flow reads.
 requires: {rangka: '>=0.5', users: ^1.2, outlets: ^1.2, pos: ^1.3, kitchen: ^1.0, whatsapp: ^1.0, whatsapp_receipt: ^1.0}

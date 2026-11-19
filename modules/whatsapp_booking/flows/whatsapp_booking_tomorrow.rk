@@ -6,7 +6,7 @@ label: {id: 'Sewa mulai besok: ingatkan pelanggan lewat WhatsApp'}
 schedule: '0 16 * * *'
 steps:
   - find_all: rental_booking
-    where: "docstatus == 1 && start_date != '' && days_between(today(), start_date) == 1"
+    where: "docstatus == 1 && start_date == today() + duration(1)"
     limit: 300
     as: tomorrow
   - for_each: tomorrow

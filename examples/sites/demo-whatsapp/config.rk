@@ -11,7 +11,7 @@ timezone: Asia/Jakarta
 org: {legal_name: CV Contoh Warung Rasa}
 tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: true}
 orgs:
-  warung_wa:
+  warung_contoh:
     name: CV Contoh Warung Rasa
     code: CWR
     config:
