@@ -67,6 +67,11 @@ jobs:
             echo "this rangka-os has no rangka skills command yet; skipped"
           fi
 
+      # The converter of POS exports to Juragan's sales template (scripts/pos_export_to_template.py), without a kernel.
+      - name: POS export converter
+        working-directory: rangka-apps
+        run: python tests/check_pos_export.py
+
       # Every site tests/day_one.py has scenarios for must have its own step below (a new demo site cannot slip out of CI).
       - name: Every day_one site has a CI step
         working-directory: rangka-apps

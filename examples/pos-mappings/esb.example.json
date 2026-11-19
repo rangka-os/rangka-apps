@@ -1,0 +1,18 @@
+{
+  "_note": "EXAMPLE, not ESB's format. ESB publishes no description of its export files (rangka reports/keputusan-riset/esb-connector.md, 19 Nov 2026): the report names known are 'Sales detail' and 'Sales by menu'. Replace every column name below with the header of the first real export, keep the real file out of the repo.",
+  "header_row": 3,
+  "delimiter": ";",
+  "date_format": "%d/%m/%Y %H:%M",
+  "number": {"thousands": ".", "decimal": ","},
+  "columns": {
+    "date": "Sales Date",
+    "receipt": "Bill Number",
+    "branch": "Branch",
+    "sku": "Menu Code",
+    "qty": "Qty",
+    "gross": "Subtotal",
+    "discount": "Discount"
+  },
+  "void": {"column": "Status", "values": ["Void", "Cancelled"], "as": "skip"},
+  "skip_rows_where": [{"column": "Sales Date", "equals": "TOTAL"}]
+}
