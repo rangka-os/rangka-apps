@@ -16,7 +16,9 @@ modules:
   users: ^1.5
   outlets: ^1.6
   attendance: ^1.0
-dashboards: [absen_hari_ini, absen_karyawan_saya, rekap_absen_karyawan]
+  # work schedules (rangka-apps#120): a clock-in is measured against the employee's published shift
+  shifts: ^1.0
+dashboards: [absen_hari_ini, absen_karyawan_saya, rekap_absen_karyawan, jadwal_saya, jadwal_outlet]
 roles: [head_office, outlet_supervisor, cashier, outlet_staff, employee]
 home: {dashboard: absen_hari_ini}
 # contract 0030 §3: staff who only clock in land on the clock; the others open it from the Kerja group.
@@ -26,6 +28,8 @@ work:
 menu:
   - group: {id: Absen}
     items: [staff_attendance, attendance_period, attendance_summary]
+  - group: {id: Jadwal shift}
+    items: [shift_roster, shift_assignment, shift_swap, shift_template]
   - group: {id: Pengaturan absen}
     items: [outlet]
 onboarding:

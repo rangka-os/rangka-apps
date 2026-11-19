@@ -19,6 +19,7 @@ modules:
   procurement: ^1.0
   payments: ^1.0
   invoicing: ^1.0
+  shifts: ^1.0
 dashboards: [fnb_overview, stock_recap, outlet_harian]
 roles: [head_office, outlet_staff]
 home: {dashboard: fnb_overview}

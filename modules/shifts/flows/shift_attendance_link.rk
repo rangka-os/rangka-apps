@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: shift_attendance_link
+label: {id: 'Absen masuk dihubungkan ke jadwal shift hari itu'}
+# A new clock-in (module attendance) of an employee who has a published working shift that day links to it
+# (staff_attendance.work_shift), so the log's schedule, lateness and early leave follow the shift instead of the
+# outlet's default hours. Runs as the person clocking in: staff read their own published assignments and write their own
+# log. Without a shift the log keeps the outlet's hours. Reads shift_assignment before staff_attendance, the order of
+# flow shift_attendance_sync (contract 0025).
+on: staff_attendance.created
+steps:
+  - find: shift_assignment
+    where: day_key == event.day_key && published && !day_off
+    as: a
+  - if: a != null
+    find: staff_attendance
+    where: name == event.name
+    as: log
+  - if: a != null && log != null
+    update: log
+    set:
+      work_shift: a.name

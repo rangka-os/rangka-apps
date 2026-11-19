@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One employee's week on a shift_roster: a shift pattern per day, empty = day off.
+name: shift_roster_line
+is_child: true
+fields:
+  - {name: employee, type: link, to: user, label: {id: Karyawan}, required: true, in_list: true}
+  - {name: mon, type: link, to: shift_template, label: {id: Sen}, in_list: true}
+  - {name: tue, type: link, to: shift_template, label: {id: Sel}, in_list: true}
+  - {name: wed, type: link, to: shift_template, label: {id: Rab}, in_list: true}
+  - {name: thu, type: link, to: shift_template, label: {id: Kam}, in_list: true}
+  - {name: fri, type: link, to: shift_template, label: {id: Jum}, in_list: true}
+  - {name: sat, type: link, to: shift_template, label: {id: Sab}, in_list: true}
+  - {name: sun, type: link, to: shift_template, label: {id: Min}, in_list: true}

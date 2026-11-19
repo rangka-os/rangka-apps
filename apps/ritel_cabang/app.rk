@@ -26,6 +26,7 @@ modules:
   coretax: ^1.0
   consignment: ^1.0
   bank_statement: ^1.0
+  shifts: ^1.0
 dashboards: [ritel_overview, ritel_stock, ritel_tax]
 roles: [head_office, outlet_staff]
 home: {dashboard: ritel_overview}
