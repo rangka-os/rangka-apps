@@ -131,7 +131,7 @@ def scenario_staff_attendance_clock(api):
     if not check("Ayu's clock-in creates a log (employee and outlet from her membership)", st == 201, (st, lg)):
         return
     eq("the log's employee and outlet default to Ayu and Dago", (lg.get("employee"), lg.get("outlet"), lg.get("work_date")), (ayu_rec, DAGO, str(t)))
-    check("40 m from Dago is inside the 100 m radius", lg.get("in_inside") is True and 35 <= (lg.get("in_site_m") or 0) <= 45, lg)
+    check("40 m from Dago is inside the 100 m radius", lg.get("in_inside") is True and 35 <= int(lg.get("in_site_m") or 0) <= 45, lg)
     name = lg["name"]
     st, resp = ayu.verb("staff_attendance", name, "submit")
     check("a log without a clock-in time cannot be submitted", refused(st, resp, "jam masuk"), (st, resp))
@@ -180,7 +180,7 @@ def scenario_staff_attendance_held(api):
     if not check("Dimas clocks in 600 m away with a reason, and out", st == 200, (st, name)):
         return
     lg = dimas.get("staff_attendance", name)
-    check("the log is outside the radius", lg.get("outside_site") is True and (lg.get("in_site_m") or 0) > 550, lg)
+    check("the log is outside the radius", lg.get("outside_site") is True and int(lg.get("in_site_m") or 0) > 550, lg)
     st, resp = dimas.verb("staff_attendance", name, "submit")
     pend = [a for a in (resp or {}).get("approvals", []) if a.get("state") == "pending"] if isinstance(resp, dict) else []
     if not check("the far log waits for approval (202, policy outside_site)", st == 202 and [a.get("policy") for a in pend] == ["outside_site"], (st, resp)):
@@ -196,7 +196,7 @@ def scenario_staff_attendance_held(api):
     pend = [a for a in approvals_of(bayu, "staff_attendance", name) if a.get("state") == "pending"]
     eq("the Dago supervisor sees the held log", [a.get("id") for a in pend], [req])
     lg = bayu.get("staff_attendance", name)
-    check("the Dago supervisor reads the reason, the distance and the selfie", lg.get("reason") and (lg.get("in_site_m") or 0) > 550 and lg.get("in_photo", "").startswith("att_"), lg)
+    check("the Dago supervisor reads the reason, the distance and the selfie", lg.get("reason") and int(lg.get("in_site_m") or 0) > 550 and lg.get("in_photo", "").startswith("att_"), lg)
     st, resp = decide(bayu, req)
     check("the Dago supervisor approves: the log is submitted as Dimas", st == 200 and rec(resp).get("docstatus") == 1 and rec(resp).get("employee") == CTX["sa_kitchen_rec"], (st, resp))
     st, resp = bayu.create("staff_attendance", {"employee": CTX["sa_kitchen_rec"], "in_pos": pos(DAGO, 5, 0)})
@@ -205,7 +205,8 @@ def scenario_staff_attendance_held(api):
     st, resp = yusuf.create("staff_attendance", {"work_date": str(t)})
     check("no position and no reason is refused", refused(st, resp, "lokasi tidak terbaca"), (st, resp))
     st, lg = yusuf.create("staff_attendance", {"work_date": str(t), "reason": "GPS HP tidak mau menyala"})
-    check("no position with a reason: saved, outside", st == 201 and lg.get("in_located") is False and lg.get("outside_site") is True, (st, lg))
+    check("no position with a reason: saved, outside, distance empty (not 0 m)", st == 201 and lg.get("in_located") is False and lg.get("outside_site") is True
+          and lg.get("in_site_m") in (None, ""), (st, lg))
     if st == 201:
         n = lg["name"]
         yusuf.patch("staff_attendance", n, {"in_photo": photo(yusuf, n), "clock_in": local(t, "08:00")})
@@ -329,6 +330,11 @@ def scenario_staff_attendance_screen(api):
     if ws:
         mine = [x for x in ayu.list("staff_attendance") if x.get("docstatus") == 1]
         eq("absen_karyawan_saya counts Ayu's own submitted days only", num(ws["days_present"]), len(mine))
+    ws = dashboard(hq, "absen_karyawan_saya", 31)
+    if ws:
+        rina = me(hq)
+        own = [x for x in hq.find("staff_attendance", f"employee == '{rina}' && docstatus == 1")]
+        eq("absen_karyawan_saya for head office counts only Rina's own days, not every log she may read", num(ws["days_present"]), len(own))
 
 
 SCENARIOS = {"demo-fnb": [scenario_staff_attendance_clock, scenario_staff_attendance_held, scenario_staff_attendance_late,

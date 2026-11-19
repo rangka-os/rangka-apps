@@ -120,11 +120,12 @@ fields:
   - {name: in_m, type: float, label: {id: Jarak masuk dari titik (m)}, hidden: true, read_only: true, compute: "distance_m(in_pos, site_point)"}
   - {name: in_located, type: check, label: {id: Lokasi masuk ada}, read_only: true, compute: "in_m < 100000000.0"}
   - {name: in_inside, type: check, label: {id: Masuk di dalam radius}, read_only: true, compute: "in_located && in_m <= site_radius_m"}
-  - {name: in_site_m, type: int, label: {id: Jarak masuk dari outlet (m)}, read_only: true, compute: "in_located ? round(in_m) : 0"}
+  # Text, empty without a position (GPS failed or refused): an int would show 0 m, which reads as "at the outlet".
+  - {name: in_site_m, type: data, label: {id: Jarak masuk dari outlet (m)}, read_only: true, compute: "in_located ? string(int(round(in_m))) : ''"}
   - {name: out_m, type: float, label: {id: Jarak keluar dari titik (m)}, hidden: true, read_only: true, compute: "distance_m(out_pos, site_point)"}
   - {name: out_located, type: check, label: {id: Lokasi keluar ada}, read_only: true, compute: "out_m < 100000000.0"}
   - {name: out_inside, type: check, label: {id: Keluar di dalam radius}, read_only: true, compute: "out_located && out_m <= site_radius_m"}
-  - {name: out_site_m, type: int, label: {id: Jarak keluar dari outlet (m)}, read_only: true, compute: "out_located ? round(out_m) : 0"}
+  - {name: out_site_m, type: data, label: {id: Jarak keluar dari outlet (m)}, read_only: true, compute: "out_located ? string(int(round(out_m))) : ''"}
   - name: outside_site
     type: check
     label: {id: Di luar radius}

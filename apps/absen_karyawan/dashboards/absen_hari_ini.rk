@@ -4,6 +4,11 @@ label: {id: Absen hari ini, en: Attendance today}
 description: {id: 'Siapa yang sudah masuk, terlambat, di luar radius dan menunggu persetujuan, per outlet'}
 # Head office sees every outlet; the outlet supervisor only their own outlets (row scope outlet, contract 0010; the
 # dashboard cache key includes the scope).
+# Every widget is about today (or what is still waiting), none reads the period: one choice, "1 hari", so the selector
+# does not offer 7, 30 or 90 days that change nothing. The web app always draws the selector (rangka-os follow-up in
+# rangka workspace reports/follow-up-rangka-os-attendance-ui.md).
+periods: [1]
+default_period: 1
 roles: [head_office, outlet_supervisor]
 cache: 1m
 widgets:

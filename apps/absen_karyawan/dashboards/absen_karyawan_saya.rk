@@ -2,13 +2,13 @@
 name: absen_karyawan_saya
 label: {id: Absen saya, en: My attendance}
 description: {id: 'Absen masuk dan pulang kamu, hari hadir dan menit terlambat bulan ini, dan yang masih menunggu persetujuan'}
-# Every widget counts only the member's own logs (staff_attendance read if: employee == user.name, which filters
-# dashboards too, contract 0010).
+# Every widget filters on the member's own employee record, so head office and outlet supervisors (who read more logs)
+# also see only their own days here. Staff are limited to their own logs anyway (staff_attendance read if:).
 default_period: 31
-roles: [cashier, outlet_staff, employee]
+roles: [cashier, outlet_staff, employee, outlet_supervisor, head_office]
 cache: 1m
 widgets:
-  - {name: days_present, type: number, label: {id: Hari hadir}, model: staff_attendance, filter: docstatus == 1, period: work_date, compact: true, span: 4}
-  - {name: late_min, type: number, label: {id: Menit terlambat}, model: staff_attendance, aggregate: sum, field: late_min, filter: docstatus == 1, period: work_date, compact: true, span: 4, good_when: down}
-  - {name: waiting, type: number, label: {id: Menunggu}, description: {id: 'Sudah absen pulang tapi belum sah: menunggu persetujuan kepala outlet'}, model: staff_attendance, filter: docstatus == 0 && clock_out != '', compact: true, span: 4, good_when: down}
-  - {name: recent, type: list, label: {id: Absen terakhir}, model: staff_attendance, filter: docstatus != 2, period: work_date, columns: [work_date, clock_in, clock_out, late_min, outside_site, status], sort: -work_date, limit: 31, span: 12}
+  - {name: days_present, type: number, label: {id: Hari hadir}, model: staff_attendance, filter: "employee == user.name && docstatus == 1", period: work_date, compact: true, span: 4}
+  - {name: late_min, type: number, label: {id: Menit terlambat}, model: staff_attendance, aggregate: sum, field: late_min, filter: "employee == user.name && docstatus == 1", period: work_date, compact: true, span: 4, good_when: down}
+  - {name: waiting, type: number, label: {id: Menunggu}, description: {id: 'Sudah absen pulang tapi belum sah: menunggu persetujuan kepala outlet'}, model: staff_attendance, filter: "employee == user.name && docstatus == 0 && clock_out != ''", compact: true, span: 4, good_when: down}
+  - {name: recent, type: list, label: {id: Absen terakhir}, model: staff_attendance, filter: "employee == user.name && docstatus != 2", period: work_date, columns: [work_date, clock_in, clock_out, late_min, outside_site, status], sort: -work_date, limit: 31, span: 12}
