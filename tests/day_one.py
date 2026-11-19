@@ -1945,9 +1945,12 @@ def scenario_money_rail(api):
     st, draft = api.create("sales_invoice", invoice_body(customer, item, rate=1000))
     st, resp = api.create("invoice_reminder", {"sales_invoice": draft["name"]})
     check("invoice_reminder refuses a draft invoice", st == 422, (st, resp))
-    st, run = api.call("POST", "/api/v1/flows/invoice_due_digest/run", {})
+    # the morning after its due date (Tuesday 6 Jan) the invoice is newly overdue: the overdue notice gives the position
+    # (an invoice long overdue is not told again each morning; the owner's daily summary carries it, docs/automation.md)
+    st, run = api.call("POST", "/api/v1/flows/invoice_due_digest/run", {"as_of": "2026-01-06"})
     texts = [n.get("text", "") for n in (run or {}).get("notifications", [])]
-    check("invoice_due_digest lists the overdue invoice to the owner", st == 200 and any("faktur jatuh tempo" in t for t in texts), (st, run))
+    check("invoice_due_digest tells the owner and finance the morning an invoice becomes overdue",
+          st == 200 and any("faktur lewat jatuh tempo" in t and "telat 1 hari" in t for t in texts), (st, run))
 
     # 2. bayar lewat gateway (a Xendit callback turned into a payment): gateway_ref is unique
     body = {"direction": "receive", "customer": customer, "amount": 990_000, "method": "va", "gateway": "xendit",
