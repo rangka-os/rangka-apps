@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Penyusutan bulanan: one document per month (period = its first day). Flow depreciation_run_fill lists the assets
+# when the draft is made: every submitted asset still active whose depreciation started on or before the month, with
+# what it is owed up to that month (one month, or more when earlier months had no run), never past its residual value.
+# Its submit journals each line (accounting flow gl_depreciation_run_post, on the last day of the month) and adds the
+# amounts to the assets (flow depreciation_run_on_submit, which refuses a run whose lines no longer match the assets,
+# a second run for the month, or a run older than one already submitted). Only the latest run may be cancelled.
+name: depreciation_run
+label: {id: Penyusutan bulanan, en: Monthly depreciation}
+icon: line-chart-line
+is_submittable: true
+naming: 'DEP-{period_key}-{##}'
+title_field: title
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, export: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, export: true, print: true}
+fields:
+  - name: period
+    type: date
+    label: {id: Bulan (tanggal 1)}
+    required: true
+    in_list: true
+    default: "add_months(truncate(string(today()), 7) + '-01', -1)"
+  - {name: title, type: data, label: {id: Judul}, compute: "'Penyusutan ' + truncate(string(period), 7)"}
+  # the month as YYYY-MM, for the document number (DEP-2026-10-01: the first run of October 2026)
+  - {name: period_key, type: data, label: {id: Kode bulan}, hidden: true, compute: "truncate(string(period), 7)"}
+  - name: posting_date
+    type: date
+    label: {id: Tanggal jurnal}
+    compute: "add_months(string(period), 1) - duration(1)"
+    in_list: true
+  - {name: lines, type: table, of: depreciation_line, label: {id: Aset yang disusutkan}}
+  # not named `total`: the web app reads a field `total` as an amount to be paid (docSummary)
+  - {name: total_depreciation, type: currency, label: {id: Total penyusutan}, compute: "lines.map(l, l.amount).sum()", in_list: true}
+  - {name: asset_count, type: int, label: {id: Jumlah aset}, compute: size(lines), in_list: true}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: period_is_month_start
+    on: save
+    check: "string(period) == truncate(string(period), 7) + '-01'"
+    message: {id: Bulan penyusutan diisi tanggal 1 bulan itu}
+  # a month is depreciated once it is over: never the current month or a later one (audit F4: a run dated in the future
+  # would post ahead and block every earlier month)
+  - name: period_over
+    on: save
+    check: "string(period) < truncate(string(today()), 7) + '-01'"
+    message: {id: 'Penyusutan dibuat setelah bulannya selesai: pilih bulan lalu atau sebelumnya'}
+  - name: amounts_positive
+    on: save
+    check: "lines.map(l, l.amount <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Nilai penyusutan per aset harus lebih dari 0}
+views:
+  list:
+    columns: [name, period, posting_date, asset_count, total_depreciation, status]
+    sort: -period
+  form:
+    layout:
+      - section: {id: Bulan}
+        columns:
+          - [period, posting_date]
+          - [asset_count, total_depreciation]
+      - section: {id: Aset yang disusutkan}
+        fields: [lines]
+      - section: {id: Catatan}
+        fields: [notes]

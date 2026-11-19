@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside a vendor bill's cancel: refused while a submitted fixed asset was made from it (its cost is the bill's 1-2100
+# debit). Cancel the assets first. Drafts made from the bill stay as drafts and can no longer be submitted (rule
+# bill_source: the bill must be submitted); delete them.
+name: vendor_bill_asset_guard
+label: {id: Tagihan yang sudah jadi aset tidak bisa dibatalkan}
+on: vendor_bill.cancelled
+steps:
+  - find: fixed_asset
+    where: vendor_bill == event.name && docstatus == 1
+    as: fa
+  - if: fa != null
+    create: asset_guard
+    set: {reason: "'bill_has_asset'", document: fa.name}

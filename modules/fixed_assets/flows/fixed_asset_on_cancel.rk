@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside a fixed asset's cancel: refused once a run has depreciated it or it was sold or written off (cancel those
+# first, latest first). Otherwise its register row is closed (state cancelled, kept as history) and the rental unit
+# no longer points at it. The purchase journal is reversed by the accounting module.
+name: fixed_asset_on_cancel
+label: {id: Aset tetap batal}
+on: fixed_asset.cancelled
+steps:
+  - find: asset_book
+    where: asset == event.name
+    as: b
+  - if: "b != null && (b.accumulated > 0 || b.state in ['sold', 'written_off'])"
+    create: asset_guard
+    set: {reason: "'asset_in_use'", document: b.name}
+  - update: b
+    if: b != null
+    set: {state: "'cancelled'"}
+  - find: rental_unit
+    if: event.rental_unit != ''
+    where: name == event.rental_unit && asset == event.name
+    as: u
+  - update: u
+    if: event.rental_unit != '' && u != null
+    set: {asset: "''"}

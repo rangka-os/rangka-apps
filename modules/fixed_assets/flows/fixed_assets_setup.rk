@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Makes the one fixed_asset_setting record (capitalisation threshold Rp 1.000.000) and, when there is no category yet,
+# the six default categories (useful life in months and fiscal group of PMK 72/2023). Every morning at 05:00, so a
+# business that adds the module has them the next day; finance or the owner can also run it from the flow list right
+# away. It never changes a record that exists. Scheduled flows run for the default org only (contract 0031).
+name: fixed_assets_setup
+label: {id: Siapkan aset tetap, en: Set up fixed assets}
+description: {id: 'Membuat pengaturan aset tetap dan enam kelompok aset bawaan bila belum ada.'}
+schedule: '0 5 * * *'
+steps:
+  - {find: fixed_asset_setting, as: cfg}
+  - create: fixed_asset_setting
+    if: cfg == null
+    set: {key: "'usaha'", capitalisation_threshold: '1000000'}
+  - find_all: asset_category
+    limit: 1
+    as: cats
+  - for_each: >-
+      cats.size() > 0 ? [] : [
+        {'n': 'Kendaraan', 'm': 96, 'g': 'kelompok_2'},
+        {'n': 'Peralatan kantor', 'm': 48, 'g': 'kelompok_1'},
+        {'n': 'Komputer dan HP', 'm': 48, 'g': 'kelompok_1'},
+        {'n': 'Mesin', 'm': 96, 'g': 'kelompok_2'},
+        {'n': 'Alat sewa', 'm': 48, 'g': 'kelompok_1'},
+        {'n': 'Bangunan', 'm': 240, 'g': 'bangunan_permanen'}]
+    as: c
+    do:
+      - create: asset_category
+        set: {category_name: c.n, useful_life_months: c.m, residual_percent: '0', fiscal_group: c.g}

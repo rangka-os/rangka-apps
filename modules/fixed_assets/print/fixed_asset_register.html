@@ -1,0 +1,45 @@
+{{define "style"}}
+.meta { width: 100%; margin: 12px 0; border-collapse: collapse; }
+.meta td { padding: 2px 6px 2px 0; vertical-align: top; }
+.items { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.9em; }
+.items th, .items td { border-bottom: 1px solid #d6d3d1; padding: 5px 6px; text-align: left; }
+.items th { border-bottom: 1px solid #1c1917; color: #57534e; font-weight: 600; }
+.items tr.total td { border-top: 2px solid #1c1917; font-weight: 700; }
+.num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.note { margin-top: 14px; font-size: 0.9em; }
+{{end}}
+{{template "letterhead" .}}
+<h1>Daftar aset tetap</h1>
+<table class="meta">
+  <tr><td>Penyusutan bulan</td><td>: {{date .Doc.period}} s.d. {{date .Doc.posting_date}}</td><td>Dicetak</td><td>: {{date .Printed}}</td></tr>
+  <tr><td>Penyusutan bulan ini</td><td>: {{rupiah .Doc.total_depreciation}} ({{.Doc.asset_count}} aset)</td><td></td><td></td></tr>
+</table>
+<table class="items">
+  <thead><tr><th>Aset</th><th>Kelompok</th><th>Tanggal beli</th><th class="num">Harga perolehan</th><th class="num">Akumulasi penyusutan</th><th class="num">Nilai buku</th><th>Status</th></tr></thead>
+  <tbody>
+  {{range $b := .Related.books}}
+  <tr>
+    <td>{{$b.asset_name}}<br><small>{{$b.asset}}</small></td>
+    <td>{{$b.category_name}}</td>
+    <td>{{date $b.acquisition_date}}</td>
+    <td class="num">{{rupiah $b.cost}}</td>
+    <td class="num">{{rupiah $b.accumulated_total}}</td>
+    <td class="num">{{rupiah $b.book_value}}</td>
+    <td>{{$b.state_label}}</td>
+  </tr>
+  {{end}}
+  <tr class="total"><td colspan="3">Total</td><td class="num">{{rupiah (sum .Related.books "cost")}}</td><td class="num">{{rupiah (sum .Related.books "accumulated_total")}}</td><td class="num">{{rupiah (sum .Related.books "book_value")}}</td><td></td></tr>
+  </tbody>
+</table>
+<h2>Penyusutan bulan ini</h2>
+<table class="items">
+  <thead><tr><th>Aset</th><th class="num">Bulan</th><th class="num">Penyusutan</th></tr></thead>
+  <tbody>
+  {{range $l := .Doc.lines}}
+  <tr><td>{{range $b := $.Related.books}}{{if eq $b.asset $l.asset}}{{$b.asset_name}}<br>{{end}}{{end}}<small>{{$l.asset}}</small></td><td class="num">{{$l.months}}</td><td class="num">{{rupiah $l.amount}}</td></tr>
+  {{end}}
+  <tr class="total"><td colspan="2">Total</td><td class="num">{{rupiah .Doc.total_depreciation}}</td></tr>
+  </tbody>
+</table>
+{{if .Truncated.books}}<p class="note"><strong>Daftar dipotong:</strong> hanya 1.000 aset pertama yang ditampilkan.</p>{{end}}
+<p class="note">Nilai di daftar aset adalah nilai saat dicetak. Dicetak dari penyusutan bulan terakhir, nilainya adalah nilai akhir bulan itu.</p>
