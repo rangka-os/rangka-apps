@@ -19,7 +19,7 @@ _R, _RP = {"read"}, {"read", "print"}
 ATTENDANCE_MATRIX = {
     # outlet_staff (Yusuf): own logs only (if:), no cancel or delete; head office all but delete
     "staff_attendance": {"outlet_staff": {"read", "create", "write", "submit"},
-                         "head_office": {"read", "create", "write", "submit", "cancel", "amend", "export", "print"}},
+                         "head_office": {"read", "create", "write", "delete", "submit", "cancel", "export", "print"}},
     "staff_attendance_guard": {"outlet_staff": {"create"}, "head_office": {"create"}},   # never stored
     "attendance_period": {"head_office": {"read", "create", "write", "delete", "submit", "cancel", "amend", "export", "print"}, "outlet_staff": _R},
     "attendance_summary": {"head_office": {"read", "create", "write", "export", "print"}, "outlet_staff": _R},
@@ -288,6 +288,19 @@ def scenario_staff_attendance_period(api):
     a = by.get(CTX["sa_cashier_rec"]) or {}
     eq("Ayu's summary: 1 day, late once, 10 minutes, at Dago", (a.get("days_present"), a.get("late_count"), a.get("late_min_total"), a.get("outlet")), (1, 1, 10, DAGO))
     check("Rina (exempt) has no summary; other active staff have one with 0 days", "USR-001" not in by and (by.get("USR-002") or {}).get("days_present") == 0, sorted(by))
+    # every summary equals its submitted logs of the period (only submitted logs count: drafts and held logs do not)
+    logs = hq.find("staff_attendance", f"docstatus == 1 && work_date >= '{y}' && work_date <= '{y}'")
+    wrong = []
+    for e, sm in by.items():
+        mine = [x for x in logs if x["employee"] == e]
+        want = (len(mine), sum(1 for x in mine if x["late_min"] > 0), sum(x["late_min"] for x in mine), sum(x["early_min"] for x in mine),
+                sum(x["overtime_hours"] for x in mine), sum(x["worked_min"] for x in mine))
+        got = (sm["days_present"], sm["late_count"], sm["late_min_total"], sm["early_min_total"], sm["overtime_hours"], sm["worked_min_total"])
+        if got != want:
+            wrong.append((sm["employee_name"], got, want))
+    check(f"all {len(by)} summaries equal their submitted logs (days, late count, late, early, overtime, worked)", not wrong, wrong)
+    st, resp = hq.call("POST", "/api/v1/flows/attendance_period_on_submit/run", {"event": {"name": P}})
+    eq("running the period flow again by hand adds no summary (audit F3)", len(hq.find("attendance_summary", f"attendance_period == '{P}'")), len(sums))
     st, resp = hq.verb("staff_attendance", name, "cancel")
     check("a log inside a submitted period cannot be cancelled", refused(st, resp, "sudah masuk rekap"), (st, resp))
     st, p2 = hq.create("attendance_period", {"period_from": str(y - datetime.timedelta(days=3)), "period_to": str(y), "only_outlet": DAGO})
@@ -295,7 +308,8 @@ def scenario_staff_attendance_period(api):
     check("an overlapping period for Dago is refused", refused(st, resp, "tumpang tindih"), (st, resp))
     eq("Ayu reads only her own summary", [s["employee"] for s in ayu.list("attendance_summary")], [CTX["sa_cashier_rec"]])
     eq("the Braga supervisor reads no Dago summary", [s["name"] for s in citra.list("attendance_summary") if s.get("outlet") == DAGO], [])
-    check("the Dago supervisor reads Ayu's summary", any(s["employee"] == CTX["sa_cashier_rec"] for s in bayu.list("attendance_summary")), "")
+    seen = {s["employee"] for s in bayu.list("attendance_summary")}
+    check("the Dago supervisor reads Ayu's summary (Dago), not Sinta's", CTX["sa_cashier_rec"] in seen and "USR-003" not in seen, seen)
     st, resp = hq.verb("attendance_period", P, "cancel")
     check("head office cancels the period", st == 200, (st, resp))
     eq("its summaries are marked cancelled", sorted({s["cancelled"] for s in hq.find("attendance_summary", f"attendance_period == '{P}'")}), [True])
@@ -337,5 +351,41 @@ def scenario_staff_attendance_screen(api):
         eq("absen_karyawan_saya for head office counts only Rina's own days, not every log she may read", num(ws["days_present"]), len(own))
 
 
+def scenario_staff_attendance_audit(api):
+    """Audit 2026-11-19: a log's employee, outlet and day are set once and head office cannot amend (F1); an outlet
+    supervisor's own overtime or far clock-in waits for head office, not for themselves (F2); the employee role reads only
+    its own outlets (F5)."""
+    got = members("hq", "sa_sup_dago", "sa_kitchen", "staff_dago")
+    if not got:
+        return
+    hq, bayu, dimas, yusuf = got
+    t = CTX.get("sa_today") or kernel_today()
+    d = t - datetime.timedelta(days=12)
+    st, lg = yusuf.create("staff_attendance", {"work_date": str(d), "in_pos": pos(DAGO, 10, 0)})
+    if check("Yusuf starts a log", st == 201, (st, lg)):
+        n = lg["name"]
+        yusuf.patch("staff_attendance", n, {"in_photo": photo(yusuf, n)})
+        for field, value in (("employee", CTX["sa_kitchen_rec"]), ("outlet", BRAGA), ("work_date", str(d - datetime.timedelta(days=1)))):
+            st, resp = hq.patch("staff_attendance", n, {field: value})
+            check(f"head office cannot move Yusuf's log to another {field} (set_once)", st in (403, 409, 422)
+                  and (hq.get("staff_attendance", n) or {}).get(field) == lg.get(field), (st, resp))
+        st, resp = hq.call("DELETE", f"/api/v1/r/staff_attendance/{Api.q(n)}")
+        check("head office deletes the stuck draft instead", st in (200, 204), (st, resp))
+    st, name = full_day(bayu, t - datetime.timedelta(days=1), DAGO, north=3000, reason="Rapat di kantor pusat", overtime_hours=4)
+    if check("Bayu (Dago supervisor) logs yesterday 3 km away with 4 h overtime", st == 200, (st, name)):
+        st, resp = bayu.verb("staff_attendance", name, "submit")
+        pend = [a for a in (resp or {}).get("approvals", []) if a.get("state") == "pending"] if isinstance(resp, dict) else []
+        check("his own log waits for head office, not for an outlet supervisor (202)",
+              st == 202 and sorted(a.get("policy") for a in pend) == ["supervisor_outside_site", "supervisor_overtime"]
+              and all(a.get("approvers") == ["head_office"] for a in pend), (st, resp))
+        for a in pend:
+            st, resp = decide(bayu, a["id"])
+            check(f"Bayu cannot approve his own {a.get('policy')} (403)", st == 403, (st, resp))
+        for a in pend:
+            st, resp = decide(hq, a["id"])
+        check("head office approves: Bayu's day counts", (rec(resp) or {}).get("docstatus") == 1, (st, resp))
+    eq("the employee role reads only the outlets it works at", sorted(o["name"] for o in dimas.list("outlet")), [DAGO])
+
+
 SCENARIOS = {"demo-fnb": [scenario_staff_attendance_clock, scenario_staff_attendance_held, scenario_staff_attendance_late,
-                          scenario_staff_attendance_period, scenario_staff_attendance_screen]}
+                          scenario_staff_attendance_period, scenario_staff_attendance_audit, scenario_staff_attendance_screen]}

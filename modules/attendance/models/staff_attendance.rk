@@ -33,7 +33,9 @@ permissions:
   # The outlet supervisor reads and prints the logs of their outlets and decides the held submits; they clock in too.
   - {role: outlet_supervisor, read: true, print: true}
   - {role: outlet_supervisor, create: true, write: true, submit: true, if: "employee == user.name"}
-  - {role: head_office, read: true, create: true, write: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  # No amend: a wrong log is cancelled and replaced by a manual log, so a measured clock-in, position and selfie can
+  # never be carried over to another employee, outlet or day (audit 2026-11-19 F1). Delete removes a stuck draft.
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, export: true, print: true}
 fields:
   # The member's own employee record (contract 0056). Rule employee_self: only head office names someone else.
   - name: employee
@@ -43,6 +45,8 @@ fields:
     required: true
     in_list: true
     default: user.name
+    # set once: the position and selfie of a log can never be moved to another person (audit 2026-11-19 F1)
+    set_once: true
   - name: employee_name
     type: data
     label: {id: Nama}
@@ -56,12 +60,14 @@ fields:
     required: true
     in_list: true
     default: "user.outlets.size() > 0 ? user.outlets[0] : ''"
+    set_once: true
   - name: work_date
     type: date
     label: {id: Tanggal}
     required: true
     default: today()
     in_list: true
+    set_once: true
   # phone: the clock screen; manual: a head office correction (no selfie needed, always held: it has no position).
   # kiosk is kept for the shared outlet tablet (contract 0048), not accepted yet (rule source_allowed).
   - name: source
@@ -217,21 +223,38 @@ rules:
 # Held for the outlet supervisor or head office (contract 0007); the owner may always approve. The verb then runs as the
 # employee who asked.
 approvals:
+  # An outlet supervisor's own log goes to head office, never to themselves or a fellow supervisor (audit 2026-11-19 F2).
+  # Head office and the owner are approvers of their own logs (contract 0007): their corrections count at once.
   - name: outside_site
     on: submit
-    when: outside_site
+    when: "outside_site && !('outlet_supervisor' in user.roles)"
     approvers: [outlet_supervisor, head_office]
     label: {id: Absen di luar radius outlet, en: Clock-in outside the outlet radius}
   - name: late_entry
     on: submit
-    when: days_between(work_date, today()) > 1
+    when: "days_between(work_date, today()) > 1 && !('outlet_supervisor' in user.roles)"
     approvers: [outlet_supervisor, head_office]
     label: {id: Absen diisi lebih dari sehari kemudian, en: Attendance entered more than a day late}
   - name: overtime
     on: submit
-    when: overtime_hours > 0
+    when: "overtime_hours > 0 && !('outlet_supervisor' in user.roles)"
     approvers: [outlet_supervisor, head_office]
     label: {id: Lembur, en: Overtime}
+  - name: supervisor_outside_site
+    on: submit
+    when: "outside_site && 'outlet_supervisor' in user.roles"
+    approvers: [head_office]
+    label: {id: Absen kepala outlet di luar radius, en: Outlet supervisor clock-in outside the radius}
+  - name: supervisor_late_entry
+    on: submit
+    when: "days_between(work_date, today()) > 1 && 'outlet_supervisor' in user.roles"
+    approvers: [head_office]
+    label: {id: Absen kepala outlet diisi terlambat, en: Outlet supervisor attendance entered late}
+  - name: supervisor_overtime
+    on: submit
+    when: "overtime_hours > 0 && 'outlet_supervisor' in user.roles"
+    approvers: [head_office]
+    label: {id: Lembur kepala outlet, en: Outlet supervisor overtime}
 views:
   list:
     columns: [name, employee_name, outlet, work_date, clock_in, clock_out, late_min, outside_site, status]

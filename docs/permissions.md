@@ -165,11 +165,11 @@ member sees only their own logs and summaries, never a colleague's selfie or pos
 
 | Model | cashier, outlet_staff, employee | outlet_supervisor | head_office |
 | --- | --- | --- | --- |
-| staff_attendance (no delete; a held submit is decided in Persetujuan) | r c w s (own) | r p (own outlets); c w s (own) | all but d |
+| staff_attendance (staff: no delete or cancel; a held submit is decided in Persetujuan; employee, outlet and day set once) | r c w s (own) | r p (own outlets); c w s (own, held for head office) | all but amend (d: stuck drafts) |
 | attendance_period (Rekap absen karyawan; notes hidden from staff) | r (the guards read it) | r | all |
 | attendance_summary (written by the period flows only) | r (own) | r (own outlets) | r c w e p |
 | staff_attendance_guard (never stored; a flow's refusal) | c | c | c |
-| outlet | r (cashier, outlet_staff as before; employee r) | r p | as before |
+| outlet | r (cashier, outlet_staff as before; employee: own outlets only) | r p | as before |
 | user (phone, email hidden) | | r | as before |
 
 ### Courses (module courses, piece kelas_kursus)

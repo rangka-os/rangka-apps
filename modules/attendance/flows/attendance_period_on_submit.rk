@@ -7,7 +7,17 @@ label: {id: Rekap absen karyawan jadi ringkasan per karyawan}
 # Refused (the whole submit rolls back) when another submitted period overlaps the days for the same outlet or the whole
 # business. Reads in the order attendance_period, user, staff_attendance (contract 0025 locks), like the log guards.
 on: attendance_period.submitted
+# Only a real submit: a hand run (POST /flows/.../run) carries no submitted period and would summarise twice.
+if: "'docstatus' in event && event.docstatus == 1"
 steps:
+  - find: attendance_summary
+    where: attendance_period == event.name && !cancelled
+    as: done
+  - if: done != null
+    create: staff_attendance_guard
+    set:
+      reason: "'period_summarised'"
+      document: event.name
   - find: attendance_period
     where: >-
       name != event.name && docstatus == 1 && period_from <= event.period_to && period_to >= event.period_from
@@ -37,6 +47,8 @@ steps:
           attendance_period: event.name
           employee: u.name
           employee_name: u.full_name
+          # the period's outlet, else where they clocked in first; empty for a whole-business period without a log (a flow
+          # find does not load table fields, so the member's outlets in Tim cannot be read here: rangka-os follow-up)
           outlet: "event.only_outlet != '' ? event.only_outlet : (logs.exists(l, l.employee == u.name) ? logs.filter(l, l.employee == u.name)[0].outlet : '')"
           period_from: event.period_from
           period_to: event.period_to

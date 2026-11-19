@@ -23,6 +23,7 @@ fields:
       - {value: period_closed, label: {id: Periode absen sudah direkap}}
       - {value: period_overlap, label: {id: Periode rekap tumpang tindih}}
       - {value: photo_reused, label: {id: Foto absen dipakai ulang}}
+      - {value: period_summarised, label: {id: Rekap absen sudah diringkas}}
   - name: document
     type: data
     label: {id: Dokumen}
@@ -43,3 +44,7 @@ rules:
     on: save
     check: reason != 'photo_reused'
     message: {id: 'Foto ini sudah dipakai absen lain; ambil foto baru untuk absen hari ini'}
+  - name: period_summarised
+    on: save
+    check: reason != 'period_summarised'
+    message: {id: 'Rekap absen ini sudah punya ringkasan; batalkan rekapnya dulu kalau mau mengulang'}

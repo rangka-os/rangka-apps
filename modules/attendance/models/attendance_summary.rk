@@ -20,11 +20,11 @@ fields:
   - {name: attendance_period, type: link, to: attendance_period, label: {id: Rekap absen}, read_only: true, in_list: true}
   - {name: employee, type: link, to: user, label: {id: Karyawan}, read_only: true}
   - {name: employee_name, type: data, label: {id: Nama}, read_only: true, in_list: true}
-  # The period's outlet, else the outlet of the employee's first log in the period.
+  # The period's outlet, else the outlet of the employee's first log in the period (empty without a log).
   - {name: outlet, type: link, to: outlet, label: {id: Outlet}, read_only: true, in_list: true}
-  - {name: period_from, type: date, label: {id: Dari tanggal}, read_only: true, in_list: true}
-  - {name: period_to, type: date, label: {id: Sampai tanggal}, read_only: true}
-  - {name: days_present, type: int, label: {id: Hari hadir}, read_only: true, in_list: true}
+  - {name: period_from, type: date, label: {id: Periode dari}, read_only: true, in_list: true}
+  - {name: period_to, type: date, label: {id: Periode sampai}, read_only: true}
+  - {name: days_present, type: int, label: {id: Hari hadir (sah)}, read_only: true, in_list: true}
   - {name: late_count, type: int, label: {id: Kali terlambat}, read_only: true, in_list: true}
   - {name: late_min_total, type: int, label: {id: Total terlambat (menit)}, read_only: true, in_list: true}
   - {name: early_min_total, type: int, label: {id: Total pulang cepat (menit)}, read_only: true}
@@ -33,5 +33,5 @@ fields:
   - {name: cancelled, type: check, label: {id: Batal}, read_only: true, in_list: true, chip: true}
 views:
   list:
-    columns: [employee_name, outlet, period_from, days_present, late_count, late_min_total, overtime_hours, cancelled]
+    columns: [employee_name, outlet, period_from, period_to, days_present, late_min_total, overtime_hours, cancelled]
     sort: -period_from

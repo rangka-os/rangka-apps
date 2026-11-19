@@ -16,7 +16,7 @@ permissions:
   - {role: cashier, read: true}
   # module attendance: staff pick the outlet they clock in at; the outlet supervisor reads the outlets they keep
   - {role: outlet_supervisor, read: true, print: true}
-  - {role: employee, read: true}
+  - {role: employee, read: true, if: "name in user.outlets"}
 fields:
   - name: outlet_name
     type: data
