@@ -31,6 +31,7 @@ fields:
       - {value: advance_exceeded, label: {id: Potongan melebihi kasbon}}
       - {value: advance_repaid, label: {id: Kasbon sudah dipotong}}
       - {value: casual_after_permanent, label: {id: Slip tetap terakhir belum dihitung ulang}}
+      - {value: attendance_changed, label: {id: Rekap absen berubah sejak slip diisi}}
   - name: document
     type: data
     label: {id: Dokumen}
@@ -87,3 +88,7 @@ rules:
     on: save
     check: reason != 'casual_after_permanent'
     message: {id: 'Pekerja ini pegawai tetap di bulan sebelumnya tahun ini: tandai slip tetap terakhirnya sebagai masa pajak terakhir (hitung tahunan) dulu'}
+  - name: attendance_changed
+    on: save
+    check: reason != 'attendance_changed'
+    message: {id: 'Rekap absen karyawan ini berubah sejak slip diisi (dibatalkan atau diajukan ulang): centang Isi slip dari absen lagi di periode gajinya'}

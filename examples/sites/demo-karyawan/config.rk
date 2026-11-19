@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for a business paying its own staff (rangka-apps#101): a fictional bakery with a kitchen and a shop.
+# Staff clock in with absen_karyawan; karyawan_gaji turns the submitted attendance period into draft payslips (payroll
+# 2.0 internal runs, no client and no invoice) and lists the salary transfers. Not PKP. Data:
+# examples/fixtures/demo-karyawan (synthetic, made by its generate.py; NIK, names and accounts are fake).
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: CV Contoh Roti Rumahan}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: false}
+orgs:
+  roti_contoh:
+    name: CV Contoh Roti Rumahan
+    code: CRR
+    config:
+      org: {legal_name: CV Contoh Roti Rumahan}
+      tax: {pkp: false}
+apps: [karyawan_gaji, absen_karyawan]
+plan: tumbuh
+sso: {domains: [contohroti.test], required: false}
+ai: {enabled: true, auto_apply: never, approvers: [owner, finance_manager]}

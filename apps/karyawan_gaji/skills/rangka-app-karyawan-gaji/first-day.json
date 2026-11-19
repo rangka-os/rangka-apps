@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "greeting": "Ini langkah hari pertama gaji karyawan. Mulai dari daftar karyawan dan gajinya, lalu satu periode gaji percobaan.",
+  "steps": [
+    {
+      "id": "karyawan",
+      "title": "Isi karyawan dan gajinya",
+      "why": "Slip gaji menghitung BPJS dan PPh 21 dari data gaji ini.",
+      "model": "payroll_profile",
+      "done": {
+        "model": "payroll_profile",
+        "min": 1
+      },
+      "seed": "karyawan",
+      "action": "Buka data gaji"
+    },
+    {
+      "id": "absen",
+      "title": "Ajak karyawan absen dari HP",
+      "why": "Rekap absen yang sudah diajukan jadi hari hadir dan menit telat di slip gaji.",
+      "link": "members",
+      "action": "Ajak karyawan"
+    },
+    {
+      "id": "periode",
+      "title": "Buka satu periode gaji karyawan",
+      "why": "Periode menentukan tanggal potong, bulan pajak, UMK, dan tanggal bayar.",
+      "model": "payroll_run",
+      "done": {
+        "model": "payroll_run",
+        "min": 1
+      },
+      "action": "Buka periode gaji",
+      "new": true
+    },
+    {
+      "id": "slip",
+      "title": "Isi slip gaji dari absen lalu periksa",
+      "why": "Centang Isi slip dari absen di periode gaji; slip draft dibuat untuk tiap karyawan.",
+      "model": "payslip",
+      "done": {
+        "model": "payslip",
+        "min": 1
+      },
+      "action": "Buka slip gaji"
+    },
+    {
+      "id": "transfer",
+      "title": "Unduh daftar transfer gaji",
+      "why": "Gaji bersih per rekening dari slip yang sudah diajukan, siap diunggah ke transfer massal bank. Buka dasbor Transfer gaji, lalu unduh.",
+      "action": "Tandai selesai"
+    }
+  ],
+  "seed": [
+    {
+      "key": "karyawan",
+      "model": "payroll_profile",
+      "label": "Karyawan",
+      "creates": [
+        {
+          "as": "worker",
+          "model": "worker",
+          "fields": {
+            "worker_name": "name",
+            "role_title": "role",
+            "cost_day_rate": "day_wage"
+          }
+        }
+      ],
+      "refs": {
+        "worker": "worker"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "label": "Nama karyawan",
+          "type": "data",
+          "pseudo": true
+        },
+        {
+          "name": "role",
+          "label": "Jabatan",
+          "type": "data",
+          "pseudo": true
+        },
+        {
+          "name": "pay_basis",
+          "label": "Dibayar bulanan atau harian",
+          "type": "select",
+          "options": [
+            "monthly",
+            "daily"
+          ]
+        },
+        {
+          "name": "monthly_salary",
+          "label": "Gaji pokok per bulan (rupiah)",
+          "type": "currency",
+          "money": true
+        },
+        {
+          "name": "day_wage",
+          "label": "Upah per hari (rupiah)",
+          "type": "currency",
+          "money": true,
+          "pseudo": true
+        },
+        {
+          "name": "fixed_allowance",
+          "label": "Tunjangan tetap per bulan (rupiah)",
+          "type": "currency",
+          "money": true
+        }
+      ],
+      "required": [
+        "name"
+      ],
+      "max_rows": 30,
+      "hint": "Satu baris per karyawan yang pemilik sebut. Gaji per bulan masuk monthly_salary dengan pay_basis monthly; upah per hari masuk day_wage dengan pay_basis daily. Jangan menebak gaji yang tidak disebut; isi nama dan jabatan saja dan sebutkan di unclear. Uang makan atau transport per hari bukan tunjangan tetap; sebutkan di unclear. NIK, NPWP, status PTKP, dan nomor rekening tidak diminta di sini: pemilik mengisinya sendiri di data gaji.",
+      "save_requires": [
+        "pay_basis"
+      ],
+      "count_word": "karyawan"
+    }
+  ],
+  "menu": {
+    "payroll_run": "Periode gaji: tanggal potong, bulan pajak, UMK, dan tanggal bayar. Centang Isi slip dari absen untuk membuat slip draft.",
+    "payslip": "Slip gaji per karyawan: hari hadir, telat, lembur, BPJS, PPh 21, kasbon, dan gaji bersih.",
+    "payroll_close": "Tutup periode gaji setelah semua slip diajukan: totalnya dikunci.",
+    "cash_advance": "Kasbon karyawan yang dipotong dari gaji berikutnya.",
+    "worker": "Daftar karyawan yang dibayar, dengan jabatan dan upah harian.",
+    "payroll_profile": "Data gaji per karyawan: gaji pokok, tunjangan, status pajak, BPJS, dan rekening.",
+    "user": "Karyawan yang masuk ke Rangka dan absen dari HP.",
+    "attendance_period": "Rekap absen per periode; setelah diajukan jadi ringkasan per karyawan untuk slip gaji.",
+    "attendance_summary": "Ringkasan absen per karyawan: hari hadir, menit telat, dan jam lembur yang sah."
+  }
+}

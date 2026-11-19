@@ -32,7 +32,7 @@ Tests: `tests/day_one_payroll.py` against the hand-written oracle `tests/payroll
 - `run_key`: client `project:period_from` (unchanged), internal `internal:<outlet>:period_from`. Overlapping runs are
   refused per project (client) or per outlet, empty = every outlet (internal); a worker paid twice for the same days is
   refused per slip either way.
-- Slips are made by hand (or, in slice b, from the staff attendance summary). Closing an internal run only closes it:
+- Slips are made by hand or from the staff attendance summaries (below). Closing an internal run only closes it:
   no project ledger row, no invoice. With `accounting` installed the close is journalled like any close (employer
   cost to 5-1300 against wages payable, PPh 21, BPJS and kasbon).
 - The reminder reads no project for an internal run: it is ready when the period is over, it has a slip and no staff
@@ -40,6 +40,54 @@ Tests: `tests/day_one_payroll.py` against the hand-written oracle `tests/payroll
 - Onboarding by file: `worker_list` takes an optional `Email karyawan` column (links the employee record in Tim), and
   `payroll_profile_list` imports the pay data per employee number (Status PTKP as `TK/0`..`K/3`, Dasar gaji
   Bulanan/Harian, BPJS Ya/Tidak).
+
+### Slips from staff attendance (payroll 2.1, app karyawan_gaji)
+- Finance saves an internal run with **Isi slip dari absen** (`fill_from_attendance`) ticked, at create or later: flows
+  `payroll_run_fill_on_create` / `payroll_run_fill` make one draft slip (`from_fill`) per active worker with pay data
+  whose employee record (`worker.employee`) has a non-cancelled `attendance_summary` inside the run's period, of the
+  run's outlet when it names one. A daily worker needs at least one day present (a 0-day slip would leave the
+  employee's BPJS share as a negative net pay, which is refused). A run of every outlet also gets a slip for each
+  monthly worker without a summary (an owner or manager who does not clock in), except where the `projects` module is
+  installed (monthly workers there may be outsourced staff paid by client runs). The tick is cleared and `fill_note`
+  says what was done.
+- A slip made by a fill stores what the summaries said (`att_days`, `att_late`, `att_ot`). A later fill refreshes such
+  a draft when the worker's current summaries no longer add up to that snapshot or its link is not one of them (filled
+  before the attendance was submitted, a period cancelled or submitted again). Finance may still edit days, lateness or
+  overtime on the draft; a draft typed by hand is never rewritten. At submit `payslip_attendance_guard` refuses a filled
+  slip whose snapshot no longer matches the current summaries (`attendance_changed`), and a slip linking a cancelled
+  summary is refused by `attendance_still_valid`.
+- Every morning at 07:00 (before the reminder at 07:15) flow `payslip_from_attendance` runs the same fill as the system
+  for each open internal run whose period is over: new slips once (`auto_filled`), on the first morning no draft staff
+  attendance period overlaps the run and the submitted summaries reach the period's first and last day (with the
+  attendance module); on every morning after, drafts whose summaries changed are refreshed (attendance of another outlet
+  submitted late reaches them). Drafts deleted or slips cancelled are not made again; ticking again does.
+- From the summaries (summed when the period holds several): `days` = days present, `late_min_total`, `overtime_hours`,
+  and the link `attendance_summary` (the last one). Not filled: `unpaid_days` (an absence is not unpaid leave until leave
+  is recorded, rangka-apps#114: finance types it) and `overtime_days` (a summary has no count of days with overtime, so
+  without a weighted overtime rate every hour counts 2x, never less than PP 35/2021 asks, until finance enters the
+  days).
+- One slip per worker per tax month: a worker who already has a live slip in the tax month (in this run or another) gets
+  no new one. With one run per outlet, days a worker spent at a second outlet are therefore not paid by the second run;
+  `fill_note` counts these workers, and summaries straddling the period's start or end (not read). Use one run of every
+  outlet when staff move between outlets.
+- A flow's writes start no flows, so the year to date and the open kasbon are read by the fill itself, as
+  `payslip_from_recap` does. All three flows are written by `scripts/gen_payroll_fill_flows.py`.
+- Finance reads the summaries (`attendance_summary` grants `finance_manager` read in attendance 1.0.2), never the logs
+  with position and selfie. Which user's attendance pays which worker follows `worker.employee`, which head office may
+  also edit (workforce grants, unchanged).
+- A slip already submitted keeps its pay when its attendance period is cancelled later (the summaries are marked
+  cancelled, the link stays as the trail); cancel and amend the slip to correct it.
+
+### Salary transfer list (`bank_transfer_csv`)
+- Each slip carries `bank_name`, `bank_account`, `account_holder` (the worker's name), `pay_date` and `transfer_note`
+  (`Gaji YYYY-MM`) from the pay data and the run, frozen at submit. A slip without an account number is left out of the
+  list and counted on dashboard `gaji_ringkas` (no submit warning: cash pay and client runs stay as they are).
+- The file is the payslip list export (rangka-os contract 0024), one row per submitted slip with an account:
+  `GET /api/v1/export/r/payslip?filter=payroll_run == '<run>' && docstatus == 1 && bank_account != '' && net_pay > 0&columns=bank_account,account_holder,bank_name,net_pay,transfer_note&sort=account_holder`,
+  CSV (add `sep=semicolon` for an Indonesian Excel) or `format=xlsx` (account numbers stay text, leading zeros kept).
+  Needs the `export` grant on payslip (finance). Generic columns for a bank's bulk transfer upload; no bank API and no
+  bank-specific layout. Dashboard `transfer_gaji` shows the same rows by pay date; `gaji_ringkas` counts slips without
+  an account.
 
 Every morning flow `payroll_reminder` tells finance and the owner which open run is ready to process (once per run) and
 which pay date is three days away or less, with what is still missing. It runs nothing: see [automation.md](automation.md).
@@ -110,7 +158,7 @@ which pay date is three days away or less, with what is still missing. It runs n
 - A flow cannot loop or submit: one slip per recap, slips submitted one by one, the invoice is a draft.
 - Submittable records are renamed from DRAFT- at submit without their links following, so the run (linked by slips)
   is not submittable and is closed by its own document.
-- No bank transfer file yet: the print engine writes HTML and XML only (rangka-os contract 0029); a CSV output for
-  `bank_transfer_csv` is a kernel follow-up.
+- The transfer list is a list export, not a print (prints are HTML and XML only, contract 0029). The web app has no
+  download button yet (contract 0024 §7, rangka-os); until then the file comes from the export URL above.
 - No extra BPJS family members, no gross-up. Slips are submitted one by one (a bulk submit needs the web app: card in the
   board).

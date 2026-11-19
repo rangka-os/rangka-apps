@@ -3223,8 +3223,9 @@ SITE_MEMBERS = {
 
 def money_bodies(api, site):
     """A valid create body per money model of the site (fixture names), for the allowed/forbidden create calls."""
-    item = {"demo-fnb": "BRG-0001", "demo-jasa": "BRG-0001"}.get(site) or api.list("item")[0]["name"]
-    customer = "CUST-0001" if site in ("demo-jasa", "demo-grosir") else (api.list("customer") or [{"name": ""}])[0]["name"]
+    # a site without items or customers (demo-karyawan) has no money model that needs them
+    item = {"demo-fnb": "BRG-0001", "demo-jasa": "BRG-0001"}.get(site) or ((api.list("item") if installed(api, "item") else []) or [{"name": ""}])[0]["name"]
+    customer = "CUST-0001" if site in ("demo-jasa", "demo-grosir") else ((api.list("customer") if installed(api, "customer") else []) or [{"name": ""}])[0]["name"]
     vendor = "VND-0002" if site != "kopi-senja" else ""
     outlet = {"outlet": DAGO} if site in ("demo-fnb", "demo-ritel", "demo-produksi") else {}
     b = {
@@ -5910,6 +5911,7 @@ import day_one_staff  # noqa: E402
 import day_one_automation  # noqa: E402
 import day_one_staff_attendance  # noqa: E402
 import day_one_promotions  # noqa: E402
+import day_one_karyawan  # noqa: E402
 import day_one_fixed_assets  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
@@ -5932,6 +5934,7 @@ day_one_staff.bind(sys.modules[__name__])
 day_one_automation.bind(sys.modules[__name__])
 day_one_staff_attendance.bind(sys.modules[__name__])   # also adds the demo-fnb members of outlet attendance
 day_one_promotions.bind(sys.modules[__name__])   # after day_one_pos and day_one_kitchen (their members)
+day_one_karyawan.bind(sys.modules[__name__])   # also registers demo-karyawan (orgs, members, setup)
 day_one_fixed_assets.bind(sys.modules[__name__])
 
 SCENARIOS = {
@@ -5952,6 +5955,7 @@ SCENARIOS = {
     "demo-kepingan-keuangan": day_one_keuangan.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
 SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS
+SCENARIOS["demo-karyawan"] = day_one_karyawan.SCENARIOS + [scenario_permissions]
 # module promotions on demo-jasa: the invoice promo as a new line's default discount, before the permission matrix
 _i = SCENARIOS["demo-jasa"].index(scenario_permissions)
 SCENARIOS["demo-jasa"][_i:_i] = day_one_promotions.SCENARIOS_JASA

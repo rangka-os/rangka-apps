@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/features.json
+# The staff bundle is listed free with the staff limit (users) in this demo; its price position in Juragan is Dede's
+# call (drafts in the workspace), not this file's.
+plans:
+  - name: mulai
+    label: {id: Mulai, en: Starter}
+    apps: [karyawan_gaji, absen_karyawan]
+    capabilities: [realtime, queue, scheduler, files, search, notify_email, api]
+    limits: {users: 5, outlets: 1, storage_mb: 1024, ai_credits_month: 200}
+  - name: tumbuh
+    label: {id: Tumbuh, en: Growth}
+    extends: mulai
+    apps: [karyawan_gaji, absen_karyawan]
+    capabilities: [realtime, queue, scheduler, files, search, notify_email, notify_whatsapp, api, mcp, ai, sso]
+    limits: {users: 15, outlets: 5, storage_mb: 10240, ai_credits_month: 2000}
