@@ -39,7 +39,7 @@ fields:
     type: link
     to: customer
     label: {id: Klien}
-    default: project.customer
+    default: "app_installed('projects') && project != '' ? project.customer : ''"
     read_only: true
     depends_on: run_kind == 'client'
   # Cost centre of an internal run: the outlet whose staff it pays (empty = every outlet).
@@ -203,7 +203,7 @@ rules:
   # project is locked by locked_by_slips.
   - name: project_matches_kind
     on: save
-    check: "run_kind == 'client' ? project != '' : project == ''"
+    check: "run_kind == 'client' ? app_installed('projects') && project != '' : project == ''"
     message: {id: 'Periode kontrak klien butuh proyek; periode karyawan sendiri tanpa proyek'}
   # An internal run bills nobody; an outlet is the cost centre of an internal run only.
   - name: internal_not_billed
@@ -235,8 +235,8 @@ rules:
         && lock_slip.run_umk == umk && lock_slip.run_jkk_rate == jkk_rate && lock_slip.run_jp_cap == jp_wage_cap
         && lock_slip.run_kes_cap == kes_wage_cap && lock_slip.run_workdays == workdays_per_week
         && lock_slip.run_period_from == period_from && lock_slip.run_period_to == period_to
-        && lock_slip.run_late_rate == late_rate_per_min)
-    message: {id: 'Periode sudah punya slip diajukan: jenis, proyek, periode, bulan pajak, UMK dan tarif terkunci'}
+        && lock_slip.run_late_rate == late_rate_per_min && lock_slip.run_outlet == outlet)
+    message: {id: 'Periode sudah punya slip diajukan: jenis, proyek, outlet, periode, bulan pajak, UMK dan tarif terkunci'}
   - name: locked_by_close
     on: save
     check: >-

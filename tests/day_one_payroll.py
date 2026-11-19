@@ -831,8 +831,8 @@ def scenario_ppn_exclude_finance(api):
 
 def scenario_payroll_internal(api):
     """Payroll 2.0, an internal run (the firm's own staff): no project and no client invoice. Two monthly employees in
-    March 2032, one with 2 unpaid days whose cut pay falls below the UMK (BPJS base stays at the UMK), one with 2 unpaid
-    days and 45 minutes late at 1.000 a minute. The close books no project margin row and drafts no invoice; the
+    March 2032, one with 2 unpaid days whose cut pay falls below the UMK (the BPJS base stays the contract salary), one
+    with 2 unpaid days and 45 minutes late at 1.000 a minute. The close books no project margin row and drafts no invoice; the
     accounting journal of the close balances. Hand-checked amounts are written out next to the oracle's."""
     fm, pa = CTX.get("fm"), CTX.get("pa")
     if not (fm and pa):
@@ -884,15 +884,15 @@ def scenario_payroll_internal(api):
     w2 = oracle.slip({"pay_basis": "monthly", "monthly_salary": 8_000_000, "days": 23, "unpaid_days": 2, "late_min": 45, "ptkp": "tk0"}, o)
     compare_slip("6.000.000, 2 unpaid days", subs[0], w1)
     compare_slip("8.000.000, 2 unpaid days, 45 minutes late", subs[1], w2)
-    # by hand: 6.000.000 x 2 / 25 = 480.000 off; 5.520.000 is below the UMK 5.600.000, so BPJS on 5.600.000:
-    # JKK 13.440 + JKM 16.800 + Kesehatan 4% 224.000 -> gross 5.774.240, TER A 0,5% = 28.871; employee BPJS 2% + 1% + 1%
-    # of 5.600.000 = 224.000; net 5.520.000 - 224.000 - 28.871 = 5.267.129
-    eq("by hand: 480.000 cut, BPJS base at the UMK, PPh 21 28.871, net 5.267.129",
+    # by hand: 6.000.000 x 2 / 25 = 480.000 off the pay (5.520.000, below the UMK); BPJS stays on the contract 6.000.000
+    # (audit 101a F1): JKK 0,24% 14.400 + JKM 18.000 + Kesehatan 4% 240.000 -> gross 5.792.400, TER A 0,5% = 28.962;
+    # employee BPJS 2% + 1% + 1% of 6.000.000 = 240.000; net 5.520.000 - 240.000 - 28.962 = 5.251.038
+    eq("by hand: 480.000 cut, BPJS base the contract salary, PPh 21 28.962, net 5.251.038",
        tuple(subs[0].get(f) for f in ("unpaid_deduction", "base_pay", "bpjs_base", "gross_taxable", "pph21", "net_pay")),
-       (480_000, 5_520_000, 5_600_000, 5_774_240, 28_871, 5_267_129))
-    # 8.000.000 x 2 / 25 = 640.000 off; 45 x 1.000 = 45.000 late, off the gross but not the BPJS base (7.360.000)
-    eq("by hand: 640.000 cut, 45.000 late, BPJS base 7.360.000, gross paid 7.315.000",
-       tuple(subs[1].get(f) for f in ("unpaid_deduction", "late_deduction", "bpjs_base", "cash_gross")), (640_000, 45_000, 7_360_000, 7_315_000))
+       (480_000, 5_520_000, 6_000_000, 5_792_400, 28_962, 5_251_038))
+    # 8.000.000 x 2 / 25 = 640.000 off; 45 x 1.000 = 45.000 late, both off the pay but not the BPJS base (8.000.000)
+    eq("by hand: 640.000 cut, 45.000 late, BPJS base 8.000.000, gross paid 7.315.000",
+       tuple(subs[1].get(f) for f in ("unpaid_deduction", "late_deduction", "bpjs_base", "cash_gross")), (640_000, 45_000, 8_000_000, 7_315_000))
     check_print("internal slip", fm, "payslip", subs[1].get("name", "x"), "payslip",
                 ["Tidak dibayar 2 hari", "Potongan telat 45 menit", "Gaji pokok sebulan"])
     st, r = fm.patch("payroll_run", R, {"late_rate_per_min": 2000})
@@ -934,6 +934,17 @@ def scenario_payroll_internal(api):
        ("tk1", "monthly", "permanent", 5_250_000, 250_000, True, False, True, "BCA", "1234567890"))
     eq("KRY-912: K/0, daily casual, 25.000 a day present, BPJS TK by default, no Kesehatan",
        tuple(p2.get(f) for f in ("ptkp_status", "pay_basis", "employment", "daily_allowance", "bpjs_tk", "bpjs_kes")), ("k0", "daily", "casual", 25_000, True, False))
+    eq("a NIK gives a valid tax number", (p1.get("has_tax_id"), p2.get("has_tax_id")), (True, True))
+    # audit 101a F2/F3: an unknown pay basis (or an empty one) is a row error, never a silent daily; no NIK or NPWP = no tax id
+    st, w3 = api.create("worker", {"worker_name": "Rudi Contoh", "employee_no": "KRY-913", "active": True})
+    st, w4 = api.create("worker", {"worker_name": "Lina Contoh", "employee_no": "KRY-914", "active": True})
+    head = "Nomor karyawan,Status PTKP,Dasar gaji,Gaji pokok,NIK,NPWP\n"
+    for bad in ("Mingguan", ""):
+        st, pv = fm.upload("/api/v1/imports/payroll_profile_list", {}, "salah.csv", (head + f"KRY-913,TK/0,{bad},6000000,9999000000000913,\n").encode())
+        check(f"Dasar gaji {bad or '(empty)'!r} is a row error, nothing to commit", st == 200 and bool((pv or {}).get("errors")), (st, pv))
+    pv, c = import_commit(fm, "payroll_profile_list", "monthly.csv", (head + "KRY-914,TK/0,Monthly,6000000,,\n").encode(), label="English pay basis, no tax number")
+    p4 = (fm.find("payroll_profile", f"worker == '{(w4 or {}).get('name', 'x')}'") or [{}])[0]
+    eq("Monthly is monthly; without NIK or NPWP the profile has no valid tax number (PPh 21 120%)", (p4.get("pay_basis"), p4.get("has_tax_id")), ("monthly", False))
 
 
 SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale, scenario_payroll_status_change, scenario_payroll_low_r2, scenario_ppn_fee_only, scenario_ppn_exclude_finance, scenario_payroll_internal]

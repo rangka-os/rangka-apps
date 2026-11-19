@@ -95,11 +95,14 @@ which pay date is three days away or less, with what is still missing. It runs n
   start of period.
 - Fee only: the margin row takes the recaps' labour cost back off the project (the client funds the wages).
 - Unpaid days (`unpaid_days`, monthly pay only): each costs salary / 25 (6-day week) or / 21 (5-day week), rounded to
-  the rupiah, taken off the base pay, so the BPJS base (still never below the UMK) and PPh 21 follow; the overtime hour
-  and THR keep the full month's wage. A daily worker is paid for days present, so the field stays 0.
+  the rupiah, taken off the base pay, so PPh 21 is withheld on what is paid. The BPJS base stays the contractual wage
+  (salary + fixed allowance, never below the UMK: upah pokok + tunjangan tetap of PP 44/2015 and Perpres 82/2018), and
+  the overtime hour and THR keep the full month's wage. A daily worker is paid for days present, so the field stays 0.
 - Lateness (`late_min_total` x the run's `late_rate_per_min`, off by default at 0): a pay cut off the cash gross, so PPh
   21 is withheld on less; the BPJS base stays the contractual wage. The rate is locked with the other run rates once a
-  slip is submitted.
+  slip is submitted. A slip whose lateness takes more than half the base pay is warned at submit (PP 36/2021 Pasal 65).
+- `payroll_profile_list`: Dasar gaji must be Bulanan/Harian (or Monthly/Daily), anything else is a row error; a row
+  without NIK and NPWP gets no valid tax number.
 
 ## Limits
 - The client invoice is found by the close's and the run's numbers in its notes (an invoice cannot link a module it

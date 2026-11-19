@@ -35,6 +35,7 @@ fields:
   - {name: run_period_from, type: date, label: {id: Periode dari}, hidden: true, compute: payroll_run.period_from}
   - {name: run_period_to, type: date, label: {id: Periode sampai}, hidden: true, compute: payroll_run.period_to}
   - {name: run_late_rate, type: currency, label: {id: Potongan telat per menit periode}, hidden: true, compute: payroll_run.late_rate_per_min}
+  - {name: run_outlet, type: data, label: {id: Outlet periode}, hidden: true, compute: payroll_run.outlet}
   - name: worker
     type: link
     to: worker
@@ -83,7 +84,9 @@ fields:
   - {name: days, type: float, label: {id: Hari hadir}, default: '0', in_list: true}
   # Days a monthly employee is not paid for (absent without leave, unpaid leave), typed by finance or filled from the
   # attendance summary. Each costs one day of the monthly salary (salary / 25, or / 21 in a five-day week), taken off
-  # the base pay, so the BPJS base (never below the UMK) and PPh 21 follow. A daily worker is paid for days present.
+  # the base pay, so PPh 21 is withheld on what is paid. The BPJS base stays the contractual wage (salary + fixed
+  # allowance, never below the UMK): PP 44/2015, 46/2015, 45/2015 and Perpres 82/2018 take upah pokok + tunjangan
+  # tetap as reported, not the month's cut pay (audit 101a F1). A daily worker is paid for days present.
   - {name: unpaid_days, type: float, label: {id: Hari tidak dibayar, en: Unpaid days}, default: '0'}
   # Minutes late in the period (attendance summary, or typed). Deducted only when the run sets a rate per minute.
   - {name: late_min_total, type: int, label: {id: Total menit telat, en: Minutes late}, default: '0'}
@@ -181,11 +184,12 @@ fields:
     label: {id: 'Penghasilan (gaji, tunjangan, lembur, THR)'}
     compute: base_pay + overtime_pay + holiday_overtime_pay + allowance_pay + thr_pay + other_income - late_deduction
     in_list: true
-  # BPJS wage: pokok + tunjangan tetap, never below the UMK of the site.
+  # BPJS wage: pokok + tunjangan tetap, never below the UMK of the site. A monthly salary counts whole: unpaid days and
+  # lateness cut the pay, not the reported wage (audit 101a F1).
   - name: bpjs_base
     type: currency
     label: {id: Dasar upah BPJS}
-    compute: "base_pay + fixed_allowance > payroll_run.umk ? base_pay + fixed_allowance : payroll_run.umk"
+    compute: "(pay_basis == 'monthly' ? monthly_salary : base_pay) + fixed_allowance > payroll_run.umk ? (pay_basis == 'monthly' ? monthly_salary : base_pay) + fixed_allowance : payroll_run.umk"
   - name: below_umk
     type: check
     label: {id: Upah di bawah UMK}
@@ -358,6 +362,12 @@ rules:
     level: warn
     check: other_deduction == 0 || cash_advance != '' || open_advance == ''
     message: {id: 'Pekerja ini punya kasbon belum lunas, tapi potongannya tidak ditautkan ke kasbon itu'}
+  # PP 36/2021 Pasal 65: deductions treated as fines stay within 50% of the pay of the period (audit 101a F6).
+  - name: late_within_half
+    on: submit
+    level: warn
+    check: late_deduction * 2 <= base_pay
+    message: {id: 'Potongan telat lebih dari separuh gaji pokok periode ini'}
   - name: umk_warning
     on: submit
     level: warn

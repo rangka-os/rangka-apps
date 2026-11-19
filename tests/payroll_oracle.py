@@ -72,8 +72,9 @@ def slip(p, run, ytd=None):
     earlier submitted slips this year.
 
     Payroll 2.0: a monthly salary loses one day's pay (salary / 25, or / 21 in a five-day week) per unpaid day, off the
-    base pay, so the BPJS base (floored at the UMK) and PPh 21 follow; the overtime hour and THR keep the full month's
-    wage. Lateness costs late_min x the run's rate per minute, off the cash gross (taxed less, BPJS base unchanged)."""
+    base pay, so PPh 21 is withheld on what is paid; the BPJS base stays the contractual wage (upah pokok + tunjangan
+    tetap, PP 44/2015 and Perpres 82/2018), and the overtime hour and THR keep the full month's wage. Lateness costs
+    late_min x the run's rate per minute, off the cash gross (taxed less, BPJS base unchanged)."""
     ytd = ytd or {"gross": 0, "pph21": 0, "pension": 0, "months": 0}
     monthly = p.get("pay_basis") == "monthly"
     days = p.get("days", 0)
@@ -102,7 +103,7 @@ def slip(p, run, ytd=None):
     thr_m = p.get("thr_months", 0)
     thr = rnd(Decimal(month_wage) * min(thr_m, 12) / 12) if thr_m >= 1 else 0
     cash = base + ot + hot + allow + thr + p.get("other_income", 0) - late
-    bpjs_base = max(base + fixed, run["umk"])
+    bpjs_base = max((p["monthly_salary"] if monthly else base) + fixed, run["umk"])
     jp_base, kes_base = min(bpjs_base, run["jp_cap"]), min(bpjs_base, run["kes_cap"])
     tk, jp, kes = p.get("tk", True), p.get("jp", True), p.get("kes", True)
     c = {
