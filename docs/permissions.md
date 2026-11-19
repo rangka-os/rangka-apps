@@ -281,7 +281,6 @@ rows live in `tests/day_one_fixed_assets.py`.
 | asset_bill_line (written by the bill's flow only; every field read-only) | r c | r c | r c | none |
 | asset_guard (never stored; a flow's refusal) | c | c | c | none |
 
-
 ### Appointments (module appointments, piece janji_temu)
 
 rangka-apps#118 v1. The front desk (cashier, head office, sales manager) books; only the roles that make invoices
