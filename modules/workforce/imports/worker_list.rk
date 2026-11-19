@@ -3,7 +3,9 @@
 # the worker afterwards (a table field, not part of this file). Name plus employee number is the duplicate key, so
 # workers without a number can share a file. Tarif harian is the selling rate per day; Upah harian (pay per day) and
 # the overtime rates per hour are optional columns, so a file in the older template still imports: a worker without
-# pay is flagged on the project margin dashboard instead of counting as zero cost.
+# pay is flagged on the project margin dashboard instead of counting as zero cost. Email karyawan (optional) links the
+# worker to the employee record (Karyawan in Tim, contract 0056) with that email, for staff who sign in to clock in or
+# read their payslips; left empty, the worker is not linked.
 name: worker_list
 label: {id: Daftar tenaga kerja, en: Worker list}
 model: worker
@@ -19,3 +21,4 @@ map:
   cost_day_rate: "='Upah harian' in row && row['Upah harian'] != '' ? row['Upah harian'] : '0'"
   overtime_rate: "='Tarif lembur per jam' in row && row['Tarif lembur per jam'] != '' ? row['Tarif lembur per jam'] : '0'"
   overtime_cost_rate: "='Upah lembur per jam' in row && row['Upah lembur per jam'] != '' ? row['Upah lembur per jam'] : '0'"
+  employee: {value: "='Email karyawan' in row ? row['Email karyawan'].trim().lowerAscii() : ''", match: email}

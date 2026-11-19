@@ -131,6 +131,9 @@ Sales and purchasing have no access.
 | cash_advance (kasbon: Dr Piutang karyawan / Cr Kas or Bank; repaid through payslip other_deduction) | | all | | r |
 | payroll_guard (never stored; a flow's refusal, also inside a recap cancel and an invoice save) | c | c | | c |
 
+Payroll 2.0 internal runs (own staff, no project) use the same grants: finance makes, submits and closes them; the
+project admin's read and draft-create grants matter only for client runs.
+
 ### Field attendance (module projects, in jasa_proyek)
 
 Two roles with their files in the `projects` module, since their row scopes name its fields: `field_worker` (Pekerja

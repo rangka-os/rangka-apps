@@ -24,12 +24,15 @@
 <table class="items">
   <thead><tr><th>Penghasilan</th><th class="num">Rp</th></tr></thead>
   <tbody>
-  <tr><td>Gaji pokok</td><td class="num">{{rupiah .Doc.base_pay}}</td></tr>
+  {{if .Doc.unpaid_deduction}}<tr><td>Gaji pokok sebulan</td><td class="num">{{rupiah .Doc.monthly_salary}}</td></tr>
+  <tr><td>Tidak dibayar {{.Doc.unpaid_days}} hari</td><td class="num">-{{rupiah .Doc.unpaid_deduction}}</td></tr>
+  {{else}}<tr><td>Gaji pokok</td><td class="num">{{rupiah .Doc.base_pay}}</td></tr>{{end}}
   {{if .Doc.allowance_pay}}<tr><td>Tunjangan</td><td class="num">{{rupiah .Doc.allowance_pay}}</td></tr>{{end}}
   {{if .Doc.overtime_pay}}<tr><td>Lembur</td><td class="num">{{rupiah .Doc.overtime_pay}}</td></tr>{{end}}
   {{if .Doc.holiday_overtime_pay}}<tr><td>Lembur hari libur ({{.Doc.holiday_overtime_days}} hari)</td><td class="num">{{rupiah .Doc.holiday_overtime_pay}}</td></tr>{{end}}
   {{if .Doc.thr_pay}}<tr><td>THR</td><td class="num">{{rupiah .Doc.thr_pay}}</td></tr>{{end}}
   {{if .Doc.other_income}}<tr><td>Insentif</td><td class="num">{{rupiah .Doc.other_income}}</td></tr>{{end}}
+  {{if .Doc.late_deduction}}<tr><td>Potongan telat {{.Doc.late_min_total}} menit</td><td class="num">-{{rupiah .Doc.late_deduction}}</td></tr>{{end}}
   <tr class="total"><td>Jumlah penghasilan</td><td class="num">{{rupiah .Doc.cash_gross}}</td></tr>
   </tbody>
 </table>

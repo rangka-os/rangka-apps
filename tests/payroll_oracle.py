@@ -67,14 +67,23 @@ def pasal17(pkp):
 
 def slip(p, run, ytd=None):
     """p: the worker's month (pay_basis, days, day_rate, monthly_salary, fixed_allowance, daily_allowance, overtime_hours,
-    overtime_days, overtime_rate, thr_months, other_income, other_deduction, ptkp, has_tax_id, tk, jp, kes, last_month);
-    run: umk, jkk, jp_cap, kes_cap, workdays; ytd: gross, pph21, pension, months of earlier submitted slips this year."""
+    overtime_days, overtime_rate, thr_months, other_income, other_deduction, ptkp, has_tax_id, tk, jp, kes, last_month,
+    unpaid_days, late_min); run: umk, jkk, jp_cap, kes_cap, workdays, late_rate; ytd: gross, pph21, pension, months of
+    earlier submitted slips this year.
+
+    Payroll 2.0: a monthly salary loses one day's pay (salary / 25, or / 21 in a five-day week) per unpaid day, off the
+    base pay, so PPh 21 is withheld on what is paid; the BPJS base stays the contractual wage (upah pokok + tunjangan
+    tetap, PP 44/2015 and Perpres 82/2018), and the overtime hour and THR keep the full month's wage. Lateness costs
+    late_min x the run's rate per minute, off the cash gross (taxed less, BPJS base unchanged)."""
     ytd = ytd or {"gross": 0, "pph21": 0, "pension": 0, "months": 0}
     monthly = p.get("pay_basis") == "monthly"
     days = p.get("days", 0)
-    base = p["monthly_salary"] if monthly else rnd(days * p["day_rate"])
+    month_days = 21 if run.get("workdays", 6) == 5 else 25
+    unpaid = rnd(Decimal(p["monthly_salary"]) * Decimal(str(p.get("unpaid_days", 0))) / month_days) if monthly else 0
+    base = p["monthly_salary"] - unpaid if monthly else rnd(days * p["day_rate"])
+    late = rnd(p.get("late_min", 0) * run.get("late_rate", 0))
     fixed = p.get("fixed_allowance", 0)
-    month_wage = (p["monthly_salary"] if monthly else p["day_rate"] * (21 if run.get("workdays", 6) == 5 else 25)) + fixed
+    month_wage = (p["monthly_salary"] if monthly else p["day_rate"] * month_days) + fixed
     oh, od = p.get("overtime_hours", 0), p.get("overtime_days", 0)
     if p.get("overtime_rate", 0) > 0:
         ot = rnd(oh * p["overtime_rate"])
@@ -93,8 +102,8 @@ def slip(p, run, ytd=None):
     allow = fixed + rnd(days * p.get("daily_allowance", 0))
     thr_m = p.get("thr_months", 0)
     thr = rnd(Decimal(month_wage) * min(thr_m, 12) / 12) if thr_m >= 1 else 0
-    cash = base + ot + hot + allow + thr + p.get("other_income", 0)
-    bpjs_base = max(base + fixed, run["umk"])
+    cash = base + ot + hot + allow + thr + p.get("other_income", 0) - late
+    bpjs_base = max((p["monthly_salary"] if monthly else base) + fixed, run["umk"])
     jp_base, kes_base = min(bpjs_base, run["jp_cap"]), min(bpjs_base, run["kes_cap"])
     tk, jp, kes = p.get("tk", True), p.get("jp", True), p.get("kes", True)
     c = {
@@ -131,7 +140,7 @@ def slip(p, run, ytd=None):
         pph = floor(Decimal(gross) * ter_rate(status, gross) / 100 * surcharge)
     ee = c["jht_ee"] + c["jp_ee"] + c["kes_ee"]
     er = c["jkk"] + c["jkm"] + c["jht_er"] + c["jp_er"] + c["kes_er"]
-    return dict(c, base=base, overtime=ot, holiday_overtime=hot, allowance=allow, thr=thr, cash_gross=cash, bpjs_base=bpjs_base, gross_taxable=gross,
+    return dict(c, unpaid=unpaid, late=late, base=base, overtime=ot, holiday_overtime=hot, allowance=allow, thr=thr, cash_gross=cash, bpjs_base=bpjs_base, gross_taxable=gross,
                 pph21=pph, net_pay=cash - ee - pph - p.get("other_deduction", 0), employer_bpjs=er, employer_cost=cash + er,
                 bpjs_tk=c["jkk"] + c["jkm"] + c["jht_er"] + c["jht_ee"] + c["jp_er"] + c["jp_ee"], bpjs_kes=c["kes_er"] + c["kes_ee"],
                 pension=c["jht_ee"] + c["jp_ee"])
