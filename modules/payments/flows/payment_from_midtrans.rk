@@ -4,12 +4,15 @@
 # DOKU and Xendit flows do (payment_from_xendit_qr holds the reasoning). The kernel checks the notification's
 # signature_key before this runs (rangka-os contract 0002, body-field signatures), so a forged notification never
 # starts it.
-# Midtrans signs only the order id, the status code and the gross amount. The connector therefore builds everything
-# this flow acts on from those three: gateway_ref is the order id (one Midtrans transaction per order id), external_id
-# is the invoice number in it (an order id of a second or later attempt ends in ~2 ... ~9), paid_amount is the gross
-# amount (a text with two decimals) and paid needs status code 200. A resent notification whose unsigned fields were
-# changed (the status text, the transaction id, the times) still carries the same gateway_ref, so it finds the payment
-# it already made.
+# Midtrans signs only the order id, the status code and the gross amount, so the connector confirms every
+# notification with Midtrans (GET status) before this runs: paid, the status and the channel come from Midtrans's own
+# answer, and paid also needs it to name the same order id and amount. gateway_ref is the order id (one Midtrans
+# transaction per order id), external_id the invoice number in it (an order id of a second or later attempt ends in
+# ~2 ... ~9) and paid_amount the gross amount (a text with two decimals). A genuine notification resent with unsigned
+# fields changed carries the same gateway_ref, so it finds the payment it already made.
+# One Midtrans account per business: the server key is the org's, and an order id is looked up among this org's
+# invoices only. Two businesses that share one Midtrans account and number invoices alike could see each other's
+# notifications; give each business its own Midtrans account (or merchant) and notification URL.
 # Only a completed payment of a positive amount records money. gateway_ref is the flow's idempotency key and the
 # payment's gateway_ref, claimed in gateway_ref_claim BEFORE the payment is made, so two notifications racing
 # (Midtrans retries after 2, 10, 30, 90 and 210 minutes, and sends capture then settlement for a card) record one

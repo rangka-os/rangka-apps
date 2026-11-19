@@ -3,8 +3,9 @@
 # went back to the payer from the Midtrans balance. It is never money in (payment_from_midtrans runs only for
 # paid == true) and it is not booked here either (no credit note or money-out document yet), so the owner is told,
 # with the order id (the invoice number, plus ~<attempt> for a later attempt), to record it, as payment_refund_from_doku does.
-# The refunded amount is not part of what Midtrans signs (only the order id, the status code and the gross amount
-# are), so the message sends the owner to the Midtrans dashboard for the amount instead of stating it as a fact.
+# The status and the refunded amount come from Midtrans's own answer (the connector confirms every notification with
+# GET status), not from the notification, which Midtrans signs only in part. The message still sends the owner to the
+# Midtrans dashboard: the refund is recorded there, not here.
 name: payment_refund_from_midtrans
 label: {id: Refund Midtrans diberitahukan ke pemilik}
 on: midtrans.payment_notified
