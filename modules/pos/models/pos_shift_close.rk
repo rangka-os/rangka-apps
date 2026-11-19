@@ -26,11 +26,14 @@ fields:
   - {name: cash_total, type: currency, label: {id: Tunai masuk}, compute: shift.cash_total, hidden_for: [cashier]}
   - {name: qris_total, type: currency, label: {id: QRIS masuk}, compute: shift.qris_total, hidden_for: [cashier]}
   - {name: void_count, type: int, label: {id: Transaksi dibatalkan}, compute: shift.void_count}
+  # module loyalty: deposit top-ups taken on the shift, settled with the drawer (cash) and the QRIS
+  - {name: topup_cash_total, type: currency, label: {id: Isi deposit tunai}, compute: shift.topup_cash_total, hidden_for: [cashier], depends_on: app_installed('loyalty')}
+  - {name: topup_qris_total, type: currency, label: {id: Isi deposit QRIS}, compute: shift.topup_qris_total, hidden_for: [cashier], depends_on: app_installed('loyalty')}
   - name: expected_cash
     type: currency
     label: {id: Tunai seharusnya}
-    help: {id: 'Modal kas ditambah tunai masuk'}
-    compute: opening_cash + cash_total
+    help: {id: 'Modal kas ditambah tunai masuk dan isi deposit tunai'}
+    compute: opening_cash + cash_total + topup_cash_total
     hidden_for: [cashier]
   - name: counted_cash
     type: currency
@@ -71,7 +74,7 @@ views:
           - [opening_cash, sales_count, void_count]
       - section: {id: Hitung laci}
         columns:
-          - [net_total, cash_total, qris_total]
+          - [net_total, cash_total, qris_total, topup_cash_total, topup_qris_total]
           - [expected_cash, counted_cash, cash_difference]
       - section: {id: Catatan}
         fields: [closing_note]

@@ -1,0 +1,94 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A member tier the owner sets up (Member, Silver, Gold). One active tier has min_spend 0: the base tier every new
+# member starts in (flow member_tier_guard). A member moves up as soon as its spend this year (or last year, so a
+# January customer keeps last year's tier) reaches a higher tier's min_spend (flow loyalty_on_sale); flow
+# loyalty_yearly reviews every member on 1 January and may move it down. Saving a tier copies its figures to its
+# members (flow member_tier_on_update).
+# Points earned on a receipt: int(total x earn_multiplier_pct / (earn_spend x 100)), e.g. Rp 87.500 at Rp 10.000 per
+# point and 100% is 8 points. A redeemed point takes point_value off the bill, up to max_redeem_pct of it.
+name: member_tier
+label: {id: Tier member, en: Member tier}
+icon: vip-crown-line
+naming: TIER-{##}
+title_field: tier_name
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true}
+  - {role: finance_manager, read: true}
+  - {role: sales_manager, read: true}
+  - {role: cashier, read: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - {name: tier_name, type: data, label: {id: Nama tier}, help: {id: 'Tercetak di struk, misalnya Gold'}, required: true, in_list: true}
+  - {name: tier_code, type: data, label: {id: Kode tier}, help: {id: 'Singkat dan unik, misalnya GOLD'}, required: true, unique: true, in_list: true}
+  - name: min_spend
+    type: currency
+    label: {id: Belanja setahun untuk naik ke tier ini}
+    help: {id: 'Isi 0 untuk tier dasar, tier semua member baru'}
+    default: '0'
+    in_list: true
+  - name: earn_spend
+    type: currency
+    label: {id: Belanja per 1 poin}
+    help: {id: 'Misalnya Rp 10.000 untuk 1 poin. Isi 0 bila tier ini tidak dapat poin'}
+    default: '10000'
+  - name: earn_multiplier_pct
+    type: int
+    label: {id: Pengali poin (%)}
+    help: {id: '100 berarti biasa, 150 berarti poin 1,5 kali'}
+    default: '100'
+  - name: point_value
+    type: currency
+    label: {id: Nilai 1 poin saat ditukar}
+    help: {id: 'Potongan rupiah per poin, misalnya Rp 100'}
+    default: '100'
+  - name: max_redeem_pct
+    type: int
+    label: {id: Maksimal nota dibayar poin (%)}
+    default: '50'
+  - name: member_discount_pct
+    type: float
+    label: {id: Diskon member (%)}
+    help: {id: 'Diskon otomatis untuk member tier ini. Tidak digabung dengan promo nota: yang lebih besar yang dipakai'}
+    default: '0'
+    in_list: true
+  - name: expiry_months
+    type: int
+    label: {id: Poin hangus setelah tidak belanja (bulan)}
+    help: {id: 'Semua poin hangus bila member tidak belanja selama ini. Isi 0 bila poin tidak hangus'}
+    default: '12'
+  - {name: active, type: check, label: {id: Aktif}, default: 'true', in_list: true, in_filter: true}
+rules:
+  - name: earn_spend_positive
+    on: save
+    check: earn_spend >= 0 && min_spend >= 0 && point_value >= 0
+    message: {id: 'Belanja per poin, minimal belanja dan nilai poin tidak boleh negatif'}
+  - name: multiplier_range
+    on: save
+    check: earn_multiplier_pct >= 0 && earn_multiplier_pct <= 1000
+    message: {id: 'Pengali poin 0 sampai 1000 persen'}
+  - name: redeem_range
+    on: save
+    check: max_redeem_pct >= 0 && max_redeem_pct <= 100
+    message: {id: 'Maksimal nota dibayar poin 0 sampai 100 persen'}
+  - name: discount_range
+    on: save
+    check: member_discount_pct >= 0 && member_discount_pct <= 50
+    message: {id: 'Diskon member 0 sampai 50 persen'}
+  - name: expiry_range
+    on: save
+    check: expiry_months >= 0 && expiry_months <= 120
+    message: {id: 'Masa hangus poin 0 sampai 120 bulan'}
+views:
+  list:
+    columns: [tier_name, tier_code, min_spend, member_discount_pct, active]
+    sort: min_spend
+  form:
+    layout:
+      - section: {id: Tier}
+        columns:
+          - [tier_name, tier_code, active]
+          - [min_spend, member_discount_pct]
+      - section: {id: Poin}
+        columns:
+          - [earn_spend, earn_multiplier_pct]
+          - [point_value, max_redeem_pct, expiry_months]

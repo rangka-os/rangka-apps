@@ -52,13 +52,18 @@ fields:
   - {name: cash_total, type: currency, label: {id: Tunai masuk}, help: {id: 'Dibayar tunai setelah kembalian, dikurangi tunai transaksi yang dibatalkan'}, read_only: true, hidden_for: [cashier]}
   - {name: qris_total, type: currency, label: {id: QRIS masuk}, read_only: true, hidden_for: [cashier]}
   - {name: void_count, type: int, label: {id: Transaksi dibatalkan}, read_only: true}
+  # module loyalty: sales paid from a member's deposit (no money moves, 2-1400), and deposit top-ups taken on this
+  # shift (cash into the drawer, QRIS into the outlet's QRIS; flow deposit_topup_on_submit)
+  - {name: deposit_total, type: currency, label: {id: Dibayar deposit}, read_only: true, hidden_for: [cashier], depends_on: app_installed('loyalty')}
+  - {name: topup_cash_total, type: currency, label: {id: Isi deposit tunai}, read_only: true, hidden_for: [cashier], depends_on: app_installed('loyalty')}
+  - {name: topup_qris_total, type: currency, label: {id: Isi deposit QRIS}, read_only: true, hidden_for: [cashier], depends_on: app_installed('loyalty')}
   - {name: void_total, type: currency, label: {id: Nilai dibatalkan}, read_only: true, hidden_for: [cashier]}
   - {name: cogs_total, type: currency, label: {id: Harga pokok}, read_only: true, hidden_for: [cashier]}
   - name: expected_cash
     type: currency
     label: {id: Tunai seharusnya}
-    help: {id: 'Modal kas ditambah tunai masuk'}
-    compute: opening_cash + cash_total
+    help: {id: 'Modal kas ditambah tunai masuk dan isi deposit tunai'}
+    compute: opening_cash + cash_total + topup_cash_total
     hidden_for: [cashier]
   # copied from the Tutup sesi that closed the shift
   - {name: closed_by, type: link, to: pos_shift_close, label: {id: Ditutup dengan}, read_only: true}
@@ -87,6 +92,10 @@ views:
         columns:
           - [sales_count, gross_total, discount_total, net_total]
           - [cash_total, qris_total, void_count, void_total]
+      - section: {id: Deposit member}
+        columns:
+          - [deposit_total]
+          - [topup_cash_total, topup_qris_total]
       - section: {id: Laci}
         columns:
           - [expected_cash, counted_cash, cash_difference]
