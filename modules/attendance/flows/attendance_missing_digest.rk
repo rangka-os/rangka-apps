@@ -4,9 +4,11 @@
 # active, an outlet and not attendance_exempt are expected; without shifts (rangka-apps#120) every such employee is
 # expected every day, so a day off shows here too. The flow only reads and tells. Scheduled flows run for the default
 # org only until rangka-os#263 slice a lands.
+# The notice gives the count, not the names: the kernel's CEL has no join(), and a failed {...} part is left in the
+# message as code. Names come back once rangka-os adds a list-to-text function.
 name: attendance_missing_digest
 label: {id: Karyawan belum absen masuk, en: Staff not clocked in}
-description: {id: 'Tiap pagi jam 10, kantor pusat dan pemilik dikabari karyawan outlet yang belum absen masuk hari ini.'}
+description: {id: 'Tiap pagi jam 10, kantor pusat dan pemilik dikabari berapa karyawan outlet yang belum absen masuk hari ini.'}
 schedule: '0 10 * * *'
 steps:
   - find_all: user
@@ -24,5 +26,5 @@ steps:
     id: "'missing:' + string(today())"
     title: '{emps.filter(u, !logs.exists(l, l.employee == u.name)).size()} karyawan belum absen masuk hari ini'
     template: >-
-      Belum absen masuk per jam 10: {emps.filter(u, !logs.exists(l, l.employee == u.name)).map(u, u.full_name).join(', ')}.
-      Cek dasbor Absen hari ini.
+      {emps.filter(u, !logs.exists(l, l.employee == u.name)).size()} karyawan outlet belum absen masuk sampai jam 10.
+      Siapa yang sudah masuk ada di dasbor Absen hari ini.
