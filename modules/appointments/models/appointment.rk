@@ -13,7 +13,9 @@ title_field: customer
 # draft sales_invoice tagged "(JNJ-...)", so only the roles that make invoices may take one. Cancel: only while the
 # slot is still booked and the deposit invoice is not submitted (appointment_on_cancel).
 # The weekday is computed from a Monday (2024-01-01) because the rule language has no weekday function; times are
-# "HH:MM" text and start_min / end_min are minutes since midnight.
+# "HH:MM" text and start_min / end_min are minutes since midnight. An inactive service and a service that needs a
+# resource booked without one are refused by the submit's flow (guards services_active, resource_needed): a rule
+# cannot read a link through a line.
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
@@ -46,6 +48,7 @@ fields:
     type: int
     label: {id: Lama (menit)}
     read_only: true
+    depends_on: duration_min > 0
     compute: "kind == 'table' ? table_minutes : lines.map(l, l.duration_min).sum()"
   - name: start_min
     type: int
@@ -67,12 +70,6 @@ fields:
     read_only: true
     hidden: true
     compute: "date == '' ? '' : ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][((days_between('2024-01-01', date) % 7) + 7) % 7]"
-  # the rule language has no join(): the first service, then how many more
-  - name: services_text
-    type: data
-    label: {id: Ringkasan layanan}
-    read_only: true
-    compute: "kind == 'table' ? 'Reservasi meja' : (lines.size() == 0 ? '' : lines[0].title + (lines.size() > 1 ? ' +' + string(lines.size() - 1) + ' layanan' : ''))"
   - {name: service_total, type: currency, label: {id: Total harga katalog}, read_only: true, compute: "lines.map(l, l.price).sum()", in_list: true, depends_on: "kind == 'service'"}
   - {name: deposit, type: currency, label: {id: Uang muka}, default: '0', depends_on: "kind == 'service'", help: {id: 'Dibuatkan draf faktur. Dipotong dari tagihan di kasir kalau fakturnya sudah diajukan'}}
   - {name: notes, type: text, label: {id: Catatan}}
@@ -105,18 +102,10 @@ rules:
     on: save
     check: "lines.map(l, l.duration_min < 5 || l.duration_min > 720 ? 1 : 0).sum() == 0 && (kind != 'table' || (table_minutes >= 15 && table_minutes <= 720))"
     message: {id: Lama layanan atau pemakaian meja 5 sampai 720 menit}
-  - name: services_active
-    on: save
-    check: "lines.map(l, l.service_active ? 0 : 1).sum() == 0"
-    message: {id: Ada layanan yang sudah tidak aktif}
   - name: staff_needed
     on: save
     check: "kind != 'service' || staff != ''"
     message: {id: Pilih staf yang mengerjakan}
-  - name: resource_needed
-    on: save
-    check: "resource != '' || (kind == 'service' && lines.map(l, l.needs_resource ? 1 : 0).sum() == 0)"
-    message: {id: 'Pilih tempat (kursi, bed, ruang) atau meja'}
   - name: resource_kind_matches
     on: save
     check: "resource == '' || (kind == 'table') == (resource.kind == 'table')"

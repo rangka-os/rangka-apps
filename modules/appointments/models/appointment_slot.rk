@@ -86,6 +86,13 @@ fields:
     label: {id: Judul}
     read_only: true
     compute: "start_time + '-' + end_time + ' ' + customer_name + (kind == 'table' ? ' (' + string(party_size) + ' tamu)' : '')"
+  # the queue card: the time on its own line as the title, the customer below it
+  - {name: time_range, type: data, label: {id: Jam}, read_only: true, compute: "start_time + '-' + end_time"}
+  - name: customer_line
+    type: data
+    label: {id: Pelanggan dan tamu}
+    read_only: true
+    compute: "customer_name + (kind == 'table' ? ' · ' + string(party_size) + ' tamu' : '')"
   - name: where_who
     type: data
     label: {id: Siapa dan di mana}

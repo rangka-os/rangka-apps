@@ -185,6 +185,11 @@ def scenario_appt_salon_day(api):
     check("Bima at 11:45 with Oki on chair 1 (right after Ayu) -> 200", st == 200, (st, r))
     st, r = book(rudi, BIMA, "19:30", [POTONG], staff=PUTRI, resource=KURSI1)
     check("ends 20:15, chair 1 closes 20:00 -> 422 closed", st == 422 and "closed" in rules(r), (st, r))
+    st, svc = maya.create("booking_service", {"title": "Smoothing lama", "item": "BRG-0004", "duration_min": 90, "active": False})
+    st, r = book(rudi, BIMA, "17:00", [svc.get("record", svc).get("name", "")], staff=PUTRI, resource=KURSI2)
+    check("an inactive service -> 422 services_active", st == 422 and "services_active" in rules(r), (st, r))
+    st, r = book(rudi, BIMA, "17:00", [POTONG], staff=PUTRI)
+    check("a cut needs a chair: booked without one -> 422 resource_needed", st == 422 and "resource_needed" in rules(r), (st, r))
     st, off = maya.create("resource_time_off", {"staff": PUTRI, "date": today(), "from_time": "13:00", "to_time": "15:00", "reason": "Izin"})
     check("Maya records Putri away 13:00-15:00 -> 201", st == 201, (st, off))
     st, r = book(rudi, BIMA, "14:00", [POTONG], staff=PUTRI, resource=KURSI2)
@@ -195,6 +200,10 @@ def scenario_appt_salon_day(api):
     check("Nina (front desk) books Bima 15:00 with Oki without a deposit -> 200", st == 200, (st, r))
     sl = slot_of(api, r.get("name", "")) if st == 200 else {}
     eq("the slot card names the staff member and the chair", (sl.get("staff_name"), sl.get("resource_title")), ("Oki Contoh", "Kursi 2"))
+    eq("the slot card: time on its own line, then the customer, and the service", (sl.get("time_range"), sl.get("customer_line"), sl.get("services")),
+       ("15:00-15:45", "Bima Contoh", "Potong rambut"))
+    ayu = slot_of(api, a["name"])
+    eq("Ayu's slot keeps 105 minutes (10:00-11:45) and both services", (ayu.get("end_min") - ayu.get("start_min"), ayu.get("services")), (105, "Potong rambut +1 layanan"))
     st, r = book(rudi, CITRA, "17:00", [POTONG], staff=PUTRI, resource=KURSI2, deposit=100_000)
     check("a deposit above the services' total -> 422 deposit_range", st == 422 and "deposit_range" in rules(r), (st, r))
 
@@ -360,6 +369,7 @@ def scenario_appt_table(api):
     if not check("the Darma family, 4 guests, table 1 at 19:00 -> 200", st == 200, (st, a)):
         return
     eq("held for 90 minutes", a.get("end_time"), "20:30")
+    eq("the table card says how many guests", slot_of(api, a["name"]).get("customer_line"), "Keluarga Contoh Darma · 4 tamu")
     st, r = book(rudi, AYU, "20:00", resource=MEJA1, party_size=2, **base)
     check("table 1 at 20:00 -> 422 resource_busy", st == 422 and "resource_busy" in rules(r), (st, r))
     st, r = book(rudi, AYU, "20:30", resource=MEJA1, party_size=2, **base)

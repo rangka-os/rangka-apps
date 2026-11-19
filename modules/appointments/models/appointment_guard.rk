@@ -19,6 +19,8 @@ fields:
     label: {id: Alasan}
     required: true
     options:
+      - {value: services_active, label: {id: Layanan tidak aktif}}
+      - {value: resource_needed, label: {id: Tempat belum dipilih}}
       - {value: staff_busy, label: {id: Staf sudah ada janji}}
       - {value: resource_busy, label: {id: Tempat sudah dipakai}}
       - {value: closed, label: {id: Di luar jam buka}}
@@ -37,6 +39,14 @@ fields:
     type: data
     label: {id: Dokumen}
 rules:
+  - name: services_active
+    on: save
+    check: reason != 'services_active'
+    message: {id: Ada layanan yang sudah tidak aktif}
+  - name: resource_needed
+    on: save
+    check: reason != 'resource_needed'
+    message: {id: 'Pilih tempat (kursi, bed, ruang): ada layanan yang memakainya'}
   - name: staff_busy
     on: save
     check: reason != 'staff_busy'

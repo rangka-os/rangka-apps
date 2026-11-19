@@ -6,13 +6,23 @@ description: {id: 'Saat janji diajukan, jam itu dicek: staf atau tempat yang sud
 # of contract 0025 (org + model), so two appointments submitted at the same moment run one after the other and the
 # second one sees the first one's slot. Busy = a booked or arrived slot on the same date whose minutes overlap
 # [start_min, end_min) with the same staff member or the same resource (a finished, billed or paid one has freed its
-# time). Opening hours: a resource with hours must have a window for the weekday (its hours_<day> text, "HH:MM-HH:MM";
+# time). The services are read from booking_service (inactive, or needing a resource booked without one: refused).
+# Opening hours: a resource with hours must have a window for the weekday (its hours_<day> text, "HH:MM-HH:MM";
 # a flow find reads no child rows) that covers the whole appointment.
 # Time off: a row on the date for the staff member or the resource whose times overlap. Each failure creates an
 # appointment_guard whose rule refuses the whole submit. Then the deposit's draft invoice (a flow cannot submit; its
 # notes carry the appointment number in ()) and the slot.
 on: appointment.submitted
 steps:
+  - find_all: booking_service
+    where: name in event.lines.map(l, l.service)
+    as: svcs
+  - create: appointment_guard
+    if: event.kind == 'service' && svcs.exists(x, !x.active)
+    set: {reason: "'services_active'", document: event.name}
+  - create: appointment_guard
+    if: event.kind == 'service' && event.resource == '' && svcs.exists(x, x.resource_kind != 'none')
+    set: {reason: "'resource_needed'", document: event.name}
   - find_all: appointment_slot
     where: >-
       date == event.date && state in ['booked', 'arrived'] && start_min < event.end_min && end_min > event.start_min
@@ -47,7 +57,7 @@ steps:
       posting_date: today()
       notes: "'Uang muka janji ' + event.date + ' ' + event.start_time + ' (' + event.name + ')'"
       items: >-
-        [{'item': event.lines[0].item, 'description': 'Uang muka janji ' + event.date + ' ' + event.start_time + ': ' + event.services_text, 'qty': 1, 'rate': event.deposit}]
+        [{'item': svcs.filter(x, x.name == event.lines[0].service)[0].item, 'description': 'Uang muka janji ' + event.date + ' ' + event.start_time + ': ' + (event.kind == 'table' ? 'Reservasi meja' : svcs.filter(x, x.name == event.lines[0].service)[0].title + (event.lines.size() > 1 ? ' +' + string(event.lines.size() - 1) + ' layanan' : '')), 'qty': 1, 'rate': event.deposit}]
     as: inv
   - create: appointment_slot
     set:
@@ -63,8 +73,8 @@ steps:
       staff: event.staff
       resource: event.resource
       party_size: event.party_size
-      services: "event.kind == 'table' ? 'Reservasi meja' : event.services_text"
-      lines: "event.lines.map(l, {'service': l.service, 'item': l.item})"
+      services: "(event.kind == 'table' ? 'Reservasi meja' : svcs.filter(x, x.name == event.lines[0].service)[0].title + (event.lines.size() > 1 ? ' +' + string(event.lines.size() - 1) + ' layanan' : ''))"
+      lines: "event.kind == 'table' ? [] : event.lines.map(l, {'service': l.service, 'item': svcs.filter(x, x.name == l.service)[0].item})"
       service_total: event.service_total
       deposit: event.deposit
       deposit_state: "event.deposit > 0 ? 'draft' : 'none'"
