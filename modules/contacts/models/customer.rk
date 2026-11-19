@@ -39,6 +39,27 @@ fields:
   - name: phone
     type: phone
     label: {id: Nomor WhatsApp}
+  # WhatsApp (module whatsapp): the number in one form, digits with the country code, the form Rangka Cloud's opt-out
+  # events carry; empty when phone is not a number. The same rule as Rangka Cloud's NormalizePhone: without a plus, a
+  # number starting with 0 or 8 is Indonesian (0812…, 812… -> 62812…) and 00 starts an international one; with a
+  # plus the country code is as written; a trunk 0 after 62 is dropped (+62 0812… -> 62812…). Vectors in
+  # tests/day_one_whatsapp.py PHONE_VECTORS and rangka-cloud TestPhoneRuleVectors.
+  - name: wa_number
+    type: data
+    label: {id: Nomor WhatsApp (seragam)}
+    hidden: true
+    index: true
+    depends_on: app_installed('whatsapp')
+    compute: "(phone.trim().startsWith('+') ? ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')).matches('^[1-9][0-9]{7,14}$') ? (phone.trim().startsWith('+') ? ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')) : ''"
+  # Ticked by staff, or by flow whatsapp_opted_out when the customer replied BERHENTI: the WhatsApp flows skip the
+  # customer and Rangka Cloud is told (flow whatsapp_customer_opt_out). Unticking does not bring the messages back.
+  - name: wa_opt_out
+    type: check
+    label: {id: Tidak mau dikirimi WA}
+    help: {id: 'Pelanggan tidak dikirimi struk, pengingat atau kabar lewat WhatsApp'}
+    default: 'false'
+    in_filter: true
+    depends_on: app_installed('whatsapp')
   - name: email
     type: data
     label: {id: Email}
@@ -197,7 +218,7 @@ views:
       - section: {id: Identitas}
         columns:
           - [customer_name, city, address, active]
-          - [npwp, phone, email]
+          - [npwp, phone, email, wa_opt_out]
       - section: {id: Data pajak (e-Faktur)}
         columns:
           - [nitku, nik, passport_no]

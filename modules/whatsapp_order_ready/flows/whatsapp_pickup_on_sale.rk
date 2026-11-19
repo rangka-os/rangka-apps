@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A receipt is paid with the buyer's yes to WhatsApp: keep who to tell when its order is ready (whatsapp_pickup), so
+# the kitchen's flow never reads the receipt. Runs inside the payment, as the cashier.
+name: whatsapp_pickup_on_sale
+label: {id: 'Struk dibayar: simpan tujuan kabar pesanan siap'}
+on: pos_sale.submitted
+if: event.wa_receipt && event.wa_number != ''
+idempotency: event.name + ':pickup'
+steps:
+  - {find: whatsapp_pickup, where: sale == event.name, as: known}
+  - {find: outlet, where: name == event.outlet, as: o}
+  - create: whatsapp_pickup
+    if: known == null
+    set:
+      sale: event.name
+      buyer: "event.buyer != '' ? event.buyer : 'Pelanggan'"
+      number: event.wa_number
+      outlet: event.outlet
+      outlet_name: "o != null ? o.outlet_name : 'kami'"
