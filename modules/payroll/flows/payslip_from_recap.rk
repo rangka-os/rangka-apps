@@ -16,7 +16,7 @@ steps:
     as: prof
   - if: prof != null
     find: payroll_run
-    where: project == event.project && !closed && period_from <= event.work_date && period_to >= event.work_date
+    where: run_kind != 'internal' && project == event.project && !closed && period_from <= event.work_date && period_to >= event.work_date
     as: run
   - if: prof != null && run != null
     find: payslip

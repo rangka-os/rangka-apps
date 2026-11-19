@@ -9,6 +9,9 @@
 #     what is ready (slips submitted) and what is missing (draft slips, attendance recaps not submitted, submitted
 #     recaps without a slip because the worker has no pay data, field attendance not closed).
 # Recaps are the monthly ones payroll reads (timesheet with period_to, paid per day), as payslip_from_recap does.
+# A client run reads its project, recaps and field attendance closes (projects module). An internal run (payroll 2.0)
+# has no project: it is ready when its period is over, it has a slip and no staff attendance period overlapping it
+# (its outlet's or the whole business's) is still a draft (attendance module, when installed).
 # The day is today, or event.as_of (YYYY-MM-DD) when the flow is run by hand for another day (and in tests).
 # At most 100 open runs per run of the flow.
 name: payroll_reminder
@@ -24,40 +27,80 @@ steps:
   - for_each: runs
     as: run
     do:
-      - {find: project, where: name == run.project, as: pj}
       - find_all: payslip
         where: payroll_run == run.name && docstatus != 2
         as: slips
-      - find_all: timesheet
-        where: "project == run.project && docstatus != 2 && period_to != '' && rate_basis == 'day' && work_date >= run.period_from && work_date <= run.period_to"
-        as: recaps
-      - find_all: attendance_close
-        where: "project == run.project && docstatus == 0 && period_from <= run.period_to && period_to >= run.period_from"
-        as: closes
-      - if: "!run.ready_told && ('as_of' in event ? event.as_of : today()) > run.period_to && size(slips) > 0 && recaps.filter(t, t.docstatus == 0).size() == 0 && size(closes) == 0"
-        notify: finance_manager
-        notice: payroll_ready
-        channel: email
-        record: run
-        id: "'ready:' + run.name"
-        title: 'Periode gaji {pj != null ? pj.project_name : run.project} siap diproses'
-        template: >-
-          Periode {run.period_from} sampai {run.period_to} sudah lewat dan semua rekap absen sudah diajukan.
-          Slip gaji: {slips.filter(s, s.docstatus == 0).size()} draft menunggu diperiksa, {slips.filter(s, s.docstatus == 1).size()} sudah diajukan.
-          Periksa slip, ajukan, lalu tutup periode gaji.
-      # the notify step above ran exactly when this is true: the run is marked, so it is announced once
-      - if: "!run.ready_told && ('as_of' in event ? event.as_of : today()) > run.period_to && size(slips) > 0 && recaps.filter(t, t.docstatus == 0).size() == 0 && size(closes) == 0"
-        update: run
-        set: {ready_told: 'true'}
-      - if: "run.pay_date != '' && days_between(('as_of' in event ? event.as_of : today()), run.pay_date) >= 0 && days_between(('as_of' in event ? event.as_of : today()), run.pay_date) <= 3"
-        notify: finance_manager
-        notice: payroll_due
-        channel: email
-        record: run
-        id: "'due:' + run.name + ':' + ('as_of' in event ? event.as_of : today())"
-        title: "Gaji {pj != null ? pj.project_name : run.project} dibayar {days_between(('as_of' in event ? event.as_of : today()), run.pay_date) == 0 ? 'hari ini' : string(days_between(('as_of' in event ? event.as_of : today()), run.pay_date)) + ' hari lagi'}"
-        template: >-
-          Tanggal bayar {run.pay_date}. Siap: {slips.filter(s, s.docstatus == 1).size()} slip gaji sudah diajukan.
-          Belum: {slips.filter(s, s.docstatus == 0).size()} slip masih draft, {recaps.filter(t, t.docstatus == 0).size()} rekap absen belum diajukan,
-          {recaps.filter(t, t.docstatus == 1 && !slips.exists(s, s.timesheet == t.name)).size()} rekap belum jadi slip, {size(closes)} rekap absen lapangan belum diajukan.
-          Periode gaji belum ditutup.
+      - if: "run.run_kind != 'internal' && app_installed('projects')"
+        then:
+          - {find: project, where: name == run.project, as: pj}
+          - find_all: timesheet
+            where: "project == run.project && docstatus != 2 && period_to != '' && rate_basis == 'day' && work_date >= run.period_from && work_date <= run.period_to"
+            as: recaps
+          - find_all: attendance_close
+            where: "project == run.project && docstatus == 0 && period_from <= run.period_to && period_to >= run.period_from"
+            as: closes
+          - if: "!run.ready_told && ('as_of' in event ? event.as_of : today()) > run.period_to && size(slips) > 0 && recaps.filter(t, t.docstatus == 0).size() == 0 && size(closes) == 0"
+            notify: finance_manager
+            notice: payroll_ready
+            channel: email
+            record: run
+            id: "'ready:' + run.name"
+            title: 'Periode gaji {pj != null ? pj.project_name : run.project} siap diproses'
+            template: >-
+              Periode {run.period_from} sampai {run.period_to} sudah lewat dan semua rekap absen sudah diajukan.
+              Slip gaji: {slips.filter(s, s.docstatus == 0).size()} draft menunggu diperiksa, {slips.filter(s, s.docstatus == 1).size()} sudah diajukan.
+              Periksa slip, ajukan, lalu tutup periode gaji.
+          # the notify step above ran exactly when this is true: the run is marked, so it is announced once
+          - if: "!run.ready_told && ('as_of' in event ? event.as_of : today()) > run.period_to && size(slips) > 0 && recaps.filter(t, t.docstatus == 0).size() == 0 && size(closes) == 0"
+            update: run
+            set: {ready_told: 'true'}
+          - if: "run.pay_date != '' && days_between(('as_of' in event ? event.as_of : today()), run.pay_date) >= 0 && days_between(('as_of' in event ? event.as_of : today()), run.pay_date) <= 3"
+            notify: finance_manager
+            notice: payroll_due
+            channel: email
+            record: run
+            id: "'due:' + run.name + ':' + ('as_of' in event ? event.as_of : today())"
+            title: "Gaji {pj != null ? pj.project_name : run.project} dibayar {days_between(('as_of' in event ? event.as_of : today()), run.pay_date) == 0 ? 'hari ini' : string(days_between(('as_of' in event ? event.as_of : today()), run.pay_date)) + ' hari lagi'}"
+            template: >-
+              Tanggal bayar {run.pay_date}. Siap: {slips.filter(s, s.docstatus == 1).size()} slip gaji sudah diajukan.
+              Belum: {slips.filter(s, s.docstatus == 0).size()} slip masih draft, {recaps.filter(t, t.docstatus == 0).size()} rekap absen belum diajukan,
+              {recaps.filter(t, t.docstatus == 1 && !slips.exists(s, s.timesheet == t.name)).size()} rekap belum jadi slip, {size(closes)} rekap absen lapangan belum diajukan.
+              Periode gaji belum ditutup.
+        else:
+          # Draft staff attendance periods overlapping the run, of its outlet or of the whole business. Without the
+          # attendance module there are none: a find on a model that is not installed fails, so the list is then an
+          # empty find of payslips (a payslip always has a name).
+          - if: "app_installed('attendance')"
+            then:
+              - find_all: attendance_period
+                where: "docstatus == 0 && period_from <= run.period_to && period_to >= run.period_from && (run.outlet == '' || only_outlet == '' || only_outlet == run.outlet)"
+                as: open_periods
+            else:
+              - find_all: payslip
+                where: "name == ''"
+                as: open_periods
+          - if: "!run.ready_told && ('as_of' in event ? event.as_of : today()) > run.period_to && size(slips) > 0 && size(open_periods) == 0"
+            notify: finance_manager
+            notice: payroll_ready
+            channel: email
+            record: run
+            id: "'ready:' + run.name"
+            title: 'Periode gaji karyawan {run.period_from} sampai {run.period_to} siap diproses'
+            template: >-
+              Periode {run.period_from} sampai {run.period_to} sudah lewat dan rekap absen karyawannya sudah diajukan.
+              Slip gaji: {slips.filter(s, s.docstatus == 0).size()} draft menunggu diperiksa, {slips.filter(s, s.docstatus == 1).size()} sudah diajukan.
+              Periksa slip, ajukan, lalu tutup periode gaji.
+          - if: "!run.ready_told && ('as_of' in event ? event.as_of : today()) > run.period_to && size(slips) > 0 && size(open_periods) == 0"
+            update: run
+            set: {ready_told: 'true'}
+          - if: "run.pay_date != '' && days_between(('as_of' in event ? event.as_of : today()), run.pay_date) >= 0 && days_between(('as_of' in event ? event.as_of : today()), run.pay_date) <= 3"
+            notify: finance_manager
+            notice: payroll_due
+            channel: email
+            record: run
+            id: "'due:' + run.name + ':' + ('as_of' in event ? event.as_of : today())"
+            title: "Gaji karyawan dibayar {days_between(('as_of' in event ? event.as_of : today()), run.pay_date) == 0 ? 'hari ini' : string(days_between(('as_of' in event ? event.as_of : today()), run.pay_date)) + ' hari lagi'}"
+            template: >-
+              Tanggal bayar {run.pay_date}. Siap: {slips.filter(s, s.docstatus == 1).size()} slip gaji sudah diajukan.
+              Belum: {slips.filter(s, s.docstatus == 0).size()} slip masih draft, {size(open_periods)} rekap absen karyawan belum diajukan.
+              Periode gaji belum ditutup.

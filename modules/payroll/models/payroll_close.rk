@@ -6,9 +6,11 @@ is_submittable: true
 naming: TPG-{YYYY}-{####}
 title_field: payroll_run
 # Closing a payroll run. Its amounts are copied from the run when it is saved and frozen by the submit; the submit
-# closes the run (no slip can then be submitted into it or cancelled out of it), books the employer cost the recaps
-# did not book on the project margin, and makes the client invoice as a draft (payroll_close_on_submit). Cancelling
-# it reopens the run and reverses the margin row; it is refused while the client invoice is submitted.
+# closes the run (no slip can then be submitted into it or cancelled out of it) and, for a client run only, books the
+# employer cost the recaps did not book on the project margin and makes the client invoice as a draft
+# (payroll_close_on_submit). Cancelling it reopens the run and reverses the margin row; it is refused while the client
+# invoice is submitted. An internal run's close books nothing outside payroll (the accounting module, when installed,
+# journals every close).
 permissions:
   - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: project_admin, read: true}
@@ -19,8 +21,10 @@ fields:
     label: {id: Periode gaji}
     required: true
     in_list: true
-  - {name: project, type: link, to: project, label: {id: Proyek}, compute: payroll_run.project, in_list: true}
-  - {name: customer, type: link, to: customer, label: {id: Klien}, compute: payroll_run.customer}
+  - {name: run_kind, type: data, label: {id: Jenis periode}, compute: payroll_run.run_kind}
+  - {name: project, type: link, to: project, label: {id: Proyek}, compute: payroll_run.project, in_list: true, depends_on: run_kind == 'client'}
+  - {name: customer, type: link, to: customer, label: {id: Klien}, compute: payroll_run.customer, depends_on: run_kind == 'client'}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, compute: payroll_run.outlet, depends_on: run_kind == 'internal' && app_installed('outlets')}
   - {name: period_from, type: date, label: {id: Periode dari}, compute: payroll_run.period_from}
   - {name: period_to, type: date, label: {id: Periode sampai}, compute: payroll_run.period_to, in_list: true}
   - {name: billing_mode, type: data, label: {id: Cara tagih klien}, compute: payroll_run.billing_mode}
@@ -72,7 +76,7 @@ views:
     layout:
       - section: {id: Periode}
         columns:
-          - [payroll_run, project, customer]
+          - [payroll_run, run_kind, project, customer, outlet]
           - [period_from, period_to, billing_mode]
       - section: {id: Setoran dan biaya}
         columns:
