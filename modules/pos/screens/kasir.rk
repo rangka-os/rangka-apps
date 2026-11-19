@@ -26,7 +26,7 @@ counter:
     line: {item: item, qty: qty, price: rate, note: note, amount: amount, flag: is_gift}
     total: grand_total
     change: change_amount
-    summary: [gross_total, promo_total, manual_discount_total, grand_total]
+    summary: [gross_total, promo_total, manual_discount_total, promo_shortfall, grand_total]
     # rangka-os contract 0069: filled before paying; the promo picker lists live bill promos only. Fields of module
     # promotions are left out when it is not installed (their depends_on).
     checkout: [customer, {field: promotion, filter: "is_bill && live"}, promo_code]

@@ -16,7 +16,9 @@ permissions:
   - {role: cashier, read: true}
 fields:
   - {name: promotion, type: link, to: promotion, label: {id: Promo}, read_only: true, in_list: true}
-  - {name: code, type: data, label: {id: Kode kupon}, read_only: true, unique: true, in_list: true}
+  # hidden from the cashier (audit F3): unissued coupons cannot be listed and used for a cash sale; flow
+  # promotion_on_sale still finds the code the buyer brings
+  - {name: code, type: data, label: {id: Kode kupon}, read_only: true, unique: true, in_list: true, hidden_for: [cashier]}
   - {name: batch, type: link, to: promo_code_batch, label: {id: Kiriman kupon}, read_only: true, in_list: true}
 views:
   list:

@@ -128,7 +128,7 @@ def scenario_promo_item_pct(api):
         return
     eq("live once saved", (hq.get("promotion", p["name"]) or {}).get("live"), True)
     it = api.get("item", KSA) or {}
-    eq("the item carries the promo (promotion_apply_on_create)", (it.get("promo"), it.get("promo_kind"), it.get("promo_pct"), it.get("promo_outlet")), (p["name"], "pct", 20, RIU))
+    eq("the item carries it in its one-outlet slot (promotion_apply_on_create)", (it.get("promo_o"), it.get("promo_o_kind"), it.get("promo_o_pct"), it.get("promo_o_outlet")), (p["name"], "pct", 20, RIU))
     s_riu, s_dgo = shift(sari, "sari.riau@contohwarung.test", RIU), shift(dika, "dika.dago@contohwarung.test", DGO)
     st, r, errs, _ = compute(sari, {"shift": s_riu, "items": [{"item": KSA, "qty": 2}]})
     line = (r.get("items") or [{}])[0]
@@ -148,7 +148,7 @@ def scenario_promo_item_pct(api):
         st, html, _ = api.print_html("pos_sale", s["name"])
         check("the receipt names the promo under its line and the saving", st == 200 and "Promo Uji kopi Riau 20 persen" in html and "Hemat dari promo" in html, (st, html[:300]))
     stop(hq, p)
-    eq("switched off: the item no longer carries it", (api.get("item", KSA) or {}).get("promo") or "", "")
+    eq("switched off: the item no longer carries it", (api.get("item", KSA) or {}).get("promo_o") or "", "")
 
 
 def scenario_promo_buy_get(api):
@@ -235,7 +235,7 @@ def scenario_promo_bill_code(api):
     st, r, errs, _ = compute(sari, {"shift": s_riu, "items": four, "promotion": p["name"]})
     check("no code -> promo_code_needed at the counter", "promo_code_needed" in errs, errs)
     st, r, errs, _ = compute(sari, {"shift": s_riu, "items": four, "promotion": p["name"], "promo_code": "SALAH"})
-    check("a wrong code -> promo_code_shared", "promo_code_shared" in errs, errs)
+    eq("a wrong code -> promo_code_shared, and nothing off on the screen", ("promo_code_shared" in errs, r.get("bill_promo")), (True, 0))
     st, r, errs, warns = compute(sari, {"shift": s_riu, "items": [{"item": KHT, "qty": 1}], "promotion": p["name"], "promo_code": "ujihemat"})
     eq("15.000 is under the minimum: a warning and nothing off", ("promo_min_spend" in warns, r.get("bill_promo"), r.get("grand_total")), (True, 0, 15000))
     st, r, errs, _ = compute(sari, {"shift": s_riu, "items": four, "promotion": p["name"], "promo_code": " ujihemat "})
@@ -259,7 +259,7 @@ def scenario_promo_bill_code(api):
     check("the receipt shows the bill promo", st == 200 and "Promo nota Uji voucher hemat" in html, (st, html[:300]))
     stop(hq, p)
     st, r, errs, _ = compute(sari, {"shift": s_riu, "items": four, "promotion": p["name"], "promo_code": "UJIHEMAT"})
-    check("a promo switched off -> promo_valid", "promo_valid" in errs, errs)
+    eq("a promo switched off -> promo_valid, and nothing off on the screen", ("promo_valid" in errs, r.get("bill_promo")), (True, 0))
 
 
 def scenario_promo_coupon_race(api):
@@ -334,14 +334,16 @@ def scenario_promo_gift(api):
     gift = {"item": AIR, "qty": 1, "is_gift": True}
     st, r, errs, _ = compute(dika, {"shift": s_dgo, "items": buy + [gift], "promotion": p["name"]})
     lines = r.get("items") or [{}, {}]
+    st, r0, errs0, _ = compute(dika, {"shift": s_dgo, "items": [{"item": GULA, "qty": 2}, gift], "promotion": p["name"]})
+    eq("under the minimum: the shortfall is told (36.000 of 50.000) and the rule says what is missing", (r0.get("promo_shortfall"), "gift_min_spend" in errs0), (14000, True))
     eq("the gift line is free; the gift's price is in the promo, not in the total",
        (errs, lines[1].get("amount"), r.get("gift_value"), r.get("promo_total"), r.get("grand_total")), ([], 0, 4000, 4000, 54000))
-    for label, body in (("a gift without the promo", {"items": buy + [gift]}),
-                        ("a gift of another item", {"items": buy + [dict(gift, item=MI)], "promotion": p["name"]}),
-                        ("two gifts where one is given", {"items": buy + [dict(gift, qty=2)], "promotion": p["name"]}),
-                        ("a gift under the minimum", {"items": [{"item": GULA, "qty": 2}, gift], "promotion": p["name"]})):
+    for label, body, rule in (("a gift without the promo", {"items": buy + [gift]}, "gift_needs_promo"),
+                              ("a gift of another item", {"items": buy + [dict(gift, item=MI)], "promotion": p["name"]}, "gift_item"),
+                              ("two gifts where one is given", {"items": buy + [dict(gift, qty=2)], "promotion": p["name"]}, "gift_qty"),
+                              ("a gift under the minimum", {"items": [{"item": GULA, "qty": 2}, gift], "promotion": p["name"]}, "gift_min_spend")):
         st, r, errs, _ = compute(dika, dict(body, shift=s_dgo))
-        check(f"{label} -> gift_rule", "gift_rule" in errs, errs)
+        check(f"{label} -> {rule}", rule in errs, errs)
     before = round((api.find("stock_balance", f"outlet == '{DGO}' && item == '{AIR}'") or [{"qty": 0}])[0]["qty"], 4)
     st, s = sale(dika, s_dgo, buy + [gift], promotion=p["name"])
     if check("the gift sale is paid -> 200", st == 200, (st, s)):
@@ -439,7 +441,73 @@ def scenario_promo_counter_screen(api):
     doc = ((sc or {}).get("counter") or (sc or {}).get("screen", {}).get("counter") or {}).get("document") or {}
     eq("checkout slot", doc.get("checkout"), ["customer", {"field": "promotion", "filter": "is_bill && live"}, "promo_code"])
     eq("line amount and flag", ((doc.get("line") or {}).get("amount"), (doc.get("line") or {}).get("flag")), ("amount", "is_gift"))
-    eq("summary", doc.get("summary"), ["gross_total", "promo_total", "manual_discount_total", "grand_total"])
+    eq("summary", doc.get("summary"), ["gross_total", "promo_total", "manual_discount_total", "promo_shortfall", "grand_total"])
+
+
+def scenario_promo_audit_fixes(api):
+    """Audit #103 F1-F7: a one-outlet promo does not hide the all-outlet one elsewhere; rupiah off and buy X get Y count
+    stock units of a pack; a gift is never a pack; the cashier reads no voucher or coupon code; a deleted promo leaves
+    the items at once; the sale's flow checks a voucher's code and counts its uses per promo; big_discount measures
+    the manual discount against the price after promos."""
+    m = members()
+    if not m:
+        return
+    sari, dika, hq = m
+    s_riu, s_dgo = shift(sari, "sari.riau@contohwarung.test", RIU), shift(dika, "dika.dago@contohwarung.test", DGO)
+    # F2: Riau 20% (priority 10) next to all outlets 10% (priority 1)
+    riu = promo(hq, "F2 Riau promo", promo_name="Uji F2 Riau", kind="item_pct", scope="item", item=KSA, pct=20, only_outlet=RIU, priority=10)
+    alln = promo(hq, "F2 all-outlet promo", promo_name="Uji F2 semua", kind="item_pct", scope="item", item=KSA, pct=10, priority=1)
+    if riu and alln:
+        got = {}
+        for cl, sh, o in ((sari, s_riu, RIU), (dika, s_dgo, DGO)):
+            st, r, _, _ = compute(cl, {"shift": sh, "items": [{"item": KSA, "qty": 2}]})
+            got[o] = ((r.get("items") or [{}])[0].get("promotion"), r.get("grand_total"))
+        eq("Riau takes its 20%, Dago the all-outlet 10% (not nothing)", got, {RIU: (riu["name"], 35200), DGO: (alln["name"], 39600)})
+        st, resp = hq.call("DELETE", f"/api/v1/r/promotion/{riu['name']}")
+        check("F5: an unused promo can be deleted -> 2xx", st in (200, 204), (st, resp))
+        it = api.get("item", KSA) or {}
+        eq("F5: its outlet slot is cleared in the same delete; the all-outlet one stays", (it.get("promo_o") or "", it.get("promo")), ("", alln["name"]))
+        st, s = sale(sari, s_riu, [{"item": KSA, "qty": 1}])
+        eq("F5: a sale right after the delete is paid with the remaining promo", (st, (s or {}).get("grand_total")), (200, 19800))
+        stop(hq, alln)
+    # F4: rupiah off per bottle and buy 2 get 1 on packs (Toko Dago sells water by the dus of 24 and mi by the pak of 5)
+    off = promo(hq, "F4 rupiah off per unit", promo_name="Uji F4 air", kind="item_off", scope="item", item=AIR, amount_off=500)
+    if off:
+        st, r, _, _ = compute(dika, {"shift": s_dgo, "items": [{"item": AIR, "qty": 1, "packing": "KONV-0001"}]})
+        eq("Rp 500 off a bottle on a dus of 24 is 12.000 off (84.000 -> 72.000)", ((r.get("items") or [{}])[0].get("promo_discount"), r.get("grand_total")), (12000, 72000))
+        stop(hq, off)
+    bg = promo(hq, "F4 buy 2 get 1 per unit", promo_name="Uji F4 mi", kind="buy_get", scope="item", item=MI, buy_qty=2, get_qty=1)
+    if bg:
+        st, r, _, _ = compute(dika, {"shift": s_dgo, "items": [{"item": MI, "qty": 1, "packing": "KONV-0003"}]})
+        eq("buy 2 get 1 on a pak of 5: 1 mi free at its own price (16.500 - 3.500)", ((r.get("items") or [{}])[0].get("promo_discount"), r.get("grand_total")), (3500, 13000))
+        stop(hq, bg)
+    # F1: a gift is never a pack
+    gp = promo(hq, "F1 gift", promo_name="Uji F1 hadiah", kind="free_gift", gift_item=AIR, gift_qty=1, min_spend=10000)
+    if gp:
+        st, r, errs, _ = compute(dika, {"shift": s_dgo, "items": [{"item": GULA, "qty": 1}, {"item": AIR, "qty": 1, "packing": "KONV-0001", "is_gift": True}], "promotion": gp["name"]})
+        check("a gift line of a dus of 24 -> gift_no_packing and gift_qty", {"gift_no_packing", "gift_qty"} <= set(errs), errs)
+        st, s = sale(dika, s_dgo, [{"item": GULA, "qty": 1}, {"item": AIR, "qty": 1, "packing": "KONV-0001", "is_gift": True}], promotion=gp["name"])
+        check("such a sale is refused -> 422", st == 422, (st, s))
+        stop(hq, gp)
+    # F3: codes are the buyer's, not the cashier's
+    v = promo(hq, "F3 voucher", promo_name="Uji F3 voucher", kind="bill_off", amount_off=1000, code_mode="shared", code="UJIRAHASIA", max_uses=1)
+    if v:
+        mine = sari.get("promotion", v["name"]) or {}
+        check("the cashier does not read the voucher code", "code" not in mine or not mine.get("code"), mine.get("code"))
+        rows = sari.find("promo_code", "name != ''")
+        check("the cashier lists no coupon code", all(not x.get("code") for x in rows), [x.get("code") for x in rows][:3])
+        # F6: the flow checks the code and counts uses per promo, so a wrong code cannot dodge max_uses
+        st, s = sale(sari, s_riu, [{"item": KHT, "qty": 1}], promotion=v["name"], promo_code="UJIRAHASIA")
+        check("the voucher's one use -> 200", st == 200, (st, s))
+        st, s = sale(sari, s_riu, [{"item": KHT, "qty": 1}], promotion=v["name"], promo_code="UJIRAHASIA")
+        check("its second use -> 422 code_limit", st == 422 and "code_limit" in rules(s), (st, s))
+        stop(hq, v)
+    # F7: the manual discount is measured against the price after promos
+    half = promo(hq, "F7 half price", promo_name="Uji F7", kind="item_pct", scope="item", item=ROTI, pct=50)
+    if half:
+        st, s = sale(sari, s_riu, [{"item": ROTI, "qty": 4, "discount_pct": 25}])
+        check("25% manual on a 30.000 promo price waits for head office -> 202", st == 202, (st, s))
+        stop(hq, half)
 
 
 def scenario_promo_invoice_default(api):
@@ -470,5 +538,5 @@ def scenario_promo_invoice_default(api):
 
 SCENARIOS = [scenario_promo_item_pct, scenario_promo_buy_get, scenario_promo_priority, scenario_promo_happy_hour, scenario_promo_bill_code,
              scenario_promo_coupon_race, scenario_promo_gift, scenario_promo_no_approval, scenario_promo_ledger, scenario_promo_roles,
-             scenario_promo_counter_screen]
+             scenario_promo_counter_screen, scenario_promo_audit_fixes]
 SCENARIOS_JASA = [scenario_promo_invoice_default]

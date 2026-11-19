@@ -18,6 +18,8 @@ fields:
       - {value: code_used, label: {id: Kupon sudah dipakai}}
       - {value: code_unknown, label: {id: Kupon tidak dikenal}}
       - {value: code_limit, label: {id: Kuota voucher habis}}
+      - {value: promo_ended, label: {id: Promo tidak berlaku}}
+      - {value: gift_invalid, label: {id: Produk gratis tidak sesuai}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: code_used
@@ -32,3 +34,11 @@ rules:
     on: save
     check: reason != 'code_limit'
     message: {id: 'Kuota voucher ini sudah habis'}
+  - name: promo_ended
+    on: save
+    check: reason != 'promo_ended'
+    message: {id: 'Promo ini tidak berlaku di outlet, tanggal atau jam ini'}
+  - name: gift_invalid
+    on: save
+    check: reason != 'gift_invalid'
+    message: {id: 'Produk gratis tidak sesuai promo hadiah: cek promo, minimal belanja, barang dan jumlahnya'}

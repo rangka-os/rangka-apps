@@ -3,7 +3,8 @@
 # with the highest priority onto each item in scope (item.promo*), and a sale line computes its promo from there.
 # Bill kinds are picked at the counter's checkout and checked by the sale's rules (window, outlet, minimum spend,
 # code). live is kept by promotion_apply (every 5 minutes and on every save): active, today within the dates and days,
-# and now within the hours. The outlet field is only_outlet, not outlet: the cashier role is scoped by outlet (contract
+# and now within the hours. Two one-outlet promos on one item at once: only the higher priority one applies there (one
+# outlet slot per item). The outlet field is only_outlet, not outlet: the cashier role is scoped by outlet (contract
 # 0010 §5), and a promo of every outlet (empty) must stay visible to every cashier.
 name: promotion
 label: {id: Promo, en: Promotion}
@@ -103,6 +104,9 @@ fields:
     help: {id: '4 sampai 16 huruf besar atau angka, misalnya HEMAT10'}
     unique: true
     depends_on: "code_mode == 'shared'"
+    # the buyer brings the code: a cashier, outlet staff or a paired device never reads it (audit F3); the sale's
+    # rules and flows still check it, so a shared voucher needs the connection
+    hidden_for: [cashier, outlet_staff]
   - name: max_uses
     type: int
     label: {id: Batas pemakaian}

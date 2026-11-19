@@ -111,7 +111,16 @@ fields:
     type: currency
     label: {id: Promo nota}
     depends_on: app_installed('promotions')
-    compute: "promotion == '' || subtotal < promotion.min_spend ? 0 : (promotion.kind == 'bill_pct' ? (promotion.max_discount > 0 ? min(promotion.max_discount, round(subtotal * promotion.pct / 100)) : round(subtotal * promotion.pct / 100)) : (promotion.kind == 'bill_off' ? min(subtotal, promotion.amount_off) : 0))"
+    # nothing off while the promo cannot apply (switched off, outside its dates or outlet, a wrong shared code), so
+    # the counter's total never shows a discount the payment would refuse; hours are rule promo_valid's (clock())
+    compute: "promotion == '' || subtotal < promotion.min_spend || !promotion.active || promotion.valid_from > date || promotion.valid_until < date || (promotion.only_outlet != '' && promotion.only_outlet != outlet) || (promotion.code_mode == 'shared' && promo_code.trim().upperAscii() != promotion.code) ? 0 : (promotion.kind == 'bill_pct' ? (promotion.max_discount > 0 ? min(promotion.max_discount, round(subtotal * promotion.pct / 100)) : round(subtotal * promotion.pct / 100)) : (promotion.kind == 'bill_off' ? min(subtotal, promotion.amount_off) : 0))"
+  # what the cart still lacks for the bill promo's minimum spend: the counter shows it under the order only while it is
+  # above 0 (its depends_on), so the cashier can tell the buyer "kurang Rp 2.400"
+  - name: promo_shortfall
+    type: currency
+    label: {id: Kurang belanja untuk promo}
+    depends_on: app_installed('promotions') && promo_shortfall > 0
+    compute: "promotion == '' ? 0 : max(0, promotion.min_spend - subtotal)"
   - {name: promo_name, type: data, label: {id: Nama promo nota}, hidden: true, depends_on: app_installed('promotions'), compute: "promotion != '' ? promotion.promo_name : ''"}
   - {name: promo_total, type: currency, label: {id: Promo}, depends_on: app_installed('promotions'), compute: line_promo_total + gift_value + bill_promo}
   - name: discount_total
@@ -178,14 +187,14 @@ fields:
     type: currency
     label: {id: 'PPh final 0,5%'}
     compute: round((grand_total - ppn_in_sales) * 5 / 1000)
-# Cashier controls (audit kasir M5): a receipt whose discounts exceed 20% of its price waits for head office
+# Cashier controls (audit kasir M5): a receipt whose manual discounts exceed 20% of its price after promos waits for head office
 # (contract 0007; the owner may always approve). A void is not held: an approved verb runs again as a requester
 # without their outlets, so the flow's own-shift check cannot run (kernel card t_7782ebb1 follow-up); voids stay
 # same day, open shift, own shift, and are counted on the shift and the dashboard.
 approvals:
   - name: big_discount
     on: submit
-    when: "manual_discount_total * 100 > gross_total * 20 && !('head_office' in user.roles) && !('owner' in user.roles)"
+    when: "manual_discount_total * 100 > (gross_total - promo_total) * 20 && !('head_office' in user.roles) && !('owner' in user.roles)"
     approvers: [head_office]
     label: {id: Persetujuan kantor pusat untuk diskon di atas 20%, en: Head office approves a discount above 20%}
 stock:
@@ -273,14 +282,28 @@ rules:
     on: save
     check: "promo_code.trim() == '' || promotion != ''"
     message: {id: 'Pilih promo nota untuk kode ini'}
-  - name: gift_rule
+  # a free gift line, told apart so the cashier knows what is missing (promo_shortfall shows how much to spend)
+  - name: gift_needs_promo
     on: save
-    check: >-
-      items.map(l, l.is_gift ? 1 : 0).sum() == 0 || promotion != '' && promotion.kind == 'free_gift'
-      && subtotal >= promotion.min_spend
-      && items.map(l, l.is_gift && l.item != promotion.gift_item ? 1 : 0).sum() == 0
-      && items.map(l, l.is_gift ? l.qty : 0).sum() <= promotion.gift_qty
-    message: {id: 'Produk gratis hanya untuk promo hadiah yang syaratnya terpenuhi, dengan barang dan jumlah sesuai promo'}
+    check: "items.map(l, l.is_gift ? 1 : 0).sum() == 0 || promotion != '' && promotion.kind == 'free_gift'"
+    message: {id: 'Produk gratis perlu promo hadiah: pilih promonya di Promo nota, atau matikan Produk gratis promo di barisnya'}
+  - name: gift_min_spend
+    on: save
+    check: "items.map(l, l.is_gift ? 1 : 0).sum() == 0 || promotion == '' || promotion.kind != 'free_gift' || subtotal >= promotion.min_spend"
+    message: {id: 'Belanja belum mencapai minimal promo hadiah; kekurangannya tertulis di Kurang belanja untuk promo'}
+  - name: gift_item
+    on: save
+    check: "promotion == '' || promotion.kind != 'free_gift' || items.map(l, l.is_gift && l.item != promotion.gift_item ? 1 : 0).sum() == 0"
+    message: {id: 'Barang ini bukan produk gratis promo yang dipilih'}
+  - name: gift_qty
+    on: save
+    check: "promotion == '' || promotion.kind != 'free_gift' || items.map(l, l.is_gift ? l.stock_qty : 0).sum() <= promotion.gift_qty"
+    message: {id: 'Jumlah produk gratis melebihi yang diberikan promo'}
+  # a gift is given in the item's own unit, never a pack (audit F1: a dus of 24 is 24 gifts)
+  - name: gift_no_packing
+    on: save
+    check: "items.map(l, l.is_gift && l.packing != '' ? 1 : 0).sum() == 0"
+    message: {id: 'Produk gratis diberikan per satuan barang; kosongkan Satuan lain di baris hadiah'}
   - name: line_promo_live
     on: submit
     check: "items.map(l, l.promotion != '' && l.promo_until != '' && l.promo_until < date ? 1 : 0).sum() == 0"
@@ -327,4 +350,4 @@ views:
       - section: {id: Ringkasan}
         columns:
           - [gross_total, promo_total, line_promo_total, gift_value, bill_promo]
-          - [manual_discount_total, discount_total, cogs_total, margin, ppn_in_sales, pph_final]
+          - [manual_discount_total, discount_total, promo_shortfall, cogs_total, margin, ppn_in_sales, pph_final]

@@ -234,9 +234,9 @@ the cashier's manual discounts only (`manual_discount_total`). `MATRIX` rows liv
 
 | Model | cashier | outlet_staff | head_office |
 | --- | --- | --- | --- |
-| promotion (a used promo cannot be deleted: its ledger rows link it) | r | r | r c w d e p |
+| promotion (a used promo cannot be deleted: its ledger rows link it; the voucher `code` is hidden from cashier and outlet staff) | r | r | r c w d e p |
 | promo_code_batch (submit makes the coupons) | none | none | r c w d s e p |
-| promo_code (made by the batch, every field read-only) | r | none | r c e p |
+| promo_code (made by the batch, every field read-only; `code` hidden from the cashier, so unissued coupons cannot be listed) | r | none | r c e p |
 | promotion_ledger (append-only; written by the sale's flows) | r c (amount hidden) | none | r e |
 | promo_guard (never stored; a flow's refusal) | c | none | c |
 
