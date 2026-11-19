@@ -2,6 +2,7 @@
 name: alat_kembali
 type: handover
 label: {id: Terima alat kembali, en: Equipment back}
+description: {id: 'Terima alat yang kembali: pindai alat, catat kondisinya, foto, lalu minta tanda tangan.'}
 icon: undo
 # Equipment comes back with proof (contract 0030 §2 handover): scan each unit, mark its condition (Hilang for a lost
 # one), photos of the damage, the renter signs. The warehouse only saves the checklist (submit: false): the damage

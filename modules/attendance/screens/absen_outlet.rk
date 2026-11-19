@@ -2,6 +2,7 @@
 name: absen_outlet
 type: clock
 label: {id: Absen, en: Clock in}
+description: {id: 'Absen masuk dan pulang di outlet dari HP, dengan foto dan lokasimu.'}
 icon: clock
 # Outlet staff clock in and out at their outlet from their phone (contract 0030 §2 clock). The outlets offered are the
 # member's own (the outlets set in Tim; only head office or the owner without outlets sees every active outlet), with the outlet's point and

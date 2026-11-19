@@ -2,6 +2,7 @@
 name: jadwal_alat
 type: route
 label: {id: Jadwal alat hari ini, en: Today's equipment}
+description: {id: 'Alat yang keluar dan kembali hari ini; buka satu untuk serah keluar atau terima kembali.'}
 icon: calendar
 # The warehouse's list of the day (plans/layar-kerja.md §3 #6-7): bookings whose equipment goes out today (or is
 # overdue to go out) and those due back today or late. Each opens the handover screen with the booking prefilled

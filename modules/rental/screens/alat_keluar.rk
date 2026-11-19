@@ -2,6 +2,7 @@
 name: alat_keluar
 type: handover
 label: {id: Serah alat keluar, en: Equipment out}
+description: {id: 'Serahkan alat ke penyewa: pindai alat, foto kondisinya, lalu minta tanda tangan.'}
 icon: truck
 # Equipment goes out with proof (contract 0030 §2 handover, WS8): scan each unit (rental_unit.code), mark its
 # condition, at least one photo, the renter signs, submit, print the BAST. Opened from jadwal_alat, the new draft gets

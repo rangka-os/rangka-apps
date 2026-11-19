@@ -2,6 +2,7 @@
 name: absen_kelas
 type: roll
 label: {id: Absen kelas, en: Class roll}
+description: {id: 'Buka sesi kelas hari ini, semua siswa sudah tertanda hadir; ubah yang izin, sakit atau tidak hadir.'}
 icon: users
 # The instructor marks today's class from the phone (plans/layar-kerja.md §3 #5, contract 0030 §2 roll): every
 # student starts present (flow session_of_the_day or session_fill_attendance), the instructor marks only who is
