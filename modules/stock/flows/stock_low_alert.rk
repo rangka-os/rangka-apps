@@ -7,7 +7,7 @@
 #     tells nobody again until it recovered and fell once more.
 # Nothing is ordered here: procurement/reorder_draft_po turns the open rows into draft purchase orders.
 # `marks` is read before the rows are closed and opened, so the filters below see yesterday's state.
-# At most 500 balances (the first 500 by item) and 500 open rows per run: a business with more below-level balances
+# At most 500 balances (the first 500 by item) per run; every open row is read: a business with more below-level balances
 # hears about the rest on a later morning, once the first ones recovered.
 name: stock_low_alert
 label: {id: Kabari stok di bawah batas minimum, en: Low stock alert}
@@ -19,9 +19,10 @@ steps:
     sort: item
     limit: 500
     as: low
+  # every open row, no limit: a row missed here would get a second open row and a second draft (audit owner-automation-pack
+  # R1). Open rows are at most one per balance, and the loop below allows 2000.
   - find_all: stock_reorder
     where: open
-    limit: 500
     as: marks
   # each open row is checked against its own balance and item, not against `low`: `low` stops at 500 balances, and a
   # balance outside it is not back above its level (audit owner-automation-pack 3)
