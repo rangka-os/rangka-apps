@@ -5911,6 +5911,7 @@ import day_one_automation  # noqa: E402
 import day_one_staff_attendance  # noqa: E402
 import day_one_promotions  # noqa: E402
 import day_one_loyalty  # noqa: E402
+import day_one_fixed_assets  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5933,6 +5934,7 @@ day_one_automation.bind(sys.modules[__name__])
 day_one_staff_attendance.bind(sys.modules[__name__])   # also adds the demo-fnb members of outlet attendance
 day_one_promotions.bind(sys.modules[__name__])   # after day_one_pos and day_one_kitchen (their members)
 day_one_loyalty.bind(sys.modules[__name__])   # after day_one_promotions (same members)
+day_one_fixed_assets.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5971,6 +5973,11 @@ for _site, _extra in day_one_automation.SCENARIOS.items():
     SCENARIOS[_site][_i:_i] = _extra
 # outlet staff attendance (module attendance, rangka-apps#100): after the site's own scenarios, before the permission matrix
 for _site, _extra in day_one_staff_attendance.SCENARIOS.items():
+    _i = SCENARIOS[_site].index(scenario_permissions)
+    SCENARIOS[_site][_i:_i] = _extra
+# fixed assets (module fixed_assets, rangka-apps#113): before the permission matrix and the books
+for _site, _extra in (("demo-sewa", day_one_fixed_assets.SCENARIOS_SEWA), ("demo-kepingan-keuangan", [day_one_fixed_assets.scenario_fixed_assets_from_bill]),
+                      ("demo-jasa", [day_one_fixed_assets.scenario_fixed_assets_from_bill])):
     _i = SCENARIOS[_site].index(scenario_permissions)
     SCENARIOS[_site][_i:_i] = _extra
 # accounting last: it checks the books against every document the scenarios above submitted

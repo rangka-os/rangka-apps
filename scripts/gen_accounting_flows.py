@@ -32,11 +32,14 @@ ACCOUNTS = [
     ("3-1100", "Modal disetor"), ("3-1900", "Ekuitas saldo awal"),
     ("4-1100", "Pendapatan usaha"), ("4-1200", "Retur penjualan"), ("4-9100", "Pendapatan lain-lain"),
     ("4-9200", "Pendapatan denda dan ganti rugi sewa"),
+    # signed: a gain on selling a fixed asset is a credit, a loss (or a write-off) a debit (module fixed_assets)
+    ("4-9300", "Laba (rugi) pelepasan aset tetap"),
     ("5-1100", "Harga pokok penjualan"), ("5-1200", "Selisih dan susut persediaan"), ("5-1300", "Upah langsung"),
     ("5-1400", "Biaya proyek"),
     ("6-1100", "Beban gaji kantor"), ("6-1200", "Biaya admin pembayaran"), ("6-1300", "Selisih kas"),
     ("6-1400", "Beban sewa"), ("6-1500", "Beban listrik, air, internet"), ("6-1600", "Beban transport dan kirim"),
     ("6-1700", "Beban pemasaran"), ("6-1800", "Beban perlengkapan dan perawatan"), ("6-1900", "Beban operasional lain"),
+    ("6-1950", "Beban penyusutan"),
     ("6-9100", "Beban pajak"),
 ]
 
@@ -61,14 +64,16 @@ MOVE_DATE = "moves.size() > 0 ? moves[0].posting_date : today()"
 # A payment from a member's deposit (module loyalty) takes the money out of 2-1400 Uang muka pelanggan.
 CASH = "event.method == 'cash' ? '11100' : (event.method == 'sales_return' ? '41200' : (event.method == 'deposit' ? '21400' : '11200'))"
 # What a vendor bill pays for (vendor_bill.posting, defaulted from its links; old bills without it follow the same
-# order): a project's cost, goods already received into stock (only where the stock module is installed), else the
+# order): a project's cost, goods already received into stock (only where the stock module is installed), a fixed
+# asset (module fixed_assets: Aset tetap, one draft asset per line made by its flow asset_from_vendor_bill), else the
 # expense account chosen.
 BILL_KIND = ("(event.posting != null ? event.posting : (event.project != '' ? 'project'"
              " : ((event.goods_receipt != '' || event.purchase_order != '') && app_installed('stock') ? 'stock' : 'expense')))")
 BILL_DEBIT = ("(" + BILL_KIND + ") == 'project' ? '51400' : ((" + BILL_KIND + ") == 'stock' ? '21150'"
-              " : (event.expense_account != null ? event.expense_account : '61900'))")
+              " : ((" + BILL_KIND + ") == 'asset' ? '12100'"
+              " : (event.expense_account != null ? event.expense_account : '61900')))")
 # A business that is not PKP cannot credit input PPN: it is part of the cost (goods: HPP, as the receipt valued the
-# stock without it).
+# stock without it; a fixed asset: its cost, shared over the assets of the bill by flow asset_from_vendor_bill).
 BILL_PPN = "tax.pkp ? '11500' : ((" + BILL_KIND + ") == 'stock' ? '51100' : (" + BILL_DEBIT + "))"
 # Potong retur: the credit note covers the return value plus its PPN; only the value is retur penjualan, the PPN
 # reduces PPN keluaran, in the proportion of what this payment credits.
@@ -111,7 +116,8 @@ POSTINGS = {
                ("event.direction == 'receive' ? '11300' : (" + CASH + ")",
                 "0 - event.amount - event.withheld_total")]),
     "goods_receipt": dict(
-        label="Jurnal terima barang", date="event.received_on", outlet="event.outlet", party="event.vendor",
+        label="Jurnal terima barang", date="event.received_on",
+        description="Saat penerimaan barang diajukan, nilainya otomatis masuk pembukuan: persediaan bertambah, dan utang belum ditagih ke pemasok tercatat.", outlet="event.outlet", party="event.vendor",
         cond="app_installed('stock')",
         # Stock in at the receipt value; payable not yet billed, or opening equity for the "Saldo awal" vendor.
         extra=["  - find: vendor", "    where: name == event.vendor", "    as: v"],
@@ -259,6 +265,35 @@ POSTINGS = {
         label="Jurnal pengembalian deposit", date="event.date", party="event.account",
         lines=[("'21400'", "event.amount"),
                ("event.method == 'cash' ? '11100' : '11200'", "0 - event.amount")]),
+    "fixed_asset": dict(
+        label="Jurnal aset tetap", date="event.book_date", outlet="event.outlet", project="event.project",
+        # module fixed_assets. An asset bought on a vendor bill posts nothing: the bill already debited Aset tetap
+        # (posting asset). An old asset brought in (opening): its cost against the depreciation it already had and
+        # Ekuitas saldo awal, like the opening balance. Bought without a bill (other): cost against Kas or Bank.
+        cond="event.source != 'vendor_bill'",
+        lines=[("'12100'", "event.cost"),
+               ("'12900'", "0 - event.opening_accumulated"),
+               ("event.source == 'opening' ? '31900' : (event.paid_from == 'bank' ? '11200' : '11100')",
+                "0 - (event.cost - event.opening_accumulated)")]),
+    "depreciation_run": dict(
+        label="Jurnal penyusutan bulanan", date="event.posting_date",
+        description="Saat penyusutan bulanan diajukan, beban penyusutan tiap aset masuk pembukuan di akhir bulan, per cabang.",
+        # module fixed_assets: per asset line, Beban penyusutan against Akumulasi penyusutan on the last day of the
+        # month, with the asset's outlet and project so the profit and loss of each outlet carries its own assets.
+        rows=dict(over="event.lines", var="l",
+                  lines=[("'61950'", "l.amount", {"outlet": "l.outlet", "project": "l.project", "party": "l.asset"}),
+                         ("'12900'", "0 - l.amount", {"outlet": "l.outlet", "project": "l.project", "party": "l.asset"})])),
+    "asset_disposal": dict(
+        label="Jurnal pelepasan aset tetap", date="event.disposal_date",
+        description="Saat aset dijual atau dihapus, harga dan penyusutannya keluar dari buku, dan laba atau ruginya tercatat.", outlet="event.outlet", project="event.project",
+        party="event.asset",
+        # module fixed_assets: the asset's cost and all its depreciation leave the books; what was received (sold) comes
+        # in; the difference to the book value is a gain (credit) or a loss (debit) on one signed account 4-9300.
+        lines=[("'12900'", "event.accumulated_total"),
+               ("event.received_in == 'bank' ? '11200' : (event.received_in == 'receivable' ? '11300' : '11100')",
+                "event.proceeds"),
+               ("'12100'", "0 - event.cost"),
+               ("'49300'", "0 - (event.proceeds - event.book_value)")]),
     "opening_balance": dict(
         label="Jurnal saldo awal", date="event.opening_date",
         lines=[("'11100'", "event.cash"), ("'11200'", "event.bank"), ("'11300'", "event.receivable"),
@@ -270,7 +305,7 @@ POSTINGS = {
                             " - event.accumulated_depreciation - event.payable - event.bank_loan"
                             " - event.other_liabilities - event.paid_in_capital)")]),
 }
-REVERSE_SLOTS = max(len(p["lines"]) for p in POSTINGS.values())
+REVERSE_SLOTS = max(len(p.get("lines", [])) for p in POSTINGS.values())
 
 
 def q(s):
@@ -282,13 +317,17 @@ def post_flow(model, p):
     out = ["# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json",
            "# Generated by scripts/gen_accounting_flows.py; edit POSTINGS there, not this file.",
            f"name: gl_{model}_post",
-           f"label: {{id: {p['label']}}}",
-           f"on: {model}.submitted"]
+           f"label: {{id: {p['label']}}}"]
+    if p.get("description"):   # the owner's sentence in Proses bisnis (contract 0060)
+        out.append(f"description: {{id: '{p['description']}'}}")
+    out += [f"on: {model}.submitted"]
     if p.get("cond"):
         out.append(f"if: {q(p['cond'])}")
     out.append("steps:")
     out += p.get("extra", [])
     out += LOCK
+    if p.get("rows"):
+        return "\n".join(out + row_steps(p)) + "\n"
     for i, ln in enumerate(p["lines"], 1):
         acct, amt = ln[0], ln[1]
         own = ln[2] if len(ln) > 2 else {}       # per-line overrides of outlet/project/party ('' = none)
@@ -310,6 +349,34 @@ def post_flow(model, p):
     return "\n".join(out) + "\n"
 
 
+def row_steps(p):
+    """A document whose lines follow a table (rows=dict(over, var, lines)): a for_each over the table, one create step
+    per posting line and table row, keyed '<posting line>-<row idx>' so every gl_entry stays unique."""
+    r = p["rows"]
+    out = [f"  - for_each: {q(r['over'])}",
+           f"    as: {r['var']}",
+           "    do:"]
+    for i, ln in enumerate(r["lines"], 1):
+        acct, amt = ln[0], ln[1]
+        own = ln[2] if len(ln) > 2 else {}
+        out += ["      - create: gl_entry",
+                f"        if: {q('(' + amt + ') != 0')}",
+                "        set:",
+                f"          posting_date: {q(p['date'])}",
+                f"          account: {q(acct)}",
+                f"          amount: {q(amt)}",
+                "          voucher_type: event.model",
+                "          voucher: event.name",
+                "          entry: \"'post'\"",
+                f"          line: {q(chr(39) + str(i) + '-' + chr(39) + ' + string(' + r['var'] + '.idx)')}"]
+        for f in ("outlet", "project", "party"):
+            v = own.get(f, p.get(f))
+            if v:
+                out.append(f"          {f}: {q(v)}")
+        out.append(f"          lock_date: {q(LOCK_DATE)}")
+    return out
+
+
 def reverse_flow(model, p):
     out = ["# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json",
            "# Generated by scripts/gen_accounting_flows.py; edit POSTINGS there, not this file.",
@@ -325,6 +392,20 @@ def reverse_flow(model, p):
            "    sort: line",
            "    as: posts"]
     out += LOCK
+    if p.get("rows"):
+        # one reverse line per post line, however many rows the document had
+        out += ["  - for_each: posts",
+                "    as: p",
+                "    do:",
+                "      - create: gl_entry",
+                "        set:"]
+        for f in ("posting_date", "account"):
+            out.append(f"          {f}: p.{f}")
+        out += ["          amount: 0 - p.amount", "          voucher_type: p.voucher_type", "          voucher: p.voucher",
+                "          entry: \"'reverse'\"", "          line: p.line", "          reverses: p.name",
+                "          outlet: p.outlet", "          project: p.project", "          party: p.party",
+                "          against: p.against", f"          lock_date: {q(LOCK_DATE)}"]
+        return "\n".join(out) + "\n"
     for i in range(REVERSE_SLOTS):
         r = f"posts[{i}]"
         out += ["  - create: gl_entry",

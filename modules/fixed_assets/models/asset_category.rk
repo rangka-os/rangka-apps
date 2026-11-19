@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Kelompok aset: the defaults a new asset takes (useful life in months, residual value as a percent of the cost) and
+# its fiscal group under PMK 72/2023 (useful life for tax: kelompok 1 four years, 2 eight, 3 sixteen, 4 twenty;
+# permanent buildings twenty, non-permanent ten). The fiscal group is stored for a later Coretax report; v1 books the
+# commercial straight line only. Six defaults are made by flow fixed_assets_setup.
+name: asset_category
+label: {id: Kelompok aset, en: Asset category}
+icon: folder-2-line
+naming: AKL-{###}
+title_field: category_name
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true}
+  - {role: purchasing_manager, read: true}
+  - {role: rental_staff, read: true}
+fields:
+  - {name: category_name, type: data, label: {id: Nama kelompok}, required: true, unique: true, in_list: true}
+  - name: useful_life_months
+    type: int
+    label: {id: Umur manfaat (bulan)}
+    help: {id: 'Berapa bulan aset dipakai sampai habis disusutkan, misalnya 48 untuk 4 tahun'}
+    required: true
+    in_list: true
+  - name: residual_percent
+    type: percent
+    label: {id: Nilai sisa (% harga)}
+    help: {id: 'Perkiraan nilai jual di akhir umur manfaat, persen dari harga perolehan. Biasanya 0'}
+    default: '0'
+    in_list: true
+  - name: fiscal_group
+    type: select
+    label: {id: Kelompok fiskal (PMK 72/2023)}
+    help: {id: 'Untuk laporan pajak nanti. Belum mengubah penyusutan di pembukuan'}
+    in_list: true
+    options:
+      - {value: kelompok_1, label: {id: Kelompok 1 (4 tahun)}}
+      - {value: kelompok_2, label: {id: Kelompok 2 (8 tahun)}}
+      - {value: kelompok_3, label: {id: Kelompok 3 (16 tahun)}}
+      - {value: kelompok_4, label: {id: Kelompok 4 (20 tahun)}}
+      - {value: bangunan_permanen, label: {id: Bangunan permanen (20 tahun)}}
+      - {value: bangunan_tidak_permanen, label: {id: Bangunan tidak permanen (10 tahun)}}
+rules:
+  - name: life_positive
+    on: save
+    check: useful_life_months > 0 && useful_life_months <= 600
+    message: {id: Umur manfaat antara 1 dan 600 bulan}
+  - name: residual_range
+    on: save
+    check: residual_percent >= 0 && residual_percent < 100
+    message: {id: Nilai sisa antara 0 dan kurang dari 100 persen}
+views:
+  list:
+    columns: [category_name, useful_life_months, residual_percent, fiscal_group]
+    sort: category_name
