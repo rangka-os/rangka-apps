@@ -6,7 +6,6 @@ name: depreciation_line
 is_child: true
 fields:
   - {name: asset, type: link, to: fixed_asset, label: {id: Aset}, required: true}
-  - {name: asset_name, type: data, label: {id: Nama aset}}
   - {name: months, type: int, label: {id: Bulan}, default: '1'}
   - {name: amount, type: currency, label: {id: Penyusutan}, required: true}
   - {name: outlet, type: link, to: outlet, label: {id: Cabang}, depends_on: app_installed('outlets')}

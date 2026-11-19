@@ -36,7 +36,7 @@
   <thead><tr><th>Aset</th><th class="num">Bulan</th><th class="num">Penyusutan</th></tr></thead>
   <tbody>
   {{range $l := .Doc.lines}}
-  <tr><td>{{$l.asset_name}}<br><small>{{$l.asset}}</small></td><td class="num">{{$l.months}}</td><td class="num">{{rupiah $l.amount}}</td></tr>
+  <tr><td>{{range $b := $.Related.books}}{{if eq $b.asset $l.asset}}{{$b.asset_name}}<br>{{end}}{{end}}<small>{{$l.asset}}</small></td><td class="num">{{$l.months}}</td><td class="num">{{rupiah $l.amount}}</td></tr>
   {{end}}
   <tr class="total"><td colspan="2">Total</td><td class="num">{{rupiah .Doc.total_depreciation}}</td></tr>
   </tbody>

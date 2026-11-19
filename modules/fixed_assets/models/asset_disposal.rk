@@ -21,7 +21,8 @@ fields:
     required: true
     in_list: true
     peek: [asset_name, book_value, state]
-  - {name: asset, type: link, to: fixed_asset, label: {id: Dokumen aset}, compute: book.asset, in_list: true}
+  # the asset document behind the register row (journal party); the form shows the register row as Aset
+  - {name: asset, type: link, to: fixed_asset, label: {id: Dokumen aset}, compute: book.asset, hidden: true}
   - {name: disposal_date, type: date, label: {id: Tanggal}, required: true, default: today(), in_list: true}
   - name: kind
     type: select
@@ -86,7 +87,7 @@ views:
     layout:
       - section: {id: Aset}
         columns:
-          - [book, asset, disposal_date, kind]
+          - [book, disposal_date, kind]
           - [proceeds, received_in, buyer]
       - section: {id: Nilai}
         columns:

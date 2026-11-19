@@ -22,7 +22,7 @@ steps:
     set:
       period: "add_months(truncate(string(today()), 7) + '-01', -1)"
       lines: >-
-        books.filter(b, b.state == 'active' && (b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)) <= add_months(truncate(string(today()), 7) + '-01', -1) && (b.book_value - b.residual_value) > 0).map(b, {'asset': b.asset, 'asset_name': b.asset_name,
+        books.filter(b, b.state == 'active' && (b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)) <= add_months(truncate(string(today()), 7) + '-01', -1) && (b.book_value - b.residual_value) > 0).map(b, {'asset': b.asset,
           'months': (int((double(days_between((b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)), add_months(truncate(string(today()), 7) + '-01', -1))) + 15.0) / 30.436875) + 1), 'amount': min(b.monthly_depreciation * (int((double(days_between((b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)), add_months(truncate(string(today()), 7) + '-01', -1))) + 15.0) / 30.436875) + 1), (b.book_value - b.residual_value)),
           'outlet': b.outlet, 'project': b.project, 'prev_through': b.depreciated_through})
     as: run
