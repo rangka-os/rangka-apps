@@ -13,7 +13,7 @@ roles: [cashier, head_office]
 device: tablet
 queue:
   source: {model: appointment_slot, filter: "kind == 'service' && state in ['done', 'billed']", sort: done_at}
-  card: {title: heading, subtitle: bill_note, fields: [where_who, sale], age_from: done_at}
+  card: {title: heading, subtitle: bill_note, fields: [where_who, sale], age_from: queue_since}
   columns: {by: state, values: [done, billed]}
   steps:
     - {when: "state == 'done'", set: {state: billed}, label: {id: Buat tagihan}}

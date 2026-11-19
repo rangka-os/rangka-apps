@@ -37,11 +37,11 @@ fields:
   - {name: outlet, type: link, to: outlet, label: {id: Outlet}, depends_on: app_installed('outlets'), in_list: true}
   - {name: date, type: date, label: {id: Tanggal}, required: true, default: today(), in_list: true}
   - {name: start_time, type: data, label: {id: Jam mulai}, required: true, default: "'10:00'", help: {id: 'JJ:MM, misalnya 14:30'}, in_list: true}
-  - {name: staff, type: link, to: user, label: {id: Staf}, in_list: true, help: {id: 'Yang mengerjakan layanan'}}
+  - {name: staff, type: link, to: user, label: {id: Staf}, in_list: true, help: {id: 'Yang mengerjakan layanan'}, depends_on: "kind == 'service'"}
   - {name: resource, type: link, to: booking_resource, label: {id: Tempat atau meja}, in_list: true}
-  - {name: party_size, type: int, label: {id: Jumlah tamu}, default: '1'}
-  - {name: table_minutes, type: int, label: {id: Meja dipakai (menit)}, default: '90'}
-  - {name: lines, type: table, of: appointment_line, label: {id: Layanan}}
+  - {name: party_size, type: int, label: {id: Jumlah tamu}, default: '1', depends_on: "kind == 'table'"}
+  - {name: table_minutes, type: int, label: {id: Meja dipakai (menit)}, default: '90', depends_on: "kind == 'table'"}
+  - {name: lines, type: table, of: appointment_line, label: {id: Layanan}, depends_on: "kind == 'service'"}
   - name: duration_min
     type: int
     label: {id: Lama (menit)}
@@ -59,6 +59,7 @@ fields:
     label: {id: Jam selesai}
     read_only: true
     in_list: true
+    depends_on: duration_min > 0
     compute: "(end_min / 60 < 10 ? '0' : '') + string(end_min / 60) + ':' + (end_min % 60 < 10 ? '0' : '') + string(end_min % 60)"
   - name: weekday
     type: data
@@ -72,8 +73,8 @@ fields:
     label: {id: Ringkasan layanan}
     read_only: true
     compute: "kind == 'table' ? 'Reservasi meja' : (lines.size() == 0 ? '' : lines[0].title + (lines.size() > 1 ? ' +' + string(lines.size() - 1) + ' layanan' : ''))"
-  - {name: service_total, type: currency, label: {id: Total harga katalog}, read_only: true, compute: "lines.map(l, l.price).sum()", in_list: true}
-  - {name: deposit, type: currency, label: {id: Uang muka}, default: '0', help: {id: 'Dibuatkan draf faktur. Dipotong dari tagihan di kasir kalau fakturnya sudah diajukan'}}
+  - {name: service_total, type: currency, label: {id: Total harga katalog}, read_only: true, compute: "lines.map(l, l.price).sum()", in_list: true, depends_on: "kind == 'service'"}
+  - {name: deposit, type: currency, label: {id: Uang muka}, default: '0', depends_on: "kind == 'service'", help: {id: 'Dibuatkan draf faktur. Dipotong dari tagihan di kasir kalau fakturnya sudah diajukan'}}
   - {name: notes, type: text, label: {id: Catatan}}
 rules:
   - name: time_format

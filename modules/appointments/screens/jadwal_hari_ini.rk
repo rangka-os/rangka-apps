@@ -11,7 +11,7 @@ roles: [service_staff, cashier, head_office, sales_manager]
 device: tablet
 queue:
   source: {model: appointment_slot, filter: "date == today() && state in ['booked', 'arrived', 'done']", sort: start_min}
-  card: {title: heading, subtitle: where_who, fields: [services], age_from: arrived_at}
+  card: {title: heading, subtitle: where_who, fields: [services], age_from: queue_since}
   columns: {by: state, values: [booked, arrived, done]}
   steps:
     - {when: "state == 'booked'", set: {state: arrived}, label: {id: Datang}}
