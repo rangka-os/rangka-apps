@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The kitchen moves a ticket to Siap: the buyer of its receipt, when they gave a WhatsApp number and agreed at the
+# kasir, gets `pesanan_siap` once per ticket (key <ticket>:order_ready:1), so a ticket moved back to Dimasak and to
+# Siap again sends nothing more. Runs inside the ticket's update, as the kitchen.
+name: whatsapp_ticket_ready
+label: {id: 'Pesanan siap: kabari pembeli lewat WhatsApp'}
+on: kitchen_ticket.updated
+if: event.before != null && event.before.status != 'ready' && event.status == 'ready'
+idempotency: event.name + ':order_ready:1'
+steps:
+  - {find: pos_sale, where: name == event.sale, as: s}
+  - {find: whatsapp_message, where: "key == event.name + ':order_ready:1'", as: done}
+  - find: whatsapp_opt_out
+    where: "s != null && s.wa_number != '' && number == s.wa_number"
+    as: out
+  - {find: outlet, where: name == event.outlet, as: o}
+  - create: whatsapp_message
+    if: done == null && s != null && s.wa_receipt && s.wa_number != ''
+    set:
+      key: event.name + ':order_ready:1'
+      message_type: "'order_ready'"
+      template: "'pesanan_siap'"
+      document: event.name
+      number_tail: "'…' + s.wa_number.replace(truncate(s.wa_number, size(s.wa_number) - 4), '')"
+      status: "out != null ? 'skipped' : 'queued'"
+      error: "out != null ? 'opted_out' : ''"
+      status_at: now()
+    as: msg
+  - call: rangka_whatsapp.send_template
+    if: done == null && s != null && s.wa_receipt && s.wa_number != '' && out == null
+    with:
+      to: "'+' + s.wa_number"
+      template: "'pesanan_siap'"
+      type: "'order_ready'"
+      idempotency_key: event.name + ':order_ready:1'
+      components: >-
+        [{'type': 'body', 'parameters': [
+          {'type': 'text', 'text': s.buyer != '' ? s.buyer : 'Pelanggan'},
+          {'type': 'text', 'text': s.name},
+          {'type': 'text', 'text': o != null ? o.outlet_name : 'kami'}]}]

@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A WhatsApp number this business must not message: the customer replied BERHENTI (the relay's opted_out event, flow
+# whatsapp_opted_out) or staff ticked "Tidak mau dikirimi WA" on the customer (flow whatsapp_customer_opt_out, which
+# also tells the relay). The send flows skip a number on this list before asking anything of the relay; the relay
+# refuses it again on its side. A row is never removed by a flow: a customer comes off the list only by their own
+# action at Rangka Cloud (plan Open 7), so unticking the customer does not bring the messages back.
+name: whatsapp_opt_out
+label: {id: Tidak mau dikirimi WA, en: WhatsApp opt-out}
+icon: forbid-line
+naming: WAOUT-{#####}
+title_field: number
+permissions:
+  - {role: head_office, read: true, create: true, export: true}
+  - {role: sales_manager, read: true, create: true}
+  - {role: finance_manager, read: true, create: true}
+  - {role: sales_rep, create: true}
+  - {role: purchasing_manager, create: true}
+  - {role: project_admin, create: true}
+  - {role: course_admin, create: true}
+  - {role: cashier, read: true}
+fields:
+  # digits with the country code, the form customer.wa_number computes (62812…)
+  - {name: number, type: data, label: {id: Nomor WhatsApp}, required: true, unique: true, read_only: true, in_list: true}
+  - name: source
+    type: select
+    label: {id: Dari}
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: customer, label: {id: Pelanggan membalas BERHENTI}}
+      - {value: staff, label: {id: Ditandai di data pelanggan}}
+      - {value: rangka, label: {id: Rangka Cloud}}
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, read_only: true, in_list: true}
+  - {name: at, type: datetime, label: {id: Sejak}, read_only: true, default: now(), in_list: true}
+rules:
+  - name: number_digits
+    on: save
+    check: number.matches('^[1-9][0-9]{7,14}$')
+    message: {id: 'Nomor ditulis angka saja dengan kode negara, misalnya 6281234567890'}

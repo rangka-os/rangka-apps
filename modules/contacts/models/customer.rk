@@ -39,6 +39,24 @@ fields:
   - name: phone
     type: phone
     label: {id: Nomor WhatsApp}
+  # WhatsApp (module whatsapp): the number in one form, digits with the country code (0812-3456-789 and +62 812 3456 789
+  # both give 628123456789), the form Rangka Cloud's opt-out events carry; empty when phone is not a number.
+  - name: wa_number
+    type: data
+    label: {id: Nomor WhatsApp (seragam)}
+    hidden: true
+    index: true
+    depends_on: app_installed('whatsapp')
+    compute: "('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x00', 'x').replace('x0', 'x62').replace('x', '').matches('^[1-9][0-9]{7,14}$') ? ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x00', 'x').replace('x0', 'x62').replace('x', '') : ''"
+  # Ticked by staff, or by flow whatsapp_opted_out when the customer replied BERHENTI: the WhatsApp flows skip the
+  # customer and Rangka Cloud is told (flow whatsapp_customer_opt_out). Unticking does not bring the messages back.
+  - name: wa_opt_out
+    type: check
+    label: {id: Tidak mau dikirimi WA}
+    help: {id: 'Pelanggan tidak dikirimi struk, pengingat atau kabar lewat WhatsApp'}
+    default: 'false'
+    in_filter: true
+    depends_on: app_installed('whatsapp')
   - name: email
     type: data
     label: {id: Email}
@@ -197,7 +215,7 @@ views:
       - section: {id: Identitas}
         columns:
           - [customer_name, city, address, active]
-          - [npwp, phone, email]
+          - [npwp, phone, email, wa_opt_out]
       - section: {id: Data pajak (e-Faktur)}
         columns:
           - [nitku, nik, passport_no]

@@ -1,0 +1,96 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One WhatsApp message a flow asked Rangka Cloud to send: which document, which type and template, and what became of
+# it. `key` is the idempotency key the flow sent (<document>:<type>:<step>), unique, so one document never gets the
+# same message twice; the relay's events (rangka_whatsapp.message_status) find the row by it (flow
+# whatsapp_message_status) and move its status forward only. No message text and no full phone number are kept here:
+# the last four digits are enough for staff to recognise the customer.
+name: whatsapp_message
+label: {id: Pesan WhatsApp, en: WhatsApp message}
+icon: send-plane-line
+naming: WA-{YY}{MM}-{#####}
+title_field: key
+# Written by flows only, inside the write of the person whose action asked for the message (create for those
+# roles); nobody edits a row by hand.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, export: true}
+  - {role: cashier, read: true, create: true, write: true}
+  # the kitchen marks a ticket ready (module whatsapp_order_ready); the role comes with module kitchen, so a site
+  # without it gets the validator's unknown_role warning and nothing else
+  - {role: kitchen, read: true, create: true, write: true}
+  - {role: finance_manager, read: true, create: true, write: true, export: true}
+  - {role: sales_manager, read: true, create: true, write: true, export: true}
+  - {role: sales_rep, read: true, create: true, write: true}
+fields:
+  - name: key
+    type: data
+    label: {id: Kunci pesan}
+    help: {id: 'Dokumen, jenis pesan dan langkahnya: satu pesan per kunci'}
+    unique: true
+    read_only: true
+    in_list: true
+  - name: message_type
+    type: select
+    label: {id: Jenis pesan}
+    read_only: true
+    in_list: true
+    in_filter: true
+    chip: true
+    options:
+      - {value: receipt, label: {id: Struk digital}}
+      - {value: reminder, label: {id: Pengingat tagihan}}
+      - {value: order_ready, label: {id: Kabar pesanan siap}}
+      - {value: appointment, label: {id: Pengingat janji}}
+  - {name: template, type: data, label: {id: Template}, read_only: true}
+  - {name: document, type: data, label: {id: Dokumen}, read_only: true, in_list: true}
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, read_only: true, in_list: true}
+  - {name: number_tail, type: data, label: {id: Nomor (4 angka terakhir)}, read_only: true}
+  # the amount a template shows, kept so its text is computed in one place (amount_text)
+  - {name: amount, type: currency, label: {id: Nominal}, read_only: true, default: '0'}
+  # "84.000", "1.234.567": the kernel's CEL has no number format, so thousands are cut by integer division
+  - name: amount_text
+    type: data
+    label: {id: Nominal (teks)}
+    hidden: true
+    compute: >-
+      'Rp ' + (int(amount) < 1000 ? string(int(amount)) :
+      int(amount) < 1000000 ? string(int(amount) / 1000) + '.' + ('x' + string(1000 + int(amount) - (int(amount) / 1000) * 1000)).replace('x1', '') :
+      int(amount) < 1000000000 ? string(int(amount) / 1000000) + '.' + ('x' + string(1000 + int(amount) / 1000 - (int(amount) / 1000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(amount) - (int(amount) / 1000) * 1000)).replace('x1', '') :
+      string(int(amount) / 1000000000) + '.' + ('x' + string(1000 + int(amount) / 1000000 - (int(amount) / 1000000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(amount) / 1000 - (int(amount) / 1000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(amount) - (int(amount) / 1000) * 1000)).replace('x1', ''))
+  - name: status
+    type: select
+    label: {id: Status}
+    default: "'queued'"
+    read_only: true
+    in_list: true
+    in_filter: true
+    chip: true
+    options:
+      - {value: queued, label: {id: Dalam antrean}}
+      - {value: accepted, label: {id: Diterima Rangka Cloud}}
+      - {value: sent, label: {id: Terkirim}}
+      - {value: delivered, label: {id: Sampai}}
+      - {value: read, label: {id: Dibaca}}
+      - {value: failed, label: {id: Gagal}}
+      - {value: skipped, label: {id: Tidak dikirim}}
+  # the relay's code (recipient_opted_out, service_stopped, …) or Meta's (meta:131026), and why in plain words
+  - {name: error, type: data, label: {id: Kode alasan}, read_only: true}
+  - name: reason
+    type: data
+    label: {id: Alasan}
+    in_list: true
+    compute: >-
+      error == '' ? '' :
+      error == 'recipient_opted_out' || error == 'opted_out' ? 'Pelanggan minta tidak dikirimi WA' :
+      error == 'no_number' ? 'Nomor WhatsApp belum diisi atau belum benar' :
+      error == 'service_stopped' ? 'Layanan WhatsApp sedang dihentikan' :
+      error == 'service_paused' ? 'Jenis pesan ini sedang dijeda' :
+      error == 'template_not_approved' ? 'Template pesan belum disetujui' :
+      error == 'quota_exceeded' ? 'Batas pesan hari ini sudah habis' :
+      error == 'delivery_uncertain' ? 'Belum pasti terkirim, tidak dikirim ulang' :
+      error == 'send_failed' || error.startsWith('meta:') ? 'Nomor tidak bisa menerima pesan WhatsApp' :
+      'Gagal dikirim (' + error + ')'
+  - {name: message_id, type: data, label: {id: ID pesan}, read_only: true, hidden: true}
+  - {name: status_at, type: datetime, label: {id: Status terakhir}, read_only: true, in_list: true}
+views:
+  list:
+    sort: -status_at

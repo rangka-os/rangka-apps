@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A sale is paid (submitted) and the buyer asked for the receipt on WhatsApp: one message `struk_pembayaran`, keyed
+# <receipt>:receipt:1, so a replay of the event, a second submit or a retry sends nothing more (the flow's idempotency,
+# the unique whatsapp_message.key, the kernel's job key and Rangka Cloud's key, in that order). A number on the
+# business's opt-out list is not sent to: the row says "Tidak dikirim" and why. An amended receipt (a partial
+# return, STRK-…-1) is a new document and gets its own receipt. Runs inside the payment, as the cashier.
+name: whatsapp_receipt_on_sale
+label: {id: 'Struk dibayar: kirim struk ke WhatsApp pembeli'}
+on: pos_sale.submitted
+if: event.wa_receipt && event.wa_number != ''
+idempotency: event.name + ':receipt:1'
+steps:
+  - {find: whatsapp_message, where: "key == event.name + ':receipt:1'", as: done}
+  - {find: whatsapp_opt_out, where: number == event.wa_number, as: out}
+  - {find: outlet, where: name == event.outlet, as: o}
+  - create: whatsapp_message
+    if: done == null
+    set:
+      key: event.name + ':receipt:1'
+      message_type: "'receipt'"
+      template: "'struk_pembayaran'"
+      document: event.name
+      number_tail: "'…' + event.wa_number.replace(truncate(event.wa_number, size(event.wa_number) - 4), '')"
+      amount: event.grand_total
+      status: "out != null ? 'skipped' : 'queued'"
+      error: "out != null ? 'opted_out' : ''"
+      status_at: now()
+    as: msg
+  - call: rangka_whatsapp.send_template
+    if: done == null && out == null
+    with:
+      to: "'+' + event.wa_number"
+      template: "'struk_pembayaran'"
+      type: "'receipt'"
+      idempotency_key: event.name + ':receipt:1'
+      components: >-
+        [{'type': 'body', 'parameters': [
+          {'type': 'text', 'text': event.buyer != '' ? event.buyer : 'Pelanggan'},
+          {'type': 'text', 'text': event.name},
+          {'type': 'text', 'text': o != null ? o.outlet_name : 'kami'},
+          {'type': 'text', 'text': string(event.items.size()) + ' jenis barang'},
+          {'type': 'text', 'text': msg.amount_text},
+          {'type': 'text', 'text': event.method == 'qris' ? 'QRIS' : (event.method == 'split' ? 'tunai dan QRIS' : 'tunai')}]}]
