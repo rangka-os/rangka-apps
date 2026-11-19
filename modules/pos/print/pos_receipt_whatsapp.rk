@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Not paper: the receipt and the member's points as a WhatsApp text plus a wa.me link that opens WhatsApp with it, so
+# the cashier sends it from the shop's own phone (no paid WhatsApp service; module loyalty, rangka-apps#102). A sale
+# without a member gives the text without a number.
+name: pos_receipt_whatsapp
+model: pos_sale
+label: {id: Pesan struk dan poin WA, en: WhatsApp receipt and points}
+paper: A5
+template: pos_receipt_whatsapp.html

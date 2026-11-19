@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: loyalty
+version: 1.0.0
+title: {id: Member dan poin, en: Loyalty}
+summary:
+  id: Member, poin, tier member dan saldo deposit pelanggan di kasir.
+  en: Members, points, member tiers and customer deposits at the counter.
+category: sales
+icon: vip-crown-line
+# Members of a shop (rangka-apps#102). A member (loyalty_account) is signed up at the counter or the desk with a name
+# and a WhatsApp number (one member per number, per org); flow loyalty_account_on_create links or makes its customer
+# and gives it the base tier. A tier (member_tier) sets how many points a rupiah earns, what a point is worth when
+# redeemed, the share of a bill points may pay, the member discount and the points' expiry; a member's figures are
+# copied from its tier, so a sale reads them in one hop (also on a device, rangka-os contract 0058 §10).
+# At the counter (module pos, rangka-os contract 0069 checkout slot) the cashier picks the member, redeems points as a
+# discount and pays part or all of the bill from the member's deposit. Flow loyalty_on_sale checks the balances again
+# under the flow read lock of contract 0025 and writes the append-only ledgers (contract 0026): loyalty_entry
+# (points) and deposit_entry (rupiah). A void gives both back.
+# Books: points stay off the books in v1 (a redemption is a discount, the sale's revenue is already net); the
+# dashboard shows what the open points are worth. A deposit is a customer advance (2-1400 Uang muka pelanggan): a
+# top-up (deposit_topup) and a refund (deposit_refund) are journalled by the accounting module, PPN is due when the
+# deposit is spent, on the sale, as on any receipt. No top-up bonus in v1.
+requires: {rangka: '>=0.5', users: ^1.2, contacts: ^1.4}
+optional: {outlets: ^1.5, pos: ^1.5, payments: ^1.7, accounting: ^1.4}

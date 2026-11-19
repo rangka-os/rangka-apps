@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Never stored: a loyalty flow refuses a document by creating one (as pos_guard does), and the rule of its reason fails
+# with the cashier's message, so the submit rolls back with its stock moves, number and journal.
+name: loyalty_guard
+label: {id: Penjaga member, en: Loyalty guard}
+icon: check
+naming: LYG-{######}
+title_field: reason
+permissions:
+  - {role: head_office, create: true}
+  - {role: finance_manager, create: true}
+  - {role: sales_manager, create: true}
+  - {role: cashier, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: phone_member, label: {id: Nomor sudah member}}
+      - {value: customer_member, label: {id: Pelanggan sudah member}}
+      - {value: no_base_tier, label: {id: Belum ada tier dasar}}
+      - {value: base_tier, label: {id: Tier dasar ganda}}
+      - {value: not_member, label: {id: Bukan member}}
+      - {value: points_short, label: {id: Poin kurang}}
+      - {value: points_cap, label: {id: Poin melebihi batas}}
+      - {value: deposit_short, label: {id: Saldo deposit kurang}}
+      - {value: deposit_over, label: {id: Deposit melebihi total}}
+      - {value: void_not_own, label: {id: Batal sesi orang lain}}
+      - {value: shift_closed, label: {id: Sesi kasir tutup}}
+      - {value: void_other_day, label: {id: Batal beda hari}}
+      - {value: balance_negative, label: {id: Saldo jadi minus}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - {name: phone_member, on: save, check: "reason != 'phone_member'", message: {id: 'Nomor ini sudah terdaftar sebagai member'}}
+  - {name: customer_member, on: save, check: "reason != 'customer_member'", message: {id: 'Pelanggan ini sudah punya kartu member'}}
+  - {name: no_base_tier, on: save, check: "reason != 'no_base_tier'", message: {id: 'Belum ada tier member dasar (aktif, belanja minimal Rp 0). Minta kantor pusat membuatnya di Tier member'}}
+  - {name: base_tier, on: save, check: "reason != 'base_tier'", message: {id: 'Sudah ada tier dasar aktif (belanja minimal Rp 0). Hanya boleh satu'}}
+  - {name: not_member, on: save, check: "reason != 'not_member'", message: {id: 'Member ini tidak aktif atau tidak ada'}}
+  - {name: points_short, on: save, check: "reason != 'points_short'", message: {id: 'Poin pelanggan tidak cukup'}}
+  - {name: points_cap, on: save, check: "reason != 'points_cap'", message: {id: 'Poin yang ditukar melebihi batas nota yang boleh dibayar poin'}}
+  - {name: deposit_short, on: save, check: "reason != 'deposit_short'", message: {id: 'Saldo deposit pelanggan tidak cukup'}}
+  - {name: deposit_over, on: save, check: "reason != 'deposit_over'", message: {id: 'Deposit yang dipakai melebihi total belanja'}}
+  - {name: void_not_own, on: save, check: "reason != 'void_not_own'", message: {id: 'Ini isi deposit di sesi kasir orang lain; minta kasirnya atau kantor pusat membatalkan'}}
+  - {name: shift_closed, on: save, check: "reason != 'shift_closed'", message: {id: 'Sesi kasir ini sudah ditutup; buka sesi baru'}}
+  - {name: void_other_day, on: save, check: "reason != 'void_other_day'", message: {id: 'Isi deposit hanya bisa dibatalkan di hari yang sama selama sesi kasirnya masih buka'}}
+  - {name: balance_negative, on: save, check: "reason != 'balance_negative'", message: {id: 'Saldo member tidak boleh jadi minus'}}

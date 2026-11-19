@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Every change of a member's points, append-only (contract 0026): earned and redeemed on a paid sale (flow
+# loyalty_on_sale), given back when the sale is voided (reverse), corrected by head office (adjust,
+# points_adjustment), expired after the tier's months without a purchase (expire, flow points_expiry). The member's
+# points_balance is the sum of its rows; flow loyalty_check compares them every night. entry_key keeps one row per
+# source and kind, so a flow that runs twice posts once.
+name: loyalty_entry
+label: {id: Mutasi poin, en: Points entry}
+icon: history
+naming: POIN-{YYYY}-{######}
+append_only: true
+permissions:
+  - {role: head_office, read: true, create: true, export: true}
+  - {role: finance_manager, read: true, export: true}
+  # create: the sale's flows run as the cashier; nobody creates a row by hand (append_only)
+  - {role: cashier, read: true, create: true}
+fields:
+  - {name: account, type: link, to: loyalty_account, label: {id: Member}, required: true, in_list: true}
+  - name: kind
+    type: select
+    label: {id: Jenis}
+    required: true
+    in_list: true
+    chip: true
+    options:
+      - {value: earn, label: {id: Didapat}}
+      - {value: redeem, label: {id: Ditukar}}
+      - {value: reverse, label: {id: Dibatalkan}}
+      - {value: adjust, label: {id: Koreksi}}
+      - {value: expire, label: {id: Hangus}}
+  - {name: points, type: int, label: {id: Poin}, help: {id: 'Plus menambah, minus mengurangi'}, required: true, in_list: true}
+  - {name: balance_after, type: int, label: {id: Sisa poin}, in_list: true}
+  - {name: date, type: date, label: {id: Tanggal}, required: true, in_list: true}
+  - {name: source_type, type: data, label: {id: Jenis dokumen}}
+  - {name: source, type: data, label: {id: Dokumen}, index: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, depends_on: app_installed('outlets')}
+  - {name: entry_key, type: data, label: {id: Kunci}, unique: true, hidden: true}
+rules:
+  - name: not_zero
+    on: save
+    check: points != 0
+    message: {id: Mutasi poin tidak boleh 0}
+views:
+  list:
+    columns: [name, date, account, kind, points, balance_after, source]
+    filters: [account, kind, outlet]
+    sort: -name

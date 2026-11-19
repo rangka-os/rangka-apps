@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Written by flow loyalty_check when a member's balance is not the sum of its ledger rows (points or deposit). Nothing
+# corrects itself: head office looks at the rows and, for points, makes a Koreksi poin.
+name: loyalty_mismatch
+label: {id: Selisih saldo member, en: Loyalty mismatch}
+icon: alert
+naming: LYM-{YYYY}-{#####}
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true}
+fields:
+  - {name: account, type: link, to: loyalty_account, label: {id: Member}, required: true, in_list: true}
+  - {name: checked_on, type: date, label: {id: Dicek}, required: true, in_list: true}
+  - {name: points_balance, type: int, label: {id: Poin di member}}
+  - {name: points_ledger, type: int, label: {id: Poin menurut mutasi}}
+  - {name: deposit_balance, type: currency, label: {id: Deposit di member}}
+  - {name: deposit_ledger, type: currency, label: {id: Deposit menurut mutasi}}
+  - {name: resolved, type: check, label: {id: Sudah dicek}, default: 'false', in_list: true, in_filter: true}
+  - {name: check_key, type: data, label: {id: Kunci}, unique: true, hidden: true}
+views:
+  list:
+    columns: [name, checked_on, account, points_balance, points_ledger, deposit_balance, deposit_ledger, resolved]
+    sort: -name
