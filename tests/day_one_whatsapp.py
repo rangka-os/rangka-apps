@@ -32,6 +32,15 @@ ORG = "warung_contoh"
 RIU = "OUT-03"
 KOPI, GELAS, ROTI, KHT, PULSA = "BRG-0011", "BRG-0014", "BRG-0015", "BRG-0022", "BRG-0004"
 DEWI, BUDI, CITRA = "081200000001", "081200000002", "081200000003"   # synthetic numbers only
+# One phone rule in the kernel's CEL and in Rangka Cloud's NormalizePhone (rangka-cloud TestPhoneRuleVectors): without
+# a plus, 0 or 8 first is Indonesian and 00 starts an international number; with a plus the country code is as
+# written; a trunk 0 after 62 is dropped.
+PHONE_VECTORS = {
+    "081234567890": "6281234567890", "812-3456-7890": "6281234567890", "8123 4567 890": "6281234567890",
+    "+62 0812 3456 7890": "6281234567890", "620812 3456 7890": "6281234567890", "62 812 3456 7890": "6281234567890",
+    "0062 812 3456 7890": "6281234567890", "+81 3 1234 5678": "81312345678", "0081 3 1234 5678": "81312345678",
+    "+1 415 555 0100": "14155550100", "(021) 555-0101": "62215550101", "0812": "", "08x2": "",
+}
 
 MEMBERS = [("sari", "cashier", "sari.wa@contohwarung.test", "Sari Contoh", RIU),
            ("tono", "kitchen", "tono.wa@contohwarung.test", "Tono Contoh", RIU),
@@ -265,6 +274,14 @@ def scenario_wa_status_events(api):
     hook(k, "message_status", ev("failed", "meta:131026"), wkey)
     time.sleep(2)
     eq("a late delivered or failed after Dibaca changes nothing", (message(api, key) or {}).get("status"), "read")
+    st, sf = pay(CTX["sari"], CTX["wa_shift"], [{"item": ROTI, "qty": 1}], buyer="Eka", wa_phone="081200000006", wa_receipt=True)
+    keyf = (sf or {}).get("name", "") + ":receipt:1"
+    hook(k, "message_status", {**ev("sent"), "idempotency_key": keyf, "message_id": "wam_test0002"}, wkey)
+    wait_for(lambda: (message(api, keyf) or {}).get("status") == "sent")
+    hook(k, "message_status", {**ev("failed", "meta:131026"), "idempotency_key": keyf, "message_id": "wam_test0002"}, wkey)
+    got = wait_for(lambda: (message(api, keyf) or {}).get("status") == "failed" and message(api, keyf))
+    check("Meta's failed after sent: Gagal, the number cannot receive WhatsApp (audit finding 7)",
+          got and got.get("reason") == "Nomor tidak bisa menerima pesan WhatsApp", message(api, keyf))
 
     # A refusal of the relay (no message id): the row says Gagal and why.
     plain = CTX.get("wa_plain_sale") or {}
@@ -395,6 +412,39 @@ def scenario_wa_booking(api):
           (cs, rec(r).get("start_date"), str(CTX.get("wa_booking_run"))[:600]))
 
 
+def scenario_wa_phone_rule(api):
+    """customer.wa_number and pos_sale.wa_number follow the same rule as Rangka Cloud (audit findings 5 and 6)."""
+    hq = CTX.get("hq")
+    if not hq:
+        return
+    bad = {}
+    for i, (raw, want) in enumerate(PHONE_VECTORS.items()):
+        st, c = hq.create("customer", {"customer_name": f"Vektor {i}", "phone": raw})
+        got = rec(c).get("wa_number") if st == 201 else ("HTTP", st)
+        if got != want:
+            bad[raw] = (got, want)
+    check("customer.wa_number: every vector as Rangka Cloud normalises it", not bad, bad)
+
+
+def scenario_wa_visibility(api):
+    """The kitchen and the cashier see no amounts and no full numbers (audit finding 3); the kitchen reads no receipt."""
+    tono, sari, sale = CTX.get("tono"), CTX.get("sari"), CTX.get("wa_sale")
+    if not (tono and sari and sale):
+        return
+    st, r = tono.call("GET", f"/api/v1/r/pos_sale/{Api.q(sale['name'])}")
+    check("the kitchen still may not read a receipt -> 403", st == 403, (st, r))
+    for who, cl in (("kitchen", tono), ("cashier", sari)):
+        rows = cl.list("whatsapp_message", limit=200)
+        check(f"{who}: whatsapp_message rows carry no amount", rows and not any("amount" in m or "amount_text" in m for m in rows), rows[:2])
+        outs = cl.list("whatsapp_opt_out", limit=200)
+        check(f"{who}: the opt-out list shows no number", not any("number" in o for o in outs), outs[:2])
+        ps = cl.list("whatsapp_pickup", limit=200)
+        check(f"{who}: pickup rows show no number", ps and not any("number" in p for p in ps), ps[:2])
+    hq = CTX.get("hq")
+    if hq:
+        check("head office still sees amounts", any(m.get("amount_text") for m in hq.list("whatsapp_message", limit=200)), "")
+
+
 def scenario_wa_no_phone_in_logs(api):
     """No message row or audit entry carries a full phone number."""
     rows = json.dumps(messages(api))
@@ -402,4 +452,5 @@ def scenario_wa_no_phone_in_logs(api):
 
 
 SCENARIOS = [scenario_wa_host_connector, scenario_wa_receipt, scenario_wa_opt_out, scenario_wa_status_events,
-             scenario_wa_berhenti, scenario_wa_order_ready, scenario_wa_reminder, scenario_wa_booking, scenario_wa_no_phone_in_logs]
+             scenario_wa_berhenti, scenario_wa_order_ready, scenario_wa_reminder, scenario_wa_booking, scenario_wa_phone_rule,
+             scenario_wa_visibility, scenario_wa_no_phone_in_logs]

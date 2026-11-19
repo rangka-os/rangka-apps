@@ -67,7 +67,7 @@ fields:
     label: {id: Nomor WhatsApp (seragam)}
     hidden: true
     depends_on: app_installed('whatsapp_receipt')
-    compute: "('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x00', 'x').replace('x0', 'x62').replace('x', '').matches('^[1-9][0-9]{7,14}$') ? ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x00', 'x').replace('x0', 'x62').replace('x', '') : ''"
+    compute: "(wa_phone.trim().startsWith('+') ? ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')).matches('^[1-9][0-9]{7,14}$') ? (wa_phone.trim().startsWith('+') ? ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')) : ''"
   - name: items
     type: table
     of: pos_sale_item

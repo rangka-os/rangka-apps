@@ -10,11 +10,13 @@ on: rangka_whatsapp.message_status
 if: "'idempotency_key' in event && event.idempotency_key != ''"
 steps:
   - {find: whatsapp_message, where: key == event.idempotency_key, as: m}
+  # ranks: a status only moves forward; a failure after "sent" counts (Meta could not deliver it), not after
+  # "delivered" or "read"
   - update: m
     if: >-
       m != null &&
-      {'queued': 0, 'skipped': 0, 'accepted': 1, 'sent': 2, 'delivered': 3, 'read': 4, 'failed': 1}[m.status] <
-      {'queued': 0, 'accepted': 1, 'sent': 2, 'delivered': 3, 'read': 4, 'failed': 2}[event.status]
+      {'queued': 0, 'skipped': 0, 'accepted': 2, 'sent': 4, 'failed': 5, 'delivered': 6, 'read': 8}[m.status] <
+      {'queued': 0, 'accepted': 2, 'sent': 4, 'failed': 5, 'delivered': 6, 'read': 8}[event.status]
     set:
       status: event.status
       error: "event.status == 'failed' && 'error' in event ? event.error : ''"

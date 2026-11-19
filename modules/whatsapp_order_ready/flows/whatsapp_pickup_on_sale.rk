@@ -15,4 +15,5 @@ steps:
       sale: event.name
       buyer: "event.buyer != '' ? event.buyer : 'Pelanggan'"
       number: event.wa_number
+      outlet: event.outlet
       outlet_name: "o != null ? o.outlet_name : 'kami'"

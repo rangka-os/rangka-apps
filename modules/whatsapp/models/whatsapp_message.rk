@@ -13,10 +13,10 @@ title_field: key
 # roles); nobody edits a row by hand.
 permissions:
   - {role: head_office, read: true, create: true, write: true, export: true}
-  - {role: cashier, read: true, create: true, write: true}
+  - {role: cashier, read: true, create: true}
   # the kitchen marks a ticket ready (module whatsapp_order_ready); the role comes with module kitchen, so a site
   # without it gets the validator's unknown_role warning and nothing else
-  - {role: kitchen, read: true, create: true, write: true}
+  - {role: kitchen, read: true, create: true}
   - {role: finance_manager, read: true, create: true, write: true, export: true}
   - {role: sales_manager, read: true, create: true, write: true, export: true}
   - {role: sales_rep, read: true, create: true, write: true}
@@ -45,12 +45,15 @@ fields:
   - {name: customer, type: link, to: customer, label: {id: Pelanggan}, read_only: true, in_list: true}
   - {name: number_tail, type: data, label: {id: Nomor (4 angka terakhir)}, read_only: true}
   # the amount a template shows, kept so its text is computed in one place (amount_text)
-  - {name: amount, type: currency, label: {id: Nominal}, read_only: true, default: '0'}
+  # hidden from the kitchen and the cashier: a reminder carries an invoice's outstanding, which they may not read
+  # (contract 0027: flows still read it)
+  - {name: amount, type: currency, label: {id: Nominal}, read_only: true, default: '0', hidden_for: [cashier, kitchen]}
   # "84.000", "1.234.567": the kernel's CEL has no number format, so thousands are cut by integer division
   - name: amount_text
     type: data
     label: {id: Nominal (teks)}
     hidden: true
+    hidden_for: [cashier, kitchen]
     compute: >-
       'Rp ' + (int(amount) < 1000 ? string(int(amount)) :
       int(amount) < 1000000 ? string(int(amount) / 1000) + '.' + ('x' + string(1000 + int(amount) - (int(amount) / 1000) * 1000)).replace('x1', '') :

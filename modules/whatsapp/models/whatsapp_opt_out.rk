@@ -22,7 +22,9 @@ permissions:
   - {role: kitchen, read: true}
 fields:
   # digits with the country code, the form customer.wa_number computes (62812…)
-  - {name: number, type: data, label: {id: Nomor WhatsApp}, required: true, unique: true, read_only: true, in_list: true}
+  # hidden from the cashier and the kitchen: their flows look a number up (contract 0027: flows read every field), but
+  # the list of every customer's number is not theirs to read
+  - {name: number, type: data, label: {id: Nomor WhatsApp}, required: true, unique: true, read_only: true, in_list: true, hidden_for: [cashier, kitchen]}
   - name: source
     type: select
     label: {id: Dari}
