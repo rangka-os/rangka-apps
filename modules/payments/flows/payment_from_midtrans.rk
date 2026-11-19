@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A Midtrans payment notification (connector midtrans, trigger payment_notified; Snap page, QRIS, virtual account or
+# GoPay) whose order id is a sales invoice becomes a DRAFT payment allocated to that invoice, gateway midtrans, as the
+# DOKU and Xendit flows do (payment_from_xendit_qr holds the reasoning). The kernel checks the notification's
+# signature_key before this runs (rangka-os contract 0002, body-field signatures), so a forged notification never
+# starts it.
+# Midtrans signs only the order id, the status code and the gross amount, so the connector confirms every
+# notification with Midtrans (GET status) before this runs: paid, the status and the channel come from Midtrans's own
+# answer, and paid also needs it to name the same order id and amount. gateway_ref is the order id (one Midtrans
+# transaction per order id), external_id the invoice number in it (an order id of a second or later attempt ends in
+# ~2 ... ~9) and paid_amount the gross amount (a text with two decimals). A genuine notification resent with unsigned
+# fields changed carries the same gateway_ref, so it finds the payment it already made.
+# One Midtrans account per business: the server key is the org's, and an order id is looked up among this org's
+# invoices only. Two businesses that share one Midtrans account and number invoices alike could see each other's
+# notifications; give each business its own Midtrans account (or merchant) and notification URL.
+# Only a completed payment of a positive amount records money. gateway_ref is the flow's idempotency key and the
+# payment's gateway_ref, claimed in gateway_ref_claim BEFORE the payment is made, so two notifications racing
+# (Midtrans retries after 2, 10, 30, 90 and 210 minutes, and sends capture then settlement for a card) record one
+# payment. A notification for an unknown or cancelled invoice records nothing and tells the owner: the money is at
+# Midtrans.
+# Method: Midtrans payment_type qris is qris, bank_transfer and echannel (Mandiri bill) are va, gopay, shopeepay, dana
+# and ovo are ewallet, the rest other.
+name: payment_from_midtrans
+label: {id: Pembayaran Midtrans jadi pembayaran faktur}
+on: midtrans.payment_notified
+# Every paid notification runs the flow; one without the order id or with no readable positive amount records nothing
+# and tells the owner (the money is at Midtrans), instead of being skipped silently.
+if: "'paid' in event && event.paid == true"
+idempotency: "'gateway_ref' in event ? event.gateway_ref : ''"
+steps:
+  - find: payment
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0"
+    where: "gateway_ref == event.gateway_ref && docstatus != 2"
+    as: done
+  - find: sales_invoice
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0"
+    where: "name == event.external_id && docstatus == 1"
+    as: inv
+  - find_all: payment
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0"
+    where: "docstatus == 0 && reference == event.external_id"
+    as: drafts
+  - find: gateway_ref_claim
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0"
+    where: gateway_ref == event.gateway_ref
+    as: held
+  - find: payment
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0"
+    where: "held != null && name == held.payment && docstatus != 2"
+    as: holder
+  - update: held
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0 && done == null && inv != null && held != null && holder == null"
+    set: {gateway_ref: "''", released_ref: event.gateway_ref}
+  - create: gateway_ref_claim
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0 && done == null && inv != null && (held == null || holder == null)"
+    set: {gateway_ref: event.gateway_ref, payment: "''"}
+    as: claim
+  - create: payment
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0 && done == null && inv != null && (held == null || holder == null)"
+    set:
+      direction: "'receive'"
+      customer: inv.customer
+      payment_date: today()
+      amount: "double(string(event.paid_amount))"
+      method: >-
+        'channel' in event && event.channel == 'qris' ? 'qris'
+        : ('channel' in event && event.channel in ['bank_transfer', 'echannel'] ? 'va'
+        : ('channel' in event && event.channel in ['gopay', 'shopeepay', 'dana', 'ovo'] ? 'ewallet' : 'other'))
+      gateway: "'midtrans'"
+      gateway_ref: event.gateway_ref
+      reference: inv.name
+      notes: "'Dari Midtrans ' + event.gateway_ref"
+      allocations: "min(double(string(event.paid_amount)), inv.outstanding - drafts.map(p, p.allocated_total).sum()) > 0 ? [{'sales_invoice': inv.name, 'amount': min(double(string(event.paid_amount)), inv.outstanding - drafts.map(p, p.allocated_total).sum())}] : []"
+    as: pay
+  - update: claim
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0 && done == null && inv != null && (held == null || holder == null)"
+    set: {payment: pay.name}
+  - notify: owner
+    if: "'gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0 && done == null && inv == null"
+    channel: email
+    template: {id: 'Midtrans {event.gateway_ref}: Rp {event.paid_amount} untuk {event.external_id}, faktur tidak ada/terbuka. Catat manual.'}
+  - notify: owner
+    if: "!('gateway_ref' in event && event.gateway_ref != '' && 'external_id' in event && 'paid_amount' in event && string(event.paid_amount).matches('^[0-9]+([.][0-9]+)?$') && double(string(event.paid_amount)) > 0)"
+    channel: email
+    template: {id: 'Midtrans: ada pembayaran lunas tanpa order id atau jumlah yang terbaca. Cek dashboard Midtrans dan log connector, catat manual.'}

@@ -5901,6 +5901,8 @@ import day_one_subscriptions  # noqa: E402
 import day_one_pos  # noqa: E402
 import day_one_moka  # noqa: E402
 import day_one_doku  # noqa: E402
+import day_one_midtrans  # noqa: E402
+import day_one_pos_export  # noqa: E402
 import day_one_whatsapp  # noqa: E402
 import day_one_kitchen  # noqa: E402
 import day_one_attendance  # noqa: E402
@@ -5918,6 +5920,8 @@ day_one_subscriptions.bind(sys.modules[__name__])
 day_one_pos.bind(sys.modules[__name__])      # also registers demo-kasir
 day_one_moka.bind(sys.modules[__name__])
 day_one_doku.bind(sys.modules[__name__])
+day_one_midtrans.bind(sys.modules[__name__])
+day_one_pos_export.bind(sys.modules[__name__])
 day_one_whatsapp.bind(sys.modules[__name__])   # also registers demo-whatsapp (orgs, kernel env, setup)
 day_one_kitchen.bind(sys.modules[__name__])
 day_one_attendance.bind(sys.modules[__name__])
@@ -5943,8 +5947,11 @@ SCENARIOS = {
 }
 SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS
 SCENARIOS["demo-fnb"] += day_one_moka.SCENARIOS
+# a POS export converted to Juragan's template (scripts/pos_export_to_template.py), right after the other imports
+_i = SCENARIOS["demo-ritel"].index(scenario_ritel_loyverse) + 1
+SCENARIOS["demo-ritel"][_i:_i] = day_one_pos_export.SCENARIOS
 for _site in ("demo-jasa", "demo-fnb"):
-    SCENARIOS[_site] += day_one_doku.SCENARIOS
+    SCENARIOS[_site] += day_one_doku.SCENARIOS + day_one_midtrans.SCENARIOS
 # staff dashboards (A5): after the site's own scenarios, before the permission matrix
 for _site, _extra in day_one_staff.SCENARIOS.items():
     _i = SCENARIOS[_site].index(scenario_permissions)

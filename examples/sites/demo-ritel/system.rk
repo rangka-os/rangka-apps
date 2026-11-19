@@ -26,6 +26,7 @@ secrets: {driver: env}
 # (its webhooks answer 401). Local demos set them to the dummy keys of the mocks (rangka-connectors doku/mock).
 connector_auth:
   doku: {client_id: '${DOKU_CLIENT_ID}', secret_key: '${DOKU_SECRET_KEY}', api_host: '${DOKU_API_HOST}'}
+  midtrans: {server_key: '${MIDTRANS_SERVER_KEY}', api_host: '${MIDTRANS_API_HOST}', snap_host: '${MIDTRANS_SNAP_HOST}'}
   xendit: {secret_key: '${XENDIT_SECRET_KEY}', callback_token: '${XENDIT_CALLBACK_TOKEN}'}
 audit: {enabled: true, retention_days: 365}
 observability: {log_level: info, metrics: true}

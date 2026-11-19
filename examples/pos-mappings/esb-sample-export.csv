@@ -1,0 +1,14 @@
+Sales Detail Report (synthetic sample, not a real ESB export)
+Period: 17/11/2026 - 18/11/2026
+Sales Date;Bill Number;Branch;Menu Code;Menu Name;Qty;Subtotal;Discount;Status
+17/11/2026 10:02;B-0001;Dago;MNU-001;Nasi ayam bakar;2;70.000;0;Paid
+17/11/2026 10:02;B-0001;Dago;MNU-014;Es teh manis;2;16.000;0;Paid
+17/11/2026 10:02;B-0001;Dago;MNU-001;Nasi ayam bakar;1;35.000;5.000;Paid
+17/11/2026 12:40;B-0002;Dago;MNU-007;Sate ayam;3;90.000;0;Void
+17/11/2026 19:15;B-0003;Dago;MNU-007;Sate ayam;1;30.000;0;Paid
+17/11/2026 11:11;C-0001;Cibiru;MNU-001;Nasi ayam bakar;4;140.000;0;Paid
+18/11/2026 09:30;B-0004;Dago;MNU-014;Es teh manis;10;80.000;8.000;Paid
+18/11/2026 13:05;C-0002;Cibiru;MNU-007;Sate ayam;2;60.000;0;Cancelled
+18/11/2026 13:20;C-0003;Cibiru;MNU-020;Paket rapat;1;1.250.000;125.000;Paid
+
+TOTAL;;;;;26;1.771.000;138.000;

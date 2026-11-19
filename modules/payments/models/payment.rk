@@ -82,7 +82,7 @@ fields:
     label: {id: Salesman}
     default: customer.salesman
     depends_on: "app_installed('distribution') && direction == 'receive'"
-  # Payments that arrive through a payment gateway (Xendit VA, QRIS, payment link) carry the gateway's id, so a
+  # Payments that arrive through a payment gateway (Xendit, DOKU, Midtrans: VA, QRIS, payment link) carry the gateway's id, so a
   # callback delivered twice finds the payment it already made instead of paying the invoice again. One live
   # payment per id is kept by gateway_ref_claim, not by `unique` here: the kernel's unique index also holds the id
   # on a cancelled payment, which made amending it fail (500) and the callback impossible to record again.
@@ -92,6 +92,7 @@ fields:
     options:
       - {value: xendit, label: {id: Xendit}}
       - {value: doku, label: {id: DOKU}}
+      - {value: midtrans, label: {id: Midtrans}}
   - name: gateway_ref
     type: data
     label: {id: ID transaksi gateway}

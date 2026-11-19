@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A Midtrans refund (trigger payment_notified, transaction_status refund or partial_refund, status code 200): the money
+# went back to the payer from the Midtrans balance. It is never money in (payment_from_midtrans runs only for
+# paid == true) and it is not booked here either (no credit note or money-out document yet), so the owner is told,
+# with the order id (the invoice number, plus ~<attempt> for a later attempt), to record it, as payment_refund_from_doku does.
+# The status and the refunded amount come from Midtrans's own answer (the connector confirms every notification with
+# GET status), not from the notification, which Midtrans signs only in part. The message still sends the owner to the
+# Midtrans dashboard: the refund is recorded there, not here.
+name: payment_refund_from_midtrans
+label: {id: Refund Midtrans diberitahukan ke pemilik}
+on: midtrans.payment_notified
+if: "'refunded' in event && event.refunded == true && 'gateway_ref' in event && event.gateway_ref != ''"
+idempotency: "'refund:' + event.gateway_ref + ':' + ('status' in event && event.status != null ? event.status : '') + ':' + ('refund_amount' in event && event.refund_amount != null ? string(event.refund_amount) : '')"
+steps:
+  - notify: owner
+    if: "'refund_amount' in event && event.refund_amount != null"
+    channel: email
+    template: {id: 'Refund Midtrans {event.gateway_ref}: Rp {event.refund_amount} menurut notifikasi. Cek dashboard Midtrans, lalu catat pengembaliannya.'}
+  - notify: owner
+    if: "!('refund_amount' in event && event.refund_amount != null)"
+    channel: email
+    template: {id: 'Refund Midtrans {event.gateway_ref}. Cek jumlahnya di dashboard Midtrans, lalu catat pengembaliannya.'}
