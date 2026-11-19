@@ -19,6 +19,17 @@ steps:
       - find_all: deposit_entry
         where: source == event.name && source_type == 'pos_sale' && kind != 'reverse'
         as: de
+      # one reverse spend row on every run: a run started by hand is refused as a whole (contract 0026, audit #102 F1)
+      - create: member_spend
+        if: a != null
+        set:
+          account: a.name
+          sale: event.name
+          amount: 0 - event.grand_total
+          date: today()
+          outlet: event.outlet
+          entry: "'reverse'"
+          entry_key: "event.name + '|reverse'"
       - create: loyalty_entry
         if: a != null && pe.map(e, e.points).sum() != 0
         set:

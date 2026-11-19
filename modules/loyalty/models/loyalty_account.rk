@@ -13,7 +13,8 @@ icon: vip-crown-line
 naming: MBR-{#####}
 title_field: member_name
 permissions:
-  - {role: head_office, read: true, create: true, write: true, delete: true, export: true, print: true}
+  # no delete: a member is switched off (active), its ledgers keep linking it (QA #102 F1)
+  - {role: head_office, read: true, create: true, write: true, export: true, print: true}
   # the payment flows (invoice paid from the deposit) run as the finance or sales manager and update the balance
   - {role: finance_manager, read: true, write: true, export: true}
   - {role: sales_manager, read: true, write: true}
@@ -40,10 +41,11 @@ fields:
     to: customer
     label: {id: Pelanggan}
     help: {id: 'Kosongkan: pelanggan baru dibuat dengan nama dan nomor ini'}
-    read_only_for: [cashier]
+    # only head office (and the owner) relinks: the deposit pays this customer's invoices (audit #102 F3)
+    read_only_for: [cashier, finance_manager, sales_manager]
   - {name: joined_outlet, type: link, to: outlet, label: {id: Daftar di outlet}, depends_on: app_installed('outlets'), default: "user.outlets.size() > 0 ? user.outlets[0] : ''"}
   - {name: joined_on, type: date, label: {id: Tanggal daftar}, default: today(), read_only: true, in_list: true}
-  - {name: active, type: check, label: {id: Aktif}, help: {id: 'Member nonaktif tidak bisa dipilih di kasir. Saldonya tetap'}, default: 'true', in_list: true, in_filter: true, read_only_for: [cashier]}
+  - {name: active, type: check, label: {id: Aktif}, help: {id: 'Member nonaktif tidak bisa dipilih di kasir. Saldonya tetap'}, default: 'true', in_list: true, in_filter: true, read_only_for: [cashier, finance_manager, sales_manager]}
   # the tier and its figures, copied by the flows (one hop for a sale's computes)
   - {name: tier, type: link, to: member_tier, label: {id: Tier}, read_only: true, in_list: true, in_filter: true}
   - {name: tier_name, type: data, label: {id: Nama tier}, read_only: true}

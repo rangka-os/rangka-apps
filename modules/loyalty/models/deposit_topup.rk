@@ -69,8 +69,8 @@ rules:
     message: {id: 'Sesi kasir ini sudah ditutup; buka sesi baru'}
   - name: own_shift
     on: save
-    check: "shift == '' || shift.cashier == user.email || 'head_office' in user.roles || 'owner' in user.roles"
-    message: {id: 'Ini sesi kasir orang lain; pakai sesi kasirmu sendiri'}
+    check: "shift == '' || shift.cashier == user.email"
+    message: {id: 'Isi deposit hanya di sesi kasirmu sendiri; di kantor kosongkan Sesi kasir'}
   - name: transfer_not_on_shift
     on: save
     check: shift == '' || method != 'transfer'

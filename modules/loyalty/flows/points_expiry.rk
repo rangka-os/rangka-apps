@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # Every night at 02:00 (site timezone): a member with points and no purchase for its tier's expiry_months loses them
 # all (one expire row; inactivity, not per earning date). A purchase moves last_activity, so a member who keeps buying
-# keeps its points. The day is today, or event.as_of (YYYY-MM-DD) when head office runs it by hand (and in tests).
+# keeps its points. The day is today, or event.as_of (YYYY-MM-DD) when head office runs it by hand (and in tests); as_of counts only for the owner.
 name: points_expiry
 label: {id: 'Poin member yang tidak belanja hangus'}
 schedule: '0 2 * * *'
@@ -9,7 +9,7 @@ steps:
   - find_all: loyalty_account
     where: points_balance > 0 && expiry_months > 0
     as: cand
-  - for_each: "cand.filter(a, a.last_activity != '' && add_months(a.last_activity, a.expiry_months) <= ('as_of' in event ? event.as_of : string(today())))"
+  - for_each: "cand.filter(a, a.last_activity != '' && add_months(a.last_activity, a.expiry_months) <= ('as_of' in event && 'owner' in user.roles ? event.as_of : string(today())))"
     as: a
     do:
       - create: loyalty_entry
@@ -18,9 +18,9 @@ steps:
           kind: "'expire'"
           points: 0 - a.points_balance
           balance_after: 0
-          date: "'as_of' in event ? event.as_of : today()"
+          date: "'as_of' in event && 'owner' in user.roles ? event.as_of : today()"
           source_type: "'points_expiry'"
-          source: "'as_of' in event ? event.as_of : string(today())"
-          entry_key: "a.name + '|expire|' + ('as_of' in event ? event.as_of : string(today()))"
+          source: "'as_of' in event && 'owner' in user.roles ? event.as_of : string(today())"
+          entry_key: "a.name + '|expire|' + ('as_of' in event && 'owner' in user.roles ? event.as_of : string(today()))"
       - update: a
         set: {points_balance: 0}

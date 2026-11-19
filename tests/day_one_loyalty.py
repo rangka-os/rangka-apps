@@ -27,10 +27,11 @@ SARI, DIKA = "sari.riau@contohwarung.test", "dika.dago@contohwarung.test"
 _R = {"read"}
 MATRIX = {
     "member_tier": {"head_office": {"read", "create", "write", "delete", "export"}, "finance_manager": _R, "sales_manager": _R, "cashier": _R, "outlet_staff": _R},
-    "loyalty_account": {"head_office": {"read", "create", "write", "delete", "export", "print"}, "finance_manager": {"read", "write", "export"},
+    "loyalty_account": {"head_office": {"read", "create", "write", "export", "print"}, "finance_manager": {"read", "write", "export"},
                         "sales_manager": {"read", "write"}, "cashier": {"read", "create", "write", "print"}, "outlet_staff": _R},
     # append_only (contract 0026): /meta offers no create; the flows still write rows as the roles below
     "loyalty_entry": {"head_office": {"read", "create", "export"}, "finance_manager": {"read", "export"}, "cashier": {"read", "create"}},
+    "member_spend": {"head_office": {"read", "create", "export"}, "finance_manager": {"read", "export"}, "cashier": {"read", "create"}},
     "deposit_entry": {"head_office": {"read", "create", "export"}, "finance_manager": {"read", "create", "export"}, "sales_manager": {"read", "create"}, "cashier": {"read", "create"}},
     "deposit_topup": {"head_office": {"read", "create", "write", "delete", "submit", "cancel", "export", "print"},
                       "finance_manager": {"read", "create", "write", "delete", "submit", "cancel", "export", "print"},
@@ -40,7 +41,7 @@ MATRIX = {
     "loyalty_mismatch": {"head_office": {"read", "create", "write", "delete", "export"}},
     "loyalty_guard": {"head_office": {"create"}, "finance_manager": {"create"}, "sales_manager": {"create"}, "cashier": {"create"}},   # never stored
 }
-APPEND_ONLY = {"loyalty_entry", "deposit_entry"}
+APPEND_ONLY = {"loyalty_entry", "deposit_entry", "member_spend"}
 
 
 def bind(m):
@@ -142,6 +143,13 @@ def scenario_loyalty_signup(api):
     sari.patch("loyalty_account", a["name"], {"points_balance": 99999, "deposit_balance": 5000000, "tier": SILVER})
     a2 = member(api, a["name"])
     eq("a cashier cannot type points, a deposit or a tier (read_only)", (a2.get("points_balance"), a2.get("deposit_balance"), a2.get("tier")), (0, 0, BASE))
+    st, r = sari.patch("loyalty_account", a["name"], {"phone": "0812-0000-0411"})
+    st2, found = dika.call("GET", "/api/v1/r/loyalty_account?q=0411")
+    names = [x.get("name") for x in ((found or {}).get("data") or [])] if isinstance(found, dict) else []
+    check("a member changes number at the counter; found by the new one", st == 200 and a["name"] in names, (st, r, found))
+    sari.patch("loyalty_account", a["name"], {"phone": "0812-0000-0401"})
+    st, run = hq.call("POST", "/api/v1/flows/loyalty_account_on_create/run", {"name": a["name"]})
+    eq("head office starting the sign-up flow again changes nothing (audit F1)", (member(api, a["name"]).get("tier"), member(api, a["name"]).get("last_activity")), (BASE, a2.get("last_activity")))
 
 
 def scenario_loyalty_points(api):
@@ -190,7 +198,20 @@ def scenario_loyalty_points(api):
     if check("void of the redeem sale -> 200", st == 200, (st, r)):
         eq("the void gives 100 back and takes the 3 earned: 1.008", member(api, a).get("points_balance"), 1008)
         eq("one reverse row of +97", [(x["kind"], x["points"]) for x in api.find("loyalty_entry", f"source == '{s2['name']}' && kind == 'reverse'")], [("reverse", 97)])
+    spend = member(api, a).get("spend_this_year")
+    st, run = hq.call("POST", "/api/v1/flows/loyalty_on_sale/run", {"name": s["name"]})
+    eq("head office starting the sale's flow again is refused as a whole (append_only spend row, audit F1)",
+       (st, ((run or {}).get("error") or {}).get("code"), member(api, a).get("spend_this_year"), member(api, a).get("points_balance")), (409, "append_only", spend, 1008))
+    st, run = hq.call("POST", "/api/v1/flows/loyalty_on_sale_cancel/run", {"name": s2["name"]})
+    eq("and the void's flow too", (st, member(api, a).get("spend_this_year")), (409, spend))
+    st, am = sari.verb("pos_sale", s2["name"], "amend")
+    am = rec(am)
+    if check("the voided redeem sale is amended -> 2xx", st in (200, 201) and am.get("name"), (st, am)):
+        st, r = sari.verb("pos_sale", am["name"], "submit")
+        eq("the amended receipt posts its points once: 1.008 - 100 + 3 = 911", (st, member(api, a).get("points_balance"),
+           len(api.find("loyalty_entry", f"source == '{rec(r).get('name')}'"))), (200, 911, 2))
     eq("ledger sum = balance", ledger_sum(api, "loyalty_entry", a, "points"), member(api, a).get("points_balance"))
+    eq("spend rows sum = the year's spend", ledger_sum(api, "member_spend", a, "amount"), member(api, a).get("spend_this_year"))
 
 
 def scenario_loyalty_deposit(api):
@@ -215,6 +236,16 @@ def scenario_loyalty_deposit(api):
     eq("the shift: top-up cash +100.000, expected cash +100.000", (after.get("topup_cash_total", 0) - before.get("topup_cash_total", 0), after.get("expected_cash", 0) - before.get("expected_cash", 0)), (100000, 100000))
     gl = {x["account"]: x["amount"] for x in hq.find("gl_entry", f"voucher_type == 'deposit_topup' && voucher == '{top['name']}' && entry == 'post'")}
     eq("journal of the top-up: 1-1150 against 2-1400", gl, {"11150": 100000, "21400": -100000})
+    st, resp = hq.create("deposit_topup", {"account": a, "amount": 50000, "method": "cash", "shift": s_riu})
+    check("head office cannot put a top-up on a cashier's shift (audit F6) -> 422 own_shift", st == 422 and "own_shift" in rules(resp), (st, resp))
+    s_dgo, bayu = shift(dika, DIKA, DGO), CTX.get("bayu")
+    st, t2 = dika.create("deposit_topup", {"account": a, "amount": 5000, "method": "cash", "shift": s_dgo})
+    st2, t2 = dika.verb("deposit_topup", rec(t2).get("name", "-"), "submit")
+    if bayu and st2 == 200:
+        st, r = bayu.verb("deposit_topup", rec(t2)["name"], "cancel")
+        check("another cashier of the outlet cannot void it (audit F7) -> 422 void_not_own", st == 422 and "void_not_own" in rules(r), (st, r))
+        st, r = dika.verb("deposit_topup", rec(t2)["name"], "cancel")
+        eq("its own cashier voids it the same day: balance back to 100.000", (st, member(api, a).get("deposit_balance")), (200, 100000))
     st, resp = sari.create("deposit_topup", {"account": a, "amount": 50000, "method": "transfer"})
     check("a cashier cannot book a transfer top-up (the desk does) -> 422", st == 422 and ("cashier_on_shift" in rules(resp) or "transfer_not_on_shift" in rules(resp)), (st, resp))
 
@@ -310,14 +341,18 @@ def scenario_loyalty_promo_tier(api):
     # 1 January review (event.as_of): last year's spend 1.200.000+ keeps Silver; the next year, nothing spent, base tier
     jan = f"{kernel_today().year + 1}-01-01"
     st, run = hq.call("POST", "/api/v1/flows/loyalty_yearly/run", {"as_of": jan})
+    eq("head office's as_of is ignored (only the owner may give a day, audit F2)", member(api, CTX["loy_b"]).get("spend_this_year") > 0, True)
+    st, run = api.call("POST", "/api/v1/flows/loyalty_yearly/run", {"as_of": jan})
     b = member(api, CTX["loy_b"])
     eq(f"review {jan}: Silver stays, the spend rolled to last year", (st, b.get("tier"), b.get("spend_this_year"), b.get("spend_last_year") >= 1000000), (200, SILVER, 0, True))
-    st, run = hq.call("POST", "/api/v1/flows/loyalty_yearly/run", {"as_of": jan})
+    st, run = api.call("POST", "/api/v1/flows/loyalty_yearly/run", {"as_of": jan})
     eq("the same day again changes nothing", (member(api, CTX["loy_b"]).get("spend_last_year") >= 1000000), True)
-    st, run = hq.call("POST", "/api/v1/flows/loyalty_yearly/run", {"as_of": "2026-07-01"})
+    st, run = api.call("POST", "/api/v1/flows/loyalty_yearly/run", {"as_of": f"{kernel_today().year}-01-01"})
+    eq("an earlier 1 January than the last review does nothing", member(api, CTX["loy_b"]).get("tier"), SILVER)
+    st, run = api.call("POST", "/api/v1/flows/loyalty_yearly/run", {"as_of": "2026-07-01"})
     eq("on any other day the review does nothing", member(api, CTX["loy_b"]).get("tier"), SILVER)
     jan2 = f"{kernel_today().year + 2}-01-01"
-    st, run = hq.call("POST", "/api/v1/flows/loyalty_yearly/run", {"as_of": jan2})
+    st, run = api.call("POST", "/api/v1/flows/loyalty_yearly/run", {"as_of": jan2})
     b = member(api, CTX["loy_b"])
     eq(f"review {jan2}: nothing spent in the year, back to the base tier and its figures", (b.get("tier"), b.get("member_discount_pct")), (BASE, 0))
     st, r = hq.patch("member_tier", BASE, {"point_value": 150})
@@ -410,10 +445,10 @@ def scenario_loyalty_expiry_check(api):
     a = member(api, CTX["loy_a"])
     pts = a.get("points_balance", 0)
     day = (datetime.date.fromisoformat(a["last_activity"]) + datetime.timedelta(days=330)).isoformat()
-    st, run = hq.call("POST", "/api/v1/flows/points_expiry/run", {"as_of": day})
+    st, run = api.call("POST", "/api/v1/flows/points_expiry/run", {"as_of": day})
     eq("11 months without a purchase: the points stay", (st, member(api, CTX["loy_a"]).get("points_balance")), (200, pts))
     y, mo, d = (int(x) for x in a["last_activity"].split("-"))
-    st, run = hq.call("POST", "/api/v1/flows/points_expiry/run", {"as_of": f"{y + 1}-{mo:02d}-{min(d, 28):02d}" if (mo, d) != (2, 29) else f"{y + 1}-03-01"})
+    st, run = api.call("POST", "/api/v1/flows/points_expiry/run", {"as_of": f"{y + 1}-{mo:02d}-{min(d, 28):02d}" if (mo, d) != (2, 29) else f"{y + 1}-03-01"})
     # a run by hand may not write ledger rows (contract 0026: only events, hooks, seed and the scheduler do), so the
     # 12-month run is refused exactly where it would write the expire row: the member was selected. The 02:00
     # scheduler run writes it (system actor).
@@ -446,6 +481,8 @@ def scenario_loyalty_invoice_deposit(api):
         return
     a = rec(a)
     eq("linked to CUST-0002, the base tier", (member(api, a["name"]).get("customer"), member(api, a["name"]).get("tier")), ("CUST-0002", BASE))
+    fm.patch("loyalty_account", a["name"], {"customer": "CUST-0003", "active": False})
+    eq("finance cannot relink the member to another customer or switch it off (audit F3)", (member(api, a["name"]).get("customer"), member(api, a["name"]).get("active")), ("CUST-0002", True))
     st, resp = api.create("loyalty_account", {"member_name": "Dua kali", "phone": "081200000999", "customer": "CUST-0002"})
     check("a second member for the same customer -> 422 customer_member", st == 422 and "customer_member" in rules(resp), (st, resp))
     st, tp = fm.create("deposit_topup", {"account": a["name"], "amount": 500000, "method": "transfer", "ref": "TRF-UJI-2"})

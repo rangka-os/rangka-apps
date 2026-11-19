@@ -104,4 +104,5 @@ steps:
       entry: "'post'"
       line: "'8'"
       outlet: "event.outlet"
+      party: "event.member"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"

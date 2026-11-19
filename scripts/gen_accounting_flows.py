@@ -153,7 +153,7 @@ POSTINGS = {
                ("'21310'", "0 - event.pph_final"),
                ("'51100'", "event.cogs_total"),
                ("'11400'", "0 - event.cogs_total"),
-               ("'21400'", "event.deposit_used")]),
+               ("'21400'", "event.deposit_used", {"party": "event.member"})]),
     "pos_shift_close": dict(
         label="Jurnal tutup sesi kasir", date="event.close_date", outlet="event.outlet",
         # Closing the shift settles what its receipts held in Kas outlet belum disetor: the cash counted (less the float,

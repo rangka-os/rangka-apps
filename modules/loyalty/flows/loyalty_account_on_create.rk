@@ -5,6 +5,8 @@
 name: loyalty_account_on_create
 label: {id: 'Member baru: hubungkan pelanggan dan tier dasar'}
 on: loyalty_account.created
+# a member that already has its tier was set up: a run started by hand changes nothing (audit #102 F1)
+if: event.tier == ''
 steps:
   - {find: loyalty_account, where: name == event.name, as: me}
   - find_all: loyalty_account

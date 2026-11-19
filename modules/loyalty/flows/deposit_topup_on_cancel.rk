@@ -19,6 +19,10 @@ steps:
       - if: s == null
         create: loyalty_guard
         set: {reason: "'void_other_day'", document: event.name}
+      # only the shift's own cashier (or head office, the owner) voids its top-ups: the cash leaves that drawer (audit F7)
+      - if: "s.cashier != user.email && !('head_office' in user.roles) && !('owner' in user.roles)"
+        create: loyalty_guard
+        set: {reason: "'void_not_own'", document: event.name}
       - update: s
         set:
           topup_cash_total: "s.topup_cash_total - (event.method == 'cash' ? event.amount : 0)"

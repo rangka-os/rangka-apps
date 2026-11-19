@@ -5,11 +5,21 @@
 # the second sees what the first left: points or deposit short is refused (loyalty_guard) and the payment rolls back.
 # Then the ledgers (redeem, earn, deposit spend), the balances, the year's spend and the last purchase; the member moves
 # up a tier as soon as its spend this year (or last year) reaches a higher active tier, never down here (loyalty_yearly).
+# A device's replay pins the sale's computed fields and turns its rules into exceptions (contract 0058 §10), so the
+# flow checks again from the member's own figures: points and deposit only with a member, the deposit never above the
+# total, the points' value and cap recomputed (audit #102 F4). Every run writes a member_spend row first, so a run
+# started by hand (no ledger rows, contract 0026) is refused as a whole (audit #102 F1).
 name: loyalty_on_sale
 label: {id: 'Transaksi kasir dibayar: poin dan deposit member'}
 on: pos_sale.submitted
 if: app_installed('pos')
 steps:
+  - if: "event.member == '' && (event.deposit_used != 0 || event.points_redeemed != 0)"
+    create: loyalty_guard
+    set: {reason: "'not_member'", document: event.name}
+  - if: event.deposit_used < 0 || event.deposit_used > event.grand_total
+    create: loyalty_guard
+    set: {reason: "'deposit_over'", document: event.name}
   - if: "event.member != ''"
     then:
       - find: loyalty_account
@@ -21,12 +31,23 @@ steps:
       - if: event.points_redeemed < 0 || event.points_redeemed > a.points_balance
         create: loyalty_guard
         set: {reason: "'points_short'", document: event.name}
-      - if: event.points_discount > event.points_cap
+      - if: >-
+          event.points_discount != round(event.points_redeemed * a.point_value)
+          || event.points_discount > round((event.subtotal - event.bill_promo - event.member_discount) * a.max_redeem_pct / 100)
         create: loyalty_guard
         set: {reason: "'points_cap'", document: event.name}
       - if: event.deposit_used < 0 || event.deposit_used > a.deposit_balance
         create: loyalty_guard
         set: {reason: "'deposit_short'", document: event.name}
+      - create: member_spend
+        set:
+          account: a.name
+          sale: event.name
+          amount: event.grand_total
+          date: event.date
+          outlet: event.outlet
+          entry: "'post'"
+          entry_key: "event.name + '|post'"
       - create: loyalty_entry
         if: event.points_redeemed > 0
         set:
