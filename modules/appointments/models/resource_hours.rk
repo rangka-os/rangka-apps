@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One opening window of a booking resource on one weekday ("HH:MM" text, close after open). A weekday without a row
+# is closed; a resource without any row is open all day (flow appointment_on_submit).
+name: resource_hours
+is_child: true
+fields:
+  - name: weekday
+    type: select
+    label: {id: Hari}
+    required: true
+    options:
+      - {value: mon, label: {id: Senin}}
+      - {value: tue, label: {id: Selasa}}
+      - {value: wed, label: {id: Rabu}}
+      - {value: thu, label: {id: Kamis}}
+      - {value: fri, label: {id: Jumat}}
+      - {value: sat, label: {id: Sabtu}}
+      - {value: sun, label: {id: Minggu}}
+  - {name: open_time, type: data, label: {id: Buka}, required: true, default: "'09:00'"}
+  - {name: close_time, type: data, label: {id: Tutup}, required: true, default: "'21:00'"}

@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+# The cashier's open orders (Pesanan terbuka, rangka-apps#118): service appointments finished but not paid yet, not a
+# pseudo table on the counter (a salon has no tables, and a list stays simple on a phone). "Buat tagihan" (state done
+# -> billed, flow appointment_slot_on_update) drafts the pos_sale on the cashier's open shift with the services at
+# catalogue price and the deposit taken off; the card then shows the receipt number, which the cashier opens to take
+# the payment. A paid bill leaves the list (state paid); a voided or deleted draft puts the card back to Selesai.
+name: pesanan_terbuka
+type: queue
+label: {id: Pesanan terbuka, en: Open orders}
+description: {id: 'Layanan yang sudah selesai tapi belum dibayar. Tekan Buat tagihan, lalu buka transaksinya untuk menerima pembayaran.'}
+icon: bill-line
+roles: [cashier, head_office]
+device: tablet
+queue:
+  source: {model: appointment_slot, filter: "kind == 'service' && state in ['done', 'billed']", sort: done_at}
+  card: {title: heading, subtitle: bill_note, fields: [where_who, sale], age_from: done_at}
+  columns: {by: state, values: [done, billed]}
+  steps:
+    - {when: "state == 'done'", set: {state: billed}, label: {id: Buat tagihan}}
+  refresh: 15

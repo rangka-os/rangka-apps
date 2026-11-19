@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: appointment_invoice_tag_lock
+label: {id: Catatan faktur uang muka janji dikunci}
+# The flows of this module find a deposit invoice by the appointment number in its notes. Nobody edits those notes by
+# hand (the rental_invoice_tag_lock pattern).
+on: sales_invoice.updated
+if: event.before != null && event.before.notes.contains('JNJ-') && event.notes != event.before.notes
+steps:
+  - create: appointment_guard
+    set: {reason: "'invoice_tag'", document: event.name}

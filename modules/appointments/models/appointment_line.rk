@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One service of an appointment. Price and item come from the service (the catalogue price, read again on the bill);
+# the duration may be changed for this customer (a long-hair cut).
+name: appointment_line
+is_child: true
+fields:
+  - {name: service, type: link, to: booking_service, label: {id: Layanan}, required: true}
+  - {name: title, type: data, label: {id: Nama layanan}, read_only: true, compute: service.title}
+  - {name: item, type: link, to: item, label: {id: Barang katalog}, read_only: true, compute: service.item}
+  - {name: duration_min, type: int, label: {id: Lama (menit)}, default: service.duration_min}
+  - {name: price, type: currency, label: {id: Harga katalog}, read_only: true, compute: service.price}
+  - {name: service_active, type: check, label: {id: Layanan aktif}, read_only: true, hidden: true, compute: service.active}
+  - {name: needs_resource, type: check, label: {id: Butuh tempat}, read_only: true, hidden: true, compute: "service.resource_kind != 'none'"}

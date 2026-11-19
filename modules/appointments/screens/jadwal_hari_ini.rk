@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+# Today's appointments and table reservations (contract 0030 queue) in columns Dipesan, Datang, Selesai, earliest
+# first. One tap moves a card one step (flow appointment_slot_on_update stamps the time and refuses any other move;
+# the renderer's "Urungkan" is the step back). A small salon sees everyone's day: a staff member covers a colleague.
+name: jadwal_hari_ini
+type: queue
+label: {id: Jadwal hari ini, en: Today's appointments}
+description: {id: 'Janji dan reservasi hari ini. Tekan Datang saat pelanggan tiba, lalu Selesai setelah layanan.'}
+icon: calendar-check-line
+roles: [service_staff, cashier, head_office, sales_manager]
+device: tablet
+queue:
+  source: {model: appointment_slot, filter: "date == today() && state in ['booked', 'arrived', 'done']", sort: start_min}
+  card: {title: heading, subtitle: where_who, fields: [services], age_from: arrived_at}
+  columns: {by: state, values: [booked, arrived, done]}
+  steps:
+    - {when: "state == 'booked'", set: {state: arrived}, label: {id: Datang}}
+    - {when: "state == 'arrived'", set: {state: done}, label: {id: Selesai}}
+  refresh: 15

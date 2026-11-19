@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: appointments
+version: 1.0.0
+title: {id: Janji temu dan reservasi, en: Appointments and reservations}
+summary:
+  id: Janji layanan per staf (salon, barbershop, klinik) dan reservasi meja, tanpa bentrok, dengan uang muka dan tagihan di kasir.
+  en: Per-staff service appointments (salon, barbershop, clinic) and table reservations, clash-free, with a deposit and billing at the cashier.
+category: operations
+icon: calendar-check-line
+# rangka-apps#118 v1 (no online self-booking). Masters: booking_resource (a chair, bed or room of kind station/room, or
+# a restaurant table of kind table, with its opening hours per weekday in resource_hours), booking_service (a service
+# on the catalogue: its item gives the price, plus a duration in minutes) and resource_time_off (a resource or a staff
+# member is away on a date, between two times). An appointment is a submittable document for one customer on one
+# date at one start time: either services (lines of booking_service, done by one staff member, a user, at a
+# resource) or a table for a party. Times are "HH:MM" text; the model computes minutes since midnight (start_min,
+# end_min) because the rule language has no time-of-day type.
+# Submitting it (flow appointment_on_submit) refuses a clash with another live appointment of the same staff member
+# or resource (under the flow read lock of contract 0025 on appointment_slot, so two appointments submitted at the
+# same moment never both pass), a time outside the resource's hours and a time inside a time off; then it writes the
+# appointment_slot, the row whose state the day's work moves (a submitted document cannot change): booked -> arrived
+# -> done -> billed -> paid, or no_show / cancelled. The screens: jadwal_hari_ini (staff: Datang, Selesai) and
+# pesanan_terbuka (cashier: the services done today that are not paid yet; "Buat tagihan" drafts the pos_sale).
+# Money (rk-auditor): a deposit (uang muka) is a draft sales_invoice made at submit, tagged "(JNJ-...)" in its notes
+# and paid like any invoice; flows of this module keep the tag locked and record on the slot whether it was
+# submitted. Billing (flow appointment_slot_on_update, state done -> billed, run by the cashier) drafts a pos_sale on
+# the cashier's open shift with the services at catalogue price (pos_sale_item computes the rate from the item) and,
+# when the deposit invoice was submitted, takes the deposit off the bill as the receipt discount (discount_amount), so
+# the deposit invoice plus the receipt add up to the catalogue price once. A deposit invoice cannot be submitted once
+# the bill went out without it, nor cancelled while a live receipt deducted it. No-show: the owner's setting
+# (appointment_setting.no_show_deposit) keeps the deposit (default) or flags it for refund with a notice.
+# Reminders: with module whatsapp_booking switched on ("Pengingat janji"), flow appointment_reminder_tomorrow sends the
+# same template pengingat_janji at 16.00 the day before, once per appointment (key <appointment>:appointment:1, the
+# whatsapp_message log of module whatsapp, opt-out respected). Real sending waits for Rangka Cloud's WhatsApp (paid,
+# NEEDS-ZEIN); until then the host connector rangka_whatsapp is the mock.
+requires: {rangka: '>=0.5', users: ^1.2, contacts: ^1.3, catalogue: ^1.3, invoicing: ^1.0}
+optional: {outlets: ^1.2, pos: ^1.0, whatsapp: ^1.0}
+notices:
+  - name: deposit_refund_due
+    label: {id: Uang muka perlu dikembalikan, en: Deposit to refund}
+    description: {id: 'Pelanggan tidak datang dan pengaturan janji temu meminta uang mukanya dikembalikan.'}
+    severity: warn
+    to: [owner, head_office]

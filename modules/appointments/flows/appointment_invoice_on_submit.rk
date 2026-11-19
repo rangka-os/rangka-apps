@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: appointment_invoice_on_submit
+label: {id: Faktur uang muka janji diajukan}
+description: {id: 'Faktur uang muka hanya bisa diajukan untuk janji yang masih berlaku, belum ditagih penuh di kasir, dengan jumlah sama dengan uang mukanya, dan satu faktur per janji.'}
+# A deposit invoice carries "(JNJ-...)" in its notes; an invoice cannot link this module. It is submitted only while
+# the appointment is submitted and its slot is neither cancelled nor billed without the deposit (the bill already
+# charged the full price), when its total equals the deposit and no other submitted invoice carries the same number;
+# then the slot records it as invoiced (and which invoice, so an amended invoice takes over), and the bill takes it
+# off. Runs as the person submitting the invoice (sales_manager, finance_manager, owner).
+on: sales_invoice.submitted
+if: event.notes.contains('JNJ-')
+steps:
+  - {find: appointment, where: "event.notes.contains('(' + name + ')')", as: a}
+  - {find: appointment_slot, if: a != null, where: appointment == a.name, as: s}
+  - find: sales_invoice
+    if: a != null
+    where: "name != event.name && docstatus == 1 && notes.contains('(' + a.name + ')')"
+    as: twin
+  - create: appointment_guard
+    if: a == null
+    set: {reason: "'invoice_stale'", document: event.name}
+  - if: >-
+      a != null && (a.docstatus != 1 || s == null || s.state == 'cancelled'
+      || ((s.state == 'billed' || s.state == 'paid') && s.deposit_applied == 0)
+      || event.grand_total != s.deposit || twin != null)
+    create: appointment_guard
+    set: {reason: "'invoice_stale'", document: event.name}
+  - update: s
+    if: a != null && s != null
+    set: {deposit_state: "'invoiced'", deposit_invoice: event.name}

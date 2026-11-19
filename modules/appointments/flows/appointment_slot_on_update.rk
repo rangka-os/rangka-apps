@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: appointment_slot_on_update
+label: {id: 'Status janji diubah: satu langkah, lalu tagihan atau uang muka'}
+description: {id: 'Status janji maju atau mundur satu langkah. Saat ditagih, draf transaksi kasir dibuat dengan harga katalog dan uang muka dipotong. Saat pelanggan tidak datang, uang muka hangus atau ditandai perlu dikembalikan sesuai pengaturan.'}
+# Runs inside the write, as the writer (a person on the work screens; writes by flows start no flow, so the flows
+# that set paid, cancelled or back to done are not checked here). Allowed moves: booked <-> arrived <-> done,
+# booked <-> no_show, done -> billed. Arrived and no-show only on or after the appointment's date. Billing (the
+# cashier's "Buat tagihan" on pesanan_terbuka) needs module pos and the writer's open shift (at the slot's outlet
+# when it has one): it drafts a pos_sale with one line per service (the slot's lines, copied at submit) (the cashier model prices it from the catalogue),
+# the buyer "<name> (JNJ-...)" (the tag the pos_sale flows of this module match) and, when the deposit invoice was
+# submitted, the deposit as the receipt discount, capped at the services' catalogue total. A table reservation is
+# never billed here: its food is rung up at the counter.
+on: appointment_slot.updated
+if: event.before != null && event.before.state != event.state
+steps:
+  - if: >-
+      !((event.before.state + '>' + event.state) in ['booked>arrived', 'arrived>booked', 'arrived>done', 'done>arrived',
+      'booked>no_show', 'no_show>booked', 'done>billed'])
+      || ((event.state == 'arrived' || event.state == 'no_show') && event.date > today())
+      || (event.state == 'billed' && event.kind == 'table')
+    create: appointment_guard
+    set: {reason: "'bad_step'", document: event.name}
+  - create: appointment_guard
+    if: event.state == 'billed' && !app_installed('pos')
+    set: {reason: "'no_pos'", document: event.name}
+  - find: pos_shift
+    if: event.state == 'billed'
+    where: "cashier == user.email && state == 'open' && (event.outlet == '' || outlet == event.outlet)"
+    as: sh
+  - create: appointment_guard
+    if: event.state == 'billed' && sh == null
+    set: {reason: "'no_shift'", document: event.name}
+  - create: pos_sale
+    if: event.state == 'billed'
+    set:
+      shift: sh.name
+      buyer: "event.customer_name + ' (' + event.appointment + ')'"
+      customer: event.customer
+      items: "event.lines.map(l, {'item': l.item, 'qty': 1, 'packing': '', 'discount_pct': 0, 'note': '', 'is_gift': false})"
+      discount_amount: "event.deposit_state == 'invoiced' ? min(event.deposit, event.service_total) : 0"
+    as: sale
+  - {find: appointment_setting, if: event.state == 'no_show', where: key == 'usaha', as: cfg}
+  - {find: appointment_slot, where: name == event.name, as: s}
+  - update: s
+    set:
+      sale: "event.state == 'billed' ? sale.name : s.sale"
+      deposit_applied: "event.state == 'billed' && event.deposit_state == 'invoiced' ? min(event.deposit, event.service_total) : s.deposit_applied"
+      arrived_at: "event.state == 'arrived' && event.before.state == 'booked' ? now() : (event.state == 'booked' ? null : s.arrived_at)"
+      done_at: "event.state == 'done' && event.before.state == 'arrived' ? now() : (event.state == 'arrived' || event.state == 'booked' ? null : s.done_at)"
+      deposit_action: "event.state == 'no_show' && event.deposit_state == 'invoiced' ? (cfg != null && cfg.no_show_deposit == 'refund' ? 'refund_due' : 'forfeited') : (event.state == 'booked' ? '' : s.deposit_action)"
+  - if: event.state == 'no_show' && event.deposit_state == 'invoiced' && cfg != null && cfg.no_show_deposit == 'refund'
+    notify: head_office
+    notice: deposit_refund_due
+    channel: email
+    id: "'refund:' + event.appointment"
+    title: 'Uang muka {event.customer_name} perlu dikembalikan'
+    template: >-
+      {event.customer_name} tidak datang ke janji {event.date} jam {event.start_time}. Pengaturan janji temu meminta uang
+      mukanya dikembalikan: batalkan faktur uang muka {event.deposit_invoice}, lalu kembalikan uangnya.

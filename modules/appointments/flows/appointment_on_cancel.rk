@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: appointment_on_cancel
+label: {id: 'Janji temu dibatalkan: bebaskan jadwalnya'}
+description: {id: 'Janji hanya bisa dibatalkan selama pelanggan belum datang dan faktur uang mukanya belum diajukan. Jadwalnya lalu bebas untuk janji lain.'}
+# Runs inside the cancel, as the person cancelling. A slot past booked (arrived, done, billed, paid, no_show) keeps
+# the appointment; a submitted deposit invoice must be cancelled first (that is the refund), or the no-show marked.
+# A draft deposit invoice left behind is refused at its submit (appointment_invoice_on_submit).
+on: appointment.cancelled
+steps:
+  - {find: appointment_slot, where: appointment == event.name, as: s}
+  - create: appointment_guard
+    if: s != null && s.state != 'booked'
+    set: {reason: "'not_booked'", document: event.name}
+  - create: appointment_guard
+    if: s != null && s.deposit_state == 'invoiced'
+    set: {reason: "'deposit_invoiced'", document: event.name}
+  - update: s
+    if: s != null
+    set: {state: "'cancelled'"}

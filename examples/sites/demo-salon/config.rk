@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for appointments (fictional, rangka-apps#118): CV Contoh Rambut Rapi runs a salon (Salon Dago: two chairs
+# and a facial room, two stylists) with a small cafe corner (Kafe Dago: tables for reservations). Bookings live in the
+# janji_temu piece, the counter in kasir (finished services are billed from Pesanan terbuka), deposits are invoices.
+# Not PKP: an appointment deposit is refused for a PKP business in v1. WhatsApp reminders through module
+# whatsapp_booking and the host connector rangka_whatsapp (mock in tests/day_one_appointments.py; nothing reaches Meta).
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: CV Contoh Rambut Rapi}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: false}
+orgs:
+  salon_contoh:
+    name: CV Contoh Rambut Rapi
+    code: CRR
+    config:
+      org: {legal_name: CV Contoh Rambut Rapi}
+      tax: {pkp: false}
+apps: [janji_temu, kasir, stok_outlet, faktur_piutang]
+modules: {whatsapp: ^1.0, whatsapp_booking: ^1.0}
+connectors: [rangka_whatsapp]
+plan: tumbuh

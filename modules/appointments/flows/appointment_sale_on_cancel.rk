@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: appointment_sale_on_cancel
+label: {id: 'Tagihan janji dibatalkan: janji kembali menunggu tagihan'}
+# A voided appointment bill (or one cancelled to be corrected) puts the slot back to done with no sale and no deposit
+# taken off, so "Buat tagihan" can draft it again and the deposit invoice is free to be cancelled (refund) if needed.
+on: pos_sale.cancelled
+if: event.buyer.contains('JNJ-')
+steps:
+  - {find: appointment_slot, where: sale == event.name, as: s}
+  - update: s
+    if: s != null
+    set: {state: "'done'", sale: "''", deposit_applied: '0'}

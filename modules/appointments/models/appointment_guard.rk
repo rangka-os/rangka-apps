@@ -1,0 +1,95 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: appointment_guard
+label: {id: Penjaga janji temu, en: Appointment guard}
+icon: check
+naming: JGD-{######}
+title_field: reason
+# Never stored: a flow of this module creates one when the write it runs in must be refused (the pattern of
+# rental_guard); the matching rule fails with the reason's message and rolls the whole write back. Create is granted
+# to every role whose writes run those flows.
+permissions:
+  - {role: head_office, create: true}
+  - {role: sales_manager, create: true}
+  - {role: finance_manager, create: true}
+  - {role: cashier, create: true}
+  - {role: service_staff, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: staff_busy, label: {id: Staf sudah ada janji}}
+      - {value: resource_busy, label: {id: Tempat sudah dipakai}}
+      - {value: closed, label: {id: Di luar jam buka}}
+      - {value: time_off, label: {id: Libur atau tutup}}
+      - {value: not_booked, label: {id: Janji sudah berjalan}}
+      - {value: deposit_invoiced, label: {id: Faktur uang muka sudah diajukan}}
+      - {value: bad_step, label: {id: Langkah status tidak boleh}}
+      - {value: no_shift, label: {id: Belum ada sesi kasir}}
+      - {value: no_pos, label: {id: Kasir belum dipasang}}
+      - {value: invoice_tag, label: {id: Catatan faktur uang muka diubah}}
+      - {value: invoice_stale, label: {id: Faktur uang muka tidak berlaku}}
+      - {value: deposit_used, label: {id: Uang muka sudah dipotong}}
+      - {value: sale_tag, label: {id: Nama pembeli tagihan janji diubah}}
+      - {value: sale_stale, label: {id: Tagihan janji tidak berlaku}}
+  - name: document
+    type: data
+    label: {id: Dokumen}
+rules:
+  - name: staff_busy
+    on: save
+    check: reason != 'staff_busy'
+    message: {id: 'Staf ini sudah ada janji di jam itu. Pilih jam atau staf lain.'}
+  - name: resource_busy
+    on: save
+    check: reason != 'resource_busy'
+    message: {id: 'Tempat atau meja ini sudah dipesan di jam itu. Pilih jam atau tempat lain.'}
+  - name: closed
+    on: save
+    check: reason != 'closed'
+    message: {id: 'Jam itu di luar jam buka tempat ini.'}
+  - name: time_off
+    on: save
+    check: reason != 'time_off'
+    message: {id: 'Staf atau tempat ini libur atau tutup di jam itu.'}
+  - name: not_booked
+    on: save
+    check: reason != 'not_booked'
+    message: {id: 'Janji ini sudah berjalan (pelanggan datang, selesai, atau tidak datang), tidak bisa dibatalkan.'}
+  - name: deposit_invoiced
+    on: save
+    check: reason != 'deposit_invoiced'
+    message: {id: 'Faktur uang mukanya sudah diajukan. Batalkan fakturnya dulu (uang muka dikembalikan), atau tandai pelanggan tidak datang.'}
+  - name: bad_step
+    on: save
+    check: reason != 'bad_step'
+    message: {id: 'Status janji hanya maju satu langkah (Dipesan, Datang, Selesai, Ditagih) atau mundur satu langkah.'}
+  - name: no_shift
+    on: save
+    check: reason != 'no_shift'
+    message: {id: 'Buka sesi kasir di outlet ini dulu, lalu buat tagihannya.'}
+  - name: no_pos
+    on: save
+    check: reason != 'no_pos'
+    message: {id: 'Tagihan janji dibuat di Kasir. Pasang Kasir dulu.'}
+  - name: invoice_tag
+    on: save
+    check: reason != 'invoice_tag'
+    message: {id: 'Catatan faktur uang muka tidak bisa diubah: nomor janji di dalamnya dipakai untuk mencocokkan faktur.'}
+  - name: invoice_stale
+    on: save
+    check: reason != 'invoice_stale'
+    message: {id: 'Faktur uang muka ini untuk janji yang batal, sudah ditagih penuh di kasir, atau sudah punya faktur lain. Hapus draf ini.'}
+  - name: deposit_used
+    on: save
+    check: reason != 'deposit_used'
+    message: {id: 'Uang muka ini sudah dipotong di transaksi kasir. Batalkan transaksi kasirnya dulu.'}
+  - name: sale_tag
+    on: save
+    check: reason != 'sale_tag'
+    message: {id: 'Nama pembeli di tagihan janji tidak bisa diubah: nomor janji di dalamnya dipakai untuk mencocokkan tagihan.'}
+  - name: sale_stale
+    on: save
+    check: reason != 'sale_stale'
+    message: {id: 'Tagihan ini bukan tagihan yang berlaku untuk janji tersebut. Hapus draf ini.'}
