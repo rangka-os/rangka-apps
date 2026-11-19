@@ -38,9 +38,33 @@ fields:
     label: {id: Harga}
     compute: round(qty * rate)
   - {name: discount_pct, type: float, label: {id: 'Diskon %'}, default: '0'}
+  # Promo (module promotions, rangka-apps#103): the item's live promo (item.promo*, kept by flow promotion_apply) when it
+  # covers the sale's outlet (parent.outlet, rangka-os contract 0069 §2); not on a free gift line. Percent off the
+  # line, rupiah off per unit (never below 0), or buy X get Y of the same item (each full X + Y pays X). The cashier's
+  # manual discount_pct applies after the promo and counts as a manual discount (big_discount).
+  - name: promotion
+    type: data
+    label: {id: Promo}
+    depends_on: app_installed('promotions')
+    compute: "!is_gift && item.promo != '' && (item.promo_outlet == '' || item.promo_outlet == parent.outlet) ? item.promo : ''"
+  - {name: promo_name, type: data, label: {id: Nama promo}, hidden: true, depends_on: app_installed('promotions'), compute: "promotion != '' ? item.promo_name : ''"}
+  # the promo's last day as it was when the line was computed: rule line_promo_live reads it (a rule sees the rows'
+  # stored values, not their links)
+  - {name: promo_until, type: date, label: {id: Promo sampai}, hidden: true, depends_on: app_installed('promotions'), compute: "promotion != '' ? item.promo_until : null"}
+  - name: promo_discount
+    type: currency
+    label: {id: Potongan promo}
+    depends_on: app_installed('promotions')
+    compute: "promotion == '' ? 0 : (item.promo_kind == 'pct' ? round(gross * item.promo_pct / 100) : (item.promo_kind == 'off' ? min(gross, round(qty * item.promo_off)) : (item.promo_kind == 'buy_get' && item.promo_buy + item.promo_get > 0 ? round(int(qty / (item.promo_buy + item.promo_get)) * item.promo_get * rate) : 0)))"
+  # the free gift of a bill promo (kind free_gift): a line of the gift item at 0, its stock and cost still out
+  - name: is_gift
+    type: check
+    label: {id: Produk gratis promo}
+    default: 'false'
+    depends_on: app_installed('promotions')
   - name: amount
     type: currency
     label: {id: Jumlah}
-    compute: round(qty * rate * (100 - discount_pct) / 100)
+    compute: "is_gift ? 0 : (promo_discount == 0 ? round(qty * rate * (100 - discount_pct) / 100) : round((gross - promo_discount) * (100 - discount_pct) / 100))"
   - {name: note, type: data, label: {id: Catatan}, help: {id: 'Misalnya kurang manis, tanpa es'}}
   - {name: cogs, type: currency, label: {id: Harga pokok}, read_only: true, hidden_for: [cashier, outlet_staff]}

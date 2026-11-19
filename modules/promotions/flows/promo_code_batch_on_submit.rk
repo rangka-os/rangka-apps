@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A submitted batch makes its coupons: count codes of prefix + 8 characters from random_code() (rangka-os contract 0069
+# §3; 31^8 combinations, so a code cannot be guessed from another). A flow has no range, so the batch walks three
+# digits (at most 1000 codes). A code that happened to exist already fails the unique check and the batch rolls back
+# whole; submit it again.
+name: promo_code_batch_on_submit
+label: {id: 'Kiriman kupon diajukan: buat kode kupon'}
+on: promo_code_batch.submitted
+steps:
+  - for_each: "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]"
+    as: a
+    do:
+      - for_each: "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]"
+        as: b
+        if: a * 100 < event.count
+        do:
+          - for_each: "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]"
+            as: c
+            if: a * 100 + b * 10 < event.count
+            do:
+              - create: promo_code
+                if: a * 100 + b * 10 + c < event.count
+                set:
+                  promotion: event.promotion
+                  code: event.prefix + random_code(8)
+                  batch: event.name

@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# What promos cost, one row per promo used on a paid sale (flow promotion_on_sale) and a negated row when the sale is
+# voided (promotion_on_sale_cancel). Append-only (contract 0026): rows are never edited or deleted. A voucher's uses
+# and a coupon's state are counted here (post rows minus reverse rows), under the flow read lock of contract 0025.
+# The outlet field is sale_outlet, not outlet: the cashier's flow must count every outlet's uses of a shared voucher,
+# and the cashier role is scoped by outlet. The cashier reads rows only for that count; the money is hidden from it.
+name: promotion_ledger
+label: {id: Pemakaian promo, en: Promotion use}
+icon: history
+naming: PRL-{YYYY}-{######}
+append_only: true
+permissions:
+  # create: the flows of a void or a coupon batch run as whoever started them; nobody creates a row by hand (append_only)
+  - {role: head_office, read: true, create: true, export: true}
+  - {role: cashier, read: true, create: true}
+fields:
+  - {name: promotion, type: link, to: promotion, label: {id: Promo}, required: true, in_list: true}
+  - {name: sale, type: data, label: {id: Struk}, in_list: true}
+  - {name: sale_outlet, type: link, to: outlet, label: {id: Outlet}, in_list: true}
+  - {name: date, type: date, label: {id: Tanggal}, in_list: true}
+  - {name: code, type: data, label: {id: Kode voucher atau kupon}, index: true}
+  - {name: amount, type: currency, label: {id: Biaya promo}, in_list: true, hidden_for: [cashier]}
+  - name: entry
+    type: select
+    label: {id: Catatan}
+    required: true
+    options:
+      - {value: post, label: {id: Dipakai}}
+      - {value: reverse, label: {id: Dibatalkan}}
+  - {name: entry_key, type: data, label: {id: Kunci}, unique: true, hidden: true}
+views:
+  list:
+    columns: [name, date, promotion, sale, sale_outlet, amount, entry]
+    filters: [promotion, sale_outlet, entry]
+    sort: -name

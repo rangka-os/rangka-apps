@@ -31,6 +31,8 @@ orgs:
         invoice: {pattern: "KW-{ORG}-{YY}{MM}-{###}", reset: monthly}
         purchase_order: {pattern: "PO-{ORG}-{YY}-{###}", reset: yearly}
 apps: [jasa_proyek]
+# module promotions for invoice promos (rangka-apps#103): a percent promo becomes the default line discount
+modules: {promotions: ^1.0}
 plan: tumbuh
 sso: {domains: [contohjasa.test], required: false}
 ai: {enabled: true, auto_apply: never, approvers: [owner, sales_manager]}

@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Runs inside a sale's submit (the payment), as the cashier. A bill promo that took something off (bill_promo or a free
+# gift) and has a code is checked here, not in a rule: the uses of a code are the post rows minus the reverse rows of
+# promotion_ledger, read under the ledger's flow lock (contract 0025), so two sales with one coupon or with the last
+# use of a voucher at the same moment run one after the other and the second is refused (promo_guard), rolling its
+# payment back. A shared voucher stops at max_uses; a single-use coupon must exist for this promo and be unused.
+# Then one ledger row per promo used: the bill promo (bill_promo + the free gift's price) and each item promo (the sum
+# of its lines' promo_discount), with the promo's code.
+name: promotion_on_sale
+label: {id: 'Transaksi kasir dibayar: catat promo dan kode'}
+on: pos_sale.submitted
+if: app_installed('pos')
+steps:
+  # the bill promo, when it took something off (bill_promo or a free gift)
+  - if: "event.promotion != '' && event.bill_promo + event.gift_value > 0"
+    then:
+      - find: promotion
+        where: name == event.promotion
+        as: p
+      - if: "p != null && p.code_mode != 'none' && p.code_mode != ''"
+        then:
+          # every use of this code so far, read under the ledger's lock (contract 0025)
+          - find_all: promotion_ledger
+            where: "promotion == event.promotion && code == event.promo_code.trim().upperAscii()"
+            as: uses
+          - if: "p.code_mode == 'shared' && p.max_uses > 0 && uses.filter(u, u.entry == 'post').size() - uses.filter(u, u.entry == 'reverse').size() >= p.max_uses"
+            create: promo_guard
+            set: {reason: "'code_limit'", document: event.name}
+          - if: "p.code_mode == 'unique'"
+            then:
+              - find: promo_code
+                where: "promotion == event.promotion && code == event.promo_code.trim().upperAscii()"
+                as: c
+              - if: c == null
+                create: promo_guard
+                set: {reason: "'code_unknown'", document: event.name}
+              - if: "uses.filter(u, u.entry == 'post').size() - uses.filter(u, u.entry == 'reverse').size() > 0"
+                create: promo_guard
+                set: {reason: "'code_used'", document: event.name}
+      - create: promotion_ledger
+        if: p != null
+        set:
+          promotion: event.promotion
+          sale: event.name
+          sale_outlet: event.outlet
+          date: event.date
+          code: "p.code_mode == 'none' || p.code_mode == '' ? '' : event.promo_code.trim().upperAscii()"
+          amount: event.bill_promo + event.gift_value
+          entry: "'post'"
+          entry_key: "event.name + '|' + event.promotion + '|post'"
+  # one row per item promo: its first line stands for all of its lines
+  - for_each: "event.items.filter(l, l.promotion != '' && l.promo_discount > 0 && event.items.filter(y, y.promotion == l.promotion && y.idx < l.idx).size() == 0)"
+    as: l
+    do:
+      - create: promotion_ledger
+        set:
+          promotion: l.promotion
+          sale: event.name
+          sale_outlet: event.outlet
+          date: event.date
+          code: "''"
+          amount: "event.items.filter(y, y.promotion == l.promotion).map(y, y.promo_discount).sum()"
+          entry: "'post'"
+          entry_key: "event.name + '|' + l.promotion + '|post'"

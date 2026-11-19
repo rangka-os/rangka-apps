@@ -51,6 +51,15 @@ recipe:
     lines:
       - {material: BRG-0011, qty: 0.015}
       - {material: BRG-0014, qty: 1}
+# promos (module promotions): samples for the walkthrough, switched off so the day-one scenarios (tests/day_one_pos.py)
+# keep their prices; head office switches one on (Aktif) and the counter has it within 5 minutes. The scenarios of
+# tests/day_one_promotions.py make their own. Valid through 2030 so a demo years later still has them.
+promotion:
+  - {name: PRM-0001, promo_name: Happy hour kopi, kind: item_pct, scope: category, category: KTG-001, pct: 20, only_outlet: OUT-03, valid_from: '2026-01-01', valid_until: '2030-12-31', time_from: '14:00', time_until: '16:00', priority: 10, channel: kasir, active: false}
+  - {name: PRM-0002, promo_name: Beli 2 gratis 1 roti, kind: buy_get, scope: item, item: BRG-0015, buy_qty: 2, get_qty: 1, valid_from: '2026-01-01', valid_until: '2030-12-31', channel: kasir, active: false}
+  - {name: PRM-0003, promo_name: Hemat 10 persen, kind: bill_pct, pct: 10, max_discount: 15000, min_spend: 50000, code_mode: shared, code: HEMAT10, max_uses: 100, valid_from: '2026-01-01', valid_until: '2030-12-31', channel: kasir, active: false}
+  - {name: PRM-0004, promo_name: Gratis air mineral, kind: free_gift, gift_item: BRG-0001, gift_qty: 1, min_spend: 50000, code_mode: none, valid_from: '2026-01-01', valid_until: '2030-12-31', channel: kasir, active: false}
+  - {name: PRM-0005, promo_name: Kupon ulang tahun, kind: bill_off, amount_off: 15000, min_spend: 60000, code_mode: unique, valid_from: '2026-01-01', valid_until: '2030-12-31', channel: kasir, active: false}
 # kitchen tickets (module kitchen): Kedai Riau has a bar for the coffees and a kitchen for the food; the shops have no
 # station, so their receipts make no ticket
 kitchen_station:

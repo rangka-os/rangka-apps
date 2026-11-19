@@ -25,16 +25,21 @@ body { font-size: 8.5pt; }
 <div class="row"><span>Struk</span><span>{{.Doc.name}}</span></div>
 <div class="row"><span>Tanggal</span><span>{{date .Doc.date}}</span></div>
 {{with .Doc.buyer}}<div class="row"><span>Pembeli</span><span>{{.}}</span></div>{{end}}
+{{with .Links.customer}}{{with .customer_name}}<div class="row"><span>Pelanggan</span><span>{{.}}</span></div>{{end}}{{end}}
 <div class="rule"></div>
 {{range $row := .Doc.items}}
 <div class="line">
   <div>{{if $row.description}}{{$row.description}}{{else}}{{$row.item}}{{end}}</div>
-  <div class="row sub"><span>{{number $row.qty}} x {{rupiah $row.rate}}{{if $row.discount_pct}} (-{{number $row.discount_pct}}%){{end}}</span><span class="num">{{rupiah $row.amount}}</span></div>
+  <div class="row sub"><span>{{number $row.qty}} x {{rupiah $row.rate}}{{if $row.discount_pct}} (-{{number $row.discount_pct}}%){{end}}</span><span class="num">{{if $row.is_gift}}Gratis{{else}}{{rupiah $row.amount}}{{end}}</span></div>
+  {{if $row.promo_discount}}<div class="row sub"><span>Promo {{$row.promo_name}}</span><span class="num">-{{rupiah $row.promo_discount}}</span></div>{{end}}
 </div>
 {{end}}
 <div class="rule"></div>
-{{if .Doc.discount_amount}}<div class="row"><span>Subtotal</span><span class="num">{{rupiah .Doc.subtotal}}</span></div>
-<div class="row"><span>Diskon nota</span><span class="num">-{{rupiah .Doc.discount_amount}}</span></div>{{end}}
+{{if or .Doc.discount_amount .Doc.bill_promo}}<div class="row"><span>Subtotal</span><span class="num">{{rupiah .Doc.subtotal}}</span></div>{{end}}
+{{if .Doc.bill_promo}}<div class="row"><span>Promo nota {{.Doc.promo_name}}</span><span class="num">-{{rupiah .Doc.bill_promo}}</span></div>{{end}}
+{{if and .Doc.promo_name .Doc.gift_value}}<div class="row"><span>Hadiah {{.Doc.promo_name}}</span><span class="num">Gratis</span></div>{{end}}
+{{if .Doc.discount_amount}}<div class="row"><span>Diskon nota</span><span class="num">-{{rupiah .Doc.discount_amount}}</span></div>{{end}}
+{{if .Doc.promo_total}}<div class="row muted"><span>Hemat dari promo</span><span class="num">{{rupiah .Doc.promo_total}}</span></div>{{end}}
 <div class="row big"><span>Total</span><span class="num">{{rupiah .Doc.grand_total}}</span></div>
 {{if .Doc.ppn_in_sales}}<div class="row muted"><span>Termasuk PPN</span><span class="num">{{rupiah .Doc.ppn_in_sales}}</span></div>{{end}}
 {{range $p := .Doc.payments}}<div class="row"><span>{{if eq (printf "%v" $p.method) "qris"}}QRIS{{with $p.ref}} {{.}}{{end}}{{else}}Tunai{{end}}</span><span class="num">{{rupiah $p.amount}}</span></div>

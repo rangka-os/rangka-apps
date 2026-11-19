@@ -78,3 +78,22 @@ dan di outlet mana?". Use the same questions.
 - Head office: menu *Kasir* (sales, shifts, shift closes) and the *Kerja* group for the cashier screen.
 
 Point the owner there only after `rangka_changeset_status` says the change set is applied (`rangka-changesets`).
+
+## Promo (module `promotions`, added next to the cashier)
+
+When the owner asks for discounts, happy hour, "beli 2 gratis 1", a voucher code or coupons, the module
+`promotions` adds them to the cashier (the change set names it in `config.modules`). What exists:
+
+- **Item promos, applied by themselves:** percent off, rupiah off per item, or buy X get Y of the same item, for one
+  item or one category, at one outlet or all, between two dates, on some days and between two hours (happy hour;
+  it starts and ends within 5 minutes). If two promos hit one item, the higher *Prioritas* wins.
+- **Bill promos, picked at the counter before paying:** percent off the bill with a cap, rupiah off the bill, or a
+  free product, each with a minimum spend. Optionally with one shared voucher code (and a use limit) or with
+  single-use coupons made in a batch (*Kiriman kupon*).
+- **What it costs:** *Pemakaian promo* lists every use; the cashier dashboard shows the promo cost of the period.
+
+Say clearly: promos are set up by the owner or head office, never by the cashier and never by you. You may explain
+the kinds, suggest one in words ("Mau coba diskon 10% jam 14.00 sampai 16.00?") and open an empty *Promo* form for the
+owner; you never save, switch on or change a promo, and you never decide a price or a discount. A promo the owner set
+up does not wait for head office's approval; a cashier's own discount above 20% still does. A coupon is checked when
+the sale is sent, so on a device that is offline a coupon sale is checked once it is back online.

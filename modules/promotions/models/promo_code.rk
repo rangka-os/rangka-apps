@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A single-use coupon of a promo with code_mode unique, made by a promo_code_batch (flow promo_code_batch_on_submit):
+# prefix + 8 characters of random_code() (rangka-os contract 0069 §3), so a code cannot be guessed from another. Whether
+# it was used is in promotion_ledger (a post row with this code and no reverse row): flow promotion_on_sale checks it
+# under the ledger's lock, so two sales with one coupon at the same moment cannot both pass, and a void frees it.
+name: promo_code
+label: {id: Kupon, en: Coupon}
+icon: tag
+naming: KPN-{######}
+title_field: code
+permissions:
+  # head office's batch submit creates the coupons (flow promo_code_batch_on_submit); every field is read_only, so a
+  # coupon is never typed by hand
+  - {role: head_office, read: true, create: true, export: true, print: true}
+  # flow promotion_on_sale reads the coupon inside the cashier's sale
+  - {role: cashier, read: true}
+fields:
+  - {name: promotion, type: link, to: promotion, label: {id: Promo}, read_only: true, in_list: true}
+  - {name: code, type: data, label: {id: Kode kupon}, read_only: true, unique: true, in_list: true}
+  - {name: batch, type: link, to: promo_code_batch, label: {id: Kiriman kupon}, read_only: true, in_list: true}
+views:
+  list:
+    columns: [name, code, promotion, batch]
+    filters: [promotion, batch]
+    sort: -name

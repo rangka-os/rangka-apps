@@ -9,5 +9,6 @@ plans:
     label: {id: Tumbuh, en: Growth}
     extends: mulai
     apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan]
+    modules: [promotions]
     capabilities: [realtime, queue, scheduler, files, search, notify_email, notify_whatsapp, api, mcp, ai, sso]
     limits: {users: 15, outlets: 5, storage_mb: 10240, ai_credits_month: 2000}

@@ -1,0 +1,193 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A promo the owner sets up. Item kinds apply by themselves at the counter: flow promotion_apply writes the live one
+# with the highest priority onto each item in scope (item.promo*), and a sale line computes its promo from there.
+# Bill kinds are picked at the counter's checkout and checked by the sale's rules (window, outlet, minimum spend,
+# code). live is kept by promotion_apply (every 5 minutes and on every save): active, today within the dates and days,
+# and now within the hours. The outlet field is only_outlet, not outlet: the cashier role is scoped by outlet (contract
+# 0010 §5), and a promo of every outlet (empty) must stay visible to every cashier.
+name: promotion
+label: {id: Promo, en: Promotion}
+icon: tag
+naming: PRM-{####}
+title_field: promo_name
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true, print: true}
+  # the cashier picks a bill promo at the counter; flows read the promo inside the sale
+  - {role: cashier, read: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - name: promo_name
+    type: data
+    label: {id: Nama promo}
+    help: {id: 'Tercetak di struk, misalnya Happy hour kopi'}
+    required: true
+    in_list: true
+  - name: kind
+    type: select
+    label: {id: Jenis promo}
+    required: true
+    in_list: true
+    chip: true
+    options:
+      - {value: item_pct, label: {id: Diskon persen per barang}}
+      - {value: item_off, label: {id: Potongan rupiah per barang}}
+      - {value: buy_get, label: {id: Beli X gratis Y}}
+      - {value: bill_pct, label: {id: Diskon persen nota}}
+      - {value: bill_off, label: {id: Potongan rupiah nota}}
+      - {value: free_gift, label: {id: Gratis produk}}
+  - name: is_bill
+    type: check
+    label: {id: Promo nota}
+    hidden: true
+    compute: "kind == 'bill_pct' || kind == 'bill_off' || kind == 'free_gift'"
+  - name: scope
+    type: select
+    label: {id: Berlaku untuk}
+    default: "'item'"
+    depends_on: "!is_bill"
+    options:
+      - {value: item, label: {id: Satu barang}}
+      - {value: category, label: {id: Satu kategori}}
+  - {name: item, type: link, to: item, label: {id: Barang}, depends_on: "!is_bill && scope == 'item'"}
+  - {name: category, type: link, to: item_category, label: {id: Kategori}, depends_on: "!is_bill && scope == 'category'"}
+  - {name: pct, type: float, label: {id: 'Diskon %'}, default: '0', depends_on: "kind == 'item_pct' || kind == 'bill_pct'"}
+  - name: amount_off
+    type: currency
+    label: {id: Potongan}
+    help: {id: 'Per barang untuk potongan per barang, sekali untuk potongan nota'}
+    default: '0'
+    depends_on: "kind == 'item_off' || kind == 'bill_off'"
+  - name: max_discount
+    type: currency
+    label: {id: Maksimal potongan}
+    help: {id: 'Isi 0 kalau tanpa batas'}
+    default: '0'
+    depends_on: "kind == 'bill_pct'"
+  - {name: buy_qty, type: int, label: {id: Beli}, default: '0', depends_on: "kind == 'buy_get'"}
+  - {name: get_qty, type: int, label: {id: Gratis}, default: '0', depends_on: "kind == 'buy_get'"}
+  - {name: gift_item, type: link, to: item, label: {id: Produk gratis}, depends_on: "kind == 'free_gift'"}
+  - {name: gift_qty, type: int, label: {id: Jumlah gratis}, default: '1', depends_on: "kind == 'free_gift'"}
+  - name: min_spend
+    type: currency
+    label: {id: Minimal belanja}
+    help: {id: 'Dihitung dari subtotal setelah promo per barang. Isi 0 kalau tanpa minimal'}
+    default: '0'
+    depends_on: is_bill
+  - name: only_outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    help: {id: 'Kosongkan kalau berlaku di semua outlet'}
+    in_list: true
+    depends_on: app_installed('outlets')
+  - {name: valid_from, type: date, label: {id: Berlaku dari}, required: true, default: today(), in_list: true}
+  - {name: valid_until, type: date, label: {id: Berlaku sampai}, required: true, in_list: true}
+  - name: days
+    type: data
+    label: {id: Hari}
+    help: {id: 'Angka hari dipisah koma, 1 Senin sampai 7 Minggu, misalnya 1,2,3,4,5. Kosongkan untuk setiap hari'}
+  - {name: time_from, type: data, label: {id: Jam mulai}, help: {id: 'Misalnya 14:00. Kosongkan untuk sepanjang hari'}}
+  - {name: time_until, type: data, label: {id: Jam selesai}, help: {id: 'Misalnya 16:00'}}
+  - name: code_mode
+    type: select
+    label: {id: Kode}
+    default: "'none'"
+    depends_on: is_bill
+    options:
+      - {value: none, label: {id: Tanpa kode}}
+      - {value: shared, label: {id: Satu kode bersama}}
+      - {value: unique, label: {id: Kupon sekali pakai}}
+  - name: code
+    type: data
+    label: {id: Kode voucher}
+    help: {id: '4 sampai 16 huruf besar atau angka, misalnya HEMAT10'}
+    unique: true
+    depends_on: "code_mode == 'shared'"
+  - name: max_uses
+    type: int
+    label: {id: Batas pemakaian}
+    help: {id: 'Isi 0 kalau tanpa batas'}
+    default: '0'
+    depends_on: "code_mode == 'shared'"
+  - name: priority
+    type: int
+    label: {id: Prioritas}
+    help: {id: 'Kalau dua promo kena satu barang, angka lebih besar yang dipakai'}
+    default: '0'
+  - name: channel
+    type: select
+    label: {id: Dipakai di}
+    default: "'kasir'"
+    options:
+      - {value: kasir, label: {id: Kasir}}
+      - {value: invoice, label: {id: Faktur}}
+      - {value: both, label: {id: Kasir dan faktur}}
+  - {name: active, type: check, label: {id: Aktif}, default: 'true', in_list: true, in_filter: true}
+  - name: live
+    type: check
+    label: {id: Sedang berlaku}
+    help: {id: 'Diperbarui sistem tiap 5 menit: aktif, di rentang tanggal, hari dan jamnya'}
+    read_only: true
+    in_list: true
+rules:
+  - name: kind_fields
+    on: save
+    check: >-
+      (kind != 'item_pct' && kind != 'bill_pct' || pct > 0 && pct <= 100)
+      && (kind != 'item_off' && kind != 'bill_off' || amount_off > 0)
+      && (kind != 'buy_get' || buy_qty >= 1 && get_qty >= 1)
+      && (kind != 'free_gift' || gift_item != '' && gift_qty >= 1)
+    message: {id: 'Lengkapi isian jenis promo ini: persen 1 sampai 100, potongan lebih dari 0, beli dan gratis minimal 1, atau produk gratis'}
+  - name: item_scope
+    on: save
+    check: "is_bill || scope == 'item' && item != '' || scope == 'category' && category != ''"
+    message: {id: 'Pilih barang atau kategori yang kena promo'}
+  - name: dates_order
+    on: save
+    check: valid_until >= valid_from
+    message: {id: Tanggal selesai tidak boleh sebelum tanggal mulai}
+  - name: days_format
+    on: save
+    check: "days == '' || days.matches('^[1-7](,[1-7])*$')"
+    message: {id: 'Hari ditulis angka 1 sampai 7 dipisah koma, misalnya 1,2,3,4,5'}
+  - name: hours
+    on: save
+    check: >-
+      (time_from == '' && time_until == '')
+      || (time_from.matches('^[0-2][0-9]:[0-5][0-9]$') && time_until.matches('^[0-2][0-9]:[0-5][0-9]$') && time_from < time_until)
+    message: {id: 'Jam ditulis seperti 14:00, dan jam mulai sebelum jam selesai'}
+  - name: code_only_bill
+    on: save
+    check: "code_mode == 'none' || code_mode == '' || is_bill"
+    message: {id: 'Kode voucher atau kupon hanya untuk promo nota'}
+  - name: code_format
+    on: save
+    check: "code_mode != 'shared' || code.matches('^[A-Z0-9]{4,16}$')"
+    message: {id: 'Kode voucher 4 sampai 16 huruf besar atau angka, tanpa spasi'}
+  - name: invoice_item_pct
+    on: save
+    check: "channel == 'kasir' || channel == '' || kind == 'item_pct'"
+    message: {id: 'Di faktur hanya diskon persen per barang yang bisa dipakai'}
+  - {name: not_negative, on: save, check: "max_discount >= 0 && min_spend >= 0 && max_uses >= 0", message: {id: 'Angka promo tidak boleh negatif'}}
+views:
+  list:
+    columns: [name, promo_name, kind, only_outlet, valid_from, valid_until, active, live]
+    filters: [kind, active, live, only_outlet]
+    sort: -name
+  form:
+    layout:
+      - section: {id: Promo}
+        columns:
+          - [promo_name, kind, channel]
+          - [active, live, priority]
+      - section: {id: Isi promo}
+        columns:
+          - [scope, item, category, pct, amount_off, max_discount]
+          - [buy_qty, get_qty, gift_item, gift_qty, min_spend]
+      - section: {id: Kapan dan di mana}
+        columns:
+          - [valid_from, valid_until, only_outlet]
+          - [days, time_from, time_until]
+      - section: {id: Kode}
+        columns:
+          - [code_mode, code, max_uses]
