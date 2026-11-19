@@ -1,13 +1,13 @@
 ---
 name: rangka-app-karyawan-gaji
-description: "Rangka Karyawan dan Gaji (app karyawan_gaji): a business paying its own staff (no client contract): pay data per employee, staff attendance into draft payslips with BPJS and PPh 21 TER, kasbon deductions, salary transfer file. Use when an owner wants payroll for their own employees (warung, toko, klinik, kantor) and for the first day after it is built (first-day.json). Outsourcing firms billing a client use jasa_proyek."
+description: "Rangka Karyawan dan Gaji (app karyawan_gaji): a business paying its own staff (no client contract): pay data per employee, staff attendance into draft payslips with BPJS and PPh 21 TER, kasbon repaid by monthly installments, expense claims paid back untaxed, salary transfer file. Use when an owner wants payroll for their own employees (warung, toko, klinik, kantor) and for the first day after it is built (first-day.json). Outsourcing firms billing a client use jasa_proyek."
 metadata: {rangka: {version: 0.1.0, app: karyawan_gaji, requires: [rangka-compose, rangka-changesets]}}
 ---
 
 # Rangka Karyawan dan Gaji
 
-Read `rangka-compose` first. This app composes `users`, `workforce`, `outlets`, `attendance` and `payroll` (2.1, internal
-runs). Install `absen_karyawan` next to it for the clock screen and the attendance dashboards.
+Read `rangka-compose` first. This app composes `users`, `workforce`, `outlets`, `attendance`, `payroll` (2.2, internal
+runs) and `reimbursement`. Install `absen_karyawan` next to it for the clock screen and the attendance dashboards.
 
 ## How pay flows
 
@@ -20,6 +20,12 @@ runs). Install `absen_karyawan` next to it for the clock screen and the attendan
    over. Unpaid days are never guessed from absence: finance types them.
 4. Finance checks and submits the slips, closes the run (`payroll_close`), then downloads the transfer list
    (dashboard `transfer_gaji`, or the payslip list export with the transfer columns). No bank API.
+5. Kasbon (rangka-apps#117): staff ask from their phone (screen `ajukan_kasbon`, a draft `cash_advance`); finance picks
+   the worker and submits it, which pays it out. Interest-free, one open kasbon per worker; the slips deduct its
+   monthly installment by themselves until `cash_advance_balance` shows it repaid.
+6. Expense claims: staff claim with a receipt photo (screen `klaim_biaya`); the outlet supervisor or head office
+   approves; finance pays it from cash or bank (`claim_payment`) or it rides on the next slip as `reimbursement`,
+   outside the taxable gross. docs/reimbursement.md.
 
 ## First day (first-day.json)
 

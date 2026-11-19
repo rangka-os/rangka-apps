@@ -14,8 +14,12 @@ widgets:
   - {name: draft_slips, type: number, label: {id: Slip menunggu diperiksa}, description: {id: 'Slip draft dari absen atau diketik, belum diajukan'}, model: payslip, filter: "docstatus == 0", good_when: down, span: 3}
   - {name: net_paid, type: number, label: {id: Gaji bersih dibayar}, model: payslip, aggregate: sum, field: net_pay, filter: "docstatus == 1", period: pay_date, compact: true, span: 3}
   - {name: no_account, type: number, label: {id: Slip tanpa nomor rekening}, description: {id: 'Tidak masuk file transfer gaji'}, model: payslip, filter: "docstatus != 2 && bank_account == '' && net_pay > 0", good_when: down, span: 3}
+  # rangka-apps#117: approved expense claims not paid back yet, and kasbon not repaid yet
+  - {name: claims_due, type: number, label: {id: Klaim menunggu dibayar}, description: {id: 'Klaim biaya yang sudah disetujui dan belum dibayar tunai, transfer, atau bersama gaji'}, model: claim_settlement, aggregate: sum, field: amount, filter: "!paid && !cancelled", compact: true, span: 6}
+  - {name: kasbon_open, type: number, label: {id: Sisa kasbon karyawan}, model: cash_advance_balance, aggregate: sum, field: remaining, filter: "!cancelled", compact: true, span: 6}
   - {name: runs, type: list, label: {id: Periode gaji terbuka}, model: payroll_run, filter: "!closed", columns: [name, outlet, period_to, pay_date, headcount, total_net_pay], sort: period_to, limit: 20, span: 12}
   - {name: drafts, type: list, label: {id: Slip draft}, model: payslip, filter: "docstatus == 0", columns: [name, payroll_run, worker, days, late_min_total, net_pay], sort: payroll_run, limit: 50, span: 12}
+  - {name: claims_list, type: list, label: {id: Klaim menunggu dibayar}, model: claim_settlement, filter: "!paid && !cancelled", columns: [claim, claim_date, employee, amount, pay_with], sort: claim_date, limit: 50, span: 12}
   - name: cost_by_month
     type: chart
     chart: bar

@@ -3074,6 +3074,8 @@ def scenario_roles_jasa(api):
 # and in the doc.
 _ALL = {"read", "create", "write", "delete", "submit", "cancel", "amend", "export", "print"}
 _R, _RP, _RCWP, _RCWS = {"read"}, {"read", "print"}, {"read", "create", "write", "print"}, {"read", "create", "write", "submit"}
+_OWN_REQ, _OWN_CLAIM = {"read", "create", "write", "delete"}, {"read", "create", "write", "delete", "submit"}
+_CATEGORY = {"read", "create", "write", "delete", "export"}
 _JASA = ("sales_manager", "finance_manager", "purchasing_manager", "project_admin")
 _MASTER = dict({r: _RCWP for r in _JASA + ("head_office",)}, outlet_staff=_R)
 _PIPE = dict({r: _R for r in ("finance_manager", "purchasing_manager", "project_admin", "head_office", "outlet_staff")},
@@ -3149,7 +3151,7 @@ MATRIX = {
     "gl_entry": {"finance_manager": {"read", "export"}, "head_office": {"read", "export"}, "sales_manager": _R,
                  "purchasing_manager": _R, "project_admin": _R, "outlet_staff": _R},
     "period_close": {"finance_manager": _ALL, "head_office": _ALL, "sales_manager": _R, "purchasing_manager": _R,
-                     "project_admin": _R, "outlet_staff": _R},
+                     "project_admin": _R, "outlet_staff": _R, "employee": _R, "outlet_supervisor": _R},
     "opening_balance": {"finance_manager": _ALL | {"import"}, "head_office": _ALL | {"import"}},
     "financial_report": {"finance_manager": {"read", "create", "write", "delete", "export", "print"},
                          "head_office": {"read", "create", "write", "delete", "export", "print"}},
@@ -3174,7 +3176,23 @@ MATRIX = {
     "payroll_profile": {"finance_manager": {"read", "create", "write", "export", "import", "print"}, "project_admin": _R},
     "payroll_run": {"finance_manager": {"read", "create", "write", "export", "print"}, "project_admin": _R},   # no delete: slips point at it
     "payroll_close": {"finance_manager": _ALL, "project_admin": _R},
-    "cash_advance": {"finance_manager": _ALL, "project_admin": _R},   # kasbon: finance gives it
+    # kasbon: finance gives it; staff draft their own request (rangka-apps#117, permission if: own rows), never submit
+    "cash_advance": {"finance_manager": _ALL, "project_admin": _R, "employee": _OWN_REQ, "cashier": _OWN_REQ, "outlet_staff": _OWN_REQ,
+                     "outlet_supervisor": _OWN_REQ},
+    # what is left of a kasbon, kept by finance's slip flows; staff read their own
+    "cash_advance_balance": {"finance_manager": {"read", "create", "write", "export"}, "head_office": {"read", "export"}, "project_admin": _R,
+                             "employee": _R, "cashier": _R, "outlet_staff": _R, "outlet_supervisor": _R},
+    # expense claims (module reimbursement): staff claim their own, the supervisor of the outlet or head office approves
+    # (approvals, not a grant), finance pays (claim_payment) and with head office may cancel
+    "expense_category": {"finance_manager": _CATEGORY, "head_office": _CATEGORY, "outlet_supervisor": _R, "employee": _R, "cashier": _R,
+                         "outlet_staff": _R, "project_admin": _R},
+    "expense_claim": {"employee": _OWN_CLAIM, "cashier": _OWN_CLAIM, "outlet_staff": _OWN_CLAIM, "outlet_supervisor": _OWN_CLAIM | {"print"},
+                      "head_office": _ALL - {"amend"}, "finance_manager": {"read", "cancel", "export", "print"}},
+    "claim_settlement": {"finance_manager": {"read", "write", "export"}, "head_office": {"read", "create", "write", "export"},
+                         "employee": {"read", "create"}, "cashier": {"read", "create"}, "outlet_staff": {"read", "create"},
+                         "outlet_supervisor": {"read", "create"}, "project_admin": _R},
+    "claim_payment": {"finance_manager": _ALL, "head_office": {"read", "export", "print"}},
+    "reimbursement_guard": {"finance_manager": {"create"}, "head_office": {"create"}},   # never stored (a flow's refusal)
     "payslip": {"finance_manager": _ALL, "project_admin": {"read", "create"}},
     "payroll_guard": {"finance_manager": {"create"}, "project_admin": {"create"}, "sales_manager": {"create"}},   # never stored (a flow's refusal; recaps are cancelled by the project admin)
     # owner automation pack: the summaries and their switches are the owner's alone; reorder rows are written by flows
@@ -5983,7 +6001,7 @@ for _site, _extra in (("demo-sewa", day_one_fixed_assets.SCENARIOS_SEWA), ("demo
     _i = SCENARIOS[_site].index(scenario_permissions)
     SCENARIOS[_site][_i:_i] = _extra
 # accounting last: it checks the books against every document the scenarios above submitted
-for _site in ("demo-jasa", "demo-fnb", "demo-ritel", "demo-grosir", "demo-produksi", "demo-manpower", "demo-sewa"):
+for _site in ("demo-jasa", "demo-fnb", "demo-ritel", "demo-grosir", "demo-produksi", "demo-manpower", "demo-sewa", "demo-karyawan"):
     SCENARIOS[_site].append(day_one_accounting.scenario_accounting)
 
 
