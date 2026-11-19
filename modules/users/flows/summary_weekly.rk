@@ -6,7 +6,8 @@
 #   - period: the 7 days before the run day (run on Monday: Monday to Sunday of last week)
 #   - sales: submitted sales invoices (grand total), cashier receipts and daily outlet sales of the period. An outlet
 #     and day has one sales source (outlets/outlet_day), so receipts and daily sales never count the same sale twice.
-#   - money in: submitted customer payments, cashier receipts (paid at the counter) and daily takings of the period.
+#   - money in: submitted customer payments, cashier receipts (cash, QRIS or card, all taken at the counter) and daily
+#     takings of the period.
 #   - invoices: submitted, money still owed, due within 7 days from the run day, or already overdue.
 #   - low stock: open stock_reorder rows (stock/stock_low_alert).
 # Each source is read only when its module is installed (app_installed is checked first, so the variable of a skipped

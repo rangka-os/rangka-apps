@@ -84,3 +84,5 @@ is how the tests fix the clock, and how an owner gets the summary of a day the s
   that leaves hundreds of balances below zero tells about the first 60.
 - Dates in texts are `YYYY-MM-DD`; CEL has no date or money formatting.
 - Cashier refunds (`pos_refund`) are not taken off the summary's sales and money in.
+- On a Monday the owner gets the daily and the weekly summary, on the 1st also the monthly one (07:00, 07:05, 07:10).
+  Each can be switched off in the summary settings.
