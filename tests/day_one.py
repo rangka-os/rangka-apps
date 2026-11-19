@@ -5913,6 +5913,7 @@ import day_one_staff_attendance  # noqa: E402
 import day_one_promotions  # noqa: E402
 import day_one_karyawan  # noqa: E402
 import day_one_fixed_assets  # noqa: E402
+import day_one_shifts  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5936,6 +5937,7 @@ day_one_staff_attendance.bind(sys.modules[__name__])   # also adds the demo-fnb 
 day_one_promotions.bind(sys.modules[__name__])   # after day_one_pos and day_one_kitchen (their members)
 day_one_karyawan.bind(sys.modules[__name__])   # also registers demo-karyawan (orgs, members, setup)
 day_one_fixed_assets.bind(sys.modules[__name__])
+day_one_shifts.bind(sys.modules[__name__])   # after day_one_staff_attendance (its demo-fnb members)
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5975,6 +5977,10 @@ for _site, _extra in day_one_automation.SCENARIOS.items():
     SCENARIOS[_site][_i:_i] = _extra
 # outlet staff attendance (module attendance, rangka-apps#100): after the site's own scenarios, before the permission matrix
 for _site, _extra in day_one_staff_attendance.SCENARIOS.items():
+    _i = SCENARIOS[_site].index(scenario_permissions)
+    SCENARIOS[_site][_i:_i] = _extra
+# work shifts (module shifts, rangka-apps#120): after outlet staff attendance, before the permission matrix
+for _site, _extra in day_one_shifts.SCENARIOS.items():
     _i = SCENARIOS[_site].index(scenario_permissions)
     SCENARIOS[_site][_i:_i] = _extra
 # fixed assets (module fixed_assets, rangka-apps#113): before the permission matrix and the books
