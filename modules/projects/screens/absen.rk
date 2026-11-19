@@ -2,6 +2,7 @@
 name: absen
 type: clock
 label: {id: Absen, en: Clock in}
+description: {id: 'Absen masuk dan pulang di lokasi kerja dari HP, dengan foto; di luar radius, tulis alasannya untuk mandor.'}
 icon: clock
 # A worker clocks in and out at the client's site from their phone (plans/layar-kerja.md §3 #2, contract 0030 §2 clock).
 # The site is today's assignment (the worker cannot read the firm's list of client sites, only their own assignments),

@@ -2,6 +2,7 @@
 name: catat_tagih
 type: entry
 label: {id: Catat uang tertagih, en: Record cash collected}
+description: {id: 'Catat uang yang kamu terima dari pelanggan saat menagih.'}
 icon: wallet
 # Cash taken at the subscriber's place (contract 0030 §2 entry): one field_collection. Opened from rute_tagih the
 # subscription is filled (stop); opened alone the collector picks it. The flows field_collection_cap_* refuse more

@@ -4,6 +4,7 @@
 name: kasir
 type: counter
 label: {id: Kasir, en: Cashier}
+description: {id: 'Layani pembeli di sini: pilih barang, terima tunai atau QRIS, lalu cetak struk.'}
 icon: wallet
 roles: [cashier, head_office]
 device: tablet

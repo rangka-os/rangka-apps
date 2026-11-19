@@ -7,6 +7,7 @@
 name: dapur
 type: queue
 label: {id: Dapur, en: Kitchen}
+description: {id: 'Tiket pesanan dari kasir masuk di sini; tekan Masak, lalu Siap, lalu Diambil.'}
 icon: list
 roles: [kitchen, cashier, head_office]
 device: tablet
