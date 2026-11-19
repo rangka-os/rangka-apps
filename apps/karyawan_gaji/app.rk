@@ -12,7 +12,8 @@ rangka: '>=0.5'
 # internal runs (no project, no client invoice). Outlet staff clock in with module attendance; a submitted attendance
 # period becomes draft payslips (flows payroll_run_fill and payslip_from_attendance), finance checks and submits them,
 # then downloads the salary transfer file (docs/payroll.md, bank_transfer_csv). The attendance dashboards and clock
-# screen stay in absen_karyawan, which a site installs next to this one; outsourcing firms keep jasa_proyek (client runs).
+# screen and its Absen menu group stay in absen_karyawan, which a site installs next to this one (a second Absen group
+# here showed twice); outsourcing firms keep jasa_proyek (client runs).
 # The worker record (who is paid) stays apart from the employee record (who signs in), linked by worker.employee
 # (contract 0056); flow worker_from_employee is not in this version (DECISIONS.md, 19 Nov 2026).
 modules:
@@ -29,8 +30,6 @@ menu:
     items: [payroll_run, payslip, payroll_close, cash_advance]
   - group: {id: Karyawan}
     items: [worker, payroll_profile, user]
-  - group: {id: Absen}
-    items: [attendance_period, attendance_summary]
 onboarding:
   - ask: {id: 'Siapa saja karyawanmu, jabatannya, dan berapa gaji pokok per bulan atau upah per harinya?'}
     sets: seed.workers
