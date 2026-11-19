@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: karyawan_gaji
+version: 1.0.0
+title: {id: Karyawan dan gaji, en: Staff and payroll}
+label: {id: Rangka Karyawan dan Gaji, en: Rangka Staff and Payroll}
+summary:
+  id: Data karyawan dan gajinya, absen dari HP jadi slip gaji dengan BPJS dan PPh 21, potongan kasbon, file transfer gaji ke bank.
+category: people
+icon: team-line
+rangka: '>=0.5'
+# The staff bundle (rangka-apps#101) for a business paying its own employees, with no client contract: payroll 2.0
+# internal runs (no project, no client invoice). Outlet staff clock in with module attendance; a submitted attendance
+# period becomes draft payslips (flows payroll_run_fill and payslip_from_attendance), finance checks and submits them,
+# then downloads the salary transfer file (docs/payroll.md, bank_transfer_csv). The attendance dashboards and clock
+# screen stay in absen_karyawan, which a site installs next to this one; outsourcing firms keep jasa_proyek (client runs).
+# The worker record (who is paid) stays apart from the employee record (who signs in), linked by worker.employee
+# (contract 0056); flow worker_from_employee is not in this version (DECISIONS.md, 19 Nov 2026).
+modules:
+  users: ^1.5
+  workforce: ^1.1
+  outlets: ^1.6
+  attendance: ^1.0
+  payroll: ^2.1
+dashboards: [gaji_ringkas, transfer_gaji]
+roles: [finance_manager, head_office, outlet_supervisor, cashier, outlet_staff, employee]
+home: {dashboard: gaji_ringkas}
+menu:
+  - group: {id: Gaji}
+    items: [payroll_run, payslip, payroll_close, cash_advance]
+  - group: {id: Karyawan}
+    items: [worker, payroll_profile, user]
+  - group: {id: Absen}
+    items: [attendance_period, attendance_summary]
+onboarding:
+  - ask: {id: 'Siapa saja karyawanmu, jabatannya, dan berapa gaji pokok per bulan atau upah per harinya?'}
+    sets: seed.workers
+  - ask: {id: 'Tanggal berapa periode gaji dipotong dan tanggal berapa gaji dibayar?'}
+    sets: payroll_run.period_from
+  - ask: {id: 'Berapa UMK kota tempat karyawanmu bekerja?'}
+    sets: payroll_run.umk
+  - ask: {id: 'Apakah karyawan sudah ikut BPJS Ketenagakerjaan dan BPJS Kesehatan?'}
+    sets: payroll_profile.bpjs_tk

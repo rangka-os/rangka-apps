@@ -12,6 +12,9 @@ permissions:
   - {role: head_office, read: true, create: true, write: true, export: true, print: true}
   # The outlet supervisor reads the summaries of their outlets (row scope outlet: the employee's outlet in the period).
   - {role: outlet_supervisor, read: true}
+  # Finance reads every summary: payroll_run_fill runs as the person ticking "Isi slip dari absen" and fills the payslips
+  # from them (rangka-apps#101 slice b). Read only: days, lateness and overtime, no position or selfie (staff_attendance).
+  - {role: finance_manager, read: true}
   # Staff read their own.
   - {role: cashier, read: true, if: "employee == user.name"}
   - {role: outlet_staff, read: true, if: "employee == user.name"}

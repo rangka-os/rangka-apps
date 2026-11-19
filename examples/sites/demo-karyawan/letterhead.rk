@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+# Site letterhead. Fictional data.
+legal_name: CV Contoh Roti Rumahan
+tagline: Roti rumahan setiap hari
+address: |
+  Jl. Contoh Roti No. 3
+  Yogyakarta 55000
+phone: '+62 274 000 0011'
+email: halo@contohroti.test
+website: contohroti.test
+signatory: {name: Nama Penandatangan, title: Pemilik}
+footer: {id: Slip gaji ini dibuat dari data absen dan data gaji karyawan}
