@@ -26,6 +26,7 @@ modules:
   bank_statement: ^1.0
   procurement: ^1.0
   payroll: ^2.0
+  fixed_assets: ^1.0
 dashboards: [jasa_overview, ar_aging, project_margin, absen_saya, rekap_absen]
 # field_worker and site_supervisor (field attendance, A2) have their role files in the projects module.
 roles: [sales_manager, finance_manager, purchasing_manager, project_admin, field_worker, site_supervisor]
@@ -51,6 +52,8 @@ menu:
     items: [purchase_request, purchase_order]
   - group: {id: Pembukuan}
     items: [financial_report, gl_entry, opening_balance, period_close]
+  - group: {id: Aset tetap}
+    items: [asset_book, fixed_asset, depreciation_run, asset_disposal, asset_category, fixed_asset_setting]
   - group: {id: Pajak}
     items: [tax_period]
   - group: {id: Data induk}

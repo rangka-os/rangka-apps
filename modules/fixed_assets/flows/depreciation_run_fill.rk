@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Lists the assets of a new monthly depreciation run: every register row still active whose next month to depreciate
+# (the month after the last one depreciated, else its first month) is on or before the run's month, with what it is
+# owed up to that month: the monthly amount times the months not yet depreciated (one, or more when earlier months had
+# no run), never past its residual value. The month whose remainder after it would be less than half a monthly
+# amount takes all that is left (rounding a monthly amount down drifts by at most half a rupiah per month of life), so
+# an amount rounded down never leaves a month past the useful life (audit F3). At most 900 assets per run (a run's
+# cancel reverses two journal lines per asset within the kernel's 2000-item loop, audit F8); assets past that are
+# caught up by the next month's run. Months between two first-of-month dates are their days / 30.436875 rounded
+# (exact for any span: a calendar month is 28 to 31 days).
+name: depreciation_run_fill
+label: {id: Isi daftar aset penyusutan}
+on: depreciation_run.created
+steps:
+  - find: depreciation_run
+    where: name == event.name
+    as: run
+  - find_all: asset_book
+    where: state == 'active' && depreciation_start <= event.period
+    sort: asset
+    limit: 900
+    as: books
+  - update: run
+    set:
+      lines: >-
+        books.filter(b, b.state == 'active' && (b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)) <= string(event.period) && (b.book_value - b.residual_value) > 0).map(b, {'asset': b.asset,
+          'months': (int((double(days_between((b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)), string(event.period))) + 15.0) / 30.436875) + 1), 'amount': (2 * ((b.book_value - b.residual_value) - b.monthly_depreciation * (int((double(days_between((b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)), string(event.period))) + 15.0) / 30.436875) + 1)) < b.monthly_depreciation ? (b.book_value - b.residual_value) : b.monthly_depreciation * (int((double(days_between((b.depreciated_through == '' ? string(b.depreciation_start) : add_months(string(b.depreciated_through), 1)), string(event.period))) + 15.0) / 30.436875) + 1)),
+          'outlet': b.outlet, 'project': b.project, 'prev_through': b.depreciated_through})

@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside an asset disposal's cancel: the register row is in use again, Aktif or Habis disusutkan by its book value.
+name: asset_disposal_on_cancel
+label: {id: Pelepasan aset dibatalkan}
+on: asset_disposal.cancelled
+steps:
+  - find: asset_book
+    where: name == event.book && disposal == event.name
+    as: b
+  - update: b
+    if: b != null
+    set:
+      state: "b.book_value <= b.residual_value ? 'fully_depreciated' : 'active'"
+      disposal: "''"
