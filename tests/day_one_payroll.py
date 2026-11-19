@@ -829,4 +829,111 @@ def scenario_ppn_exclude_finance(api):
         check("the invoice from the order, wage line marked, submitted by the sales_manager: held for finance (202)", st == 202, (st, r))
 
 
-SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale, scenario_payroll_status_change, scenario_payroll_low_r2, scenario_ppn_fee_only, scenario_ppn_exclude_finance]
+def scenario_payroll_internal(api):
+    """Payroll 2.0, an internal run (the firm's own staff): no project and no client invoice. Two monthly employees in
+    March 2032, one with 2 unpaid days whose cut pay falls below the UMK (BPJS base stays at the UMK), one with 2 unpaid
+    days and 45 minutes late at 1.000 a minute. The close books no project margin row and drafts no invoice; the
+    accounting journal of the close balances. Hand-checked amounts are written out next to the oracle's."""
+    fm, pa = CTX.get("fm"), CTX.get("pa")
+    if not (fm and pa):
+        fail("payroll internal: members", CTX.get("login_error", "members missing"))
+        return
+    g = gen()
+    base_run = {"run_kind": "internal", "period_from": "2032-03-01", "period_to": "2032-03-31", "tax_year": 2032, "tax_month": 3,
+                "pay_date": "2032-03-31", "umk": g.UMK, "jkk_rate": 0.24, "jp_wage_cap": 11_086_300, "kes_wage_cap": 12_000_000,
+                "workdays_per_week": 6}
+    # rules of the kind
+    st, r = fm.create("payroll_run", dict(base_run, project=CTX.get("payroll_project") or "PRJ-0001"))
+    check("an internal run with a project is refused", st == 422 and "proyek" in str(r).lower(), (st, r))
+    st, r = fm.create("payroll_run", dict(base_run, billing_mode="wages_plus_fee"))
+    check("an internal run cannot bill a client", st == 422 and "tidak ditagih" in str(r).lower(), (st, r))
+    st, r = fm.create("payroll_run", dict(base_run, run_kind="client"))
+    check("a client run without a project is refused", st == 422 and "proyek" in str(r).lower(), (st, r))
+    st, run = fm.create("payroll_run", dict(base_run, late_rate_per_min=1000))
+    if not check("finance opens an internal run for March 2032 (lateness 1.000 a minute)", st == 201, (st, run)):
+        return
+    R = run["name"]
+    eq("the internal run bills nobody, has no project and its own key",
+       (run.get("run_kind"), run.get("billing_mode"), run.get("project") or "", run.get("run_key")), ("internal", "none", "", "internal::2032-03-01"))
+    st, r = fm.create("payroll_run", dict(base_run, period_from="2032-03-15", period_to="2032-04-14", tax_month=4))
+    check("a second internal run of every outlet over the same days is refused", st >= 400, (st, r))
+    people = []
+    for no, name, salary in (("KRY-901", "Sari Contoh", 6_000_000), ("KRY-902", "Tono Contoh", 8_000_000)):
+        st, w = fm.create("worker", {"worker_name": name, "employee_no": no, "active": True})
+        st2, prof = fm.create("payroll_profile", {"worker": (w or {}).get("name", ""), "ptkp_status": "tk0", "pay_basis": "monthly",
+                                                  "monthly_salary": salary, "nik": f"99990000000{no[-3:]}01"})
+        if not check(f"employee {no} with a monthly salary of {salary:,}", st == 201 and st2 == 201, (st, w, st2, prof)):
+            return
+        people.append((w["name"], prof["name"]))
+    st, r = fm.patch("worker", people[0][0], {"employee": "USR-002"})
+    check("the first employee is linked to their employee record (Tim)", st == 200, (st, r))
+    st, bad = fm.create("payslip", {"payroll_run": R, "profile": people[0][1], "unpaid_days": 26})
+    check("more unpaid days than a month has is refused", st == 422, (st, bad))
+    st, s1 = fm.create("payslip", {"payroll_run": R, "profile": people[0][1], "days": 23, "unpaid_days": 2})
+    st2, s2 = fm.create("payslip", {"payroll_run": R, "profile": people[1][1], "days": 23, "unpaid_days": 2, "late_min_total": 45})
+    if not check("two slips made by hand in the internal run", st == 201 and st2 == 201, (st, s1, st2, s2)):
+        return
+    eq("the slip carries the employee record of its worker (empty when the worker has none)", (s1.get("employee"), s2.get("employee") or ""), ("USR-002", ""))
+    subs = []
+    for s in (s1, s2):
+        st, resp = fm.verb("payslip", s["name"], "submit")
+        subs.append((resp or {}).get("record", resp) if st == 200 else {})
+        check(f"slip {s['name']} submits", st == 200, (st, resp))
+    o = {"umk": g.UMK, "jkk": 0.24, "jp_cap": 11_086_300, "kes_cap": 12_000_000, "workdays": 6, "late_rate": 1000}
+    w1 = oracle.slip({"pay_basis": "monthly", "monthly_salary": 6_000_000, "days": 23, "unpaid_days": 2, "ptkp": "tk0"}, o)
+    w2 = oracle.slip({"pay_basis": "monthly", "monthly_salary": 8_000_000, "days": 23, "unpaid_days": 2, "late_min": 45, "ptkp": "tk0"}, o)
+    compare_slip("6.000.000, 2 unpaid days", subs[0], w1)
+    compare_slip("8.000.000, 2 unpaid days, 45 minutes late", subs[1], w2)
+    # by hand: 6.000.000 x 2 / 25 = 480.000 off; 5.520.000 is below the UMK 5.600.000, so BPJS on 5.600.000:
+    # JKK 13.440 + JKM 16.800 + Kesehatan 4% 224.000 -> gross 5.774.240, TER A 0,5% = 28.871; employee BPJS 2% + 1% + 1%
+    # of 5.600.000 = 224.000; net 5.520.000 - 224.000 - 28.871 = 5.267.129
+    eq("by hand: 480.000 cut, BPJS base at the UMK, PPh 21 28.871, net 5.267.129",
+       tuple(subs[0].get(f) for f in ("unpaid_deduction", "base_pay", "bpjs_base", "gross_taxable", "pph21", "net_pay")),
+       (480_000, 5_520_000, 5_600_000, 5_774_240, 28_871, 5_267_129))
+    # 8.000.000 x 2 / 25 = 640.000 off; 45 x 1.000 = 45.000 late, off the gross but not the BPJS base (7.360.000)
+    eq("by hand: 640.000 cut, 45.000 late, BPJS base 7.360.000, gross paid 7.315.000",
+       tuple(subs[1].get(f) for f in ("unpaid_deduction", "late_deduction", "bpjs_base", "cash_gross")), (640_000, 45_000, 7_360_000, 7_315_000))
+    check_print("internal slip", fm, "payslip", subs[1].get("name", "x"), "payslip",
+                ["Tidak dibayar 2 hari", "Potongan telat 45 menit", "Gaji pokok sebulan"])
+    st, r = fm.patch("payroll_run", R, {"late_rate_per_min": 2000})
+    check("the lateness rate is locked once a slip is submitted", st == 422, (st, r))
+    ledger0 = len(fm.find("project_ledger", "kind == 'payroll'"))
+    inv0 = len(fm.find("sales_invoice", f"notes.contains('[{R}]')"))
+    st, resp, cn = close_run(fm, R)
+    if not check("the internal run closes", st == 200, (st, resp)):
+        return
+    close = fm.get("payroll_close", cn)
+    eq("the close is internal and costs the firm the two slips' employer cost",
+       (close.get("run_kind"), close.get("extra_cost")), ("internal", w1["employer_cost"] + w2["employer_cost"]))
+    eq("no project margin row and no client invoice", (len(fm.find("project_ledger", "kind == 'payroll'")), len(fm.find("sales_invoice", f"notes.contains('[{R}]')"))),
+       (ledger0, inv0))
+    gl = api.find("gl_entry", f"voucher == '{cn}'")
+    eq("the close's journal balances and books the employer cost as wages (accounting installed)",
+       (sum(x["amount"] for x in gl), sum(x["amount"] for x in gl if x["account"] == "51300")), (0, w1["employer_cost"] + w2["employer_cost"]))
+    st, resp = fm.verb("payroll_close", cn, "cancel")
+    check("cancelling the internal close reopens the run (no invoice or margin row to undo)", st == 200 and fm.get("payroll_run", R).get("closed") is False, (st, resp))
+    st, resp, cn2 = close_run(fm, R)
+    check("closed again (nothing left open for the scenarios after this one)", st == 200, (st, resp))
+    # onboarding by file: the worker list links staff to their employee record by email, the pay data comes per worker
+    csv_w = ("Nama,Nomor karyawan,Jabatan,WhatsApp,Tarif harian,Email karyawan\n"
+             "Wati Contoh,KRY-911,Kasir,,0, Rina@ContohTenaga.test \n"
+             "Udin Contoh,KRY-912,Pelayan,,0,\n")
+    pv, c = import_commit(api, "worker_list", "karyawan.csv", csv_w.encode(), label="worker list with an employee email column")
+    ws = {w["employee_no"]: w for w in api.find("worker", "employee_no == 'KRY-911' || employee_no == 'KRY-912'")}
+    eq("the email links the employee record (any case, spaces trimmed); an empty email links none",
+       ((ws.get("KRY-911") or {}).get("employee"), (ws.get("KRY-912") or {}).get("employee") or ""), ("USR-001", ""))
+    csv_p = ("Nomor karyawan,Status PTKP,Dasar gaji,Pegawai tidak tetap,Gaji pokok,Tunjangan tetap,Tunjangan per hari,NIK,NPWP,"
+             "BPJS Ketenagakerjaan,Jaminan Pensiun,BPJS Kesehatan,Bank,No. rekening\n"
+             "KRY-911,TK/1,Bulanan,,\"5.250.000\",250000,,9999000000000911,,Ya,Tidak,,BCA,1234567890\n"
+             "KRY-912,K/0,harian,Ya,,,25000,9999000000000912,,,,Tidak,,\n")
+    pv, c = import_commit(fm, "payroll_profile_list", "data-gaji.csv", csv_p.encode(), label="payroll profiles by employee number")
+    ps = {p["worker"]: p for p in fm.find("payroll_profile", f"worker == '{(ws.get('KRY-911') or {}).get('name', 'x')}' || worker == '{(ws.get('KRY-912') or {}).get('name', 'x')}'")}
+    p1, p2 = ps.get((ws.get("KRY-911") or {}).get("name"), {}), ps.get((ws.get("KRY-912") or {}).get("name"), {})
+    eq("KRY-911: TK/1, monthly 5.250.000 + 250.000, permanent, BPJS TK without JP, Kesehatan by default, bank BCA",
+       tuple(p1.get(f) for f in ("ptkp_status", "pay_basis", "employment", "monthly_salary", "fixed_allowance", "bpjs_tk", "bpjs_jp", "bpjs_kes", "bank_name", "bank_account")),
+       ("tk1", "monthly", "permanent", 5_250_000, 250_000, True, False, True, "BCA", "1234567890"))
+    eq("KRY-912: K/0, daily casual, 25.000 a day present, BPJS TK by default, no Kesehatan",
+       tuple(p2.get(f) for f in ("ptkp_status", "pay_basis", "employment", "daily_allowance", "bpjs_tk", "bpjs_kes")), ("k0", "daily", "casual", 25_000, True, False))
+
+
+SCENARIOS = [scenario_payroll_month, scenario_payroll_invoice_once, scenario_payroll_rules, scenario_payroll_fee_only, scenario_payroll_december, scenario_payroll_refund_and_stale, scenario_payroll_status_change, scenario_payroll_low_r2, scenario_ppn_fee_only, scenario_ppn_exclude_finance, scenario_payroll_internal]

@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# Pay data of the workers already in the worker list (import worker_list first): one row per worker, found by the
+# employee number. Status PTKP as written on the tax form (TK/0 to K/3), Dasar gaji Bulanan or Harian, the BPJS
+# columns Ya or Tidak (empty = Ya). NIK and bank account are personal data: the file stays with the owner and finance.
+name: payroll_profile_list
+label: {id: Data gaji karyawan, en: Payroll profiles}
+model: payroll_profile
+source: csv
+header_row: 1
+key: [Nomor karyawan]
+map:
+  worker: {value: Nomor karyawan, match: employee_no}
+  ptkp_status: "=row['Status PTKP'].trim().lowerAscii().replace('/', '')"
+  pay_basis: "=row['Dasar gaji'].trim().lowerAscii().startsWith('bulan') ? 'monthly' : 'daily'"
+  employment: "='Pegawai tidak tetap' in row && row['Pegawai tidak tetap'].trim().lowerAscii() in ['ya', 'y', '1', 'true'] ? 'casual' : 'permanent'"
+  monthly_salary: "='Gaji pokok' in row && row['Gaji pokok'] != '' ? row['Gaji pokok'] : '0'"
+  fixed_allowance: "='Tunjangan tetap' in row && row['Tunjangan tetap'] != '' ? row['Tunjangan tetap'] : '0'"
+  daily_allowance: "='Tunjangan per hari' in row && row['Tunjangan per hari'] != '' ? row['Tunjangan per hari'] : '0'"
+  nik: "='NIK' in row ? row['NIK'] : ''"
+  npwp: "='NPWP' in row ? row['NPWP'] : ''"
+  bpjs_tk: "='BPJS Ketenagakerjaan' in row && row['BPJS Ketenagakerjaan'] != '' ? row['BPJS Ketenagakerjaan'] : 'Ya'"
+  bpjs_jp: "='Jaminan Pensiun' in row && row['Jaminan Pensiun'] != '' ? row['Jaminan Pensiun'] : 'Ya'"
+  bpjs_kes: "='BPJS Kesehatan' in row && row['BPJS Kesehatan'] != '' ? row['BPJS Kesehatan'] : 'Ya'"
+  bank_name: "='Bank' in row ? row['Bank'] : ''"
+  bank_account: "='No. rekening' in row ? row['No. rekening'] : ''"
