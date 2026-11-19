@@ -22,3 +22,12 @@ widgets:
   - {name: promo_cost, type: number, label: {id: Biaya promo}, description: {id: 'Potongan dan produk gratis dari promo, struk batal sudah dikurangi'}, model: promotion_ledger, aggregate: sum, field: amount, period: date, compact: true, span: 4, if: "app_installed('promotions')"}
   - {name: promo_uses, type: number, label: {id: Struk dengan promo}, model: promotion_ledger, filter: "entry == 'post'", period: date, compact: true, span: 4, if: "app_installed('promotions')"}
   - {name: promo_by_promotion, type: chart, chart: bar, label: {id: Biaya promo per promo}, model: promotion_ledger, group_by: promotion, aggregate: sum, field: amount, period: date, sort: -value, span: 6, if: "app_installed('promotions')"}
+  # module loyalty: members, what their open points would take off bills (off-book in v1) and the deposits held for
+  # them (the 2-1400 Uang muka pelanggan of deposits)
+  - {name: members, type: number, label: {id: Member aktif}, model: loyalty_account, filter: active, compact: true, span: 3, if: "app_installed('loyalty')"}
+  - {name: members_new, type: number, label: {id: Member baru}, model: loyalty_account, period: joined_on, compact: true, span: 3, if: "app_installed('loyalty')"}
+  - {name: points_liability, type: number, label: {id: Nilai poin beredar}, description: {id: 'Potongan yang akan diberikan bila semua poin ditukar hari ini (tidak dibukukan)'}, model: loyalty_account, aggregate: sum, field: points_worth, compact: true, span: 3, if: "app_installed('loyalty')"}
+  - {name: deposit_liability, type: number, label: {id: Saldo deposit pelanggan}, description: {id: 'Uang pelanggan yang dititipkan; sama dengan akun 2-1400 untuk deposit'}, model: loyalty_account, aggregate: sum, field: deposit_balance, compact: true, span: 3, if: "app_installed('loyalty')"}
+  - {name: deposit_topups, type: number, label: {id: Isi deposit}, model: deposit_topup, aggregate: sum, field: amount, filter: docstatus == 1, period: date, compact: true, span: 4, if: "app_installed('loyalty')"}
+  - {name: deposit_spent, type: number, label: {id: Belanja pakai deposit}, model: pos_sale, aggregate: sum, field: deposit_used, filter: docstatus == 1, period: date, compact: true, span: 4, if: "app_installed('loyalty')"}
+  - {name: points_redeemed, type: number, label: {id: Potongan dari poin}, model: pos_sale, aggregate: sum, field: points_discount, filter: docstatus == 1, period: date, compact: true, span: 4, if: "app_installed('loyalty')"}

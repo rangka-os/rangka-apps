@@ -5910,6 +5910,7 @@ import day_one_staff  # noqa: E402
 import day_one_automation  # noqa: E402
 import day_one_staff_attendance  # noqa: E402
 import day_one_promotions  # noqa: E402
+import day_one_loyalty  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5931,6 +5932,7 @@ day_one_staff.bind(sys.modules[__name__])
 day_one_automation.bind(sys.modules[__name__])
 day_one_staff_attendance.bind(sys.modules[__name__])   # also adds the demo-fnb members of outlet attendance
 day_one_promotions.bind(sys.modules[__name__])   # after day_one_pos and day_one_kitchen (their members)
+day_one_loyalty.bind(sys.modules[__name__])   # after day_one_promotions (same members)
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5945,8 +5947,8 @@ SCENARIOS = {
     "demo-manpower": day_one_payroll.SCENARIOS + day_one_attendance.SCENARIOS + [scenario_permissions],
     "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],
     "demo-kursus": day_one_courses.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
-    "demo-langganan": day_one_subscriptions.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
-    "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + day_one_promotions.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
+    "demo-langganan": day_one_subscriptions.SCENARIOS + day_one_loyalty.SCENARIOS_LANGGANAN + [scenario_permissions, day_one_accounting.scenario_accounting],
+    "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + day_one_promotions.SCENARIOS + day_one_loyalty.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-kepingan-keuangan": day_one_keuangan.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
 SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS

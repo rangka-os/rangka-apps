@@ -261,3 +261,28 @@ the cashier's manual discounts only (`manual_discount_total`). `MATRIX` rows liv
 | promotion_ledger (append-only; written by the sale's flows) | r c (amount hidden) | none | r e |
 | promo_guard (never stored; a flow's refusal) | c | none | c |
 
+### Members, points and deposit (module loyalty, next to the kasir piece)
+
+A member (`loyalty_account`) is signed up by a cashier at the counter or by head office at the desk; its tier figures,
+points, deposit, the year's spend and the tier are `read_only` and written only by the loyalty flows, which run as
+whoever pays the sale, takes the top-up or submits the payment. That is why the cashier (and finance or the sales
+manager for invoice payments from the deposit) holds `write` on `loyalty_account`: with every balance read-only, a
+client write can only change the name and number (the customer link and the active switch are `read_only_for` the
+cashier). The ledgers `loyalty_entry` and `deposit_entry` are append-only (contract 0026). A deposit refund and a
+points correction are head office's; above Rp 1.000.000 or 1.000 points they wait for finance or the owner (contract
+0007: head office does not hold `finance_manager`, so it never approves its own). Tiers are head office's. The member
+model has no `outlet` field (`joined_outlet`), so a member is found at every outlet; the ledgers carry `outlet`, so a
+cashier lists only its outlet's rows. `MATRIX` rows live in `tests/day_one_loyalty.py`.
+
+| Model | cashier | outlet_staff | head_office | finance_manager |
+| --- | --- | --- | --- | --- |
+| member_tier | r | r | r c w d e | r |
+| loyalty_account (balances read-only; customer and active read-only for the cashier) | r c w p | r | r c w d e p | r w e |
+| loyalty_entry (append-only) | r c | none | r c e | r e |
+| deposit_entry (append-only) | r c | none | r c e | r c e |
+| deposit_topup (cashier: cash or QRIS on its own open shift; the desk: transfer or cash) | r c w d s x p | none | r c w d s x e p | r c w d s x e p |
+| deposit_refund (approval above Rp 1.000.000) | none | none | r c w d s x e p | r e p (approves) |
+| points_adjustment (approval above 1.000 points) | none | none | r c w d s x e | r e (approves) |
+| loyalty_mismatch (written by the nightly check) | none | none | r c w d e | none |
+| loyalty_guard (never stored; a flow's refusal) | c | none | c | c |
+

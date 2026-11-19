@@ -31,7 +31,7 @@ fields:
   # the number in one form (digits with the country code), the rule of customer.wa_number; unique: one member per number
   - name: wa_number
     type: data
-    label: {id: Nomor WhatsApp (seragam)}
+    label: {id: Nomor WhatsApp member}
     hidden: true
     unique: true
     compute: "(phone.trim().startsWith('+') ? ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')).matches('^[1-9][0-9]{7,14}$') ? (phone.trim().startsWith('+') ? ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')) : ''"
