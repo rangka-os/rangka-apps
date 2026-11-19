@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payslip_advance_repaid_on_cancel
+label: {id: Potongan kasbon kembali ke sisa saat slip dibatalkan}
+# A cancelled slip gives its deduction back to the kasbon it repaid: repaid_total is recomputed from the submitted slips
+# left (rangka-apps#117 acceptance: a slip cancel after repayment puts the 500.000 back into what remains).
+on: payslip.cancelled
+if: event.cash_advance != ''
+steps:
+  - find: cash_advance_balance
+    where: cash_advance == event.cash_advance
+    as: bal
+  - if: bal != null
+    find_all: payslip
+    where: cash_advance == event.cash_advance && docstatus == 1 && name != event.name
+    as: others
+  - if: bal != null
+    update: bal
+    set:
+      repaid_total: "others.map(p, p.other_deduction).sum()"

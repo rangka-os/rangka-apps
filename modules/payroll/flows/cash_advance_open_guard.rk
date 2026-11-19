@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: cash_advance_open_guard
+label: {id: Satu kasbon belum lunas per pekerja}
+# Inside a cash_advance submit: refused while another submitted kasbon of the same worker is not repaid in full by the
+# submitted slips that link it (rangka-apps#117, v1: one open kasbon per worker, so a slip repays one kasbon). Read from
+# the kasbon and the slips themselves, not from cash_advance_balance, so a kasbon of before #117 counts too. The find
+# steps take the flow read locks of cash_advance and payslip (contract 0025): two kasbon of one worker submitted at the
+# same moment run one after the other and the second is refused.
+on: cash_advance.submitted
+steps:
+  - find_all: cash_advance
+    where: worker == event.worker && docstatus == 1 && name != event.name
+    as: kas
+  - find_all: payslip
+    where: worker == event.worker && cash_advance != '' && docstatus == 1
+    as: repaid
+  - if: "kas.exists(k, repaid.map(p, p.cash_advance == k.name ? p.other_deduction : 0).sum() < k.amount)"
+    create: payroll_guard
+    set:
+      reason: "'advance_open'"
+      document: "kas.filter(k, repaid.map(p, p.cash_advance == k.name ? p.other_deduction : 0).sum() < k.amount)[0].name"

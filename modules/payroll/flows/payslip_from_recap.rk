@@ -59,6 +59,27 @@ steps:
     find_all: payslip
     where: worker == event.worker && cash_advance != '' && docstatus == 1
     as: repaid
+  # The open kasbon with an installment plan (rangka-apps#117): the slip deducts min(installment, what is left).
+  - if: prof != null && run != null
+    find_all: cash_advance_balance
+    where: worker == event.worker && !cancelled && installment > 0 && repaid_total < amount
+    sort: advance_date
+    as: bal
+  - if: prof != null && run != null
+    find: worker
+    where: name == event.worker
+    as: wk
+  # Expense claims of the employee to be paid with salary and not paid yet (module reimbursement, rangka-apps#117).
+  - if: "prof != null && run != null && app_installed('reimbursement') && wk != null && wk.employee != ''"
+    then:
+      - find_all: claim_settlement
+        where: "employee == wk.employee && pay_with == 'payroll' && !paid && !cancelled"
+        as: claims
+    else:
+      # without the module (or the employee record) an empty list: a find on a model that is not installed fails
+      - find_all: payslip
+        where: "name == ''"
+        as: claims
   - if: prof != null && run != null
     create: payslip
     set:
@@ -74,3 +95,6 @@ steps:
       ytd_pension: "prev.map(p, p.jht_employee + p.jp_employee).sum()"
       ytd_months: "size(prev)"
       open_advance: "kas.exists(k, repaid.map(p, p.cash_advance == k.name ? p.other_deduction : 0).sum() < k.amount) ? kas.filter(k, repaid.map(p, p.cash_advance == k.name ? p.other_deduction : 0).sum() < k.amount)[0].name : ''"
+      cash_advance: "size(bal) > 0 ? bal[0].cash_advance : ''"
+      other_deduction: "size(bal) > 0 ? (bal[0].installment < bal[0].remaining ? bal[0].installment : bal[0].remaining) : 0"
+      reimbursement: "claims.map(c, c.amount).sum()"

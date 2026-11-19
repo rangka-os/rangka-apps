@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: cash_advance_balance_on_submit
+label: {id: Sisa kasbon dicatat}
+# A submitted kasbon gets its balance record (cash_advance_balance), kept by the slip flows from then on. An amended
+# kasbon is a new document with a new balance; the cancelled one keeps its own, marked cancelled.
+on: cash_advance.submitted
+steps:
+  - create: cash_advance_balance
+    set:
+      cash_advance: event.name
+      worker: event.worker
+      employee: event.employee
+      advance_date: event.advance_date
+      amount: event.amount
+      installment: event.installment

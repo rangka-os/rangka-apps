@@ -135,6 +135,16 @@ fields:
   # (payslip_ytd_on_create, payslip_from_recap). A deduction without a link while one is open is warned at submit
   # (audit gelombang 3 r2 R1): linked, the kasbon cannot be cancelled after its repayment.
   - {name: open_advance, type: link, to: cash_advance, label: {id: Kasbon belum lunas}, read_only: true}
+  # The slip-making flows (payslip_from_recap, payslip_from_attendance and the fills, payslip_ytd_on_create) put the
+  # open kasbon's monthly installment here: cash_advance = that kasbon, other_deduction = min(installment, what is left
+  # after the submitted slips), when the kasbon has an installment (rangka-apps#117). Editable while the slip is a draft.
+  #
+  # Expense claims of this employee approved to be paid with salary and not paid yet (module reimbursement,
+  # claim_settlement), summed when the slip is made. A company expense paid back, not income: it is outside cash_gross
+  # and gross_taxable, so PPh 21 and BPJS do not change, and only net_pay grows (a cost of the business paid back
+  # against its receipt is not a reward for work). At submit it must still equal the claims due (claim_settlement_on_payslip_submit),
+  # which are then marked paid by this slip; a cancel releases them.
+  - {name: reimbursement, type: currency, label: {id: Penggantian biaya (tidak kena pajak), en: Expense reimbursement (untaxed)}, default: '0'}
   - name: ptkp_status
     type: select
     label: {id: Status PTKP}
@@ -314,10 +324,15 @@ fields:
     type: currency
     label: {id: BPJS dibayar perusahaan}
     compute: jkk + jkm + jht_employer + jp_employer + kes_employer
+  - name: total_deduction
+    type: currency
+    label: {id: Jumlah potongan, en: Total deductions}
+    compute: employee_bpjs + pph21 + other_deduction
+  # The reimbursement is added after the deductions: it is paid with the salary, never taxed (rangka-apps#117).
   - name: net_pay
     type: currency
     label: {id: Gaji bersih}
-    compute: cash_gross - employee_bpjs - pph21 - other_deduction
+    compute: cash_gross - employee_bpjs - pph21 - other_deduction + reimbursement
     in_list: true
   - name: employer_cost
     type: currency
@@ -384,6 +399,10 @@ rules:
     on: save
     check: tax_year == payroll_run.tax_year && tax_month == payroll_run.tax_month
     message: {id: 'Tahun dan bulan pajak slip harus sama dengan periode gajinya'}
+  - name: reimbursement_whole
+    on: save
+    check: reimbursement >= 0 && reimbursement == round(reimbursement)
+    message: {id: 'Penggantian biaya rupiah bulat, tidak negatif'}
   - name: net_not_negative
     on: submit
     check: net_pay >= 0
@@ -437,7 +456,7 @@ views:
           - [ytd_gross, ytd_pph21, year_gross, job_cost, year_net, year_pkp, year_pph21]
       - section: {id: Bersih}
         columns:
-          - [net_pay, employer_cost]
+          - [total_deduction, reimbursement, net_pay, employer_cost]
           - [below_umk, timesheet_cost]
       - section: {id: Transfer gaji}
         columns:
