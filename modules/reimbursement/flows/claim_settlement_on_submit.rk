@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: claim_settlement_on_submit
+label: {id: Klaim disetujui menunggu dibayar}
+# An approved (submitted) claim gets its claim_settlement, due until a claim_payment or a payslip pays it. Runs as the
+# claimant: the approve runs the submit as the requester (contract 0007 §2).
+on: expense_claim.submitted
+steps:
+  - create: claim_settlement
+    set:
+      claim: event.name
+      employee: event.employee
+      claim_date: event.claim_date
+      outlet: event.outlet
+      amount: event.amount
+      pay_with: event.pay_with

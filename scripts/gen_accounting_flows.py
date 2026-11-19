@@ -28,7 +28,9 @@ ACCOUNTS = [
     ("1-2100", "Aset tetap"), ("1-2900", "Akumulasi penyusutan"),
     ("2-1100", "Utang usaha"), ("2-1150", "Utang belum ditagih"), ("2-1200", "PPN keluaran"),
     ("2-1300", "Utang PPh 23"), ("2-1310", "Utang PPh final"), ("2-1320", "Utang PPh 21"), ("2-1400", "Uang muka pelanggan"),
-    ("2-1500", "Utang upah"), ("2-1600", "Utang BPJS"), ("2-1900", "Utang lain-lain"), ("2-2100", "Utang bank"),
+    ("2-1500", "Utang upah"),
+    # expense claims of employees approved and not paid back yet (module reimbursement, rangka-apps#117)
+    ("2-1510", "Utang reimburse karyawan"), ("2-1600", "Utang BPJS"), ("2-1900", "Utang lain-lain"), ("2-2100", "Utang bank"),
     ("3-1100", "Modal disetor"), ("3-1900", "Ekuitas saldo awal"),
     ("4-1100", "Pendapatan usaha"), ("4-1200", "Retur penjualan"), ("4-9100", "Pendapatan lain-lain"),
     ("4-9200", "Pendapatan denda dan ganti rugi sewa"),
@@ -226,17 +228,33 @@ POSTINGS = {
         # where the client funds the wages and the attendance cost leaves the project), turns the accrued wages into
         # net pay owed, and books PPh 21, BPJS of both sides and deductions (kasbon) repaid. In fee_only the client owes
         # the whole employer cost. Balances because employer cost = cash gross + employer BPJS and net pay = cash gross -
-        # employee BPJS - PPh 21 - other deductions (plans/akuntansi-dasar.md, payroll session 7 Nov).
+        # employee BPJS - PPh 21 - other deductions (plans/akuntansi-dasar.md, payroll session 7 Nov). Expense claims paid
+        # with the salary (rangka-apps#117) are inside net pay but are no wage: they settle Utang reimburse karyawan,
+        # which the approved claim credited (expense_claim below), so the extra net pay is debited there.
         lines=[("'51300'", "event.extra_cost"),
                ("'21500'", "event.total_timesheet_cost - event.total_net_pay"),
                ("'21320'", "0 - event.total_pph21"),
                ("'21600'", "0 - (event.total_employer_bpjs + event.total_employee_bpjs)"),
                ("'11330'", "0 - event.total_other_deduction"),
-               ("'11340'", "event.billing_mode == 'fee_only' ? event.total_employer_cost : 0")]),
+               ("'11340'", "event.billing_mode == 'fee_only' ? event.total_employer_cost : 0"),
+               ("'21510'", "event.total_reimbursement")]),
     "cash_advance": dict(
         label="Jurnal kasbon", date="event.advance_date",
         # Kasbon given to a worker: a receivable, repaid from wages by the payroll close (Cr 11330 there).
         lines=[("'11330'", "event.amount"),
+               ("event.method == 'cash' ? '11100' : '11200'", "0 - event.amount")]),
+    "expense_claim": dict(
+        label="Jurnal klaim biaya", date="event.claim_date", outlet="event.outlet", project="event.project",
+        description="Saat klaim biaya karyawan disetujui, biayanya masuk beban dan perusahaan berutang ke karyawan sampai dibayar.",
+        # module reimbursement (rangka-apps#117): an approved claim is the business's expense, on the account of its
+        # category, owed to the employee until it is paid back in cash or bank (claim_payment) or with the salary
+        # (payroll close, Dr 21510 above).
+        lines=[("event.expense_account", "event.amount"),
+               ("'21510'", "0 - event.amount")]),
+    "claim_payment": dict(
+        label="Jurnal pembayaran klaim", date="event.payment_date", outlet="event.outlet",
+        # module reimbursement: an approved claim paid back from cash or bank settles what was owed to the employee.
+        lines=[("'21510'", "event.amount"),
                ("event.method == 'cash' ? '11100' : '11200'", "0 - event.amount")]),
     "rental_booking": dict(
         label="Jurnal deposit sewa", date="event.booking_date", party="event.customer",

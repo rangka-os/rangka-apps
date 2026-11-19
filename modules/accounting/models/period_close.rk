@@ -19,6 +19,9 @@ permissions:
   - {role: project_admin, read: true}
   - {role: outlet_staff, read: true}
   - {role: cashier, read: true}
+  # an expense claim's journal is written as the claimant when the approver approves (module reimbursement)
+  - {role: employee, read: true}
+  - {role: outlet_supervisor, read: true}
 fields:
   - {name: closed_until, type: date, label: {id: Tutup buku sampai tanggal}, required: true, in_list: true}
   - {name: notes, type: text, label: {id: Catatan}}

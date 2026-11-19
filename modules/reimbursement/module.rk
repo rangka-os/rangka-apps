@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: reimbursement
+version: 1.0.0
+title: {id: Klaim biaya karyawan, en: Expense claims}
+summary:
+  id: Karyawan mengajukan klaim biaya dengan foto struk, atasan menyetujui, keuangan membayar tunai, transfer, atau bersama gaji tanpa dipajaki.
+  en: Staff claim expenses with a receipt photo, a supervisor approves, finance pays back in cash, by transfer or with the salary, untaxed.
+category: people
+icon: receipt-line
+# Expense claims (rangka-apps#117, docs/reimbursement.md). A staff member drafts a claim (category, amount, receipt
+# photo, what for) and submits it; the submit waits for the outlet supervisor of the claim's outlet or head office
+# (contract 0007), and once approved the claim is the business's expense owed to the employee (accounting: Dr the
+# category's expense account / Cr 2-1510 Utang reimburse karyawan). It is paid back either by finance from cash or bank
+# (claim_payment) or with the next salary (payroll: payslip.reimbursement, outside the taxable gross). A submitted claim
+# cannot change, so whether it was paid lives on its claim_settlement, kept by flows.
+# Not in this version: per diem and mileage rules, corporate cards, multi-currency claims, receipt OCR filling the
+# amount, and the rebill of a project claim to the client (project_expense; follow-up of #117).
+requires: {rangka: '>=0.5', users: ^1.5}
+optional: {outlets: ^1.6, projects: ^1.0, payroll: ^2.2, accounting: ^1.5}

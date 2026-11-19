@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: claim_settlement_on_payslip_cancel
+label: {id: Klaim kembali menunggu dibayar saat slip dibatalkan}
+# A cancelled payslip gives back the claims it paid: due again, for the next slip or a claim_payment.
+on: payslip.cancelled
+steps:
+  - find_all: claim_settlement
+    where: paid_by == event.name
+    as: paid
+  - for_each: paid
+    as: c
+    do:
+      - update: c
+        set:
+          paid: 'false'
+          paid_by: "''"
+          paid_on: "null"

@@ -26,6 +26,12 @@ permissions:
   # by the cashier (blind count, audit kasir M4)
   - {role: cashier, read: true, create: true, if: "voucher_type == 'pos_sale'"}
   - {role: cashier, create: true, if: "voucher_type == 'pos_shift_close'"}
+  # An expense claim is submitted as the employee who made it, when its approver approves (contract 0007 §2: the verb
+  # runs as the requester), so staff create its lines; they read none (module reimbursement, rangka-apps#117).
+  - {role: employee, create: true, if: "voucher_type == 'expense_claim'"}
+  - {role: cashier, create: true, if: "voucher_type == 'expense_claim'"}
+  - {role: outlet_staff, create: true, if: "voucher_type == 'expense_claim'"}
+  - {role: outlet_supervisor, create: true, if: "voucher_type == 'expense_claim'"}
 fields:
   - name: posting_date
     type: date
@@ -61,6 +67,7 @@ fields:
       - {value: '21320', label: {id: '2-1320 Utang PPh 21'}}
       - {value: '21400', label: {id: '2-1400 Uang muka pelanggan'}}
       - {value: '21500', label: {id: '2-1500 Utang upah'}}
+      - {value: '21510', label: {id: '2-1510 Utang reimburse karyawan'}}
       - {value: '21600', label: {id: '2-1600 Utang BPJS'}}
       - {value: '21900', label: {id: '2-1900 Utang lain-lain'}}
       - {value: '22100', label: {id: '2-2100 Utang bank'}}

@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: expense_category
+label: {id: Kategori klaim, en: Expense category}
+icon: price-tag
+naming: KKL-{####}
+title_field: category_name
+# What a claim is for (parkir, bensin, ATK, makan tamu). Finance sets the expense account the claims of the category are
+# booked to (accounting module), whether a receipt photo is needed, and the most one claim may ask.
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, export: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true}
+  - {role: outlet_supervisor, read: true}
+  - {role: employee, read: true}
+  - {role: cashier, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: project_admin, read: true}
+fields:
+  - name: category_name
+    type: data
+    label: {id: Nama kategori, en: Category}
+    required: true
+    in_list: true
+  - name: expense_account
+    type: select
+    label: {id: Akun beban, en: Expense account}
+    default: "'61900'"
+    depends_on: app_installed('accounting')
+    in_list: true
+    options:
+      - {value: '61100', label: {id: Beban gaji kantor}}
+      - {value: '61400', label: {id: Beban sewa}}
+      - {value: '61500', label: {id: 'Beban listrik, air, internet'}}
+      - {value: '61600', label: {id: Beban transport dan kirim}}
+      - {value: '61700', label: {id: Beban pemasaran}}
+      - {value: '61800', label: {id: Beban perlengkapan dan perawatan}}
+      - {value: '61900', label: {id: Beban operasional lain}}
+      - {value: '51400', label: {id: Biaya proyek}}
+  - name: needs_receipt
+    type: check
+    label: {id: Wajib foto struk, en: Receipt required}
+    default: 'true'
+    in_list: true
+  # 0 = no limit
+  - name: max_per_claim
+    type: currency
+    label: {id: Maksimal per klaim, en: Limit per claim}
+    default: '0'
+    help: {id: 'Kosongkan atau 0 kalau tidak ada batas'}
+    in_list: true
+  - {name: active, type: check, label: {id: Aktif}, default: 'true', in_list: true}
+rules:
+  - name: max_not_negative
+    on: save
+    check: max_per_claim >= 0 && max_per_claim == round(max_per_claim)
+    message: {id: 'Maksimal per klaim rupiah bulat, 0 kalau tanpa batas'}
+views:
+  list:
+    columns: [category_name, expense_account, needs_receipt, max_per_claim, active]
+    filters: [active]

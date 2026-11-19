@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: claim_settlement_on_payslip_submit
+label: {id: Klaim dibayar bersama gaji}
+# Inside a payslip submit (payroll, finance): the slip's reimbursement must equal the employee's approved claims to be
+# paid with the salary that are still due, now. The slip-making flows summed them when the draft was made; a claim
+# approved, paid in cash or cancelled since makes the sums differ and the submit is refused until finance corrects the
+# field (a flow cannot change the submitted slip). Equal: every one of those claims is marked paid by this slip, so a
+# second slip cannot pay it again. A slip without an employee record has no claims (its reimbursement must be 0). The
+# find takes the flow read lock of claim_settlement (contract 0025), so a payment and a slip paying the same claim at
+# the same moment run one after the other and the second is refused.
+on: payslip.submitted
+steps:
+  - if: event.employee != ''
+    find_all: claim_settlement
+    where: employee == event.employee && pay_with == 'payroll' && !paid && !cancelled
+    sort: claim_date
+    as: due
+  - if: "event.employee == '' ? event.reimbursement != 0 : due.map(c, c.amount).sum() != event.reimbursement"
+    create: reimbursement_guard
+    set:
+      reason: "'reimbursement_changed'"
+      document: event.name
+  - if: event.employee != '' && event.reimbursement != 0
+    for_each: due
+    as: c
+    do:
+      - update: c
+        set:
+          paid: 'true'
+          paid_by: event.name
+          paid_on: event.pay_date
