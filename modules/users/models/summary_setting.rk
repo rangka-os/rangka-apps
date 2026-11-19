@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# The owner's switches for the summaries (flows summary_daily, summary_weekly, summary_monthly). One record per
+# business: `key` is unique and always 'usaha', and the first run of a summary flow makes the record with every
+# summary on. Unticking a summary stops its record, its notice and its mail; the mail alone is switched off per
+# person in Pengaturan › Notifikasi. No role but the owner reads or changes it.
+name: summary_setting
+label: {id: Pengaturan ringkasan, en: Summary settings}
+icon: settings-3-line
+naming: RKP-{##}
+title_field: title
+# An empty list: the model is closed to every role, so only the owner reads and changes it.
+permissions: []
+fields:
+  - {name: key, type: data, label: {id: Kunci}, default: "'usaha'", required: true, unique: true, read_only: true}
+  - {name: title, type: data, label: {id: Nama}, compute: "'Pengaturan ringkasan'"}
+  - name: daily
+    type: check
+    label: {id: Kirim ringkasan harian}
+    help: {id: 'Tiap pagi jam 07.00: penjualan dan uang masuk kemarin, faktur yang jatuh tempo, stok yang menipis'}
+    default: 'true'
+  - name: weekly
+    type: check
+    label: {id: Kirim ringkasan mingguan}
+    help: {id: 'Tiap Senin pagi: 7 hari terakhir'}
+    default: 'true'
+  - name: monthly
+    type: check
+    label: {id: Kirim ringkasan bulanan}
+    help: {id: 'Tiap tanggal 1: sebulan terakhir'}
+    default: 'true'
+views:
+  form:
+    layout:
+      - section: {id: Ringkasan yang dikirim ke kamu}
+        fields: [daily, weekly, monthly]
