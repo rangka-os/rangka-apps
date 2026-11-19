@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One record per business (`key` is unique and always 'usaha'), made with the default categories by flow
+# fixed_assets_setup (run on the 1st with the monthly depreciation, or by hand from the flow list). The capitalisation
+# threshold (batas kapitalisasi): a purchase below it is an expense, not an asset. Rp 1.000.000 by default, the common
+# policy of Indonesian SMEs under SAK EMKM, which leaves the threshold to the business (DECISIONS.md, rangka-apps#113).
+# 0 turns the check off.
+name: fixed_asset_setting
+label: {id: Pengaturan aset tetap, en: Fixed asset settings}
+icon: settings-3-line
+naming: AST-SET-{##}
+title_field: title
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true}
+  - {role: head_office, read: true, create: true, write: true}
+  # the bill's flow (asset_from_vendor_bill) runs as the purchasing manager who submits it and reads the threshold
+  - {role: purchasing_manager, read: true}
+fields:
+  - {name: key, type: data, label: {id: Kunci}, default: "'usaha'", required: true, unique: true, read_only: true}
+  - {name: title, type: data, label: {id: Nama}, compute: "'Pengaturan aset tetap'"}
+  - name: capitalisation_threshold
+    type: currency
+    label: {id: Batas kapitalisasi}
+    help: {id: 'Pembelian di bawah nilai ini dicatat sebagai beban, bukan aset tetap. Isi 0 bila semua pembelian boleh jadi aset.'}
+    default: '1000000'
+rules:
+  - name: threshold_not_negative
+    on: save
+    check: capitalisation_threshold >= 0
+    message: {id: Batas kapitalisasi tidak boleh negatif}
+views:
+  form:
+    layout:
+      - section: {id: Aset tetap}
+        fields: [capitalisation_threshold]

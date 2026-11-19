@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside an asset disposal's submit: refused when the asset was already sold or written off (another disposal won the
+# race). Then the register row is marked Dijual or Dihapus and points at this disposal; the runs skip it from now on.
+# The journal is the accounting module's (gl_asset_disposal_post).
+name: asset_disposal_on_submit
+label: {id: Pelepasan aset masuk daftar aset}
+on: asset_disposal.submitted
+if: "'docstatus' in event && event.docstatus == 1"
+steps:
+  - find: asset_book
+    where: name == event.book
+    as: b
+  - if: "b == null || !(b.state in ['active', 'fully_depreciated'])"
+    create: asset_guard
+    set: {reason: "'disposal_taken'", document: event.book}
+  - update: b
+    set: {state: event.kind, disposal: event.name}

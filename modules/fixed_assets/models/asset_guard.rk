@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Never stored: a flow of this module creates one when the document it runs in must be refused (the pattern of
+# rental_guard); the matching rule fails with the reason's message, which rolls the whole submit or cancel back.
+name: asset_guard
+label: {id: Penjaga aset tetap, en: Fixed asset guard}
+icon: check
+naming: AGD-{######}
+title_field: reason
+permissions:
+  - {role: finance_manager, create: true}
+  - {role: head_office, create: true}
+  - {role: purchasing_manager, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: below_threshold, label: {id: Di bawah batas kapitalisasi}}
+      - {value: bill_currency, label: {id: Tagihan valas}}
+      - {value: bill_line_taken, label: {id: Baris tagihan sudah jadi aset}}
+      - {value: bill_has_asset, label: {id: Tagihan sudah jadi aset}}
+      - {value: unit_taken, label: {id: Unit sewa sudah jadi aset lain}}
+      - {value: asset_in_use, label: {id: Aset sudah disusutkan atau dilepas}}
+      - {value: run_exists, label: {id: Penyusutan bulan itu sudah ada}}
+      - {value: run_not_latest, label: {id: Bukan penyusutan terakhir}}
+      - {value: run_stale, label: {id: Daftar aset berubah}}
+      - {value: run_disposed, label: {id: Aset sudah dilepas}}
+      - {value: disposal_taken, label: {id: Aset sudah dilepas}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: below_threshold
+    on: save
+    check: reason != 'below_threshold'
+    message: {id: 'Nilainya di bawah batas kapitalisasi di Pengaturan aset tetap: catat sebagai beban, bukan aset tetap.'}
+  - name: bill_currency
+    on: save
+    check: reason != 'bill_currency'
+    message: {id: 'Tagihan valas belum bisa dicatat sebagai aset tetap. Catat dalam rupiah.'}
+  - name: bill_line_taken
+    on: save
+    check: reason != 'bill_line_taken'
+    message: {id: 'Baris tagihan ini sudah menjadi aset tetap lain yang diajukan.'}
+  - name: bill_has_asset
+    on: save
+    check: reason != 'bill_has_asset'
+    message: {id: 'Tagihan ini sudah menjadi aset tetap yang diajukan. Batalkan asetnya dulu.'}
+  - name: unit_taken
+    on: save
+    check: reason != 'unit_taken'
+    message: {id: 'Unit alat sewa ini sudah tercatat sebagai aset tetap lain.'}
+  - name: asset_in_use
+    on: save
+    check: reason != 'asset_in_use'
+    message: {id: 'Aset ini sudah disusutkan atau dilepas. Batalkan penyusutan atau pelepasannya dulu.'}
+  - name: run_exists
+    on: save
+    check: reason != 'run_exists'
+    message: {id: 'Penyusutan bulan ini atau bulan sesudahnya sudah diajukan.'}
+  - name: run_not_latest
+    on: save
+    check: reason != 'run_not_latest'
+    message: {id: 'Hanya penyusutan bulan terakhir yang bisa dibatalkan. Batalkan bulan sesudahnya dulu.'}
+  - name: run_stale
+    on: save
+    check: reason != 'run_stale'
+    message: {id: 'Daftar aset sudah berubah sejak draft dibuat. Hapus draft ini dan buat penyusutan bulan itu lagi.'}
+  - name: run_disposed
+    on: save
+    check: reason != 'run_disposed'
+    message: {id: 'Ada aset di penyusutan ini yang sudah dijual atau dihapus. Batalkan pelepasannya dulu.'}
+  - name: disposal_taken
+    on: save
+    check: reason != 'disposal_taken'
+    message: {id: 'Aset ini sudah dijual atau dihapus.'}

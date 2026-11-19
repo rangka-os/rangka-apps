@@ -261,3 +261,21 @@ the cashier's manual discounts only (`manual_discount_total`). `MATRIX` rows liv
 | promotion_ledger (append-only; written by the sale's flows) | r c (amount hidden) | none | r e |
 | promo_guard (never stored; a flow's refusal) | c | none | c |
 
+### Fixed assets (module fixed_assets, rangka-apps#113)
+
+Assets and their depreciation are finance's and head office's. The purchasing manager's bill posted as "Aset tetap"
+drafts the assets (flow `asset_from_vendor_bill` runs as them), so they create drafts and read the threshold; finance
+completes and submits them. Warehouse staff of a rental business see which unit is which asset, never what it cost
+(`hidden_for: [rental_staff]`, contract 0027). The register row (`asset_book`) and the rental unit's `asset` are written
+only by this module's flows (their fields are read_only); head office writes `rental_unit` for that reason. `MATRIX`
+rows live in `tests/day_one_fixed_assets.py`.
+
+| Model | finance_manager | head_office | purchasing_manager | rental_staff |
+| --- | --- | --- | --- | --- |
+| fixed_asset (submit journals the purchase by source) | r c w d s x a e p i | r c w d s x a e p i | r c | r (cost, residual, depreciation hidden) |
+| asset_book (written by flows only) | r c w e p | r c w e p | none | r (money hidden) |
+| depreciation_run (only the latest cancels) | r c w d s x e p | r c w d s x e p | none | none |
+| asset_disposal | r c w d s x a e p | r c w d s x a e p | none | none |
+| asset_category | r c w d e | r c w d e | r | r |
+| fixed_asset_setting | r c w | r c w | r | none |
+| asset_guard (never stored; a flow's refusal) | c | c | c | none |

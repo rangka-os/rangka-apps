@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One asset in a monthly depreciation run, written by flow depreciation_run_fill. months: how many months this line
+# covers (more than 1 when an asset's earlier months had no run yet, so nothing is skipped); prev_through: the asset's
+# last depreciated month before this run, put back when the run is cancelled.
+name: depreciation_line
+is_child: true
+fields:
+  - {name: asset, type: link, to: fixed_asset, label: {id: Aset}, required: true}
+  - {name: asset_name, type: data, label: {id: Nama aset}}
+  - {name: months, type: int, label: {id: Bulan}, default: '1'}
+  - {name: amount, type: currency, label: {id: Penyusutan}, required: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Cabang}}
+  - {name: project, type: data, label: {id: Proyek}}
+  - {name: prev_through, type: date, label: {id: Sebelumnya disusutkan sampai}, hidden: true}

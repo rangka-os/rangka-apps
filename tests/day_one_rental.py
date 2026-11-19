@@ -37,7 +37,7 @@ MATRIX = {
     # written only by the flows of whoever submits or cancels (its fields are read_only)
     "rental_schedule": {"sales_manager": {"read", "create", "write", "export"}, "finance_manager": {"read", "write", "export"}, "head_office": _R, "rental_staff": {"read", "write"}},
     "rental_unit": {"finance_manager": {"read", "create", "write", "export", "print"}, "sales_manager": {"read", "create", "write", "export"},
-                    "head_office": _R, "rental_staff": {"read", "write", "export"}},
+                    "head_office": {"read", "write", "export"}, "rental_staff": {"read", "write", "export"}},
     "rental_guard": {"sales_manager": {"create"}, "finance_manager": {"create"}, "rental_staff": {"create"}},   # never stored (a flow's refusal)
 }
 MEMBERS = [("sm", "sales_manager"), ("fm", "finance_manager"), ("hq", "head_office"), ("gd", "rental_staff")]

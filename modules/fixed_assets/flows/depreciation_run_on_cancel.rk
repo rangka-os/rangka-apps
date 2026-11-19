@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside a monthly depreciation run's cancel: only the latest submitted run may be cancelled, and not while an asset
+# in it has been sold or written off since (cancel the disposal first). Each register row gives its line back: the
+# accumulated depreciation, the month it was depreciated through before this run, and Aktif. The journal is reversed
+# by the accounting module.
+name: depreciation_run_on_cancel
+label: {id: Penyusutan bulanan dibatalkan}
+on: depreciation_run.cancelled
+steps:
+  - find: depreciation_run
+    where: name != event.name && docstatus == 1 && period > event.period
+    as: later
+  - if: later != null
+    create: asset_guard
+    set: {reason: "'run_not_latest'", document: later.name}
+  - find_all: asset_book
+    where: asset in event.lines.map(l, l.asset) && state != 'cancelled'
+    as: books
+  - if: "books.exists(b, b.state in ['sold', 'written_off'])"
+    create: asset_guard
+    set: {reason: "'run_disposed'", document: event.name}
+  - for_each: books
+    as: b
+    do:
+      - update: b
+        set:
+          accumulated: b.accumulated - event.lines.filter(l, l.asset == b.asset)[0].amount
+          depreciated_through: event.lines.filter(l, l.asset == b.asset)[0].prev_through
+          last_run: "''"
+          state: "'active'"

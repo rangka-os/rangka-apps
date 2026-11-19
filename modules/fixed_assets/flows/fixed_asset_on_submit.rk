@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside a fixed asset's submit: refuses an asset below the capitalisation threshold (fixed_asset_setting; 0 = no
+# threshold), a bill line already made into another live asset, or a rental unit that is already another live asset;
+# then opens its row in the register (asset_book, the values the runs and disposals move) and links the rental unit
+# back to it. Reads in the order fixed_asset_setting, fixed_asset, asset_book, rental_unit (contract 0025).
+name: fixed_asset_on_submit
+label: {id: Aset tetap masuk daftar aset}
+on: fixed_asset.submitted
+if: "'docstatus' in event && event.docstatus == 1"
+steps:
+  - {find: fixed_asset_setting, as: cfg}
+  - if: "cfg != null && event.cost < cfg.capitalisation_threshold"
+    create: asset_guard
+    set: {reason: "'below_threshold'", document: event.name}
+  - find: fixed_asset
+    if: event.source == 'vendor_bill'
+    where: name != event.name && docstatus == 1 && vendor_bill == event.vendor_bill && bill_line == event.bill_line
+    as: twin
+  - if: event.source == 'vendor_bill' && twin != null
+    create: asset_guard
+    set: {reason: "'bill_line_taken'", document: twin.name}
+  - find: asset_book
+    if: event.rental_unit != ''
+    where: rental_unit == event.rental_unit && state != 'cancelled'
+    as: other
+  - if: event.rental_unit != '' && other != null
+    create: asset_guard
+    set: {reason: "'unit_taken'", document: other.asset}
+  - create: asset_book
+    set:
+      asset: event.name
+      asset_name: event.asset_name
+      category: event.category
+      outlet: event.outlet
+      project: event.project
+      rental_unit: event.rental_unit
+      acquisition_date: event.acquisition_date
+      cost: event.cost
+      residual_value: event.residual_value
+      monthly_depreciation: event.monthly_depreciation
+      depreciation_start: event.depreciation_start
+      opening_accumulated: event.opening_accumulated
+      accumulated: '0'
+      state: "'active'"
+  - find: rental_unit
+    if: event.rental_unit != ''
+    where: name == event.rental_unit
+    as: u
+  - update: u
+    if: event.rental_unit != '' && u != null
+    set: {asset: event.name}

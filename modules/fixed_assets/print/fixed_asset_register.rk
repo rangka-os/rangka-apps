@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Daftar aset tetap, printed from a monthly depreciation run: every asset of the register (asset_book) with its cost,
+# accumulated depreciation and book value, by category, and this run's depreciation per asset. The register values are
+# those of today: printed from the latest submitted run, they are the values at the end of its month. A4.
+name: fixed_asset_register
+model: depreciation_run
+label: {id: Daftar aset tetap, en: Fixed asset register}
+paper: A4
+template: fixed_asset_register.html
+related:
+  books:
+    model: asset_book
+    match: {}
+    filter: state != 'cancelled'
+    sort: category
+    limit: 1000

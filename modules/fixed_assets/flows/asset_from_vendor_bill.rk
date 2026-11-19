@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A vendor bill submitted as "Aset tetap" (posting asset; its journal debits 1-2100): one draft fixed asset per bill
+# line, its cost the line amount; a business that is not PKP cannot credit the input PPN, so the bill put the PPN in
+# 1-2100 too and each asset takes its share of it (by cumulative line amounts, so the shares add up to the PPN
+# exactly). Finance adds the category and life and submits each draft. Refused (the bill's submit rolls back): a
+# foreign-currency bill (assets in a foreign currency are not in v1), or a line below the capitalisation threshold
+# (that purchase is an expense: split the bill). Runs as whoever submits the bill.
+name: asset_from_vendor_bill
+label: {id: Tagihan aset tetap jadi draft aset}
+description: {id: 'Saat tagihan pemasok untuk aset tetap diajukan, tiap barisnya jadi draft aset tetap yang tinggal dilengkapi kelompok dan umurnya.'}
+on: vendor_bill.submitted
+if: "event.posting == 'asset'"
+steps:
+  - if: event.currency != '' && event.currency != 'IDR'
+    create: asset_guard
+    set: {reason: "'bill_currency'", document: event.name}
+  - {find: fixed_asset_setting, as: cfg}
+  - if: "cfg != null && event.items.exists(l, l.amount < cfg.capitalisation_threshold)"
+    create: asset_guard
+    set: {reason: "'below_threshold'", document: event.name}
+  - for_each: event.items
+    as: l
+    do:
+      - create: fixed_asset
+        set:
+          asset_name: "l.description != '' ? truncate(l.description, 140) : l.item"
+          source: "'vendor_bill'"
+          vendor_bill: event.name
+          bill_line: l.idx
+          bill_line_cost: "l.amount + (tax.pkp ? 0 : round(event.ppn * event.items.filter(y, y.idx <= l.idx).map(y, y.amount).sum() / event.subtotal) - round(event.ppn * event.items.filter(y, y.idx < l.idx).map(y, y.amount).sum() / event.subtotal))"
+          cost: "l.amount + (tax.pkp ? 0 : round(event.ppn * event.items.filter(y, y.idx <= l.idx).map(y, y.amount).sum() / event.subtotal) - round(event.ppn * event.items.filter(y, y.idx < l.idx).map(y, y.amount).sum() / event.subtotal))"
+          acquisition_date: event.bill_date
+          book_date: event.bill_date
+          depreciation_start: "add_months(truncate(string(event.bill_date), 7) + '-01', 1)"
+          project: event.project
+          notes: "'Dari tagihan ' + event.bill_no + ' baris ' + string(l.idx)"

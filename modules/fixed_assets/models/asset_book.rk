@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Buku aset: one row per submitted fixed asset, made and kept current by the flows of this module (a submitted document
+# cannot change, the pattern of rental_schedule): what the asset cost, how much has been depreciated, up to which
+# month, and whether it is still in use, fully depreciated, sold or written off. The depreciation runs read and write
+# these rows; a disposal picks one. Every field is read_only: only the flows write them. This is the register a person
+# reads ("Daftar aset tetap"): book value = cost - depreciation before the books started - depreciation since.
+name: asset_book
+label: {id: Daftar aset tetap, en: Fixed asset register}
+icon: building-2-line
+naming: '{asset}-{##}'
+title_field: asset_name
+permissions:
+  # write: the runs and disposals of whoever submits or cancels them update the row (its fields are read_only)
+  - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, export: true, print: true}
+  - {role: rental_staff, read: true}
+fields:
+  - {name: asset, type: link, to: fixed_asset, label: {id: Aset}, required: true, unique: true, read_only: true, in_list: true}
+  - {name: asset_name, type: data, label: {id: Nama aset}, read_only: true, in_list: true}
+  - {name: category, type: link, to: asset_category, label: {id: Kelompok aset}, read_only: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Cabang}, read_only: true, in_list: true, depends_on: app_installed('outlets')}
+  - {name: project, type: link, to: project, label: {id: Proyek}, read_only: true, depends_on: app_installed('projects')}
+  - {name: rental_unit, type: link, to: rental_unit, label: {id: Unit alat sewa}, read_only: true, depends_on: app_installed('rental')}
+  - {name: acquisition_date, type: date, label: {id: Tanggal beli}, read_only: true}
+  - {name: cost, type: currency, label: {id: Harga perolehan}, read_only: true, in_list: true, hidden_for: [rental_staff]}
+  - {name: residual_value, type: currency, label: {id: Nilai sisa}, read_only: true, hidden_for: [rental_staff]}
+  - {name: monthly_depreciation, type: currency, label: {id: Penyusutan per bulan}, read_only: true, hidden_for: [rental_staff]}
+  - {name: depreciation_start, type: date, label: {id: Mulai disusutkan}, read_only: true}
+  - {name: opening_accumulated, type: currency, label: {id: Akumulasi sebelum pembukuan}, read_only: true, hidden_for: [rental_staff]}
+  - {name: accumulated, type: currency, label: {id: Akumulasi penyusutan}, read_only: true, hidden_for: [rental_staff]}
+  - name: accumulated_total
+    type: currency
+    label: {id: Total akumulasi penyusutan}
+    compute: opening_accumulated + accumulated
+    hidden_for: [rental_staff]
+  - name: book_value
+    type: currency
+    label: {id: Nilai buku}
+    compute: cost - opening_accumulated - accumulated
+    in_list: true
+    hidden_for: [rental_staff]
+  - name: depreciated_through
+    type: date
+    label: {id: Disusutkan sampai bulan}
+    help: {id: 'Tanggal 1 bulan terakhir yang sudah disusutkan'}
+    read_only: true
+  - {name: last_run, type: link, to: depreciation_run, label: {id: Penyusutan terakhir}, read_only: true}
+  - name: state
+    type: select
+    label: {id: Status}
+    default: "'active'"
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: active, label: {id: Aktif}}
+      - {value: fully_depreciated, label: {id: Habis disusutkan}}
+      - {value: sold, label: {id: Dijual}}
+      - {value: written_off, label: {id: Dihapus}}
+      - {value: cancelled, label: {id: Batal}}
+  - {name: disposal, type: link, to: asset_disposal, label: {id: Pelepasan}, read_only: true}
+views:
+  list:
+    columns: [asset, asset_name, category, outlet, cost, accumulated_total, book_value, state]
+    filters: [category, outlet, state]
+    sort: asset
+  form:
+    layout:
+      - section: {id: Aset}
+        columns:
+          - [asset, asset_name, category, outlet, project, rental_unit]
+          - [acquisition_date, state, disposal]
+      - section: {id: Penyusutan}
+        columns:
+          - [cost, residual_value, monthly_depreciation, depreciation_start]
+          - [opening_accumulated, accumulated, accumulated_total, book_value, depreciated_through, last_run]
