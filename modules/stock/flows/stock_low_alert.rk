@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every morning at 06:30 (scheduler.timezone), and by the owner from the flow list: balances below their item's
+# reorder level (item.reorder_level > 0) are compared with the open stock_reorder rows.
+#   - a row whose balance is no longer below its item's level (or whose item is no longer watched) is closed;
+#   - a balance below the level without an open row gets one, with the figures of today;
+#   - head office is told once, about the balances that are new today (notice stock_low). A balance that stays low
+#     tells nobody again until it recovered and fell once more.
+# Nothing is ordered here: procurement/reorder_draft_po turns the open rows into draft purchase orders.
+# `marks` is read before the rows are closed and opened, so the filters below see yesterday's state.
+# At most 500 balances (the first 500 by item) per run; every open row is read: a business with more below-level balances
+# hears about the rest on a later morning, once the first ones recovered.
+name: stock_low_alert
+label: {id: Kabari stok di bawah batas minimum, en: Low stock alert}
+description: {id: 'Tiap pagi, barang yang stoknya baru turun di bawah batas minimum dikabarkan ke kantor pusat. Sekali saja sampai stoknya pulih.'}
+schedule: '30 6 * * *'
+steps:
+  - find_all: stock_balance
+    where: "item.reorder_level > 0 && item.active && qty < item.reorder_level"
+    sort: item
+    limit: 500
+    as: low
+  # every open row, no limit: a row missed here would get a second open row and a second draft (audit owner-automation-pack
+  # R1). Open rows are at most one per balance, and the loop below allows 2000.
+  - find_all: stock_reorder
+    where: open
+    as: marks
+  # each open row is checked against its own balance and item, not against `low`: `low` stops at 500 balances, and a
+  # balance outside it is not back above its level (audit owner-automation-pack 3)
+  - for_each: marks
+    as: m
+    do:
+      - {find: stock_balance, where: name == m.balance, as: mb}
+      - {find: item, where: name == m.item, as: mi}
+      - if: "mb == null || mi == null || !mi.active || mi.reorder_level <= 0 || mb.qty >= mi.reorder_level"
+        update: m
+        set: {open: 'false'}
+  - for_each: "low.filter(b, !marks.exists(m, m.balance == b.name))"
+    as: b
+    do:
+      - {find: item, where: name == b.item, as: it}
+      - create: stock_reorder
+        set:
+          balance: b.name
+          outlet: b.outlet
+          item: b.item
+          alerted_on: today()
+          qty: b.qty
+          level: it.reorder_level
+          order_qty: "it.reorder_qty > 0 ? it.reorder_qty : it.reorder_level - b.qty"
+          rate: b.avg_cost
+          vendor: it.default_vendor
+          open: 'true'
+          drafted: 'false'
+        as: mk
+  # `it` and `mk` are the last item and row of the loop above: the notice names one item and links to its row
+  - if: "low.filter(b, !marks.exists(m, m.balance == b.name)).size() > 0"
+    notify: head_office
+    notice: stock_low
+    channel: email
+    record: mk
+    id: "'low:' + mk.name"
+    title: '{low.filter(b, !marks.exists(m, m.balance == b.name)).size()} barang di bawah batas stok minimum'
+    template: >-
+      Stok {it.item_name} tinggal {mk.qty} (batas minimum {mk.level}){low.filter(b, !marks.exists(m, m.balance == b.name)).size() > 1 ? ', dan ' + string(low.filter(b, !marks.exists(m, m.balance == b.name)).size() - 1) + ' barang lain juga baru turun di bawah batas' : ''}.
+      Buka daftar "Stok di bawah batas minimum" untuk melihat semuanya.

@@ -117,6 +117,9 @@ fields:
     label: {id: Klien memotong PPh 23}
     default: 'true'
   - {name: closed, type: check, label: {id: Sudah ditutup}, default: 'false', read_only: true, in_list: true}
+  # Set by flow payroll_reminder on the morning it told finance the period is ready (notice payroll_ready), so a run is
+  # announced once and the daily check sends nothing more about it.
+  - {name: ready_told, type: check, label: {id: Sudah dikabari siap diproses}, default: 'false', read_only: true}
   # Locks (written by the flows): once a slip is submitted the run's rates, period, tax month and project are those of
   # the slips (lock_slip, the first submitted slip, stores copies); once closed, everything the close froze must stay
   # (closed_by). Cleared when the last slip is cancelled or the close is cancelled.

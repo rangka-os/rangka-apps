@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One row per time an item's balance in an outlet fell below the item's reorder level (catalogue item.reorder_level).
+# Written only by flows: stock_low_alert opens a row when a balance is below its level and has no open row, and
+# closes it (open = false) when the balance is back at or above the level, so head office is told once per episode,
+# not every day. procurement/reorder_draft_po puts the open rows that have a supplier on a draft purchase order and
+# ticks `drafted`, so one episode gives at most one draft. The figures (qty, level, order_qty, rate, vendor) are
+# those of the day the row was opened; the draft is the place to change them. Every field is read_only.
+name: stock_reorder
+label: {id: Stok di bawah batas minimum, en: Reorder alert}
+icon: alarm-warning-line
+naming: ROP-{YYYY}-{#####}
+title_field: item
+permissions:
+  - {role: head_office, read: true, export: true}
+  - {role: purchasing_manager, read: true, export: true}
+fields:
+  - {name: balance, type: link, to: stock_balance, label: {id: Saldo stok}, required: true, read_only: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, read_only: true, in_list: true}
+  - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
+  - {name: alerted_on, type: date, label: {id: Tanggal dikabari}, read_only: true, in_list: true}
+  - {name: qty, type: float, label: {id: Stok saat dikabari}, read_only: true, in_list: true}
+  - {name: level, type: float, label: {id: Batas stok minimum}, read_only: true, in_list: true}
+  - {name: order_qty, type: float, label: {id: Jumlah yang disarankan dipesan}, read_only: true}
+  - {name: rate, type: currency, label: {id: Perkiraan harga beli}, read_only: true, help: {id: 'Rata-rata biaya barang ini di outlet saat dikabari'}}
+  - {name: vendor, type: link, to: vendor, label: {id: Pemasok utama}, read_only: true}
+  - {name: open, type: check, label: {id: Masih di bawah batas}, read_only: true, in_list: true, in_filter: true}
+  # A draft is renamed when it is submitted and links do not follow the new name, so the draft's number is kept as text.
+  - {name: drafted, type: check, label: {id: Sudah masuk draft pesanan pembelian}, read_only: true, in_list: true}
+  - {name: draft_ref, type: data, label: {id: Nomor draft pesanan pembelian}, read_only: true}
+views:
+  list:
+    columns: [item, outlet, alerted_on, qty, level, open, drafted]
+    filters: [outlet, item, open]
+    sort: -alerted_on

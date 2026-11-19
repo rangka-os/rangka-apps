@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: users
-version: 1.3.0
+version: 1.4.0
 title: {id: Karyawan, en: Employees}
 summary:
   id: Orang yang memakai Rangka di usaha kamu.
@@ -8,4 +8,23 @@ summary:
 category: people
 icon: user-line
 requires: {rangka: '>=0.5'}
-optional: {outlets: ^1.5}
+optional: {outlets: ^1.5, invoicing: ^1.0, payments: ^1.0, outlet_sales: ^1.0, pos: ^1.0, stock: ^1.4}
+# The owner's summaries (flows summary_daily, summary_weekly, summary_monthly; models business_summary and
+# summary_setting) live here because users is the one module every installation has: the flows read the sales, money
+# and stock modules only when they are installed (optional above). Notices of contract 0066 §1.1, to the owner only.
+notices:
+  - name: daily_summary
+    label: {id: Ringkasan harian, en: Daily summary}
+    description: {id: 'Tiap pagi: penjualan dan uang masuk kemarin, faktur yang jatuh tempo, stok yang menipis.'}
+    severity: info
+    to: [owner]
+  - name: weekly_summary
+    label: {id: Ringkasan mingguan, en: Weekly summary}
+    description: {id: 'Tiap Senin pagi: ringkasan 7 hari terakhir.'}
+    severity: info
+    to: [owner]
+  - name: monthly_summary
+    label: {id: Ringkasan bulanan, en: Monthly summary}
+    description: {id: 'Tiap tanggal 1: ringkasan sebulan terakhir.'}
+    severity: info
+    to: [owner]
