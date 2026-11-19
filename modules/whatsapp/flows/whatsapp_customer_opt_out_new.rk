@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A customer saved for the first time with "Tidak mau dikirimi WA" ticked: the same as flow
+# whatsapp_customer_opt_out. Staff tick "Tidak mau dikirimi WA" on a customer: the number goes on this business's list and Rangka Cloud is told
+# (rangka_whatsapp.set_opt_out, which only ever adds to its list). Unticking later does not take the number off
+# either list: a customer comes back only by their own action. Runs inside the customer's save, as the writer.
+name: whatsapp_customer_opt_out_new
+label: {id: 'Pelanggan baru tidak mau dikirimi WA'}
+on: customer.created
+if: "event.wa_opt_out && event.wa_number != ''"
+idempotency: "'optout:' + event.wa_number"
+steps:
+  - {find: whatsapp_opt_out, where: number == event.wa_number, as: known}
+  - create: whatsapp_opt_out
+    if: known == null
+    set: {number: event.wa_number, source: "'staff'", customer: event.name}
+  - call: rangka_whatsapp.set_opt_out
+    with: {phone: "'+' + event.wa_number"}

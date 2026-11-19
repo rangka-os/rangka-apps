@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: whatsapp_booking
+version: 1.0.0
+title: {id: Pengingat sewa lewat WhatsApp, en: WhatsApp booking reminders}
+summary:
+  id: Sehari sebelum mulai sewa, pelanggan diingatkan lewat WhatsApp.
+  en: The day before a rental starts, the customer is reminded on WhatsApp.
+category: sales
+icon: send-plane-line
+# One message type of the WhatsApp service (module whatsapp): installing this module is switching "Pengingat janji" on
+# for rental bookings. Every afternoon at 16.00 each submitted booking that starts tomorrow gets `pengingat_janji` once
+# (key <booking>:appointment:1). Other appointment models (classes, services) can follow the same flow.
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.3, rental: ^1.0, whatsapp: ^1.0}

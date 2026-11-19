@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Rangka Cloud reports what happened to a message (connector rangka_whatsapp, trigger message_status): Meta's sent,
+# delivered, read or failed, or the relay's refusal (failed, no message_id, the code in error). The row of the
+# message's key moves forward only (a late "delivered" after "read" changes nothing); a failure after delivery is
+# ignored. A status for a key this business never asked for changes nothing. The kernel drops an event it has seen
+# before (contract 0002), so a redelivered event does nothing either.
+name: whatsapp_message_status
+label: {id: 'Status pesan WhatsApp dari Rangka Cloud'}
+on: rangka_whatsapp.message_status
+if: "'idempotency_key' in event && event.idempotency_key != ''"
+steps:
+  - {find: whatsapp_message, where: key == event.idempotency_key, as: m}
+  # ranks: a status only moves forward; a failure after "sent" counts (Meta could not deliver it), not after
+  # "delivered" or "read"
+  - update: m
+    if: >-
+      m != null &&
+      {'queued': 0, 'skipped': 0, 'accepted': 2, 'sent': 4, 'failed': 5, 'delivered': 6, 'read': 8}[m.status] <
+      {'queued': 0, 'accepted': 2, 'sent': 4, 'failed': 5, 'delivered': 6, 'read': 8}[event.status]
+    set:
+      status: event.status
+      error: "event.status == 'failed' && 'error' in event ? event.error : ''"
+      message_id: "'message_id' in event && event.message_id != '' ? event.message_id : m.message_id"
+      status_at: now()

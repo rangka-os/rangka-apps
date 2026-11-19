@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/config.json
+# Demo site for the WhatsApp service from Rangka Cloud (fictional): CV Contoh Warung Rasa sells at the kasir with a
+# kitchen, bills catering customers with invoices and rents out equipment, and has switched on all four WhatsApp
+# message types (each its own module, so each is switched on or off by a change set). The host connector
+# rangka_whatsapp is served only by a kernel whose RANGKA_HOST_CONNECTORS names it (tests/day_one_whatsapp.py sets
+# it); nothing here holds a key, and nothing is sent to Meta: the connector's host is a placeholder until Rangka
+# Cloud has an address.
+locale: id-ID
+currency: IDR
+timezone: Asia/Jakarta
+org: {legal_name: CV Contoh Warung Rasa}
+tax: {ppn_rate: 12, dpp_ratio: 11/12, pkp: true}
+orgs:
+  warung_contoh:
+    name: CV Contoh Warung Rasa
+    code: CWR
+    config:
+      org: {legal_name: CV Contoh Warung Rasa}
+      tax: {pkp: true}
+apps: [kasir, stok_outlet, dapur, pembukuan, faktur_piutang, sewa_alat]
+modules: {whatsapp: ^1.0, whatsapp_receipt: ^1.0, whatsapp_reminder: ^1.0, whatsapp_order_ready: ^1.0, whatsapp_booking: ^1.0}
+connectors: [rangka_whatsapp]
+plan: tumbuh
+ai: {enabled: true, auto_apply: never, approvers: [owner, head_office]}

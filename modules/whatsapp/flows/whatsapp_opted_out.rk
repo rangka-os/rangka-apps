@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A customer replied BERHENTI or STOP (connector rangka_whatsapp, trigger opted_out; Rangka Cloud already refuses
+# every send to them). The number goes on the business's list once, and the customers with that number are marked
+# "Tidak mau dikirimi WA" so staff see it. Writes by flows start no flow, so this does not report the opt-out back.
+name: whatsapp_opted_out
+label: {id: 'Pelanggan minta berhenti menerima WhatsApp'}
+on: rangka_whatsapp.opted_out
+if: "'phone' in event && event.phone != ''"
+steps:
+  - {find: whatsapp_opt_out, where: "number == event.phone.replace('+', '')", as: known}
+  - find_all: customer
+    where: "wa_number == event.phone.replace('+', '')"
+    limit: 20
+    as: who
+  - create: whatsapp_opt_out
+    if: known == null
+    set:
+      number: event.phone.replace('+', '')
+      source: "'source' in event && event.source == 'keyword' ? 'customer' : 'rangka'"
+      customer: "who.size() > 0 ? who[0].name : ''"
+  - for_each: who
+    as: c
+    do:
+      - update: c
+        if: "!c.wa_opt_out"
+        set: {wa_opt_out: true}

@@ -122,3 +122,6 @@ jobs:
       - name: day_one demo-kasir
         working-directory: rangka-apps
         run: python tests/day_one.py --site demo-kasir
+      - name: day_one demo-whatsapp
+        working-directory: rangka-apps
+        run: python tests/day_one.py --site demo-whatsapp

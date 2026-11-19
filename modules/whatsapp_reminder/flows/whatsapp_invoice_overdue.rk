@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every morning: each submitted invoice still owed and past its due date gets the reminder of its step (1 from 1 day
+# late, 2 from 7 days, 3 from 14 days), keyed <invoice>:reminder:<step>, so a step is sent once whatever runs again.
+# Skipped: a customer without a WhatsApp number that reads as one, or one who opted out (customer.wa_opt_out or the
+# business's list); the row says "Tidak dikirim" and why. The bank account comes from the invoice's payment
+# instruction (cara bayar) when there is one. Dates are written "30 November 2026".
+name: whatsapp_invoice_overdue
+label: {id: 'Pengingat faktur lewat jatuh tempo lewat WhatsApp'}
+schedule: '0 9 * * *'
+steps:
+  - find_all: sales_invoice
+    where: "docstatus == 1 && outstanding > 0 && due_date != '' && due_date < today()"
+    sort: due_date
+    limit: 300
+    as: due
+  - for_each: due
+    as: inv
+    do:
+      - {find: customer, where: name == inv.customer, as: c}
+      - {find: payment_instruction, where: "sales_invoice == inv.name && docstatus != 2", as: pi}
+      - find: whatsapp_message
+        where: "key == inv.name + ':reminder:' + string(days_between(inv.due_date, today()) >= 14 ? 3 : (days_between(inv.due_date, today()) >= 7 ? 2 : 1))"
+        as: done
+      - find: whatsapp_opt_out
+        where: "c != null && c.wa_number != '' && number == c.wa_number"
+        as: out
+      - create: whatsapp_message
+        if: done == null && c != null
+        set:
+          key: "inv.name + ':reminder:' + string(days_between(inv.due_date, today()) >= 14 ? 3 : (days_between(inv.due_date, today()) >= 7 ? 2 : 1))"
+          message_type: "'reminder'"
+          template: "'pengingat_jatuh_tempo'"
+          document: inv.name
+          customer: c.name
+          number_tail: "c.wa_number != '' ? '…' + c.wa_number.replace(truncate(c.wa_number, size(c.wa_number) - 4), '') : ''"
+          amount: inv.outstanding
+          status: "c.wa_number == '' || c.wa_opt_out || out != null ? 'skipped' : 'queued'"
+          error: "c.wa_number == '' ? 'no_number' : (c.wa_opt_out || out != null ? 'opted_out' : '')"
+          status_at: now()
+        as: msg
+      - call: rangka_whatsapp.send_template
+        if: done == null && c != null && msg.status == 'queued'
+        with:
+          to: "'+' + c.wa_number"
+          template: "'pengingat_jatuh_tempo'"
+          type: "'reminder'"
+          idempotency_key: msg.key
+          components: >-
+            [{'type': 'body', 'parameters': [
+              {'type': 'text', 'text': c.customer_name},
+              {'type': 'text', 'text': inv.name},
+              {'type': 'text', 'text': msg.amount_text},
+              {'type': 'text', 'text': string(days_between(inv.due_date, today()))},
+              {'type': 'text', 'text': string(int(inv.due_date.replace(truncate(inv.due_date, 8), ''))) + ' ' +
+                ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'][int(truncate(inv.due_date, 7).replace(truncate(inv.due_date, 5), '')) - 1] +
+                ' ' + truncate(inv.due_date, 4)},
+              {'type': 'text', 'text': pi != null && pi.account_no != '' ? pi.bank + ' ' + pi.account_no + ' a.n. ' + pi.holder : 'rekening yang tertera di faktur'}]}]
+      - create: invoice_reminder
+        if: done == null && c != null && msg.status == 'queued'
+        set:
+          sales_invoice: inv.name
+          channel: "'whatsapp'"
+          template: "'pengingat_jatuh_tempo'"
+          note: "'Dikirim otomatis lewat WhatsApp (' + msg.name + ')'"

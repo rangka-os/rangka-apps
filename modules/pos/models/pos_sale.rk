@@ -49,6 +49,25 @@ fields:
     label: {id: Pembeli atau meja}
     help: {id: 'Boleh kosong. Nama pembeli, nomor meja atau nomor antrean'}
     in_list: true
+  # WhatsApp receipt (module whatsapp_receipt): the buyer's number and their yes, asked at the counter ("Kirim struk ke
+  # WhatsApp?"). Nothing is sent without the tick. wa_number is the number in one form (digits with the country code).
+  - name: wa_phone
+    type: phone
+    label: {id: Nomor WhatsApp pembeli}
+    help: {id: 'Hanya kalau pembeli mau struk dan kabar pesanannya lewat WhatsApp'}
+    depends_on: app_installed('whatsapp_receipt')
+  - name: wa_receipt
+    type: check
+    label: {id: Kirim struk ke WhatsApp}
+    help: {id: 'Tanya dulu ke pembeli. Struk dikirim setelah dibayar'}
+    default: 'false'
+    depends_on: app_installed('whatsapp_receipt')
+  - name: wa_number
+    type: data
+    label: {id: Nomor WhatsApp (seragam)}
+    hidden: true
+    depends_on: app_installed('whatsapp_receipt')
+    compute: "(wa_phone.trim().startsWith('+') ? ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')).matches('^[1-9][0-9]{7,14}$') ? (wa_phone.trim().startsWith('+') ? ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')) : ''"
   - name: items
     type: table
     of: pos_sale_item
@@ -142,6 +161,11 @@ stock:
     - {lines: items, out: outlet, explode: recipe, reason: sale, cogs: cogs}
   cogs_total: cogs_total
 rules:
+  # a WhatsApp receipt needs a number that reads as one (module whatsapp_receipt)
+  - name: wa_receipt_number
+    on: save
+    check: "!app_installed('whatsapp_receipt') || !wa_receipt || wa_number != ''"
+    message: {id: 'Nomor WhatsApp pembeli belum benar, misalnya 0812 3456 7890'}
   # the receipt number carries the outlet code (STRK-<code>-...); head office could have emptied it since the shift
   # opened: say so when saving, not only at payment (kernel 409 numbering)
   - name: outlet_has_code
@@ -211,7 +235,7 @@ views:
       - section: {id: Transaksi}
         columns:
           - [shift, outlet, date]
-          - [buyer]
+          - [buyer, wa_phone, wa_receipt]
       - section: {id: Barang}
         fields: [items]
       - section: {id: Bayar}
