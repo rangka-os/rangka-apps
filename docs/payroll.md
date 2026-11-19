@@ -20,6 +20,9 @@ of the client contract and the client invoice. Installed with `jasa_proyek`; dem
 5. Finance submits a **Tutup periode gaji** (`payroll_close`): the run is closed, the employer cost the recaps did not
    book goes on the project ledger (kind `payroll`), and the client invoice is made as a draft.
 
+Every morning flow `payroll_reminder` tells finance and the owner which open run is ready to process (once per run) and
+which pay date is three days away or less, with what is still missing. It runs nothing: see [automation.md](automation.md).
+
 ## Rules (sources: reports/keputusan-riset/payroll-manpower.md in the project folder)
 - PPh 21 (permanent workers and anyone paid monthly): TER monthly (PP 58/2023, tables in `payslip.ter_bp`) on gross = cash pay + JKK + JKM + BPJS Kesehatan 4%;
   120% without a tax number; truncated to the rupiah. December (or `last_month`): Pasal 17 on the year (biaya jabatan
