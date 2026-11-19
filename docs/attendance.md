@@ -65,9 +65,9 @@ that already has summaries). An employee without a log in a whole-business perio
 - Piece `absen_karyawan`: dashboards `absen_hari_ini` (head office, outlet supervisor: present, late, outside, waiting),
   `absen_karyawan_saya` (staff: own days and late minutes), `rekap_absen_karyawan` (summaries). The `employee` role lands
   on the clock; other staff open it from Kerja.
-- Flow `attendance_missing_digest` (10:00 daily): notice `attendance_missing` to head office and the owner listing
-  active staff with an outlet and no clock-in today. Without shifts a day off shows too. Scheduled flows run for the
-  default org only until rangka-os#263 slice a.
+- Flow `attendance_missing_digest` (10:00 daily): notice `attendance_missing` to head office and the owner with the
+  number of active staff with an outlet and no clock-in today (no names yet: the kernel's CEL has no `join()`). Without
+  shifts a day off shows too. Scheduled flows run for the default org only until rangka-os#263 slice a.
 
 ## Privacy (UU PDP)
 Positions and selfies are personal data. Staff read only their own logs and summaries (permission `if: employee ==
