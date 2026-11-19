@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payslip_attendance_guard
+label: {id: Slip dari absen hanya diajukan bila rekap absennya masih sama}
+# A slip made by an attendance fill (from_fill) stores what the summaries said (att_days, att_late, att_ot). At submit the
+# worker's current non-cancelled summaries inside the run's period (of the run's outlet when it names one) must still
+# add up to that snapshot: a period cancelled, or cancelled and submitted again with other days, since the fill is
+# refused, and ticking "Isi slip dari absen" again refreshes the draft. The fields finance may edit (days, late minutes,
+# overtime hours) are not compared, so a correction typed on the draft stays. Audit 101b RF2. Runs as the submitter
+# (finance reads the summaries, attendance 1.0.2).
+on: payslip.submitted
+if: "event.from_fill && app_installed('attendance')"
+steps:
+  - find: payroll_run
+    where: name == event.payroll_run
+    as: run
+  - find: worker
+    where: name == event.worker
+    as: w
+  - find_all: attendance_summary
+    where: >-
+      !cancelled && employee == (w != null ? w.employee : '') && w != null && w.employee != ''
+      && period_from >= run.period_from && period_to <= run.period_to && (run.outlet == '' || outlet == run.outlet)
+    as: sums
+  - if: >-
+      sums.map(s, s.days_present).sum() != event.att_days || sums.map(s, s.late_min_total).sum() != event.att_late
+      || sums.map(s, s.overtime_hours).sum() != event.att_ot
+    create: payroll_guard
+    set:
+      reason: "'attendance_changed'"
+      document: event.name

@@ -149,6 +149,20 @@ fields:
     type: currency
     label: {id: Potongan telat per menit, en: Lateness deduction per minute}
     default: '0'
+  # Tick and save on an internal run (also at create): flows payroll_run_fill(_on_create) make the draft payslips from the
+  # staff attendance summaries of the period (and for monthly staff without one), refresh the drafts they made earlier
+  # whose summary is gone, then clear the tick and write what they did in fill_note. Slips typed by hand, or of a worker
+  # who has another slip in the tax month, are kept as they are. The same fill runs once by itself the morning after
+  # the period's attendance is complete (flow payslip_from_attendance, which then sets auto_filled). Rules:
+  # docs/payroll.md and scripts/gen_payroll_fill_flows.py.
+  - name: fill_from_attendance
+    type: check
+    label: {id: Isi slip dari absen, en: Fill payslips from attendance}
+    help: {id: 'Centang lalu simpan: slip gaji draft dibuat dari rekap absen karyawan periode ini.'}
+    default: 'false'
+    depends_on: run_kind == 'internal' && !closed
+  - {name: fill_note, type: data, label: {id: Pengisian slip terakhir, en: Last fill}, read_only: true, depends_on: "run_kind == 'internal'"}
+  - {name: auto_filled, type: check, label: {id: Sudah diisi otomatis, en: Filled by the morning run}, default: 'false', read_only: true, hidden: true}
   - {name: closed, type: check, label: {id: Sudah ditutup}, default: 'false', read_only: true, in_list: true}
   # Set by flow payroll_reminder on the morning it told finance the period is ready (notice payroll_ready), so a run is
   # announced once and the daily check sends nothing more about it.
@@ -259,6 +273,10 @@ views:
         columns:
           - [umk, workdays_per_week, jkk_rate]
           - [jp_wage_cap, kes_wage_cap, late_rate_per_min]
+      - section: {id: Isi dari absen}
+        columns:
+          - [fill_from_attendance]
+          - [fill_note]
       - section: {id: Tagihan klien}
         columns:
           - [billing_mode, fee_mode, fee_percent, fee_per_worker, pph23_applies]

@@ -22,7 +22,8 @@ ATTENDANCE_MATRIX = {
                          "head_office": {"read", "create", "write", "delete", "submit", "cancel", "export", "print"}},
     "staff_attendance_guard": {"outlet_staff": {"create"}, "head_office": {"create"}},   # never stored
     "attendance_period": {"head_office": {"read", "create", "write", "delete", "submit", "cancel", "amend", "export", "print"}, "outlet_staff": _R},
-    "attendance_summary": {"head_office": {"read", "create", "write", "export", "print"}, "outlet_staff": _R},
+    # finance reads every summary: payroll fills the payslips from them (payroll_run_fill, rangka-apps#101 slice b)
+    "attendance_summary": {"head_office": {"read", "create", "write", "export", "print"}, "outlet_staff": _R, "finance_manager": _R},
 }
 
 

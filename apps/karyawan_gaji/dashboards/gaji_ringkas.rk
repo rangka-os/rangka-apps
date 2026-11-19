@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: gaji_ringkas
+label: {id: Gaji karyawan, en: Staff payroll}
+description: {id: 'Periode gaji yang masih terbuka, slip yang menunggu diperiksa, dan gaji bersih yang sudah dibayar'}
+# For finance and the owner. Runs and slips of every kind (an outsourcing site sees its client runs too). Paid = the
+# net pay of submitted slips whose run's pay date falls in the period; slips without an account number are the ones
+# the transfer file leaves out (transfer_gaji).
+default_period: 31
+periods: [31, 92, 365]
+roles: [finance_manager]
+cache: 5m
+widgets:
+  - {name: open_runs, type: number, label: {id: Periode gaji terbuka}, model: payroll_run, filter: "!closed", span: 3}
+  - {name: draft_slips, type: number, label: {id: Slip menunggu diperiksa}, description: {id: 'Slip draft dari absen atau diketik, belum diajukan'}, model: payslip, filter: "docstatus == 0", good_when: down, span: 3}
+  - {name: net_paid, type: number, label: {id: Gaji bersih dibayar}, model: payslip, aggregate: sum, field: net_pay, filter: "docstatus == 1", period: pay_date, compact: true, span: 3}
+  - {name: no_account, type: number, label: {id: Slip tanpa nomor rekening}, description: {id: 'Tidak masuk file transfer gaji'}, model: payslip, filter: "docstatus != 2 && bank_account == '' && net_pay > 0", good_when: down, span: 3}
+  - {name: runs, type: list, label: {id: Periode gaji terbuka}, model: payroll_run, filter: "!closed", columns: [name, outlet, period_to, pay_date, headcount, total_net_pay], sort: period_to, limit: 20, span: 12}
+  - {name: drafts, type: list, label: {id: Slip draft}, model: payslip, filter: "docstatus == 0", columns: [name, payroll_run, worker, days, late_min_total, net_pay], sort: payroll_run, limit: 50, span: 12}
+  - name: cost_by_month
+    type: chart
+    chart: bar
+    label: {id: Biaya gaji per bulan bayar}
+    model: payslip
+    group_by: pay_date
+    grain: month
+    aggregate: sum
+    field: employer_cost
+    filter: "docstatus == 1"
+    period: pay_date
+    span: 12
