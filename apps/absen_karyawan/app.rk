@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: absen_karyawan
+version: 1.0.0
+title: {id: Absen karyawan, en: Staff attendance}
+label: {id: Rangka Absen Karyawan, en: Rangka Staff Attendance}
+summary:
+  id: Karyawan outlet absen masuk dan pulang dari HP dengan lokasi dan selfie, terlambat dihitung otomatis, rekap bulanan per karyawan.
+category: people
+icon: time-line
+rangka: '>=0.5'
+# A piece (riset/desain/11-susunan-kepingan.md) next to fnb_cabang, ritel_cabang, produksi_pabrik, kasir or stok_outlet:
+# staff of the outlets clock in from their phones (module attendance, rangka-apps#100). Its dashboards live here once,
+# not copied into each bundle (dashboards are keyed by name across a site). Project field workers keep jasa_proyek's
+# own clock (module projects).
+modules:
+  users: ^1.5
+  outlets: ^1.6
+  attendance: ^1.0
+dashboards: [absen_hari_ini, absen_karyawan_saya, rekap_absen_karyawan]
+roles: [head_office, outlet_supervisor, cashier, outlet_staff, employee]
+home: {dashboard: absen_hari_ini}
+# contract 0030 §3: staff who only clock in land on the clock; the others open it from the Kerja group.
+work:
+  - {screen: absen_outlet, roles: [employee], home: true}
+  - {screen: absen_outlet, roles: [cashier, outlet_staff, outlet_supervisor, head_office]}
+menu:
+  - group: {id: Absen}
+    items: [staff_attendance, attendance_period, attendance_summary]
+  - group: {id: Pengaturan absen}
+    items: [outlet]
+onboarding:
+  - ask: {id: 'Di mana titik tiap outlet? Kirim lokasi dari HP saat berada di outlet, atau salin titik dari peta.'}
+    sets: outlet.lat
+  - ask: {id: 'Jam berapa karyawan outlet masuk dan pulang, dan berapa menit toleransi terlambatnya?'}
+    sets: outlet.work_start
+  - ask: {id: 'Siapa saja yang tidak wajib absen (misalnya pemilik)?'}
+    sets: user.attendance_exempt

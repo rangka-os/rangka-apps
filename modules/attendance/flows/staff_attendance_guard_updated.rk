@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: staff_attendance_guard_updated
+label: {id: Satu absen karyawan per orang per hari (diubah)}
+# The same check when the clock-in time, the employee or the date of a draft is set or changed.
+on: staff_attendance.updated
+steps:
+  - find: staff_attendance
+    where: day_key == event.day_key && name != event.name && docstatus != 2 && (docstatus == 1 || clock_in != '')
+    as: other
+  - if: other != null && event.clock_in != ''
+    create: staff_attendance_guard
+    set:
+      reason: "'second_log'"
+      document: other.name

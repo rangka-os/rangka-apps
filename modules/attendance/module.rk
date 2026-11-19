@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: attendance
+version: 1.0.0
+title: {id: Absen karyawan, en: Staff attendance}
+summary:
+  id: Absen masuk dan pulang dari HP di outlet, dengan lokasi GPS dan selfie, terlambat dan lembur, rekap bulanan per karyawan.
+  en: Clock in and out from the phone at an outlet with GPS position and a selfie, lateness and overtime, a monthly summary per employee.
+category: people
+icon: time-line
+# Outlet staff attendance (rangka-apps#100). Field workers of projects keep their own attendance_log (module projects):
+# project billing and work sites differ, so the two are not merged.
+requires: {rangka: '>=0.5', users: ^1.5, outlets: ^1.6}
+notices:
+  - name: attendance_missing
+    label: {id: Belum absen masuk, en: Not clocked in yet}
+    description: {id: 'Tiap pagi jam 10: karyawan outlet yang belum absen masuk hari ini.'}
+    severity: info
+    to: [owner, head_office]

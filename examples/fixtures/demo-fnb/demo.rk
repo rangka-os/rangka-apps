@@ -7,10 +7,10 @@ uom:
   - {name: UOM-005, uom_name: Pcs}
   - {name: UOM-006, uom_name: Porsi}
 outlet:
-  - {name: OUT-01, outlet_name: Kantor pusat Tahu Contoh, code: HO, city: Bandung, is_head_office: true, active: true}
-  - {name: OUT-02, outlet_name: Outlet Dago, code: DGO, city: Bandung, address: Jl. Contoh Dago No. 1, moka_name: Tahu Contoh - Dago, active: true}
-  - {name: OUT-03, outlet_name: Outlet Braga, code: BRG, city: Bandung, address: Jl. Contoh Braga No. 2, moka_name: Tahu Contoh - Braga, active: true}
-  - {name: OUT-04, outlet_name: Outlet Cimahi, code: CMH, city: Cimahi, address: Jl. Contoh Cimahi No. 3, active: true}
+  - {name: OUT-01, outlet_name: Kantor pusat Tahu Contoh, code: HO, city: Bandung, is_head_office: true, active: true, lat: -6.9147, lng: 107.6098, radius_m: 100, work_start: '08:00', work_end: '17:00', late_grace_min: 10}
+  - {name: OUT-02, outlet_name: Outlet Dago, code: DGO, city: Bandung, address: Jl. Contoh Dago No. 1, moka_name: Tahu Contoh - Dago, active: true, lat: -6.8850, lng: 107.6136, radius_m: 100, work_start: '08:00', work_end: '17:00', late_grace_min: 10}
+  - {name: OUT-03, outlet_name: Outlet Braga, code: BRG, city: Bandung, address: Jl. Contoh Braga No. 2, moka_name: Tahu Contoh - Braga, active: true, lat: -6.9175, lng: 107.6091, radius_m: 150, work_start: '10:00', work_end: '22:00', late_grace_min: 10}
+  - {name: OUT-04, outlet_name: Outlet Cimahi, code: CMH, city: Cimahi, address: Jl. Contoh Cimahi No. 3, active: true, lat: -6.8722, lng: 107.5425, radius_m: 100}
 item:
   - {name: BRG-0001, item_name: Tahu mentah, kind: material, stock_uom: UOM-001, sku: MAT-TAHU, standard_cost: 12000}
   - {name: BRG-0002, item_name: Minyak goreng, kind: material, stock_uom: UOM-004, sku: MAT-MINYAK, standard_cost: 18000}

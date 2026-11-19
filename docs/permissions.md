@@ -154,6 +154,24 @@ attendance_guard. `MATRIX` rows live in `tests/day_one_attendance.py`.
 | attendance_close (Rekap absen lapangan: makes the recap timesheets) | r (the guards read it) | r | all | r |
 | attendance_guard (never stored; a flow's refusal) | c | | c | |
 
+### Outlet staff attendance (module attendance, piece absen_karyawan)
+
+Two roles in the `users` module: `outlet_supervisor` (Kepala outlet), row scope `outlet` from `user.outlets`, reads and
+decides the held logs of their outlets (and leave, reimbursement and shifts later); `employee` (Karyawan), `desk: false`,
+no scope, for staff who only clock in. Staff grants carry `if: employee == user.name`, which also filters reads: a
+member sees only their own logs and summaries, never a colleague's selfie or position. `user.phone`, `email` and
+`account_id` are hidden for both roles. Details in `docs/attendance.md`; `MATRIX` rows live in
+`tests/day_one_staff_attendance.py`.
+
+| Model | cashier, outlet_staff, employee | outlet_supervisor | head_office |
+| --- | --- | --- | --- |
+| staff_attendance (no delete; a held submit is decided in Persetujuan) | r c w s (own) | r p (own outlets); c w s (own) | all but d |
+| attendance_period (Rekap absen karyawan; notes hidden from staff) | r (the guards read it) | r | all |
+| attendance_summary (written by the period flows only) | r (own) | r (own outlets) | r c w e p |
+| staff_attendance_guard (never stored; a flow's refusal) | c | c | c |
+| outlet | r (cashier, outlet_staff as before; employee r) | r p | as before |
+| user (phone, email hidden) | | r | as before |
+
 ### Courses (module courses, piece kelas_kursus)
 
 Two roles: `course_admin` (Admin kursus, in the `users` module) runs programs, batches, students, enrollments, sessions

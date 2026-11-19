@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: attendance_period_on_submit
+label: {id: Rekap absen karyawan jadi ringkasan per karyawan}
+# One attendance_summary per employee with access active and not attendance_exempt, from the submitted logs of the period
+# (of the period's outlet, or of every outlet). A period of one outlet summarises the employees who clocked in there
+# (an employee of another outlet who never came is not that outlet's absence). Logs waiting for approval do not count.
+# Refused (the whole submit rolls back) when another submitted period overlaps the days for the same outlet or the whole
+# business. Reads in the order attendance_period, user, staff_attendance (contract 0025 locks), like the log guards.
+on: attendance_period.submitted
+steps:
+  - find: attendance_period
+    where: >-
+      name != event.name && docstatus == 1 && period_from <= event.period_to && period_to >= event.period_from
+      && (only_outlet == '' || event.only_outlet == '' || only_outlet == event.only_outlet)
+    as: other
+  - if: other != null
+    create: staff_attendance_guard
+    set:
+      reason: "'period_overlap'"
+      document: other.name
+  - find_all: user
+    where: access == 'active' && !attendance_exempt
+    sort: full_name
+    as: emps
+  - find_all: staff_attendance
+    where: >-
+      docstatus == 1 && work_date >= event.period_from && work_date <= event.period_to
+      && (event.only_outlet == '' || outlet == event.only_outlet)
+    sort: work_date
+    as: logs
+  - for_each: emps
+    as: u
+    do:
+      - if: "event.only_outlet == '' || logs.exists(l, l.employee == u.name)"
+        create: attendance_summary
+        set:
+          attendance_period: event.name
+          employee: u.name
+          employee_name: u.full_name
+          outlet: "event.only_outlet != '' ? event.only_outlet : (logs.exists(l, l.employee == u.name) ? logs.filter(l, l.employee == u.name)[0].outlet : '')"
+          period_from: event.period_from
+          period_to: event.period_to
+          days_present: "logs.map(l, l.employee == u.name ? 1 : 0).sum()"
+          late_count: "logs.map(l, l.employee == u.name && l.late_min > 0 ? 1 : 0).sum()"
+          late_min_total: "logs.map(l, l.employee == u.name ? l.late_min : 0).sum()"
+          early_min_total: "logs.map(l, l.employee == u.name ? l.early_min : 0).sum()"
+          overtime_hours: "logs.map(l, l.employee == u.name ? l.overtime_hours : 0.0).sum()"
+          worked_min_total: "logs.map(l, l.employee == u.name ? l.worked_min : 0).sum()"

@@ -14,6 +14,8 @@ permissions:
   - {role: sales_rep, read: true}
   - {role: field_sales, read: true}
   - {role: course_admin, read: true}
+  # module attendance: the outlet supervisor reads the names of the staff whose clock-ins they decide
+  - {role: outlet_supervisor, read: true}
 fields:
   - name: full_name
     type: data
@@ -26,12 +28,12 @@ fields:
   - name: phone
     type: phone
     label: {id: Nomor telepon}
-    hidden_for: [cashier, collector, course_admin, field_sales, field_worker, finance_manager, instructor, kitchen, outlet_staff, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, site_supervisor]
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, finance_manager, instructor, kitchen, outlet_staff, outlet_supervisor, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, site_supervisor]
   - name: email
     type: data
     label: {id: Email}
     read_only: true
-    hidden_for: [cashier, collector, course_admin, field_sales, field_worker, finance_manager, instructor, kitchen, outlet_staff, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, site_supervisor]
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, finance_manager, instructor, kitchen, outlet_staff, outlet_supervisor, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, site_supervisor]
   - name: role
     type: data
     label: {id: Peran}
@@ -55,4 +57,10 @@ fields:
     type: int
     label: {id: ID akun}
     read_only: true
-    hidden_for: [cashier, collector, course_admin, field_sales, field_worker, finance_manager, head_office, instructor, kitchen, outlet_staff, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, site_supervisor]
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, finance_manager, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, site_supervisor]
+  # module attendance: owner, office manager or anyone not expected to clock in. Left out of the monthly attendance
+  # summary (attendance_period_on_submit). Set by the owner on the employee record.
+  - name: attendance_exempt
+    type: check
+    label: {id: Tidak wajib absen}
+    depends_on: app_installed('attendance')

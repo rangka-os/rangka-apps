@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: absen_hari_ini
+label: {id: Absen hari ini, en: Attendance today}
+description: {id: 'Siapa yang sudah masuk, terlambat, di luar radius dan menunggu persetujuan, per outlet'}
+# Head office sees every outlet; the outlet supervisor only their own outlets (row scope outlet, contract 0010; the
+# dashboard cache key includes the scope).
+roles: [head_office, outlet_supervisor]
+cache: 1m
+widgets:
+  - {name: present, type: number, label: {id: Sudah masuk}, model: staff_attendance, filter: "work_date == today() && docstatus != 2 && clock_in != ''", compact: true, span: 3}
+  - {name: late, type: number, label: {id: Terlambat}, model: staff_attendance, filter: "work_date == today() && docstatus != 2 && late_min > 0", compact: true, span: 3, good_when: down}
+  - {name: outside, type: number, label: {id: Di luar radius}, model: staff_attendance, filter: "work_date == today() && docstatus != 2 && outside_site", compact: true, span: 3, good_when: down}
+  - {name: waiting, type: number, label: {id: Menunggu persetujuan}, description: {id: 'Sudah absen pulang tapi belum sah'}, model: staff_attendance, filter: "docstatus == 0 && clock_out != ''", compact: true, span: 3, good_when: down}
+  - {name: today, type: list, label: {id: Absen hari ini}, model: staff_attendance, filter: "work_date == today() && docstatus != 2", columns: [employee_name, outlet, clock_in, late_min, clock_out, outside_site], sort: outlet, limit: 50, span: 12}
+  - {name: held, type: list, label: {id: Menunggu persetujuan}, model: staff_attendance, filter: "docstatus == 0 && clock_out != ''", columns: [employee_name, outlet, work_date, in_site_m, overtime_hours, reason], sort: -work_date, limit: 20, span: 12}

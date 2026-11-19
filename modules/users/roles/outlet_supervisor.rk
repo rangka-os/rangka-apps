@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: outlet_supervisor
+label: {id: Kepala outlet}
+description: {id: 'Melihat absen outlet yang dia pegang dan menyetujui absen di luar radius atau lembur'}
+# Contract 0010 §5: only records of the member's outlets (the outlets set in Tim). Added with module attendance
+# (rangka-apps#100); leave, reimbursement and shifts (rangka-apps#114, #117, #120) reuse it for their approvals.
+scope: {field: outlet, from: user.outlets}

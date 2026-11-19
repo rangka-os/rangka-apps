@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: rekap_absen_karyawan
+label: {id: Rekap absen karyawan, en: Staff attendance summary}
+description: {id: 'Hari hadir, terlambat dan lembur per karyawan dari rekap absen yang sudah diajukan'}
+roles: [head_office, outlet_supervisor]
+cache: 5m
+widgets:
+  - {name: summaries, type: list, label: {id: Ringkasan per karyawan}, model: attendance_summary, filter: "!cancelled", columns: [employee_name, outlet, period_from, days_present, late_min_total, overtime_hours], sort: -period_from, limit: 50, span: 12}
