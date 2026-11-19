@@ -10,9 +10,15 @@ seat (rangka-os contract 0057 §5) and the backfill flow gives its balances the 
 
 
 def before(api):
-    rows = [b for b in api.find("stock_balance", "outlet == 'OUT-02' && qty > 1")]
-    assert rows, "demo-fnb has no stock at OUT-02"
-    item = rows[0]["item"]
+    rows = api.find("stock_balance", "outlet == 'OUT-02' && qty > 1")
+    if rows:
+        item = rows[0]["item"]
+    else:   # the seeded site has no stock yet: count some at OUT-02 first
+        item = [i for i in api.list("item", limit=200) if i.get("kind") in ("material", "good")][0]["name"]
+        st, c = api.create("stock_count", {"outlet": "OUT-02", "items": [{"item": item, "counted_qty": 10}]})
+        assert st == 201, (st, c)
+        st, r = api.verb("stock_count", c["name"], "submit")
+        assert st == 200, (st, r)
     st, t = api.create("stock_transfer", {"from_outlet": "OUT-02", "to_outlet": "OUT-03", "items": [{"item": item, "qty": 1}]})
     assert st == 201, (st, t)
     st, r = api.verb("stock_transfer", t["name"], "submit")
