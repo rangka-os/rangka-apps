@@ -325,11 +325,6 @@ fields:
   - {name: pay_date, type: date, label: {id: Tanggal bayar, en: Pay date}, compute: payroll_run.pay_date}
   - {name: transfer_note, type: data, label: {id: Berita transfer, en: Transfer note}, compute: "'Gaji ' + payroll_run.tax_ym"}
 rules:
-  - name: bank_account_warning
-    on: submit
-    level: warn
-    check: "bank_account != '' || net_pay == 0"
-    message: {id: 'Data gaji pekerja ini belum punya nomor rekening; gajinya tidak masuk file transfer'}
   - name: run_open
     on: submit
     check: "!payroll_run.closed"

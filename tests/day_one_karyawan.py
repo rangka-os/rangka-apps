@@ -135,7 +135,7 @@ def scenario_karyawan_month(api):
     morning flow waits while the attendance period is a draft; head office submits it; finance ticks "Isi slip dari absen"
     on the internal run: a slip per employee with a summary plus Rina (monthly, exempt), days, lateness and overtime from
     the summaries, the tick cleared and the note written; ticking again and the morning flow add nothing. Every amount
-    equals the oracle; the slips submit (Fajar without an account warns), the run closes, and the transfer list holds
+    equals the oracle; the slips submit (Fajar, under the UMK, after the warning), the run closes, and the transfer list holds
     every slip with an account and keeps the leading zeros."""
     got = members("fm", "hq", "ayu", "bagas", "citra", "eko")
     if not got:
@@ -210,7 +210,7 @@ def scenario_karyawan_month(api):
     st, resp = api.call("POST", "/api/v1/flows/payslip_from_attendance/run", {"event": {"as_of": asof}})
     eq("the morning flow (period over, attendance submitted) adds no slip either", (st, len(fm.find("payslip", f"payroll_run == '{R}'"))), (200, len(want)))
 
-    # every amount equals the oracle; then submit (Fajar has no account number: a warning, not a refusal)
+    # every amount equals the oracle; then submit (warnings confirmed with force, as finance does in the web app)
     o = oracle_run()
     bad = {}
     for u, s in slips.items():
@@ -230,8 +230,8 @@ def scenario_karyawan_month(api):
        ("Bank Contoh", "0011000003", "Ayu Contoh", f"Gaji {pt.year}-{pt.month:02d}"))
     st, resp = fm.verb("payslip", f.get("name", "x"), "submit")
     warned = [w.get("rule") for w in (resp or {}).get("warnings", [])] if isinstance(resp, dict) else []
-    check("Fajar's slip first answers with warnings (no account number, under the UMK) and needs a confirm",
-          st == 422 and "bank_account_warning" in warned and "umk_warning" in warned, (st, resp))
+    check("Fajar's slip (under the UMK) first answers with the UMK warning and needs a confirm",
+          st == 422 and warned == ["umk_warning"], (st, resp))
     bad, named = [], {}
     for u, s in slips.items():
         st, resp = fm.verb("payslip", s["name"], "submit", {"force": True})
