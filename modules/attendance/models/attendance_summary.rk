@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: attendance_summary
+label: {id: Ringkasan absen, en: Attendance summary}
+icon: list
+naming: RGA-{YYYY}-{#####}
+title_field: employee_name
+# One employee's attendance in one submitted attendance_period, written only by its flows (every field read only):
+# days present, lateness, early leave, overtime and minutes worked from the submitted staff_attendance logs. Payroll
+# for in-house staff reads it (rangka-apps#101). Leave days and absent days come with leave and shifts
+# (rangka-apps#114, #120). Cancelling the period marks its summaries cancelled; they are kept as the trail.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, export: true, print: true}
+  # The outlet supervisor reads the summaries of their outlets (row scope outlet: the employee's outlet in the period).
+  - {role: outlet_supervisor, read: true}
+  # Staff read their own.
+  - {role: cashier, read: true, if: "employee == user.name"}
+  - {role: outlet_staff, read: true, if: "employee == user.name"}
+  - {role: employee, read: true, if: "employee == user.name"}
+fields:
+  - {name: attendance_period, type: link, to: attendance_period, label: {id: Rekap absen}, read_only: true, in_list: true}
+  - {name: employee, type: link, to: user, label: {id: Karyawan}, read_only: true}
+  - {name: employee_name, type: data, label: {id: Nama}, read_only: true, in_list: true}
+  # The period's outlet, else the outlet of the employee's first log in the period (empty without a log).
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, read_only: true, in_list: true}
+  - {name: period_from, type: date, label: {id: Periode dari}, read_only: true, in_list: true}
+  - {name: period_to, type: date, label: {id: Periode sampai}, read_only: true}
+  - {name: days_present, type: int, label: {id: Hari hadir (sah)}, read_only: true, in_list: true}
+  - {name: late_count, type: int, label: {id: Kali terlambat}, read_only: true, in_list: true}
+  - {name: late_min_total, type: int, label: {id: Total terlambat (menit)}, read_only: true, in_list: true}
+  - {name: early_min_total, type: int, label: {id: Total pulang cepat (menit)}, read_only: true}
+  - {name: overtime_hours, type: float, label: {id: Jam lembur}, read_only: true, in_list: true}
+  - {name: worked_min_total, type: int, label: {id: Total lama kerja (menit)}, read_only: true}
+  - {name: cancelled, type: check, label: {id: Batal}, read_only: true, in_list: true, chip: true}
+views:
+  list:
+    columns: [employee_name, outlet, period_from, period_to, days_present, late_min_total, overtime_hours, cancelled]
+    sort: -period_from

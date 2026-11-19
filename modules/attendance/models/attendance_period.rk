@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: attendance_period
+label: {id: Rekap absen karyawan, en: Staff attendance period}
+icon: calendar
+is_submittable: true
+naming: RAK-{YYYY}-{####}
+title_field: period_from
+# Closes the staff attendance of a period (a calendar month, or 21st to 20th), for one outlet or the whole business.
+# On submit, flow attendance_period_on_submit writes one attendance_summary per active employee (not attendance_exempt)
+# from the submitted logs of the period: days present, late count and minutes, early leave minutes, overtime hours.
+# Logs still waiting for approval are not counted: decide them first (dashboard absen_hari_ini). While the period is
+# submitted, logs dated inside it can be neither submitted nor cancelled; cancelling the period marks its summaries
+# cancelled. Two submitted periods of overlapping days for the same outlet (or the whole business) are refused.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  # Read so the guard flows that run in their submit and cancel can see whether a day is closed. Not row scoped
+  # (only_outlet is not named outlet): every period's dates and outlet stay visible, the notes do not.
+  - {role: outlet_supervisor, read: true}
+  - {role: cashier, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: employee, read: true}
+fields:
+  - name: period_from
+    type: date
+    label: {id: Dari tanggal}
+    required: true
+    in_list: true
+  - name: period_to
+    type: date
+    label: {id: Sampai tanggal}
+    required: true
+    in_list: true
+  # Empty = every outlet of the business.
+  - name: only_outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    help: {id: 'Kosongkan untuk merekap semua outlet'}
+    in_list: true
+  - name: notes
+    type: text
+    label: {id: Catatan}
+    hidden_for: [outlet_supervisor, cashier, outlet_staff, employee]
+rules:
+  - name: period_valid
+    on: save
+    check: period_to >= period_from && days_between(period_from, period_to) <= 30
+    message: {id: 'Periode rekap: sampai tanggal tidak boleh sebelum tanggal mulai, paling lama 31 hari'}
+  - name: period_over
+    on: submit
+    check: period_to < today()
+    message: {id: 'Periode ini belum selesai; rekap absen setelah tanggal terakhirnya lewat'}
+views:
+  list:
+    columns: [name, period_from, period_to, only_outlet, status]
+    sort: -period_from
+  form:
+    layout:
+      - section: {id: Rekap absen karyawan}
+        columns:
+          - [period_from, period_to, only_outlet]
+          - [notes]

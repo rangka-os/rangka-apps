@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: staff_attendance_guard
+label: {id: Penjaga absen karyawan, en: Staff attendance guard}
+icon: check
+naming: SAG-{######}
+title_field: reason
+# Never stored (the pattern of projects/models/attendance_guard.rk): a flow that must refuse the action it runs in
+# creates one, and the rule of its reason fails with that message, which rolls the whole action back. Create is granted
+# to every role whose saves, submits and cancels run those flows (an approved submit runs as the employee who asked).
+permissions:
+  - {role: cashier, create: true}
+  - {role: outlet_staff, create: true}
+  - {role: employee, create: true}
+  - {role: outlet_supervisor, create: true}
+  - {role: head_office, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: second_log, label: {id: Absen kedua di hari yang sama}}
+      - {value: period_closed, label: {id: Periode absen sudah direkap}}
+      - {value: period_overlap, label: {id: Periode rekap tumpang tindih}}
+      - {value: photo_reused, label: {id: Foto absen dipakai ulang}}
+      - {value: period_summarised, label: {id: Rekap absen sudah diringkas}}
+  - name: document
+    type: data
+    label: {id: Dokumen}
+rules:
+  - name: second_log
+    on: save
+    check: reason != 'second_log'
+    message: {id: 'Karyawan ini sudah punya absen di tanggal itu (satu absen per orang per hari)'}
+  - name: period_closed
+    on: save
+    check: reason != 'period_closed'
+    message: {id: 'Absen tanggal ini sudah masuk rekap absen karyawan yang diajukan; batalkan rekapnya dulu'}
+  - name: period_overlap
+    on: save
+    check: reason != 'period_overlap'
+    message: {id: 'Sudah ada rekap absen karyawan yang tanggal dan outletnya tumpang tindih'}
+  - name: photo_reused
+    on: save
+    check: reason != 'photo_reused'
+    message: {id: 'Foto ini sudah dipakai absen lain; ambil foto baru untuk absen hari ini'}
+  - name: period_summarised
+    on: save
+    check: reason != 'period_summarised'
+    message: {id: 'Rekap absen ini sudah punya ringkasan; batalkan rekapnya dulu kalau mau mengulang'}

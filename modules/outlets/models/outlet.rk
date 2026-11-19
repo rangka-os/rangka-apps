@@ -14,6 +14,9 @@ permissions:
   - {role: sales_rep, read: true}
   - {role: field_sales, read: true}
   - {role: cashier, read: true}
+  # module attendance: staff pick the outlet they clock in at; the outlet supervisor reads the outlets they keep
+  - {role: outlet_supervisor, read: true, print: true}
+  - {role: employee, read: true, if: "name in user.outlets"}
 fields:
   - name: outlet_name
     type: data
@@ -87,6 +90,56 @@ fields:
     label: {id: Modal kas kasir}
     help: {id: 'Uang kembalian di laci tiap sesi kasir dibuka. Kosongkan kalau kasir yang mengisi'}
     depends_on: app_installed('pos')
+  # module attendance (staff clock-in per outlet): the outlet's point and radius are the geofence of the clock screen
+  # (screens/absen_outlet.rk), and the default hours are the schedule lateness is measured against when the employee has
+  # no shift. Decimal degrees, as a phone's GPS or a map gives them (Bandung is about -6.9, 107.6).
+  - name: lat
+    type: float
+    label: {id: Lintang (lat)}
+    help: {id: 'Titik outlet untuk absen. Buka peta di HP saat berada di outlet, salin angka pertama'}
+    depends_on: app_installed('attendance')
+  - name: lng
+    type: float
+    label: {id: Bujur (lng)}
+    help: {id: 'Angka kedua dari titik peta yang sama'}
+    depends_on: app_installed('attendance')
+  # Empty until both numbers are set: an outlet without a point measures every clock-in as "no position" (held, never
+  # refused), so a forgotten point cannot make a far clock-in count as inside.
+  - {name: point, type: geo, label: {id: Titik lokasi}, read_only: true, depends_on: app_installed('attendance'), compute: "lat != 0 || lng != 0 ? {'lat': lat, 'lng': lng} : ''"}
+  # Indoor GPS in malls drifts 50 to 150 m: 100 is the default, the owner widens it per outlet.
+  - name: radius_m
+    type: int
+    label: {id: Radius absen (meter)}
+    default: '100'
+    depends_on: app_installed('attendance')
+  # The org timezone is not readable in CEL, so each outlet carries its own zone for the local work day and hours
+  # (staff_attendance turns it into the UTC offset +07:00, +08:00 or +09:00).
+  - name: time_zone
+    type: select
+    label: {id: Zona waktu}
+    default: "'wib'"
+    depends_on: app_installed('attendance')
+    options:
+      - {value: wib, label: {id: WIB (UTC+7)}}
+      - {value: wita, label: {id: WITA (UTC+8)}}
+      - {value: wit, label: {id: WIT (UTC+9)}}
+  # Empty = no default schedule: no lateness or early leave is measured for this outlet (F&B outlets keep very different
+  # hours, so no hour is assumed).
+  - name: work_start
+    type: data
+    label: {id: Jam masuk default}
+    help: {id: 'Format JJ:MM, misalnya 08:00. Kosong berarti keterlambatan tidak dihitung'}
+    depends_on: app_installed('attendance')
+  - name: work_end
+    type: data
+    label: {id: Jam pulang default}
+    help: {id: 'Format JJ:MM, misalnya 17:00. Lebih awal dari jam masuk berarti pulang besok (shift malam)'}
+    depends_on: app_installed('attendance')
+  - name: late_grace_min
+    type: int
+    label: {id: Toleransi terlambat (menit)}
+    default: '10'
+    depends_on: app_installed('attendance')
 rules:
   # The code is part of document numbers (cashier receipts STRK-<code>-..., kernel contract 0009 §2a), which take it
   # as it is: capital letters and digits, parts joined by "-".
@@ -94,3 +147,19 @@ rules:
     on: save
     check: "code == '' || code.matches('^[A-Z0-9]+(-[A-Z0-9]+)*$')"
     message: {id: 'Kode outlet hanya huruf besar dan angka, boleh dipisah tanda -, misalnya DGO atau BDG-1'}
+  - name: point_valid
+    on: save
+    check: "!app_installed('attendance') || (lat == 0 && lng == 0) || (lat >= -90.0 && lat <= 90.0 && lng >= -180.0 && lng <= 180.0)"
+    message: {id: 'Titik outlet tidak valid: lintang -90 sampai 90, bujur -180 sampai 180'}
+  - name: radius_range
+    on: save
+    check: "!app_installed('attendance') || radius_m == 0 || (radius_m >= 20 && radius_m <= 2000)"
+    message: {id: 'Radius absen 20 sampai 2000 meter'}
+  - name: work_hours_shape
+    on: save
+    check: "!app_installed('attendance') || ((work_start == '' || work_start.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')) && (work_end == '' || work_end.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')))"
+    message: {id: 'Jam masuk dan jam pulang ditulis JJ:MM, misalnya 08:00 atau 17:30'}
+  - name: grace_range
+    on: save
+    check: "!app_installed('attendance') || (late_grace_min >= 0 && late_grace_min <= 120)"
+    message: {id: 'Toleransi terlambat 0 sampai 120 menit'}

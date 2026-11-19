@@ -5908,6 +5908,7 @@ import day_one_kitchen  # noqa: E402
 import day_one_attendance  # noqa: E402
 import day_one_staff  # noqa: E402
 import day_one_automation  # noqa: E402
+import day_one_staff_attendance  # noqa: E402
 import day_one_promotions  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
@@ -5928,6 +5929,7 @@ day_one_kitchen.bind(sys.modules[__name__])
 day_one_attendance.bind(sys.modules[__name__])
 day_one_staff.bind(sys.modules[__name__])
 day_one_automation.bind(sys.modules[__name__])
+day_one_staff_attendance.bind(sys.modules[__name__])   # also adds the demo-fnb members of outlet attendance
 day_one_promotions.bind(sys.modules[__name__])   # after day_one_pos and day_one_kitchen (their members)
 
 SCENARIOS = {
@@ -5963,6 +5965,10 @@ for _site, _extra in day_one_staff.SCENARIOS.items():
     SCENARIOS[_site][_i:_i] = _extra
 # owner automation pack (notices, summaries, reorder point, payroll reminder): after the site's own scenarios
 for _site, _extra in day_one_automation.SCENARIOS.items():
+    _i = SCENARIOS[_site].index(scenario_permissions)
+    SCENARIOS[_site][_i:_i] = _extra
+# outlet staff attendance (module attendance, rangka-apps#100): after the site's own scenarios, before the permission matrix
+for _site, _extra in day_one_staff_attendance.SCENARIOS.items():
     _i = SCENARIOS[_site].index(scenario_permissions)
     SCENARIOS[_site][_i:_i] = _extra
 # accounting last: it checks the books against every document the scenarios above submitted

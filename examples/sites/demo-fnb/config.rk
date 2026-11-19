@@ -15,7 +15,7 @@ orgs:
     config:
       org: {legal_name: PT Tahu Contoh Nusantara, npwp: '00.000.000.0-000.003'}
       tax: {pkp: false}
-apps: [fnb_cabang]
+apps: [fnb_cabang, absen_karyawan]
 plan: tumbuh
 sso: {domains: [tahucontoh.test], required: false}
 ai: {enabled: true, auto_apply: never, approvers: [owner, head_office]}
