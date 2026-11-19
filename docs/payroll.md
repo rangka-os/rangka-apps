@@ -1,8 +1,13 @@
 # Payroll (module `payroll`)
 
-Monthly pay of outsourced workers (manpower, pilot A) from the attendance recap, the deposits of the month, the margin
-of the client contract and the client invoice. Installed with `jasa_proyek`; demo site `demo-manpower`, tests
-`tests/day_one_payroll.py` against the hand-written oracle `tests/payroll_oracle.py`.
+Monthly pay with BPJS and PPh 21 and the deposits of the month, in two kinds of payroll run (2.0):
+- **client** (Kontrak klien): outsourced workers (manpower, pilot A) of one client contract, from the attendance recap,
+  with the margin of the contract and the client invoice. Installed with `jasa_proyek`; demo site `demo-manpower`.
+- **internal** (Karyawan sendiri): the firm's own staff, no project and no client invoice, optionally one outlet. Needs
+  only `users` and `workforce`; `projects`, `invoicing`, `contacts`, `catalogue`, `outlets` and `attendance` are optional.
+
+Tests: `tests/day_one_payroll.py` against the hand-written oracle `tests/payroll_oracle.py`; upgrade from 1.x
+`tests/upgrade.py --site demo-manpower --check payroll_internal`.
 
 ## Flow of one month
 1. Finance keeps one **Data gaji pekerja** (`payroll_profile`) per worker: NIK/NPWP, PTKP status (TER category A/B/C),
@@ -19,6 +24,22 @@ of the client contract and the client invoice. Installed with `jasa_proyek`; dem
    run's totals follow every submit and cancel.
 5. Finance submits a **Tutup periode gaji** (`payroll_close`): the run is closed, the employer cost the recaps did not
    book goes on the project ledger (kind `payroll`), and the client invoice is made as a draft.
+
+### Internal runs (payroll 2.0, rangka-apps#101)
+- `run_kind` is `client` or `internal`. Runs made before 2.0 are all `client` (the upgrade fills the default); a new run
+  defaults to `client` where `projects` is installed, else `internal`. A client run needs a project, an internal run has
+  none and bills nobody (`billing_mode` none). Neither can change kind once a slip is submitted (the project is locked).
+- `run_key`: client `project:period_from` (unchanged), internal `internal:<outlet>:period_from`. Overlapping runs are
+  refused per project (client) or per outlet, empty = every outlet (internal); a worker paid twice for the same days is
+  refused per slip either way.
+- Slips are made by hand (or, in slice b, from the staff attendance summary). Closing an internal run only closes it:
+  no project ledger row, no invoice. With `accounting` installed the close is journalled like any close (employer
+  cost to 5-1300 against wages payable, PPh 21, BPJS and kasbon).
+- The reminder reads no project for an internal run: it is ready when the period is over, it has a slip and no staff
+  attendance period overlapping it (of its outlet or the whole business) is still a draft.
+- Onboarding by file: `worker_list` takes an optional `Email karyawan` column (links the employee record in Tim), and
+  `payroll_profile_list` imports the pay data per employee number (Status PTKP as `TK/0`..`K/3`, Dasar gaji
+  Bulanan/Harian, BPJS Ya/Tidak).
 
 Every morning flow `payroll_reminder` tells finance and the owner which open run is ready to process (once per run) and
 which pay date is three days away or less, with what is still missing. It runs nothing: see [automation.md](automation.md).
@@ -73,6 +94,15 @@ which pay date is three days away or less, with what is still missing. It runs n
   slip); a closed run keeps what its close froze (`locked_by_close`); runs are never deleted; one run per project and
   start of period.
 - Fee only: the margin row takes the recaps' labour cost back off the project (the client funds the wages).
+- Unpaid days (`unpaid_days`, monthly pay only): each costs salary / 25 (6-day week) or / 21 (5-day week), rounded to
+  the rupiah, taken off the base pay, so PPh 21 is withheld on what is paid. The BPJS base stays the contractual wage
+  (salary + fixed allowance, never below the UMK: upah pokok + tunjangan tetap of PP 44/2015 and Perpres 82/2018), and
+  the overtime hour and THR keep the full month's wage. A daily worker is paid for days present, so the field stays 0.
+- Lateness (`late_min_total` x the run's `late_rate_per_min`, off by default at 0): a pay cut off the cash gross, so PPh
+  21 is withheld on less; the BPJS base stays the contractual wage. The rate is locked with the other run rates once a
+  slip is submitted. A slip whose lateness takes more than half the base pay is warned at submit (PP 36/2021 Pasal 65).
+- `payroll_profile_list`: Dasar gaji must be Bulanan/Harian (or Monthly/Daily), anything else is a row error; a row
+  without NIK and NPWP gets no valid tax number.
 
 ## Limits
 - The client invoice is found by the close's and the run's numbers in its notes (an invoice cannot link a module it
@@ -80,5 +110,7 @@ which pay date is three days away or less, with what is still missing. It runs n
 - A flow cannot loop or submit: one slip per recap, slips submitted one by one, the invoice is a draft.
 - Submittable records are renamed from DRAFT- at submit without their links following, so the run (linked by slips)
   is not submittable and is closed by its own document.
+- No bank transfer file yet: the print engine writes HTML and XML only (rangka-os contract 0029); a CSV output for
+  `bank_transfer_csv` is a kernel follow-up.
 - No extra BPJS family members, no gross-up. Slips are submitted one by one (a bulk submit needs the web app: card in the
   board).

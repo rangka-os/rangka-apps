@@ -34,12 +34,21 @@ fields:
   - {name: run_workdays, type: int, label: {id: Hari kerja per minggu periode}, hidden: true, compute: payroll_run.workdays_per_week}
   - {name: run_period_from, type: date, label: {id: Periode dari}, hidden: true, compute: payroll_run.period_from}
   - {name: run_period_to, type: date, label: {id: Periode sampai}, hidden: true, compute: payroll_run.period_to}
+  - {name: run_late_rate, type: currency, label: {id: Potongan telat per menit periode}, hidden: true, compute: payroll_run.late_rate_per_min}
+  - {name: run_outlet, type: data, label: {id: Outlet periode}, hidden: true, compute: payroll_run.outlet}
   - name: worker
     type: link
     to: worker
     label: {id: Tenaga kerja}
     compute: profile.worker
     in_list: true
+  # The worker's employee record (Karyawan in Tim, contract 0056), empty for a worker who never signs in. The employee
+  # app reads a person's own slips through it.
+  - name: employee
+    type: link
+    to: user
+    label: {id: Karyawan, en: Employee}
+    compute: profile.worker.employee
   - name: project
     type: link
     to: project
@@ -49,6 +58,7 @@ fields:
     type: link
     to: timesheet
     label: {id: Rekap absensi}
+    depends_on: app_installed('projects')
   - {name: tax_year, type: int, label: {id: Tahun pajak}, default: payroll_run.tax_year}
   - {name: tax_month, type: int, label: {id: Bulan pajak}, default: payroll_run.tax_month}
   # December, or the month the worker leaves: PPh 21 is recomputed for the year (Pasal 17).
@@ -72,6 +82,14 @@ fields:
       - {value: permanent, label: {id: Tetap atau dibayar bulanan}}
       - {value: casual, label: {id: 'Tidak tetap, dibayar harian'}}
   - {name: days, type: float, label: {id: Hari hadir}, default: '0', in_list: true}
+  # Days a monthly employee is not paid for (absent without leave, unpaid leave), typed by finance or filled from the
+  # attendance summary. Each costs one day of the monthly salary (salary / 25, or / 21 in a five-day week), taken off
+  # the base pay, so PPh 21 is withheld on what is paid. The BPJS base stays the contractual wage (salary + fixed
+  # allowance, never below the UMK): PP 44/2015, 46/2015, 45/2015 and Perpres 82/2018 take upah pokok + tunjangan
+  # tetap as reported, not the month's cut pay (audit 101a F1). A daily worker is paid for days present.
+  - {name: unpaid_days, type: float, label: {id: Hari tidak dibayar, en: Unpaid days}, default: '0'}
+  # Minutes late in the period (attendance summary, or typed). Deducted only when the run sets a rate per minute.
+  - {name: late_min_total, type: int, label: {id: Total menit telat, en: Minutes late}, default: '0'}
   - {name: day_rate, type: currency, label: {id: Upah per hari}, default: profile.worker.cost_day_rate}
   - {name: monthly_salary, type: currency, label: {id: Gaji pokok per bulan}, default: profile.monthly_salary}
   - {name: fixed_allowance, type: currency, label: {id: Tunjangan tetap}, default: profile.fixed_allowance}
@@ -125,10 +143,19 @@ fields:
   - {name: ytd_pension, type: currency, label: {id: JHT + JP pekerja sebelumnya}, default: '0', read_only: true}
   - {name: ytd_months, type: int, label: {id: Bulan sebelumnya tahun ini}, default: '0', read_only: true}
   # Pay.
+  - name: unpaid_deduction
+    type: currency
+    label: {id: Potongan hari tidak dibayar, en: Unpaid days deduction}
+    compute: "pay_basis == 'monthly' ? round(monthly_salary * unpaid_days * 1.0 / (payroll_run.workdays_per_week == 5 ? 21 : 25)) : 0"
   - name: base_pay
     type: currency
     label: {id: Gaji pokok}
-    compute: "pay_basis == 'monthly' ? monthly_salary : round(days * day_rate)"
+    compute: "pay_basis == 'monthly' ? monthly_salary - unpaid_deduction : round(days * day_rate)"
+  # A pay cut, so it lowers the gross PPh 21 is withheld from; the BPJS base stays the contractual wage.
+  - name: late_deduction
+    type: currency
+    label: {id: Potongan telat, en: Lateness deduction}
+    compute: "round(late_min_total * run_late_rate)"
   # Upah sebulan (pokok + tunjangan tetap) for the hourly overtime wage and THR; a daily worker's month is 25 days
   # (6-day week) or 21 (5-day week).
   - name: month_wage
@@ -155,13 +182,14 @@ fields:
   - name: cash_gross
     type: currency
     label: {id: 'Penghasilan (gaji, tunjangan, lembur, THR)'}
-    compute: base_pay + overtime_pay + holiday_overtime_pay + allowance_pay + thr_pay + other_income
+    compute: base_pay + overtime_pay + holiday_overtime_pay + allowance_pay + thr_pay + other_income - late_deduction
     in_list: true
-  # BPJS wage: pokok + tunjangan tetap, never below the UMK of the site.
+  # BPJS wage: pokok + tunjangan tetap, never below the UMK of the site. A monthly salary counts whole: unpaid days and
+  # lateness cut the pay, not the reported wage (audit 101a F1).
   - name: bpjs_base
     type: currency
     label: {id: Dasar upah BPJS}
-    compute: "base_pay + fixed_allowance > payroll_run.umk ? base_pay + fixed_allowance : payroll_run.umk"
+    compute: "(pay_basis == 'monthly' ? monthly_salary : base_pay) + fixed_allowance > payroll_run.umk ? (pay_basis == 'monthly' ? monthly_salary : base_pay) + fixed_allowance : payroll_run.umk"
   - name: below_umk
     type: check
     label: {id: Upah di bawah UMK}
@@ -290,11 +318,16 @@ rules:
     check: >-
       days >= 0 && days <= 31 && day_rate >= 0 && monthly_salary >= 0 && fixed_allowance >= 0 && daily_allowance >= 0
       && overtime_hours >= 0 && overtime_hours <= 744 && overtime_days >= 0 && overtime_days <= days + 0.0001 && overtime_rate >= 0
-      && thr_tenure_months >= 0 && other_income >= 0 && other_deduction >= 0
+      && thr_tenure_months >= 0 && other_income >= 0 && other_deduction >= 0 && late_min_total >= 0
       && holiday_overtime_days >= 0 && holiday_overtime_days <= 31 && holiday_hours_2x >= 0 && holiday_hours_3x >= 0 && holiday_hours_4x >= 0
       && holiday_hours_2x <= holiday_overtime_days * (payroll_run.workdays_per_week == 5 ? 8 : 7)
       && holiday_hours_3x <= holiday_overtime_days && holiday_hours_4x <= holiday_overtime_days * 3
     message: {id: 'Hari 0 sampai 31, jam hari libur per tarif tidak melebihi batas per hari (2x: 7 atau 8, 3x: 1, 4x: 3), tidak negatif'}
+  # A monthly salary is cut by at most the whole month; a daily worker is paid for the days present only.
+  - name: unpaid_days_range
+    on: save
+    check: "unpaid_days >= 0 && unpaid_days <= (payroll_run.workdays_per_week == 5 ? 21 : 25) && (pay_basis == 'monthly' || unpaid_days == 0)"
+    message: {id: 'Hari tidak dibayar hanya untuk gaji bulanan, 0 sampai 25 hari (21 untuk 5 hari kerja)'}
   # Rest-day hours climb the tiers in order (PP 35/2021 Pasal 31; audit gelombang 3 r2 R4): an hour at 3x only after a
   # full day at 2x (at least 5 hours, the shortest day of a six-day week; 8 hours in a five-day week), hours at 4x only
   # after the hour at 3x (at most 3 per day that had one).
@@ -329,6 +362,12 @@ rules:
     level: warn
     check: other_deduction == 0 || cash_advance != '' || open_advance == ''
     message: {id: 'Pekerja ini punya kasbon belum lunas, tapi potongannya tidak ditautkan ke kasbon itu'}
+  # PP 36/2021 Pasal 65: deductions treated as fines stay within 50% of the pay of the period (audit 101a F6).
+  - name: late_within_half
+    on: submit
+    level: warn
+    check: late_deduction * 2 <= base_pay
+    message: {id: 'Potongan telat lebih dari separuh gaji pokok periode ini'}
   - name: umk_warning
     on: submit
     level: warn
@@ -342,11 +381,11 @@ views:
     layout:
       - section: {id: Slip}
         columns:
-          - [payroll_run, profile, worker, timesheet]
+          - [payroll_run, profile, worker, employee, timesheet]
           - [tax_year, tax_month, last_month, ptkp_status, has_tax_id]
       - section: {id: Kehadiran dan upah}
         columns:
-          - [pay_basis, employment, days, day_rate, monthly_salary, fixed_allowance, daily_allowance]
+          - [pay_basis, employment, days, unpaid_days, late_min_total, day_rate, monthly_salary, fixed_allowance, daily_allowance]
           - [overtime_hours, overtime_days, overtime_rate, thr_tenure_months, other_income, other_deduction, cash_advance, open_advance]
       - section: {id: Hari libur masuk kerja}
         columns:
@@ -354,8 +393,8 @@ views:
           - [holiday_hours_2x, holiday_hours_3x, holiday_hours_4x]
       - section: {id: Penghasilan}
         columns:
-          - [base_pay, overtime_pay, holiday_overtime_pay, allowance_pay]
-          - [thr_pay, cash_gross]
+          - [unpaid_deduction, base_pay, overtime_pay, holiday_overtime_pay, allowance_pay]
+          - [thr_pay, late_deduction, cash_gross]
       - section: {id: BPJS}
         columns:
           - [bpjs_base, jkk, jkm, jht_employer, jp_employer, kes_employer, employer_bpjs]

@@ -2,21 +2,24 @@
 name: payroll_close_on_cancel
 label: {id: Tutup periode gaji dibatalkan}
 # Refused while the client invoice of this close is submitted (cancel that invoice first); otherwise the run is open
-# again and the project ledger row is reversed. A draft invoice is left for the owner to delete.
+# again and the project ledger row is reversed. A draft invoice is left for the owner to delete. An internal run has
+# neither, so only the run is reopened. `!= 'internal'`: a close submitted before payroll 2.0 is a client close.
 on: payroll_close.cancelled
 steps:
-  - find: sales_invoice
+  - if: event.run_kind != 'internal' && app_installed('invoicing')
+    find: sales_invoice
     where: project == event.project && docstatus == 1 && notes.contains('(' + event.name + ')')
     as: inv
-  - if: inv != null
+  - if: event.run_kind != 'internal' && app_installed('invoicing') && inv != null
     create: payroll_guard
     set:
       reason: "'invoice_submitted'"
       document: inv.name
-  - find: project_ledger
+  - if: event.run_kind != 'internal' && app_installed('projects')
+    find: project_ledger
     where: source_name == event.name && kind == 'payroll' && entry == 'post'
     as: orig
-  - if: orig != null
+  - if: event.run_kind != 'internal' && app_installed('projects') && orig != null
     create: project_ledger
     set:
       project: event.project
