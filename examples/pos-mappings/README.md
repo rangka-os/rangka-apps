@@ -24,11 +24,16 @@ Take the first real export of that POS, save it as CSV, and fill in:
 | `number` | `thousands` and `decimal` marks (`.` and `,` for 1.250.000,50) |
 | `columns.date`, `sku`, `qty`, `gross` | Required. `sku` must hold the SKU the item has in Juragan |
 | `columns.receipt`, `discount`, `branch` | Optional. With `branch`, one file per branch is written |
-| `void` | `column`, the `values` that mark a voided or refunded row, and `as`: `skip` (a voided bill never was a sale) or `return` (a row of Jenis Retur with a negative Qty and the value in Retur) |
+| `void` | `column`, the `values` that mark a voided or refunded row, `sale_values` (the values of a paid sale: any other value, a blank one included, stops the conversion), and `as`: `skip` (a voided bill never was a sale) or `return` (a row of Jenis Retur with a negative Qty and the value in Retur) |
 | `skip_rows_where` | Subtotal and footer lines of the report: `column` and the text it `equals` |
 
 Lines that share date, receipt, kind and SKU are added up, because the import's key is those four. A row the POS
 writes with a negative quantity is a return.
+
+A row the script cannot read safely stops it with the row number, nothing written: cells missing or one too many (a
+cut line, a delimiter inside a menu name), an empty or zero quantity, an empty amount, a number that does not follow
+the marks (`1.5` when `.` groups thousands, `70.000` with `.` as the decimal mark and no thousands mark), a sale with
+a negative amount, a discount above the amount, an empty branch, or a status outside `values` and `sale_values`.
 
 ## ESB
 

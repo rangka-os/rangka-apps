@@ -22,7 +22,11 @@ What it does, so that the import takes the file as it is:
 - prints totals per file (rows, Qty, gross, discount, returns) to compare with the POS's own report before uploading.
 Nothing is uploaded: the owner uploads each file for its outlet in Juragan (Sumber penjualan = File POS).
 
-Stdlib only. Exit 1 with the row number for a date, a number or a SKU it cannot read: a wrong row must not become a sale.
+Stdlib only. Exit 1 with the row number for a row it cannot read safely: a wrong row must not become a sale. Refused:
+a row with cells missing or one too many (a cut line, a delimiter inside a name), an empty or zero quantity, an empty
+amount, a number that does not follow the mapping's marks (1.5 when . groups thousands), a sale with a negative
+amount, a discount above the amount, an empty branch, an unreadable date or an empty SKU, and, when void.sale_values
+is set, a status that is neither a sale nor a void.
 """
 from __future__ import annotations
 
@@ -42,21 +46,32 @@ class Problem(Exception):
     """A file or mapping the script cannot convert safely."""
 
 
-def number(text: str, fmt: dict, what: str, row: int) -> float:
-    """A number as the POS writes it: thousands and decimal marks from the mapping, an empty cell is 0."""
+def number(text: str, fmt: dict, what: str, row: int, required: bool = True) -> float:
+    """A number as the POS writes it, with the mapping's thousands and decimal marks. The thousands groups are checked
+    (1.250.000 is read, 1.5 or 12.50.000 is refused when . is the thousands mark), so a quantity of 1,5 written as 1.5
+    never becomes 15. An empty cell is refused unless the column may be empty (a discount): an empty quantity or amount
+    is a broken row, not a zero."""
     t = (text or "").strip()
     if t in ("", "-"):
+        if required:
+            raise Problem(f"row {row}: {what} is empty")
         return 0.0
     neg = t.startswith("(") and t.endswith(")")   # (1.000) is how some reports write a negative
     t = t.strip("()").replace("Rp", "").replace(" ", "")
+    if t.startswith("-"):
+        neg, t = not neg, t[1:]
     th, dec = fmt.get("thousands", ""), fmt.get("decimal", ".")
+    whole_part, _, frac = t.partition(dec) if dec else (t, "", "")
     if th:
-        t = t.replace(th, "")
-    if dec != ".":
-        t = t.replace(dec, ".")
-    if not re.fullmatch(r"-?\d+(\.\d+)?", t):
-        raise Problem(f"row {row}: {what} is not a number: {text!r}")
-    v = float(t)
+        ok = re.fullmatch(r"\d{1,3}(" + re.escape(th) + r"\d{3})+|\d+", whole_part) is not None
+    else:
+        ok = re.fullmatch(r"\d+", whole_part) is not None
+        if ok and len(frac) == 3 and dec in ".,":
+            # 70.000 with . as the decimal mark: almost surely a thousands group; the mapping must say so
+            raise Problem(f"row {row}: {what} {text!r} looks like a thousands group: set number.thousands in the mapping")
+    if not ok or (frac and not frac.isdigit()) or (dec and t.count(dec) > 1):
+        raise Problem(f"row {row}: {what} is not a number in this mapping's format: {text!r}")
+    v = float((whole_part.replace(th, "") if th else whole_part) + ("." + frac if frac else ""))
     return -v if neg else v
 
 
@@ -86,7 +101,11 @@ def read_rows(raw: bytes, mapping: dict):
     for i, cells in enumerate(reader, start=start + 2):
         if not any(c.strip() for c in cells):
             continue
-        out.append((i, {h: (cells[j].strip() if j < len(cells) else "") for j, h in enumerate(header)}))
+        # a row with cells missing, or one more cell (a delimiter inside a name), would shift every column after it
+        extra = cells[len(header):]
+        if len(cells) < len(header) or any(c.strip() for c in extra):
+            raise Problem(f"row {i}: {len(cells)} cells for {len(header)} columns; a cut row or a {delim!r} inside a value shifts the columns")
+        out.append((i, {h: cells[j].strip() for j, h in enumerate(header)}))
     return header, out
 
 
@@ -106,6 +125,7 @@ def convert(raw: bytes, mapping: dict) -> dict:
     fmt = mapping.get("number") or {}
     date_format = mapping.get("date_format") or "%d/%m/%Y"
     void_values = {str(v).strip().lower() for v in void.get("values") or []}
+    sale_values = {str(v).strip().lower() for v in void.get("sale_values") or []}
     void_as = void.get("as", "skip")
     if void_as not in ("skip", "return"):
         raise Problem("mapping.void.as is skip or return")
@@ -113,7 +133,11 @@ def convert(raw: bytes, mapping: dict) -> dict:
     for n, r in rows:
         if any(r.get(s["column"], "").strip().lower() == str(s.get("equals", "")).strip().lower() for s in skip):
             continue   # a subtotal or footer line of the report
-        is_void = bool(void.get("column")) and r[void["column"]].strip().lower() in void_values
+        state = r[void["column"]].strip().lower() if void.get("column") else ""
+        is_void = bool(void.get("column")) and state in void_values
+        if sale_values and not is_void and state not in sale_values:
+            # a status the mapping does not name (blank, "Draft", "Open bill"): not taken for a sale
+            raise Problem(f"row {n}: {void['column']} {r[void['column']]!r} is neither a sale ({sorted(sale_values)}) nor a void ({sorted(void_values)})")
         if is_void and void_as == "skip":
             continue   # a voided bill never was a sale
         try:
@@ -125,9 +149,18 @@ def convert(raw: bytes, mapping: dict) -> dict:
             raise Problem(f"row {n}: {cols['sku']} is empty; every row needs the item's SKU as it is in Juragan")
         qty = number(r[cols["qty"]], fmt, cols["qty"], n)
         gross = whole(number(r[cols["gross"]], fmt, cols["gross"], n), cols["gross"], n)
-        disc = whole(number(r[cols["discount"]], fmt, cols["discount"], n), cols["discount"], n) if cols.get("discount") else 0
+        disc = whole(number(r[cols["discount"]], fmt, cols["discount"], n, required=False), cols["discount"], n) if cols.get("discount") else 0
         receipt = r[cols["receipt"]].strip() if cols.get("receipt") else ""
         branch = r[cols["branch"]].strip() if cols.get("branch") else ""
+        if cols.get("branch") and not branch:
+            raise Problem(f"row {n}: {cols['branch']} is empty; every row needs its branch")
+        if qty == 0:
+            raise Problem(f"row {n}: {cols['qty']} is 0")
+        if qty > 0 and gross < 0:
+            # a return is written with a negative quantity (its value may be either sign); a sale is never negative
+            raise Problem(f"row {n}: a sale with a negative {cols['gross']} {gross}")
+        if disc < 0 or abs(disc) > abs(gross):
+            raise Problem(f"row {n}: {cols['discount']} {disc} is negative or more than {cols['gross']} {gross}")
         # a return: a voided or refunded row kept as a return, or a row the POS itself writes with a negative quantity
         ret = is_void or qty < 0
         kind = "Retur" if ret else "Jual"

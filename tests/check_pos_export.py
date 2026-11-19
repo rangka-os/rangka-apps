@@ -89,12 +89,44 @@ ok, msg = refused(SAMPLE.replace(b";MNU-020;", b";;"), MAP, "row 12", "empty")
 check("a row without a SKU: refused with the row number", ok, msg)
 ok, msg = refused(SAMPLE.replace(b"80.000;8.000", b"80.000,50;8.000"), MAP, "row 10", "whole number")
 check("an amount with cents: refused (rupiah are whole)", ok, msg)
-ok, msg = refused(SAMPLE, {k: v for k, v in MAP.items() if k != "skip_rows_where"}, "not a date", "TOTAL")
+ok, msg = refused(SAMPLE, {k: v for k, v in MAP.items() if k != "skip_rows_where"}, "row 14")
 check("without skip_rows_where the footer is not taken for a sale: refused", ok, msg)
 ok, msg = refused(SAMPLE, dict(MAP, columns={k: v for k, v in MAP["columns"].items() if k != "gross"}), "columns.gross")
 check("a mapping without a required column: refused", ok, msg)
 ok, msg = refused(SAMPLE, dict(MAP, void=dict(MAP["void"], **{"as": "ignore"})), "skip or return")
 check("an unknown void.as: refused", ok, msg)
+
+# rows the audit (2026-11-19, H2) showed becoming wrong sales: each is refused with its row number
+ROW = b"17/11/2026 19:15;B-0003;Dago;MNU-007;Sate ayam;1;30.000;0;Paid"
+for name, bad, words in [
+    ("a cut row (Discount and Status missing): a voided bill must not become a sale",
+     b"17/11/2026 12:40;B-0002;Dago;MNU-007;Sate ayam;3;90.000", ("row 8", "cells")),
+    ("a ; inside the menu name shifts the columns", b"17/11/2026 19:15;B-0003;Dago;MNU-007;Sate;Combo;1;30.000;0;Paid", ("row 8", "cells")),
+    ("an empty quantity", b"17/11/2026 19:15;B-0003;Dago;MNU-007;Sate ayam;;30.000;0;Paid", ("row 8", "Qty", "empty")),
+    ("an empty amount", b"17/11/2026 19:15;B-0003;Dago;MNU-007;Sate ayam;1;;0;Paid", ("row 8", "Subtotal", "empty")),
+    ("a quantity of 1.5 when . groups thousands (not 15)", b"17/11/2026 19:15;B-0003;Dago;MNU-007;Sate ayam;1.5;30.000;0;Paid", ("row 8", "Qty", "format")),
+    ("badly grouped thousands", b"17/11/2026 19:15;B-0003;Dago;MNU-007;Sate ayam;1;30.00.000;0;Paid", ("row 8", "Subtotal", "format")),
+    ("a zero quantity", b"17/11/2026 19:15;B-0003;Dago;MNU-007;Sate ayam;0;30.000;0;Paid", ("row 8", "is 0")),
+    ("a sale with a negative amount", b"17/11/2026 19:15;B-0003;Dago;MNU-007;Sate ayam;1;-30.000;0;Paid", ("row 8", "negative")),
+    ("a discount above the amount", b"17/11/2026 19:15;B-0003;Dago;MNU-007;Sate ayam;1;10.000;50.000;Paid", ("row 8", "Discount")),
+    ("an empty branch", b"17/11/2026 19:15;B-0003;;MNU-007;Sate ayam;1;30.000;0;Paid", ("row 8", "Branch", "empty")),
+    ("a status that is neither a sale nor a void (blank)", b"17/11/2026 19:15;B-0003;Dago;MNU-007;Sate ayam;1;30.000;0;", ("row 8", "Status")),
+    ("a status that is neither a sale nor a void (Open bill)", b"17/11/2026 19:15;B-0003;Dago;MNU-007;Sate ayam;1;30.000;0;Open bill", ("row 8", "Status")),
+]:
+    assert ROW in SAMPLE
+    ok, msg = refused(SAMPLE.replace(ROW, bad), MAP, *words)
+    check(f"refused: {name}", ok, msg)
+ok, msg = refused(b"Tanggal,SKU,Qty,Nilai\n17/11/2026,A,1,70.000\n", {"columns": {"date": "Tanggal", "sku": "SKU", "qty": "Qty", "gross": "Nilai"}},
+                  "row 2", "thousands")
+check("refused: 70.000 with . as the decimal mark and no thousands mark (not Rp 70)", ok, msg)
+m = copy.deepcopy(MAP)
+del m["void"]["sale_values"]
+check("without sale_values an unknown status is read as a sale (the mapping's choice)",
+      any(r[1] == "B-0003" for r in p.convert(SAMPLE.replace(ROW, ROW.replace(b";Paid", b";Open bill")), m)["Dago"]["rows"]), "")
+plain_ret = b"Date,Receipt,SKU,Qty,Gross\n2026-11-17,R9,SKU-1,-2,-50000\n"
+r9 = p.convert(plain_ret, {"date_format": "%Y-%m-%d", "columns": {"date": "Date", "receipt": "Receipt", "sku": "SKU", "qty": "Qty", "gross": "Gross"}})
+check("a return written with both quantity and amount negative is read as a return of 50.000",
+      r9[""]["rows"] == [["17/11/2026", "R9", "Retur", "SKU-1", -2, 0, 0, 50000]], r9)
 
 # the command: files written, totals printed, exit codes
 with tempfile.TemporaryDirectory() as d:

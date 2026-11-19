@@ -3,7 +3,10 @@
   "header_row": 3,
   "delimiter": ";",
   "date_format": "%d/%m/%Y %H:%M",
-  "number": {"thousands": ".", "decimal": ","},
+  "number": {
+    "thousands": ".",
+    "decimal": ","
+  },
   "columns": {
     "date": "Sales Date",
     "receipt": "Bill Number",
@@ -13,6 +16,21 @@
     "gross": "Subtotal",
     "discount": "Discount"
   },
-  "void": {"column": "Status", "values": ["Void", "Cancelled"], "as": "skip"},
-  "skip_rows_where": [{"column": "Sales Date", "equals": "TOTAL"}]
+  "void": {
+    "column": "Status",
+    "values": [
+      "Void",
+      "Cancelled"
+    ],
+    "sale_values": [
+      "Paid"
+    ],
+    "as": "skip"
+  },
+  "skip_rows_where": [
+    {
+      "column": "Sales Date",
+      "equals": "TOTAL"
+    }
+  ]
 }
