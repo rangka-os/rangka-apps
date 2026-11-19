@@ -5913,6 +5913,7 @@ import day_one_staff_attendance  # noqa: E402
 import day_one_promotions  # noqa: E402
 import day_one_karyawan  # noqa: E402
 import day_one_fixed_assets  # noqa: E402
+import day_one_portal  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5936,6 +5937,7 @@ day_one_staff_attendance.bind(sys.modules[__name__])   # also adds the demo-fnb 
 day_one_promotions.bind(sys.modules[__name__])   # after day_one_pos and day_one_kitchen (their members)
 day_one_karyawan.bind(sys.modules[__name__])   # also registers demo-karyawan (orgs, members, setup)
 day_one_fixed_assets.bind(sys.modules[__name__])
+day_one_portal.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5965,6 +5967,8 @@ _i = SCENARIOS["demo-ritel"].index(scenario_ritel_loyverse) + 1
 SCENARIOS["demo-ritel"][_i:_i] = day_one_pos_export.SCENARIOS
 for _site in ("demo-jasa", "demo-fnb"):
     SCENARIOS[_site] += day_one_doku.SCENARIOS + day_one_midtrans.SCENARIOS
+# customer link to one invoice (rangka-os contract 0073, invoicing portal/tagihan.rk)
+SCENARIOS["demo-jasa"] += day_one_portal.SCENARIOS
 # staff dashboards (A5): after the site's own scenarios, before the permission matrix
 for _site, _extra in day_one_staff.SCENARIOS.items():
     _i = SCENARIOS[_site].index(scenario_permissions)
