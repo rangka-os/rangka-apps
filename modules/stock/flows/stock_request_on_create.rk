@@ -11,7 +11,7 @@ steps:
   - update: req
     set:
       state: "'open'"
-      items: "event.items.map(i, {'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'packing': i.packing, 'on_hand': bal.filter(b, b.item == i.item).map(b, b.qty).sum()})"
+      items: "event.items.map(i, {'item': i.item, 'qty': i.qty, 'uom': i.uom, 'packing': i.packing, 'on_hand': bal.filter(b, b.item == i.item).map(b, b.qty).sum()})"
   - {find: outlet, where: name == event.outlet, as: o}
   - notify: warehouse_staff
     notice: stock_request

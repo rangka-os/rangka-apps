@@ -18,7 +18,7 @@ steps:
       to_outlet: event.outlet
       stock_request: event.name
       notes: "'Dari permintaan ' + event.name"
-      items: "event.items.map(i, {'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'packing': i.packing})"
+      items: "event.items.map(i, {'item': i.item, 'qty': i.qty, 'uom': i.uom, 'packing': i.packing})"
   - {find: stock_request, if: "event.decision == 'reject'", where: name == event.name, as: req}
   - update: req
     if: "event.decision == 'reject' && req != null"

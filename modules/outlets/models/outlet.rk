@@ -21,7 +21,7 @@ permissions:
 fields:
   - name: outlet_name
     type: data
-    label: {id: Nama outlet}
+    label: {id: Nama lokasi}
     required: true
     in_list: true
   - name: code

@@ -3,7 +3,6 @@ name: stock_request_item
 is_child: true
 fields:
   - {name: item, type: link, to: item, label: {id: Barang}, required: true}
-  - {name: description, type: text, label: {id: Uraian}, default: item.item_name}
   - {name: qty, type: float, label: {id: Qty diminta}, required: true, stock: true}
   - {name: uom, type: link, to: uom, label: {id: Satuan}, default: "packing != '' ? packing.uom : item.stock_uom"}
   - name: packing
