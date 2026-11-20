@@ -5938,11 +5938,8 @@ import day_one_fixed_assets  # noqa: E402
 import day_one_portal  # noqa: E402
 import day_one_shifts  # noqa: E402
 import day_one_appointments  # noqa: E402
-<<<<<<< HEAD
 import day_one_offline  # noqa: E402
-=======
 import day_one_lots  # noqa: E402
->>>>>>> origin/main
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5971,11 +5968,8 @@ day_one_fixed_assets.bind(sys.modules[__name__])
 day_one_portal.bind(sys.modules[__name__])
 day_one_shifts.bind(sys.modules[__name__])   # after day_one_staff_attendance (its demo-fnb members)
 day_one_appointments.bind(sys.modules[__name__])   # also registers demo-salon (orgs, members, kernel env, setup)
-<<<<<<< HEAD
 day_one_offline.bind(sys.modules[__name__])   # after day_one_pos (CTX kernel and org)
-=======
 day_one_lots.bind(sys.modules[__name__])
->>>>>>> origin/main
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
