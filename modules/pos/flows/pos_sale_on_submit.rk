@@ -8,6 +8,12 @@ label: {id: 'Transaksi kasir dibayar: tambah ke sesi kasir'}
 on: pos_sale.submitted
 steps:
   - {find: pos_shift, where: name == event.shift && state == 'open', as: s}
+  # only a store sells (rangka-apps#104): a device event turns the sale's own rules (sale_at_store) into exceptions,
+  # so the store check is repeated here, where a guard still refuses
+  - {find: outlet, if: device.event, where: name == event.outlet, as: so}
+  - if: device.event && so != null && so.location_type != '' && so.location_type != 'store'
+    create: pos_guard
+    set: {reason: "'not_a_store'", document: event.name}
   # Jalur A and B never on the same outlet and day: a daily sales record (form, Moka, POS file) of this outlet and day
   # refuses the receipt (and flow pos_daily_form_guard refuses the record after a receipt), whatever sales_source says
   - find_all: outlet_sales
@@ -45,7 +51,10 @@ steps:
   - if: day != null && day.source == ''
     update: day
     set: {source: "'kasir'", document: event.name}
-  - if: s == null
+  # A receipt a paired device sends from its queue (device.event) was already paid at the outlet (rangka-os contract
+  # 0058 §10): a shift head office closed meanwhile does not refuse it (rule shift_open becomes a rule_overridden exception for head office) and the
+  # closed shift's totals stay as counted.
+  - if: s == null && !device.event
     create: pos_guard
     set: {reason: "'shift_closed'", document: event.name}
   - update: s
