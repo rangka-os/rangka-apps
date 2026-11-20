@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A service of the slot, copied from the appointment at submit: the bill reads it from the slot being billed (a flow
+# find reads no child rows, so the appointment's own lines are not reachable from the billing flow).
+name: appointment_slot_line
+is_child: true
+fields:
+  - {name: service, type: link, to: booking_service, label: {id: Layanan}, read_only: true}
+  - {name: item, type: link, to: item, label: {id: Barang katalog}, read_only: true}

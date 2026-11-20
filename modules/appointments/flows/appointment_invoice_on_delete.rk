@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: appointment_invoice_on_delete
+label: {id: 'Draf faktur uang muka janji dihapus'}
+# The customer did not pay the deposit and the draft invoice is deleted: the slot records it as cancelled, so the
+# bill charges the full price and the screen no longer says the deposit is pending.
+on: sales_invoice.deleted
+if: event.notes.contains('JNJ-')
+steps:
+  - {find: appointment_slot, where: deposit_invoice == event.name, as: s}
+  - update: s
+    if: s != null && s.deposit_state == 'draft'
+    set: {deposit_state: "'cancelled'"}
