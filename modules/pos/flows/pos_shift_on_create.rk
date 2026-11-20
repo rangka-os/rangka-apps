@@ -19,7 +19,10 @@ steps:
     where: outlet == event.outlet && cashier == event.cashier && state == 'open' && name != event.name
     limit: 1
     as: open
-  - if: open.size() > 0
+  # a shift a paired device opened offline (device.event) already took sales at the outlet: a second open shift of the
+  # same cashier is accepted then (rangka-os contract 0058 §6, one shift per cashier per device); refusing it would
+  # refuse every receipt queued on it
+  - if: open.size() > 0 && !device.event
     create: pos_guard
     set:
       reason: "'shift_already_open'"

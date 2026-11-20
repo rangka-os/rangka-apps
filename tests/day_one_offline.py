@@ -11,7 +11,9 @@ cookie) and sends what the counter sends: screen.write events to POST /api/v1/ed
   - device_number_gap: a skipped number is accepted with a device_number_gap exception; a wrong pattern is refused
   - device_offline_after_close: a sale paid offline on a shift head office closed meanwhile is accepted (rule shift_open
     becomes rule_overridden, flow pos_sale_on_submit does not refuse it); the closed shift keeps its counted totals
-  - device_not_a_store: a device paired at the warehouse cannot open a shift (rangka-apps#104, guard not_a_store)
+  - device_second_shift: a shift a device opened offline is accepted though the cashier has another open one
+  - device_not_a_store: a device paired at the warehouse cannot open a shift nor sell on a store's shift
+    (rangka-apps#104, guard not_a_store)
   - browser numbering unchanged: a sale made in the browser keeps STRK-DGO-YYMM-n without a device code
 """
 import datetime
@@ -228,6 +230,28 @@ def scenario_device_offline_after_close(api):
     eq("the closed shift keeps its counted totals", (after.get("state"), after.get("net_total")), ("closed", before.get("net_total")))
 
 
+def scenario_device_second_shift(api):
+    """A cashier with a shift open elsewhere (here: in the browser) still gets the shift her device opened offline:
+    refusing it would refuse every receipt queued on it (contract 0058 §6)."""
+    dev, actor = CTX.get("dev"), CTX.get("dev_actor")
+    if not dev:
+        fail("device_second_shift", "no paired device")
+        return
+    k, dcode, ym, flt = CTX["kernel"], dev.info.get("code", ""), yymm(), CTX.get("dev_float", 300000)
+    cashier = Api.login(k.base, DEWI[2], CTX["device_pw"], CTX["org"])
+    st, b = cashier.create("pos_shift", {"outlet": DGO, "opening_cash": flt})
+    check("Dewi opens a shift in the browser", st == 201, (st, b))
+    shift = f"SESI-DGO-{dcode}-{ym}-0002"
+    r = dev.send({"screen": "kasir", "model": "pos_shift", "op": "create", "name": shift, "body": {"outlet": DGO, "opening_cash": flt}}, actor)
+    check("the shift her device opened offline is accepted too", r.get("status") == "accepted", r)
+    body = money_of(cashier, {"shift": shift, "outlet": DGO, "items": [{"item": MI, "qty": 2}]})
+    r = dev.send({"screen": "kasir", "model": "pos_sale", "op": "create", "submit": True, "name": f"STRK-DGO-{dcode}-{ym}-00007", "body": body}, actor)
+    check("and the receipt queued on it", r.get("status") == "accepted", r)
+    # a second shift opened live in the browser is still refused
+    st, b2 = cashier.create("pos_shift", {"outlet": DGO, "opening_cash": flt})
+    check("a second browser shift is still refused (shift_already_open)", st == 422, (st, b2))
+
+
 def scenario_device_not_a_store(api):
     k = CTX["kernel"]
     pw = secrets.token_urlsafe(18)
@@ -241,7 +265,16 @@ def scenario_device_not_a_store(api):
     r = dev.send({"screen": "kasir", "model": "pos_shift", "op": "create", "name": shift, "body": {"outlet": HQ_OUT, "opening_cash": 0}}, actor)
     check("a device at the warehouse cannot open a shift (only a store sells)",
           r.get("status") == "rejected" and "Toko" in str(r.get("message")), r)
+    # nor sell on a store's shift head office opened (no device): the sale's own rules are exceptions for a device
+    # event, the flow's guard is not
+    open_ho = [x for x in api.find("pos_shift", f"outlet == '{DGO}' && state == 'open'") if x.get("name", "").startswith(f"SESI-DGO-{yymm()}-")]
+    if not open_ho:
+        st, h = api.create("pos_shift", {"outlet": DGO, "opening_cash": CTX.get("dev_float", 300000)})
+        open_ho = [(h or {}).get("record", h) or {}]
+    r = dev.send({"screen": "kasir", "model": "pos_sale", "op": "create", "submit": True, "name": f"STRK-HO-{dev.info.get('code', '')}-{yymm()}-00001",
+                  "body": {"shift": open_ho[0].get("name"), "outlet": HQ_OUT, "items": [{"item": AIR, "qty": 1}]}}, actor)
+    check("a device at the warehouse cannot sell on a store's shift", r.get("status") == "rejected" and "Toko" in str(r.get("message")), r)
 
 
 SCENARIOS = [scenario_device_sale_named, scenario_device_price_drift, scenario_device_number_gap, scenario_device_offline_after_close,
-             scenario_device_not_a_store]
+             scenario_device_second_shift, scenario_device_not_a_store]
