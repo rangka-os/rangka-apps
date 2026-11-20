@@ -55,7 +55,9 @@ fields:
     compute: profile.worker.employee
   # Who the slip is for and where it is paid, copied from the worker and the profile so the printed slip (print payslip)
   # needs no read of them: an employee reading their own slip (member grant) does not read the worker record, which
-  # holds the cost rates.
+  # holds the cost rates. A slip submitted before payroll 2.3.0 keeps these empty (the kernel does not backfill a
+  # computed link read on a submitted document): the print falls back to the linked worker and profile, which finance
+  # reads; the employee's own print of such an old slip shows no name or account line (audit 261a F1).
   - {name: slip_worker_name, type: data, label: {id: Nama pekerja, en: Worker name}, hidden: true, compute: profile.worker.worker_name}
   - {name: slip_employee_no, type: data, label: {id: No. pegawai, en: Employee number}, hidden: true, compute: profile.worker.employee_no}
   - {name: slip_role_title, type: data, label: {id: Jabatan, en: Job title}, hidden: true, compute: profile.worker.role_title}
