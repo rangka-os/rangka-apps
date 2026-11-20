@@ -29,12 +29,12 @@ fields:
   - name: phone
     type: phone
     label: {id: Nomor telepon}
-    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, finance_manager, instructor, kitchen, outlet_staff, outlet_supervisor, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, site_supervisor, warehouse_staff]
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, finance_manager, instructor, kitchen, outlet_staff, outlet_supervisor, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
   - name: email
     type: data
     label: {id: Email}
     read_only: true
-    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, finance_manager, instructor, kitchen, outlet_staff, outlet_supervisor, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, site_supervisor, warehouse_staff]
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, finance_manager, instructor, kitchen, outlet_staff, outlet_supervisor, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
   - name: role
     type: data
     label: {id: Peran}
@@ -58,7 +58,7 @@ fields:
     type: int
     label: {id: ID akun}
     read_only: true
-    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, finance_manager, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, site_supervisor, warehouse_staff]
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, finance_manager, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, project_admin, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
   # module attendance: owner, office manager or anyone not expected to clock in. Left out of the monthly attendance
   # summary (attendance_period_on_submit). Set by the owner on the employee record.
   - name: attendance_exempt
