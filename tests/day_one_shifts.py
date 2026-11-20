@@ -194,6 +194,12 @@ def scenario_shifts_roster(api):
        (wed.get("name"), "Pagi", A, True))
     eq("the other days are unchanged", day_of(hq, eko_rec, nxt + datetime.timedelta(days=4)).get("shift_name"), "Malam")
     eq("Eko sees his 7 days again", len(eko.list("shift_assignment")), 7)
+    st, page, ct = bayu.print_html("shift_roster", A)
+    check("the print Jadwal mingguan shows the whole week: 7 day columns, Eko's Wednesday Pagi, his Thursday off",
+          st == 200 and all(d in page for d in ("Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"))
+          and "Eko Contoh" in page and "Pagi 07:00-15:00" in page and "Malam 22:00-06:00" in page and "Libur" in page, (st, page[:300]))
+    st, page, ct = citra.print_html("shift_roster", A)
+    check("the Braga supervisor cannot print Dago's week", st in (403, 404), (st, page[:200]))
     # another outlet, same day
     st, rb = hq.create("shift_roster", {"outlet": BRAGA, "week_start": str(nxt), "lines": [week_line(eko_rec, [P, "", "", "", "", "", ""])]})
     st, resp, _ = submit(hq, "shift_roster", rb.get("name", "x")) if st == 201 else (st, rb, "")

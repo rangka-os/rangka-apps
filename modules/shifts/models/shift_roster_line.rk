@@ -1,5 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
-# One employee's week on a shift_roster: a shift pattern per day, empty = day off.
+# One employee's week on a shift_roster: a shift pattern per day, empty = day off. The hidden *_label fields spell each
+# day as text ("Malam 22:00-06:00", "Libur") for the print view jadwal_mingguan, which shows all seven days.
 name: shift_roster_line
 is_child: true
 fields:
@@ -11,3 +12,11 @@ fields:
   - {name: fri, type: link, to: shift_template, label: {id: Jum}, in_list: true}
   - {name: sat, type: link, to: shift_template, label: {id: Sab}, in_list: true}
   - {name: sun, type: link, to: shift_template, label: {id: Min}, in_list: true}
+  - {name: employee_name, type: data, label: {id: Nama}, hidden: true, read_only: true, compute: "employee != '' ? employee.full_name : ''"}
+  - {name: mon_label, type: data, label: {id: mon}, hidden: true, read_only: true, compute: "mon != '' ? mon.shift_name + ' ' + mon.start + '-' + mon.end : 'Libur'"}
+  - {name: tue_label, type: data, label: {id: tue}, hidden: true, read_only: true, compute: "tue != '' ? tue.shift_name + ' ' + tue.start + '-' + tue.end : 'Libur'"}
+  - {name: wed_label, type: data, label: {id: wed}, hidden: true, read_only: true, compute: "wed != '' ? wed.shift_name + ' ' + wed.start + '-' + wed.end : 'Libur'"}
+  - {name: thu_label, type: data, label: {id: thu}, hidden: true, read_only: true, compute: "thu != '' ? thu.shift_name + ' ' + thu.start + '-' + thu.end : 'Libur'"}
+  - {name: fri_label, type: data, label: {id: fri}, hidden: true, read_only: true, compute: "fri != '' ? fri.shift_name + ' ' + fri.start + '-' + fri.end : 'Libur'"}
+  - {name: sat_label, type: data, label: {id: sat}, hidden: true, read_only: true, compute: "sat != '' ? sat.shift_name + ' ' + sat.start + '-' + sat.end : 'Libur'"}
+  - {name: sun_label, type: data, label: {id: sun}, hidden: true, read_only: true, compute: "sun != '' ? sun.shift_name + ' ' + sun.start + '-' + sun.end : 'Libur'"}
