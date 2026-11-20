@@ -328,10 +328,13 @@ fields:
     type: currency
     label: {id: Jumlah potongan, en: Total deductions}
     compute: employee_bpjs + pph21 + other_deduction
-  # The reimbursement is added after the deductions: it is paid with the salary, never taxed (rangka-apps#117).
+  # The reimbursement is added after the deductions: it is paid with the salary, never taxed (rangka-apps#117). This is
+  # the one amount the employee receives and the salary transfer list pays: after BPJS, PPh 21 and the kasbon
+  # installment, with the reimbursement included.
   - name: net_pay
     type: currency
-    label: {id: Gaji bersih}
+    label: {id: Gaji bersih diterima, en: Net pay received}
+    help: {id: 'Yang ditransfer ke karyawan: sudah dipotong BPJS, PPh 21 dan kasbon, sudah ditambah penggantian biaya'}
     compute: cash_gross - employee_bpjs - pph21 - other_deduction + reimbursement
     in_list: true
   - name: employer_cost

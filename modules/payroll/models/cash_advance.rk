@@ -51,6 +51,8 @@ fields:
     default: user.name
     read_only: true
     set_once: true
+    # shown only when someone else raised it (finance for the worker); the worker's own request needs no second name
+    depends_on: "requested_by != employee"
   # Made by a staff member for themself (not by finance or head office): its worker must be theirs.
   - name: self_request
     type: check
@@ -124,4 +126,5 @@ views:
       - section: {id: Kasbon}
         columns:
           - [worker, advance_date, amount, installment, installments]
-          - [method, notes, requested_by, employee]
+          # employee names the same person as the worker: kept on the record and the lists, not repeated here
+          - [method, notes, requested_by]

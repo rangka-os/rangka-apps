@@ -51,7 +51,7 @@
 </table>
 </div>
 </div>
-{{if .Doc.reimbursement}}<p class="note">Ditambah penggantian biaya (klaim, tidak kena pajak): {{rupiah .Doc.reimbursement}}.</p>{{end}}
+{{if .Doc.reimbursement}}<p class="note">Sudah termasuk penggantian biaya (klaim, tidak kena pajak): {{rupiah .Doc.reimbursement}}.</p>{{end}}
 <div class="net"><span>Gaji bersih diterima</span><span>{{rupiah .Doc.net_pay}}</span></div>
 <p class="note">Ditanggung perusahaan, tidak dipotong dari gaji: JKK {{rupiah .Doc.jkk}}, JKM {{rupiah .Doc.jkm}}, JHT 3,7% {{rupiah .Doc.jht_employer}}, JP 2% {{rupiah .Doc.jp_employer}}, BPJS Kesehatan 4% {{rupiah .Doc.kes_employer}}.
 Dasar upah BPJS {{rupiah .Doc.bpjs_base}}. {{if .Doc.ter_daily}}PPh 21 TER harian, bruto sehari {{rupiah .Doc.daily_gross}}{{else}}PPh 21 kategori TER {{.Doc.ter_category}}{{end}}, bruto {{rupiah .Doc.gross_taxable}}.</p>

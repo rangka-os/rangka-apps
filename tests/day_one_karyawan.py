@@ -298,7 +298,7 @@ def scenario_karyawan_month(api):
     if check("finance downloads the transfer list as CSV", st == 200 and ctype.startswith("text/csv"), (st, ctype, body[:200])):
         rows = list(csv.reader(io.StringIO(body.lstrip("﻿"))))
         head, data = rows[0], [x for x in rows[1:] if x]
-        eq("the file has the transfer columns in order", head, ["No. rekening", "Nama pemilik rekening", "Bank", "Gaji bersih", "Berita transfer"])
+        eq("the file has the transfer columns in order", head, ["No. rekening", "Nama pemilik rekening", "Bank", "Gaji bersih diterima", "Berita transfer"])
         with_acct = [s for s in subs if s.get("bank_account") and s["net_pay"] > 0]
         eq("one row per slip with an account (Fajar left out), sorted by name",
            [x[1] for x in data], sorted(s["account_holder"] for s in with_acct))
@@ -518,6 +518,13 @@ def scenario_karyawan_kasbon_claims(api):
     eq("a new slip of that month deducts the 500.000 again and repays it", (sl.get("other_deduction"), st2, bal.get("state")), (500_000, 200, "repaid"))
     st, sl = slip(runs[3], "USR-005")
     eq("a fourth month deducts nothing", (st, sl.get("cash_advance") or "", sl.get("other_deduction")), (201, "", 0))
+    rows_ = []
+    flt = f"payroll_run == '{runs[0]}' && docstatus == 1 && employee == 'USR-005'"
+    st, body, ctype = fm.html(f"/api/v1/export/r/payslip?filter={Api.q(flt)}&columns={TRANSFER_COLUMNS}")
+    rows_ = [x for x in csv.reader(io.StringIO(body.lstrip("\ufeff"))) if x][1:] if st == 200 else []
+    c1 = (fm.find("payslip", flt) or [{}])[0]
+    eq("the transfer list pays Citra her net after the 500.000 kasbon installment",
+       [int(x[3]) for x in rows_], [c1.get("cash_gross", 0) - c1.get("employee_bpjs", 0) - c1.get("pph21", 0) - 500_000 + c1.get("reimbursement", 0)])
     fm.call("DELETE", f"/api/v1/r/payslip/{Api.q(sl.get('name', 'x'))}")
     st, resp = fm.verb("cash_advance", K, "cancel")
     check("a kasbon repaid by submitted slips cannot be cancelled", st == 422 and "advance_repaid" in rules_of(resp), (st, resp))
@@ -623,6 +630,13 @@ def scenario_karyawan_kasbon_claims(api):
     st, sl = slip(R, "USR-003")
     st2, resp, S2 = submit(sl.get("name", "x"))
     eq("a new slip of the month carries only the claim still due (75.000) and pays it", (sl.get("reimbursement"), st2), (75_000, 200))
+    # the transfer list pays the slip's one received amount: net after BPJS, PPh 21 and the kasbon, plus the claims
+    s2 = fm.get("payslip", S2)
+    flt = f"name == '{S2}'"
+    st, body, ctype = fm.html(f"/api/v1/export/r/payslip?filter={Api.q(flt)}&columns={TRANSFER_COLUMNS}")
+    rows_ = [x for x in csv.reader(io.StringIO(body.lstrip("\ufeff"))) if x][1:] if st == 200 else []
+    eq("the transfer list pays Ayu cash gross - BPJS - PPh 21 - kasbon + reimbursement (75.000 included, untaxed)",
+       [int(x[3]) for x in rows_], [s2.get("cash_gross", 0) - s2.get("employee_bpjs", 0) - s2.get("pph21", 0) - s2.get("other_deduction", 0) + 75_000])
     st, pe2 = fm.create("claim_payment", {"claim": E1, "method": "cash"})
     st, resp = fm.verb("claim_payment", (pe2 or {}).get("name", "x"), "submit") if st == 201 else (st, pe2)
     check("finance pays Eko's claim in cash", st == 200, (st, resp))
