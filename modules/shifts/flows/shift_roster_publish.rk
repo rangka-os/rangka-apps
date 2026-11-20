@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: shift_roster_publish
+label: {id: 'Jadwal mingguan diterbitkan: jadwal shift tiap karyawan tiap hari'}
+# For every line and every day of the week: the day's pattern, or a day off when the cell is empty. Days before today
+# are skipped (a past day is never rewritten: attendance already measured it). A later day that already has an
+# assignment for the employee (the key employee:date is unique) is overwritten with the grid and published, unless it
+# is a working day at another outlet: then the whole publish is refused (shift_guard other_outlet). The assignments are
+# written by this flow as the person who submits (outlet supervisor or head office).
+on: shift_roster.submitted
+if: "'docstatus' in event && event.docstatus == 1"
+steps:
+  - for_each: event.lines
+    as: l
+    do:
+      - for_each: "[0, 1, 2, 3, 4, 5, 6]"
+        as: i
+        do:
+          - if: "event.week_start + duration(i) >= today()"
+            find: shift_assignment
+            where: day_key == l.employee + ':' + string(event.week_start + duration(i))
+            as: ex
+          - if: "event.week_start + duration(i) >= today() && ex != null && ex.outlet != event.outlet && ex.published && !ex.day_off"
+            create: shift_guard
+            set:
+              reason: "'other_outlet'"
+              document: ex.name
+          - if: "event.week_start + duration(i) >= today() && ex != null"
+            update: ex
+            set:
+              outlet: event.outlet
+              shift_template: "[l.mon, l.tue, l.wed, l.thu, l.fri, l.sat, l.sun][i]"
+              day_off: "[l.mon, l.tue, l.wed, l.thu, l.fri, l.sat, l.sun][i] == ''"
+              published: "true"
+              roster: event.name
+          - if: "event.week_start + duration(i) >= today() && ex == null"
+            create: shift_assignment
+            set:
+              employee: l.employee
+              outlet: event.outlet
+              work_date: event.week_start + duration(i)
+              shift_template: "[l.mon, l.tue, l.wed, l.thu, l.fri, l.sat, l.sun][i]"
+              day_off: "[l.mon, l.tue, l.wed, l.thu, l.fri, l.sat, l.sun][i] == ''"
+              published: "true"
+              roster: event.name

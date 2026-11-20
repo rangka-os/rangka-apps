@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: shift_pos_link
+label: {id: 'Sesi kasir dihubungkan ke jadwal shift kasir hari itu'}
+# A cash drawer session (module pos) opened by a cashier who has a published working shift on the opening day links to
+# it (pos_shift.work_shift). Nothing is refused: a session without a shift opens as usual and shows "Tanpa jadwal"
+# (decision rangka-apps#120: selling never stops, no clock-in needed). Runs as the cashier, who reads their own
+# published assignments and writes their own session.
+on: pos_shift.created
+steps:
+  - find: shift_assignment
+    where: day_key == event.employee + ':' + string(event.opening_date) && published && !day_off
+    as: a
+  - if: a != null
+    find: pos_shift
+    where: name == event.name
+    as: s
+  - if: a != null && s != null
+    update: s
+    set:
+      work_shift: a.name
