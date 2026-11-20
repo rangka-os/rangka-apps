@@ -124,6 +124,10 @@ def scenario_stock_request_kasir(api):
     q = api.get("stock_request", req)
     check("the request is sent and names the transfer", q.get("state") == "sent" and q.get("stock_transfer") == tname, q)
     eq("the warehouse holds 15 fewer", bal(api, "OUT-01", item), wh0 - 15)
+    st, r = gani.patch("stock_request", req, {"decision": "reject", "reject_reason": "Berubah pikiran"})
+    check("a sent request cannot be turned to Tolak (decided_once) -> 422", st == 422 and "decided_once" in str(r), (st, r))
+    gl = api.find("gl_entry", f"voucher_type == 'stock_transfer' && voucher_no == '{tname}'")
+    check("the GL lines of Gani's transfer balance", abs(sum(float(g.get("amount") or 0) for g in gl)) < 0.01, gl[:4])
     # Wati receives
     st, rc = wati.create("stock_transfer_receipt", {"stock_transfer": tname, "outlet": "OUT-03", "items": [{"item": item, "qty": 15}]})
     if check("Wati drafts the receipt -> 201", st == 201, (st, rc)):
@@ -141,6 +145,19 @@ def scenario_stock_request_kasir(api):
         check("Gani rejects with a reason -> 200", st == 200, (st, r))
         eq("the request is rejected", api.get("stock_request", n2).get("state"), "rejected")
         eq("a rejected request drafts no transfer", len(api.find("stock_transfer", f"stock_request == '{n2}'")), 0)
+    # Proses then Tolak: the draft stays behind but cannot be sent, and the request stays rejected
+    st, q4 = wati.create("stock_request", {"outlet": "OUT-03", "items": [{"item": item, "qty": 3}]})
+    if check("Wati asks for 3 -> 201", st == 201, (st, q4)):
+        n4 = rec(q4)["name"]
+        gani.patch("stock_request", n4, {"decision": "accept"})
+        d4 = api.find("stock_transfer", f"stock_request == '{n4}' && docstatus == 0")
+        st, r = gani.patch("stock_request", n4, {"decision": "reject", "reject_reason": "Barang rusak di gudang"})
+        check("Gani turns Proses to Tolak before sending -> 200", st == 200, (st, r))
+        if check("the earlier draft is there", len(d4) == 1, d4):
+            st, r = gani.verb("stock_transfer", d4[0]["name"], "submit")
+            check("the draft of a rejected request cannot be sent (request_still_accepted) -> 422",
+                  st == 422 and "request_still_accepted" in str(r), (st, r))
+        eq("the request stays rejected", api.get("stock_request", n4).get("state"), "rejected")
     # cancel path: a third request sent then cancelled is open again and waits for a new decision
     st, q3 = wati.create("stock_request", {"outlet": "OUT-03", "items": [{"item": item, "qty": 2}]})
     if check("Wati asks for 2 -> 201", st == 201, (st, q3)):
@@ -164,6 +181,13 @@ def scenario_warehouse_role_kasir(api):
         return
     rows = gani.find("stock_balance", "outlet == 'OUT-01'")
     check("Gani reads the warehouse's balances without their value", bool(rows) and all("value" not in r and "avg_cost" not in r for r in rows), rows[:2])
+    gl = gani.find("gl_entry", "voucher_type == 'stock_transfer'")
+    check("Gani reads stock transfer GL lines without amounts",
+          bool(gl) and all(not ({"amount", "debit", "credit", "bill_left"} & set(g)) for g in gl), gl[:2])
+    its = gani.list("item", limit=20)
+    check("Gani reads items without their cost", bool(its) and all(not ({"standard_cost", "consignment_cost"} & set(i)) for i in its), its[:1])
+    vs = gani.list("vendor", limit=20)
+    check("Gani reads vendors without terms or what is owed", all(not ({"payment_days", "outstanding"} & set(v)) for v in vs), vs[:1])
     st, r = gani.create("outlet_sales", {"outlet": "OUT-04", "source": "form", "items": []})
     check("Gani cannot book a daily sales form -> 403", st == 403, (st, r))
     st, r = api.create("outlet_sales", {"outlet": "OUT-01", "source": "form", "items": [{"item": "BRG-0001", "qty": 1, "rate": 4000}]})
@@ -257,8 +281,33 @@ def scenario_warehouse_types_produksi(api):
         eq("demo-produksi plan as sold: no store takes an outlet seat", ((sp.get("usage") or {}).get("outlets") or {}).get("used"), 0)
 
 
+
+def scenario_pos_store_only_kasir(api):
+    """Only a store runs the cashier: a warehouse takes no plan seat, so a shift or sale there would be a free seat."""
+    st, r = api.create("pos_shift", {"outlet": "OUT-01", "opening_cash": 0})
+    check("a cashier shift at the warehouse is refused (shift_at_store) -> 422", st == 422 and "shift_at_store" in str(r), (st, r))
+    st, o = api.create("outlet", {"outlet_name": "Toko Uji Kasir", "code": "UJK", "city": "Bandung"})
+    if not check("a test store -> 201", st == 201, (st, o)):
+        return
+    out = rec(o)["name"]
+    st, sh = api.create("pos_shift", {"outlet": out, "opening_cash": 0})
+    if not check("a cashier shift at a store opens -> 201", st == 201, (st, sh)):
+        return
+    shift = rec(sh)["name"]
+    line = [{"item": "BRG-0001", "qty": 1}]
+    st, r = api.create("pos_sale", {"shift": shift, "items": line})
+    check("a sale at the store is drafted -> 201", st == 201, (st, r))
+    st, r = api.patch("outlet", out, {"location_type": "warehouse", "sales_source": "", "moka_name": ""})
+    if check("the store is retyped to a warehouse -> 200", st == 200, (st, r)):
+        st, r = api.create("pos_sale", {"shift": shift, "items": line})
+        check("a sale on its open shift is now refused (sale_at_store) -> 422", st == 422 and "sale_at_store" in str(r), (st, r))
+        st, r = api.patch("outlet", out, {"location_type": "vehicle"})
+        st, r = api.create("pos_shift", {"outlet": out, "opening_cash": 0})
+        check("a vehicle cannot open a cashier shift either -> 422", st == 422 and "shift_at_store" in str(r), (st, r))
+    api.patch("outlet", out, {"active": False})
+
 SCENARIOS = {
-    "demo-kasir": [scenario_warehouse_types_kasir, scenario_stock_request_kasir, scenario_warehouse_role_kasir, scenario_plan_seats_kasir, scenario_reorder_skips_supplied_stores],
+    "demo-kasir": [scenario_warehouse_types_kasir, scenario_stock_request_kasir, scenario_warehouse_role_kasir, scenario_pos_store_only_kasir, scenario_plan_seats_kasir, scenario_reorder_skips_supplied_stores],
     "demo-grosir": [scenario_warehouse_types_grosir, scenario_damaged_warning_grosir],
     "demo-produksi": [scenario_warehouse_types_produksi],
 }

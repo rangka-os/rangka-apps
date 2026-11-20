@@ -71,8 +71,8 @@ rules:
     message: {id: 'Tulis alasan permintaan ditolak'}
   - name: decided_once
     on: save
-    check: "state == '' || state == 'open' || decision != ''"
-    message: {id: 'Permintaan yang sudah dikirim atau ditolak tidak bisa dikosongkan keputusannya'}
+    check: "state == '' || state == 'open' || (state == 'rejected' ? decision == 'reject' : decision == 'accept')"
+    message: {id: 'Keputusan gudang tidak bisa diubah setelah permintaan dikirim atau ditolak'}
 views:
   list:
     columns: [name, outlet, supply_outlet, request_date, needed_by, state]

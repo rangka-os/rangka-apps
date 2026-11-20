@@ -190,7 +190,7 @@ rules:
   - name: store_fields_only
     on: save
     check: "location_type == '' || location_type == 'store' || (moka_name == '' && sales_source == '')"
-    message: {id: 'Gudang tidak punya sumber penjualan: kosongkan Nama outlet di Moka dan Sumber penjualan'}
+    message: {id: 'Hanya toko punya sumber penjualan: pilih Toko, kosongkan Sumber penjualan dan Nama Moka, lalu ganti jenis'}
   # The code is part of document numbers (cashier receipts STRK-<code>-..., kernel contract 0009 §2a), which take it
   # as it is: capital letters and digits, parts joined by "-".
   - name: code_shape

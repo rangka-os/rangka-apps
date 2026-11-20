@@ -8,5 +8,5 @@ if: event.stock_request != ''
 steps:
   - {find: stock_request, where: name == event.stock_request, as: req}
   - update: req
-    if: req != null
+    if: "req != null && req.state == 'open'"
     set: {state: "'sent'", stock_transfer: event.name}

@@ -59,6 +59,11 @@ fields:
     in_filter: true
     compute: "(from_outlet.location_type == '' ? 'store' : from_outlet.location_type) + '>' + (to_outlet.location_type == '' ? 'store' : to_outlet.location_type)"
 rules:
+  # A request's draft is sent only while the request still waits on Proses: Tolak after Proses leaves the draft behind.
+  - name: request_still_accepted
+    on: submit
+    check: "stock_request == '' || (stock_request.state == 'open' && stock_request.decision == 'accept')"
+    message: {id: 'Permintaan barang transfer ini sudah ditolak atau ditutup; batalkan draft ini'}
   - name: different_outlets
     on: save
     check: from_outlet != to_outlet

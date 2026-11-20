@@ -267,7 +267,8 @@ the cashier's manual discounts only (`manual_discount_total`). `MATRIX` rows liv
 An `outlet` row is any stock location; `location_type` (store, warehouse, vehicle, quarantine, production) tells them
 apart, and only stores take a plan outlet seat (`limit_scope: {outlets: is_store}`, rangka-os contract 0057 §5). A store
 asks its warehouse for goods with `stock_request`; the warehouse sets `decision` (Proses or Tolak) and flow
-`stock_request_decided` drafts the transfer. `decision` and `reject_reason` are `read_only_for: [outlet_staff, cashier]`.
+`stock_request_decided` drafts the transfer. Only a store runs the cashier: `pos_shift.shift_at_store` and
+`pos_sale.sale_at_store` (pos 1.6.0) refuse every other location type, vehicles too, since none of them takes a seat. `decision` and `reject_reason` are `read_only_for: [outlet_staff, cashier]`.
 
 `warehouse_staff` (Staf gudang stok, role file in the `users` module, offered by `stok_outlet`, `grosir_distribusi` and
 `produksi_pabrik`) has **no row scope** in v1: contract 0010 §5 lets a scoped member write only when every filled scope
