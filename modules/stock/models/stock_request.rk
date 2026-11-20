@@ -9,7 +9,6 @@ name: stock_request
 label: {id: Permintaan barang ke gudang, en: Stock request}
 icon: stock
 naming: REQ-{YYYY}-{#####}
-title_field: outlet
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, export: true, print: true}
   - {role: outlet_staff, read: true, create: true, write: true, print: true}
