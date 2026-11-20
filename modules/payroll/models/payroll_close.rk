@@ -42,6 +42,7 @@ fields:
   - {name: total_employer_cost, type: currency, label: {id: Biaya perusahaan}, compute: payroll_run.total_employer_cost}
   - {name: total_timesheet_cost, type: currency, label: {id: Biaya sudah dari absensi}, compute: payroll_run.total_timesheet_cost}
   - {name: total_other_deduction, type: currency, label: {id: Potongan lain (kasbon)}, compute: payroll_run.total_other_deduction}
+  - {name: total_reimbursement, type: currency, label: {id: Penggantian biaya, en: Expense reimbursements}, compute: payroll_run.total_reimbursement}
   - {name: deposit_bpjs_tk, type: currency, label: {id: Setoran BPJS Ketenagakerjaan}, compute: payroll_run.deposit_bpjs_tk}
   - {name: deposit_bpjs_kes, type: currency, label: {id: Setoran BPJS Kesehatan}, compute: payroll_run.deposit_bpjs_kes}
   - {name: fee_amount, type: currency, label: {id: Management fee}, compute: payroll_run.fee_amount}
@@ -80,5 +81,5 @@ views:
           - [period_from, period_to, billing_mode]
       - section: {id: Setoran dan biaya}
         columns:
-          - [headcount, total_cash_gross, total_employee_bpjs, total_other_deduction, total_net_pay, total_pph21]
+          - [headcount, total_cash_gross, total_employee_bpjs, total_other_deduction, total_reimbursement, total_net_pay, total_pph21]
           - [total_employer_bpjs, deposit_bpjs_tk, deposit_bpjs_kes, total_employer_cost, total_timesheet_cost, extra_cost, fee_amount]

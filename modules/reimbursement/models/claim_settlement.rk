@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: claim_settlement
+label: {id: Status bayar klaim, en: Claim settlement}
+icon: receipt
+naming: KSL-{######}
+title_field: claim
+# Whether one approved expense claim was paid back, and by what (rangka-apps#117). A submitted claim cannot change
+# (contract 0022), so this record carries it: made when the claim is submitted (claim_settlement_on_submit, as the
+# claimant), marked paid by a submitted claim_payment or payslip, released when that one is cancelled, cancelled with
+# the claim. Nobody types it. The finance list "Klaim menunggu dibayar" is this list filtered on not paid.
+permissions:
+  # finance pays (claim_payment, slips) and so writes it; head office cancels claims and so writes it too
+  - {role: finance_manager, read: true, write: true, export: true}
+  - {role: head_office, read: true, create: true, write: true, export: true}
+  # the claim's submit runs as the claimant, who creates this record and reads their own
+  - {role: employee, read: true, create: true, if: "employee == user.name"}
+  - {role: cashier, read: true, create: true, if: "employee == user.name"}
+  - {role: outlet_staff, read: true, create: true, if: "employee == user.name"}
+  # the outlet supervisor reads the claims of their outlets (row scope on outlet) and creates their own
+  - {role: outlet_supervisor, read: true}
+  - {role: outlet_supervisor, create: true, if: "employee == user.name"}
+  # the recap flow of a client run reads it when it drafts a slip (payslip_from_recap runs as the project admin)
+  - {role: project_admin, read: true}
+fields:
+  - {name: claim, type: link, to: expense_claim, label: {id: Klaim}, required: true, unique: true, read_only: true, in_list: true}
+  - {name: employee, type: link, to: user, label: {id: Karyawan, en: Employee}, read_only: true, in_list: true}
+  - {name: claim_date, type: date, label: {id: Tanggal biaya}, read_only: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, read_only: true, depends_on: app_installed('outlets')}
+  - {name: amount, type: currency, label: {id: Jumlah}, default: '0', read_only: true, in_list: true}
+  - name: pay_with
+    type: select
+    label: {id: Dibayar lewat, en: Paid back with}
+    read_only: true
+    in_list: true
+    options:
+      - {value: payroll, label: {id: Bersama gaji berikutnya}}
+      - {value: cash, label: {id: Tunai}}
+      - {value: bank, label: {id: Transfer bank}}
+  - {name: paid, type: check, label: {id: Sudah dibayar, en: Paid}, default: 'false', read_only: true, in_list: true}
+  # the claim_payment or payslip that paid it
+  - {name: paid_by, type: data, label: {id: Dibayar dengan, en: Paid by}, read_only: true, in_list: true}
+  - {name: paid_on, type: date, label: {id: Tanggal bayar, en: Paid on}, read_only: true}
+  - {name: cancelled, type: check, label: {id: Klaim dibatalkan}, default: 'false', read_only: true}
+  - name: state
+    type: select
+    label: {id: Status, en: State}
+    compute: "cancelled ? 'cancelled' : (paid ? 'paid' : 'due')"
+    options:
+      - {value: due, label: {id: Menunggu dibayar, en: Due}}
+      - {value: paid, label: {id: Dibayar, en: Paid}}
+      - {value: cancelled, label: {id: Dibatalkan, en: Cancelled}}
+views:
+  list:
+    columns: [claim, claim_date, employee, amount, pay_with, state, paid_by]
+    filters: [employee, pay_with, state]
+    sort: claim_date

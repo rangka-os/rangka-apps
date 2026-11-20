@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: cash_advance_balance_on_cancel
+label: {id: Sisa kasbon ditutup saat kasbon dibatalkan}
+# A kasbon can only be cancelled while no submitted slip repays it (cash_advance_cancel_guard), so nothing was repaid:
+# its balance is marked cancelled (a flow does not delete). A kasbon of before #117 has no balance: nothing to do.
+on: cash_advance.cancelled
+steps:
+  - find: cash_advance_balance
+    where: cash_advance == event.name
+    as: bal
+  - if: bal != null
+    update: bal
+    set:
+      cancelled: 'true'

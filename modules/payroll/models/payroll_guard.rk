@@ -32,6 +32,7 @@ fields:
       - {value: advance_repaid, label: {id: Kasbon sudah dipotong}}
       - {value: casual_after_permanent, label: {id: Slip tetap terakhir belum dihitung ulang}}
       - {value: attendance_changed, label: {id: Rekap absen berubah sejak slip diisi}}
+      - {value: advance_open, label: {id: Kasbon sebelumnya belum lunas}}
   - name: document
     type: data
     label: {id: Dokumen}
@@ -92,3 +93,7 @@ rules:
     on: save
     check: reason != 'attendance_changed'
     message: {id: 'Rekap absen karyawan ini berubah sejak slip diisi (dibatalkan atau diajukan ulang): centang Isi slip dari absen lagi di periode gajinya'}
+  - name: advance_open
+    on: save
+    check: reason != 'advance_open'
+    message: {id: 'Pekerja ini masih punya kasbon yang belum lunas; satu kasbon per pekerja sampai lunas'}

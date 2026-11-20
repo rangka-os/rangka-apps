@@ -201,6 +201,8 @@ fields:
   - {name: total_employer_cost, type: currency, label: {id: Biaya perusahaan}, default: '0', read_only: true}
   - {name: total_timesheet_cost, type: currency, label: {id: Biaya sudah dari absensi}, default: '0', read_only: true}
   - {name: total_other_deduction, type: currency, label: {id: Potongan lain (kasbon)}, default: '0', read_only: true}
+  # Expense claims paid with the salary (payslip.reimbursement, rangka-apps#117): inside total_net_pay, not a wage cost.
+  - {name: total_reimbursement, type: currency, label: {id: Penggantian biaya, en: Expense reimbursements}, default: '0', read_only: true}
   - {name: deposit_bpjs_tk, type: currency, label: {id: Setoran BPJS Ketenagakerjaan}, default: '0', read_only: true}
   - {name: deposit_bpjs_kes, type: currency, label: {id: Setoran BPJS Kesehatan}, default: '0', read_only: true}
   - name: fee_amount
@@ -283,5 +285,5 @@ views:
           - [wage_item, bpjs_item, fee_item, invoice_date]
       - section: {id: Ringkasan}
         columns:
-          - [headcount, total_cash_gross, total_employer_bpjs, total_employee_bpjs, total_pph21, total_other_deduction, total_net_pay]
+          - [headcount, total_cash_gross, total_employer_bpjs, total_employee_bpjs, total_pph21, total_other_deduction, total_reimbursement, total_net_pay]
           - [total_employer_cost, total_timesheet_cost, extra_cost, deposit_bpjs_tk, deposit_bpjs_kes, fee_amount]

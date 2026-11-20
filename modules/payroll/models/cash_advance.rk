@@ -5,21 +5,67 @@ icon: wallet
 is_submittable: true
 naming: KSB-{YYYY}-{#####}
 title_field: worker
-# Money lent to a worker ahead of their pay (kasbon). Submitting it books Dr Piutang karyawan (1-1330) / Cr Kas or Bank
-# (accounting module), so the repayment taken from wages (payslip other_deduction, Cr 1-1330 in the payroll close)
-# brings the receivable back to 0 instead of below it (audit akuntansi r4 L-i). Finance gives and records it. A slip
-# links the kasbon it repays (payslip.cash_advance): the kasbon cannot be cancelled while a submitted slip repays it,
-# and the live slips never deduct more than its amount (payslip_advance_guard, cash_advance_cancel_guard).
+# Money lent to a worker ahead of their pay (kasbon), always interest-free: the worker pays back exactly the amount, so
+# it stays a receivable and never a loan product (rangka-apps#117, DECISIONS.md 20 Nov 2026). Submitting it books
+# Dr Piutang karyawan (1-1330) / Cr Kas or Bank (accounting module), so the repayment taken from wages (payslip
+# other_deduction, Cr 1-1330 in the payroll close) brings the receivable back to 0 instead of below it (audit akuntansi
+# r4 L-i).
+#
+# Request (rangka-apps#117): a staff member drafts their own kasbon (amount, installment, purpose); the draft is the
+# request. Finance picks the worker the money goes to and submits it: the submit is the approval, since it books the
+# cash out. A site that wants a second person above an amount adds an approvals: policy in custom/cash_advance.rk
+# (contract 0007 §1), as for purchase orders.
+#
+# Repayment: `installment` is the deduction per month; the slip-making flows put min(installment, remaining) on the next
+# slip (payslip.other_deduction with the link cash_advance). Without an installment (0, the kasbon of before #117) the
+# deduction is typed on the slip. A slip links the kasbon it repays: the kasbon cannot be cancelled while a submitted
+# slip repays it, and the live slips never deduct more than its amount (payslip_advance_guard,
+# cash_advance_cancel_guard). One kasbon of a worker is open at a time (cash_advance_open_guard), so a slip repays one
+# kasbon. What is left is kept on cash_advance_balance (a submitted kasbon cannot change).
 permissions:
   - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: project_admin, read: true}
+  # Staff request their own kasbon and read their own; they never submit (finance pays it out). They edit or delete
+  # only their own request and only until finance picks the worker: a kasbon finance drafted, or a request finance has
+  # taken up, cannot be raised by the worker before finance's submit pays it out (audit #117 F1).
+  - {role: employee, read: true, if: "requested_by == user.name || employee == user.name"}
+  - {role: employee, create: true, write: true, delete: true, if: "requested_by == user.name && worker == ''"}
+  - {role: cashier, read: true, if: "requested_by == user.name || employee == user.name"}
+  - {role: cashier, create: true, write: true, delete: true, if: "requested_by == user.name && worker == ''"}
+  - {role: outlet_staff, read: true, if: "requested_by == user.name || employee == user.name"}
+  - {role: outlet_staff, create: true, write: true, delete: true, if: "requested_by == user.name && worker == ''"}
+  - {role: outlet_supervisor, read: true, if: "requested_by == user.name || employee == user.name"}
+  - {role: outlet_supervisor, create: true, write: true, delete: true, if: "requested_by == user.name && worker == ''"}
 fields:
+  # Empty on a staff request (staff do not read the worker list): finance picks it before submitting (rule
+  # worker_on_submit), and on a request it must be the requester's own worker record (rule request_own_worker).
   - name: worker
     type: link
     to: worker
     label: {id: Tenaga kerja}
-    required: true
     in_list: true
+  - name: requested_by
+    type: link
+    to: user
+    label: {id: Diajukan oleh, en: Requested by}
+    default: user.name
+    read_only: true
+    set_once: true
+    # shown only when someone else raised it (finance for the worker); the worker's own request needs no second name
+    depends_on: "requested_by != employee"
+  # Made by a staff member for themself (not by finance or head office): its worker must be theirs.
+  - name: self_request
+    type: check
+    label: {id: Diajukan karyawan sendiri, en: Requested by the employee}
+    hidden: true
+    read_only: true
+    default: "!('finance_manager' in user.roles) && !('head_office' in user.roles) && !('owner' in user.roles)"
+  # The person who receives it and repays it: the worker's employee record, or the requester while no worker is set.
+  - name: employee
+    type: link
+    to: user
+    label: {id: Karyawan, en: Employee}
+    compute: "worker != '' ? worker.employee : requested_by"
   - name: advance_date
     type: date
     label: {id: Tanggal kasbon}
@@ -31,6 +77,18 @@ fields:
     label: {id: Jumlah}
     required: true
     in_list: true
+  # Deducted from each monthly slip until the kasbon is repaid; 0 = typed on each slip by finance.
+  - name: installment
+    type: currency
+    label: {id: Potongan per bulan, en: Monthly installment}
+    default: '0'
+    in_list: true
+  # Ceiling of amount / installment for whole rupiah (the validators know no ceil): floor((a + i - 1) / i), with the
+  # floor of a non-negative x written round(x - 0.5) as in payslip.rk.
+  - name: installments
+    type: int
+    label: {id: Berapa kali potong, en: Number of installments}
+    compute: "installment > 0 ? round((amount + installment - 1) * 1.0 / installment - 0.5) : 0"
   - name: method
     type: select
     label: {id: Dibayar dari}
@@ -46,8 +104,27 @@ rules:
     on: save
     check: amount > 0 && amount == round(amount)
     message: {id: Jumlah kasbon harus rupiah bulat lebih dari 0}
+  - name: installment_range
+    on: save
+    check: installment >= 0 && installment == round(installment) && installment <= amount
+    message: {id: 'Potongan per bulan rupiah bulat, tidak lebih dari jumlah kasbon'}
+  - name: worker_on_submit
+    on: submit
+    check: worker != ''
+    message: {id: 'Pilih tenaga kerja yang menerima kasbon ini sebelum diajukan'}
+  - name: request_own_worker
+    on: save
+    check: "worker == '' || !self_request || worker.employee == requested_by"
+    message: {id: 'Kasbon yang diajukan karyawan hanya untuk dirinya sendiri'}
 views:
   list:
-    columns: [name, advance_date, worker, amount, method]
+    columns: [name, advance_date, worker, amount, installment, method, status]
     filters: [worker]
     sort: -advance_date
+  form:
+    layout:
+      - section: {id: Kasbon}
+        columns:
+          - [worker, advance_date, amount, installment, installments]
+          # employee names the same person as the worker: kept on the record and the lists, not repeated here
+          - [method, notes, requested_by]
