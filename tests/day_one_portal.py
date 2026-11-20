@@ -44,11 +44,14 @@ def scenario_portal_invoice_link(api):
     st, pages = api.call("GET", "/api/v1/portal")
     check("portal: the owner may share the invoicing page tagihan", st == 200 and any(p.get("name") == "tagihan" for p in pages.get("data", [])), (st, pages))
 
-    # a default rekening with a static QRIS, so a submitted invoice gets its payment instruction
+    # a default rekening with a static QRIS, so a submitted invoice gets its payment instruction; the holder and the
+    # QRIS merchant are the business itself, as a customer expects to see one payee name
+    st, orgs = api.call("GET", "/api/v1/orgs")
+    business = next((o["name"] for o in (orgs or {}).get("data", []) if o.get("current")), "") or "PT Contoh"
     accounts = api.find("bank_account", "is_default == true && active == true")
     if not accounts:
-        st, acct = api.create("bank_account", {"bank": "BCA", "account_no": "1230000064", "holder": "PT Contoh Jasa Teknik", "is_default": True,
-                                               "qris_payload": qris_payload("PT CONTOH JASA", "ID1020000000264"),
+        st, acct = api.create("bank_account", {"bank": "BCA", "account_no": "1230000064", "holder": business, "is_default": True,
+                                               "qris_payload": qris_payload(business.upper()[:25], "ID1020000000264"),
                                                "instructions": "Tulis nomor faktur di berita transfer."})
         check("portal: default rekening with static QRIS", st == 201, (st, acct))
         accounts = [acct] if st == 201 else []
@@ -107,12 +110,13 @@ def scenario_portal_invoice_link(api):
     # misses
     other = token[:-1] + ("B" if token[-1] == "A" else "A")
     st, d2, _, _ = customer_get(base, path.rsplit("/", 1)[0] + "/" + other + "/data")
-    check("portal: one character changed in the token is 404", st == 404 and (d2 or {}).get("error", {}).get("code") == "portal_link_unknown", (st, d2))
+    check("portal: one character changed in the token is 404, naming no seller",
+          st == 404 and (d2 or {}).get("error", {}).get("code") == "portal_link_unknown" and "org" not in (d2 or {}), (st, d2))
     out = sql(f"update rk_portal_links set expires_at = now() - interval '1 minute' where id = '{link['id']}'")
     check("portal: (setup) the link's 30 days pass", out.startswith("UPDATE 1"), out)
     st, d3, _, _ = customer_get(base, path + "/data")
-    check("portal: an expired link says 'Tautan sudah kedaluwarsa, minta tautan baru' (410)",
-          st == 410 and "kedaluwarsa" in (d3 or {}).get("error", {}).get("message", ""), (st, d3))
+    check("portal: an expired link says 'Tautan sudah kedaluwarsa, minta tautan baru' (410) and names the seller to ask",
+          st == 410 and "kedaluwarsa" in (d3 or {}).get("error", {}).get("message", "") and (d3 or {}).get("org", {}).get("name") == business, (st, d3))
     st, link2 = api.call("POST", "/api/v1/portal/tagihan/links", {"record": name, "days": 7})
     check("portal: a new link for 7 days", st == 201 and link2.get("expires_at"), (st, link2))
     st, resp = api.call("POST", "/api/v1/portal/tagihan/links/revoke", {"record": name, "id": link2.get("id")})
@@ -123,6 +127,17 @@ def scenario_portal_invoice_link(api):
     rows = (links or {}).get("data", [])
     check("portal: the owner sees both links, their views, no token",
           len(rows) == 2 and any(r.get("views", 0) >= 2 for r in rows) and token not in json.dumps(rows), rows)
+    # a foreign-currency invoice: its prices live in _fx twins the page does not list, so v1 makes no link
+    st, fx = api.create("sales_invoice", dict(invoice_body(customer["name"], item, rate=0, tax_rate=0, tax_rate_reason="not_taxable"),
+                                              currency="USD", exchange_rate=16000, items=[{"item": item, "qty": 1, "rate_fx": 1000}]))
+    if st == 201:
+        st, resp = api.verb("sales_invoice", fx["name"], "submit", {"force": True})
+        fx_name = resp.get("name", fx["name"]) if isinstance(resp, dict) else fx["name"]
+        st, resp = api.call("POST", "/api/v1/portal/tagihan/links", {"record": fx_name})
+        check("portal: a USD invoice gets no customer link in v1 (409 portal_currency_unsupported)",
+              st == 409 and (resp or {}).get("error", {}).get("code") == "portal_currency_unsupported", (st, resp))
+    else:
+        fail("portal: USD invoice for the currency check", (st, fx))
     st, audit = api.call("GET", "/api/v1/system/audit?kind=portal.")
     entries = (audit or {}).get("data", audit if isinstance(audit, list) else [])
     check("portal: views and link changes are audited without the token",
