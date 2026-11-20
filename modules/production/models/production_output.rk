@@ -14,7 +14,7 @@ fields:
   - name: expiry_date
     type: date
     label: {id: Kedaluwarsa}
-    compute: "item == parent.item ? parent.expiry_date : (item.shelf_life_days > 0 ? parent.production_date + duration(item.shelf_life_days) : '')"
+    compute: "item.tracking != 'lot_expiry' ? '' : (item == parent.item ? parent.expiry_date : (item.shelf_life_days > 0 ? parent.production_date + duration(item.shelf_life_days) : ''))"
     depends_on: "item.tracking == 'lot_expiry'"
   - {name: made_date, type: date, label: {id: Tanggal produksi}, compute: parent.production_date, hidden: true}
   - {name: serial_nos, type: text, label: {id: Nomor seri}, depends_on: "item.tracking == 'serial'", help: {id: 'Satu nomor seri per baris'}}

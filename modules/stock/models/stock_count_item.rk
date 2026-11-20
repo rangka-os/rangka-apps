@@ -31,8 +31,3 @@ fields:
     type: float
     label: {id: Selisih}
     read_only: true
-  # rangka-os contract 0070 §7: for a lot item one line counts one lot (system_qty is that lot's quantity); a full count
-  # of the item lists every lot and a line with no lot number for stock without one. A lot not seen before is created
-  # like an incoming lot, so a lot with expiry needs expiry_date.
-  - {name: lot_no, type: data, label: {id: Nomor lot}, depends_on: "item.tracking in ['lot', 'lot_expiry']", help: {id: 'Satu baris per lot. Kosongkan untuk stok tanpa nomor lot'}}
-  - {name: expiry_date, type: date, label: {id: Kedaluwarsa}, depends_on: "item.tracking == 'lot_expiry'", help: {id: 'Hanya perlu untuk lot yang belum tercatat'}}

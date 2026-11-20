@@ -18,11 +18,13 @@ fields:
   - {name: outlet, type: link, to: outlet, label: {id: Lokasi}, required: true, read_only: true, in_list: true}
   - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
   - {name: lot, type: link, to: stock_lot, label: {id: Lot}, read_only: true, in_list: true, help: {id: 'Kosong = stok tanpa nomor lot'}}
+  # the lot number as text for the list, "Tanpa lot" on the no-lot bucket row (a link cell would be empty)
+  - {name: lot_no, type: data, label: {id: Nomor lot}, read_only: true, in_list: true, compute: "lot != '' ? lot.lot_no : 'Tanpa lot'"}
   - {name: qty, type: float, label: {id: Qty}, read_only: true, in_list: true}
   - {name: expiry_date, type: date, label: {id: Kedaluwarsa}, read_only: true, in_list: true, compute: "lot != '' ? lot.expiry_date : ''"}
   - {name: negative, type: check, label: {id: Stok minus}, compute: qty < 0, in_list: true}
 views:
   list:
-    columns: [item, lot, expiry_date, outlet, qty, negative]
+    columns: [item, lot_no, expiry_date, outlet, qty, negative]
     filters: [outlet, item, lot, negative]
     sort: expiry_date

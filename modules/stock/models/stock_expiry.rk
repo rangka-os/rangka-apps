@@ -36,6 +36,10 @@ fields:
       - {value: expired, label: {id: Sudah kedaluwarsa}}
   - {name: alerted_on, type: date, label: {id: Tanggal dikabari}, read_only: true}
   - {name: open, type: check, label: {id: Masih ada stoknya}, read_only: true, in_list: true, in_filter: true}
+  # the digest's bookkeeping: the day it last refreshed the row (it refreshes the least recently checked first) and
+  # whether the notice about the row went out
+  - {name: checked_on, type: date, label: {id: Terakhir diperiksa}, read_only: true}
+  - {name: notified, type: check, label: {id: Sudah dikabari}, read_only: true}
 views:
   list:
     columns: [item, lot, expiry_date, days_left, outlet, qty, state]

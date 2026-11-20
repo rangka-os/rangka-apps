@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Never stored: a flow that must refuse the change it runs in creates one of these with a reason, and the matching rule
+# fails with that reason's message, which rolls the whole change back (the delivery_guard pattern). Create is granted
+# to the roles that write items, whose saves run flow item_tracking_lock.
+name: stock_guard
+label: {id: Penjaga stok, en: Stock guard}
+icon: check
+naming: SGR-{######}
+title_field: reason
+permissions:
+  - {role: head_office, create: true}
+  - {role: sales_manager, create: true}
+  - {role: finance_manager, create: true}
+  - {role: purchasing_manager, create: true}
+  - {role: project_admin, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: lots_in_stock, label: {id: Masih ada stok per lot}}
+      - {value: serials_in_stock, label: {id: Masih ada nomor seri di gudang}}
+      - {value: stock_without_serials, label: {id: Stok belum bernomor seri}}
+  - name: document
+    type: data
+    label: {id: Dokumen}
+rules:
+  - name: lots_in_stock
+    on: save
+    check: reason != 'lots_in_stock'
+    message: {id: 'Barang ini masih punya stok per lot. Habiskan atau sesuaikan stok lotnya dulu sebelum pelacakan lot dimatikan'}
+  - name: serials_in_stock
+    on: save
+    check: reason != 'serials_in_stock'
+    message: {id: 'Masih ada nomor seri barang ini di gudang atau dalam perjalanan. Keluarkan unitnya dulu sebelum pelacakan nomor seri dimatikan'}
+  - name: stock_without_serials
+    on: save
+    check: reason != 'stock_without_serials'
+    message: {id: 'Barang ini masih punya stok tanpa nomor seri. Nolkan stoknya dulu (opname atau penyesuaian), lalu terima lagi dengan nomor serinya'}

@@ -111,7 +111,7 @@ fields:
   - name: expiry_warning_days
     type: int
     label: {id: Kabari sebelum kedaluwarsa (hari), en: Expiry warning (days)}
-    help: {id: 'Lot yang kedaluwarsa dalam jumlah hari ini masuk daftar Stok hampir kedaluwarsa'}
+    help: {id: 'Lot yang kedaluwarsa dalam jumlah hari ini masuk daftar Stok hampir kedaluwarsa. 0 = 30 hari'}
     default: '30'
     depends_on: app_installed('stock') && tracking == 'lot_expiry'
   - name: standard_cost

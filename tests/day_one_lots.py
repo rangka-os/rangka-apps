@@ -25,6 +25,9 @@ MATRIX = {
     # the expiry-soon list, written by flow lot_expiry_digest only
     "stock_expiry": {"head_office": {"read", "export"}, "purchasing_manager": {"read", "export"}, "sales_manager": _R,
                      "outlet_staff": _R, "warehouse_staff": _R},
+    # never stored: flow item_tracking_lock's refusal, created as the role that saves the item
+    "stock_guard": {"head_office": {"create"}, "sales_manager": {"create"}, "finance_manager": {"create"},
+                    "purchasing_manager": {"create"}, "project_admin": {"create"}},
 }
 
 
@@ -212,6 +215,7 @@ def scenario_lots_delivery_grosir(api):
         st, r = submit(hq, "sales_return", rec(ret)["name"])
         if check("sales return submitted -> 200", st == 200, (st, r)):
             eq("the returned bottle sits in the no-lot bucket", lots(api, GUDANG, obat).get(""), 1)
+            eq("... whose row reads Tanpa lot", [x.get("lot_no") for x in api.find("stock_lot_balance", f"item == '{obat}' && lot == ''")], ["Tanpa lot"])
             eq("IMEI-001 is back in stock", serial_state(api, hp, "IMEI-001"), ("in_stock", GUDANG))
             st, r = hq.verb("sales_return", rec(r).get("name") or rec(ret)["name"], "cancel")
             if check("the return is cancelled -> 200", st == 200, (st, r)):
@@ -237,18 +241,16 @@ def scenario_lots_transfer_count_grosir(api):
         st, r = submit(api, "stock_transfer_receipt", rec(rc)["name"])
         check("receipt submitted -> 200", st == 200, (st, r))
     eq("the same lots arrive in the van", lots(api, KANVAS, obat), {"SB-C": 1, "SB-B": 4})
-    # count one lot: 15 of SB-B on the shelf, the system says 16
-    st, c = api.create("stock_count", {"outlet": GUDANG, "count_date": day(0), "items": [{"item": obat, "counted_qty": 15, "lot_no": "SB-B"},
-                                                                                         {"item": obat, "counted_qty": 1, "lot_no": "SB-B"}]})
-    check("a lot counted on two lines -> 422 lot_once", st == 422 and "lot_once" in str(c), (st, c))
-    st, c = api.create("stock_count", {"outlet": GUDANG, "count_date": day(0), "items": [{"item": obat, "counted_qty": 15, "lot_no": "SB-B"}]})
-    if check("a count of lot SB-B -> 201", st == 201, (st, c)):
+    # a count stays whole-item (audit 2026-11-21 F1: a no-lot line on a lot item would count only the bucket): the
+    # shelf holds 19 of the 20 the system knows (SB-B 16, SB-OLD 4)
+    st, c = api.create("stock_count", {"outlet": GUDANG, "count_date": day(0), "items": [{"item": obat, "counted_qty": 19}]})
+    if check("a count of the item -> 201", st == 201, (st, c)):
         st, r = submit(api, "stock_count", rec(c)["name"])
         if check("count submitted -> 200", st == 200, (st, r)):
             line = (api.get("stock_count", rec(r).get("name") or rec(c)["name"]).get("items") or [{}])[0]
-            eq("the count reads the lot's quantity", (line.get("system_qty"), line.get("difference")), (16, -1))
-            eq("only SB-B changes", lots(api, GUDANG, obat).get("SB-B"), 15)
-            eq("... the expired lot is untouched", lots(api, GUDANG, obat).get("SB-OLD"), 4)
+            eq("the count reads the item's whole quantity", (line.get("system_qty"), line.get("difference")), (20, -1))
+            eq("the stock is what was counted", bal(api, GUDANG, obat), 19)
+            CTX["lot_after_count"] = lots(api, GUDANG, obat)
     invariant(api, [GUDANG, KANVAS], obat, "after transfer and count")
 
 
@@ -262,7 +264,8 @@ def scenario_lots_expiry_grosir(api):
     rows = {(r["outlet"], r["lot_no"]): r for r in api.find("stock_expiry", f"item == '{obat}'")}
     eq("the expiry-soon list: SB-OLD in the warehouse (expired), SB-C in the van (20 days)", sorted(rows), sorted([(KANVAS, "SB-C"), (GUDANG, "SB-OLD")]))
     r = rows.get((GUDANG, "SB-OLD"), {})
-    eq("SB-OLD: expired 5 days ago, 4 left, open", (r.get("state"), r.get("days_left"), r.get("qty"), r.get("open")), ("expired", -5, 4, True))
+    eq("SB-OLD: expired 5 days ago, open, told once", (r.get("state"), r.get("days_left"), r.get("qty"), r.get("open"), r.get("notified")),
+       ("expired", -5, (CTX.get("lot_after_count") or {}).get("SB-OLD"), True, True))
     r = rows.get((KANVAS, "SB-C"), {})
     eq("SB-C: soon, 20 days left", (r.get("state"), r.get("days_left")), ("soon", 20))
     check("SB-B (120 days) and the used-up SB-A are not listed", not any(k[1] in ("SB-A", "SB-B") for k in rows), sorted(rows))
@@ -271,7 +274,9 @@ def scenario_lots_expiry_grosir(api):
     if check("expired adjustment of 4 bottles -> 201", st == 201, (st, adj)):
         st, r = submit(api, "stock_adjustment", rec(adj)["name"])
         if check("adjustment submitted -> 200", st == 200, (st, r)):
-            eq("the expired lot leaves first", (lots(api, GUDANG, obat).get("SB-OLD"), lots(api, GUDANG, obat).get("SB-B")), (0, 15))
+            after = CTX.get("lot_after_count") or {}
+            eq("the expired lot leaves first", (lots(api, GUDANG, obat).get("SB-OLD"), lots(api, GUDANG, obat).get("SB-B")),
+               (max(0, after.get("SB-OLD", 0) - 4), after.get("SB-B", 0) - max(0, 4 - after.get("SB-OLD", 0))))
     st, run = api.call("POST", "/api/v1/flows/lot_expiry_digest/run", {})
     check("expiry digest runs again -> 200", st == 200, (st, run))
     rows = {(r["outlet"], r["lot_no"]): r for r in api.find("stock_expiry", f"item == '{obat}'")}
@@ -279,6 +284,32 @@ def scenario_lots_expiry_grosir(api):
        {(GUDANG, "SB-OLD"): False, (KANVAS, "SB-C"): True})
     eq("the closed row shows what is left now", rows.get((GUDANG, "SB-OLD"), {}).get("qty"), 0)
     invariant(api, [GUDANG, KANVAS, RUSAK], obat, "after the expired adjustment")
+
+
+def scenario_lots_tracking_lock_grosir(api):
+    """item.tracking changes only where the registers stay true (audit 2026-11-21 F2/F3)."""
+    obat, hp = CTX.get("lot_obat"), CTX.get("lot_hp")
+    if not (obat and hp):
+        return
+    st, r = api.patch("item", obat, {"tracking": "none"})
+    check("lots off while a lot holds stock -> 422 lots_in_stock", st == 422 and "lots_in_stock" in str(r), (st, r))
+    eq("... the item keeps its tracking", api.get("item", obat).get("tracking"), "lot_expiry")
+    st, r = api.patch("item", obat, {"tracking": "lot"})
+    check("between the lot modes -> 200", st == 200, (st, r))
+    api.patch("item", obat, {"tracking": "lot_expiry"})
+    st, r = api.patch("item", hp, {"tracking": "none"})
+    check("serials off while a serial is in stock -> 422 serials_in_stock", st == 422 and "serials_in_stock" in str(r), (st, r))
+    st, r = api.patch("item", "BRG-0001", {"tracking": "serial"})
+    check("serials on for an item with stock -> 422 stock_without_serials", st == 422 and "stock_without_serials" in str(r), (st, r))
+    st, r = api.patch("item", "BRG-0001", {"tracking": "lot"})
+    check("lots on for an item with stock -> 200 (its stock is the no-lot bucket)", st == 200, (st, r))
+    if st == 200:
+        st, r = api.patch("item", "BRG-0001", {"tracking": "none"})
+        check("... and off again while only the bucket holds stock -> 200", st == 200, (st, r))
+    plain = [i["name"] for i in api.find("item", "item_name == 'Barang uji tanpa lot'")]
+    if plain:
+        st, r = api.patch("item", plain[0], {"tracking": "serial"})
+        check("serials on for an item without stock -> 200", st == 200, (st, r))
 
 
 def scenario_lots_access_grosir(api):
@@ -358,6 +389,6 @@ def scenario_lots_production(api):
 
 SCENARIOS = {
     "demo-grosir": [scenario_lots_receipt_grosir, scenario_lots_delivery_grosir, scenario_lots_transfer_count_grosir,
-                    scenario_lots_expiry_grosir, scenario_lots_access_grosir],
+                    scenario_lots_expiry_grosir, scenario_lots_tracking_lock_grosir, scenario_lots_access_grosir],
     "demo-produksi": [scenario_lots_production],
 }
