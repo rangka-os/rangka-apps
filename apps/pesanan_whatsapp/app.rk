@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: pesanan_whatsapp
+version: 1.0.0
+title: {id: Pesanan dari WhatsApp, en: WhatsApp orders}
+label: {id: Rangka Pesanan WhatsApp, en: Rangka WhatsApp Orders}
+summary:
+  id: Chat pesanan di WhatsApp jadi draf berharga dari data barang; staf konfirmasi sekali ketuk dan pelanggan dibalas totalnya.
+category: sales
+icon: chat-check-line
+rangka: '>=0.5'
+# A piece on top of kasir (module whatsapp_order, its doc has the rules): the work screen pesanan_wa for the cashier and
+# head office, the orders and the messages they came from in the menu. Needs the WhatsApp service from Rangka Cloud
+# (connector rangka_whatsapp on the site), which reads the text into lines; prices always come from the item records.
+modules:
+  users: ^1.2
+  contacts: ^1.3
+  catalogue: ^1.3
+  outlets: ^1.8
+  pos: ^1.3
+  whatsapp: ^1.1
+  whatsapp_order: ^1.0
+roles: [cashier, head_office]
+home: {model: whatsapp_order}
+work:
+  - {screen: pesanan_wa, roles: [cashier, head_office]}
+menu:
+  - group: {id: Pesanan WhatsApp}
+    items: [whatsapp_order, whatsapp_inbound, whatsapp_message]

@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Never stored: flow whatsapp_order_on_update creates one when the confirm it runs in must be refused (the pattern of
+# appointment_guard and rental_guard); the matching rule fails with the reason's message and rolls the whole write
+# back, so a refused confirm leaves no customer, sale or reply behind. Create is granted to every role that confirms.
+name: whatsapp_order_guard
+label: {id: Penjaga pesanan WhatsApp, en: WhatsApp order guard}
+icon: check
+naming: WAOG-{######}
+title_field: reason
+permissions:
+  - {role: head_office, create: true}
+  - {role: sales_manager, create: true}
+  - {role: cashier, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: bad_step, label: {id: Langkah status tidak boleh}}
+      - {value: no_shift, label: {id: Belum ada sesi kasir}}
+      - {value: no_target, label: {id: Kasir belum dipasang}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: bad_step
+    on: save
+    check: reason != 'bad_step'
+    message: {id: 'Pesanan yang sudah dikonfirmasi tidak bisa diubah statusnya. Batalkan transaksinya di kasir kalau perlu'}
+  - name: no_shift
+    on: save
+    check: reason != 'no_shift'
+    message: {id: 'Buka sesi kasir dulu di outlet pesanan ini, lalu konfirmasi lagi'}
+  - name: no_target
+    on: save
+    check: reason != 'no_target'
+    message: {id: 'Pasang Kasir dulu supaya pesanan WhatsApp bisa dikonfirmasi'}

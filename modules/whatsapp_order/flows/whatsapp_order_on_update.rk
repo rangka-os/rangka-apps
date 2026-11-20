@@ -1,0 +1,116 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Staff confirm or turn down a WhatsApp order (state, one tap on the work screen pesanan_wa or the form). Runs inside
+# that write, as the person (writes by flows start no flow, so the intake's appends are not seen here). Allowed moves:
+# new -> confirmed, new -> rejected, rejected -> new; a confirmed order is final (its sale is voided at the kasir like
+# any sale). The model's rules have already refused a confirm with no item line or an open choice.
+# Confirm:
+# 1. The customer: the order's link, else the customer with this WhatsApp number, else a new customer with the name on
+#    the order (free text the staff could correct) and the number.
+# 2. The order the business works with: a draft pos_sale (module pos) on the confirming person's open shift (at the
+#    order's outlet when it has one); head office or the owner without a shift of their own use an open shift of that
+#    outlet. The sale prices its lines from the item (and its promos), so paying it at the counter is a sale like any
+#    other: stock, receipt (with module whatsapp_receipt the WhatsApp receipt and the order-ready message too) and
+#    reports. The buyer is "<name> (WAO-…)" so the counter shows where it came from. Without module pos: refused
+#    (no_target; a customer_order path for businesses without a kasir is a later step). No open shift: refused
+#    (no_shift), nothing kept.
+# 3. The reply: one whatsapp_message (key <order>:order_reply:1) and the template pesanan_diterima through Rangka Cloud,
+#    with the items and the document's total; skipped for a number on the opt-out list. A template may go out in and
+#    outside Meta's 24-hour window (module doc), so no free text is ever sent.
+name: whatsapp_order_on_update
+label: {id: 'Pesanan WhatsApp dikonfirmasi: buat transaksi dan balas pelanggan'}
+description: {id: 'Saat staf mengonfirmasi pesanan WhatsApp, pelanggan baru dicatat, draf transaksi kasir (atau pesanan pelanggan) dibuat dengan harga dari data barang, lalu pelanggan dibalas rincian dan totalnya lewat WhatsApp.'}
+on: whatsapp_order.updated
+if: event.before != null && event.before.state != event.state
+steps:
+  - create: whatsapp_order_guard
+    if: "!((event.before.state + '>' + event.state) in ['new>confirmed', 'new>rejected', 'rejected>new'])"
+    set: {reason: "'bad_step'", document: event.name}
+  - create: whatsapp_order_guard
+    if: "event.state == 'confirmed' && !app_installed('pos')"
+    set: {reason: "'no_target'", document: event.name}
+  # 1. the customer
+  - find: customer
+    if: event.state == 'confirmed' && event.customer == ''
+    where: "event.wa_number != '' && wa_number == event.wa_number"
+    as: known
+  - create: customer
+    if: event.state == 'confirmed' && event.customer == '' && known == null
+    set:
+      customer_name: event.customer_name.trim()
+      phone: event.phone
+    as: added
+  # 2. the cashier's draft sale: an open shift of the confirming person, else, for head office or the owner, an open
+  # shift of the order's outlet
+  - find: pos_shift
+    if: event.state == 'confirmed' && app_installed('pos')
+    where: "cashier == user.email && state == 'open' && (event.outlet == '' || outlet == event.outlet)"
+    as: own
+  - find_all: pos_shift
+    if: event.state == 'confirmed' && app_installed('pos')
+    where: "state == 'open' && (event.outlet == '' || outlet == event.outlet)"
+    sort: -opening_date
+    limit: 1
+    as: open_shifts
+  - create: whatsapp_order_guard
+    if: >-
+      event.state == 'confirmed' && app_installed('pos') && own == null
+      && (open_shifts.size() == 0 || !('head_office' in user.roles || 'owner' in user.roles))
+    set: {reason: "'no_shift'", document: event.name}
+  - create: pos_sale
+    if: event.state == 'confirmed' && app_installed('pos')
+    set:
+      shift: "own != null ? own.name : open_shifts[0].name"
+      buyer: "truncate(event.customer_name.trim(), 100) + ' (' + event.name + ')'"
+      customer: "event.customer != '' ? event.customer : (known != null ? known.name : added.name)"
+      items: >-
+        event.lines.filter(l, l.item != '').map(l, {'item': l.item, 'qty': l.qty, 'packing': '', 'discount_pct': 0,
+        'note': l.note, 'is_gift': false})
+      wa_phone: "app_installed('whatsapp_receipt') ? event.phone : ''"
+      wa_receipt: "app_installed('whatsapp_receipt') && event.phone != ''"
+    as: sale
+  # 3. the reply, with the sale's total (its promos applied)
+  - {find: whatsapp_message, if: "event.state == 'confirmed'", where: "key == event.name + ':order_reply:1'", as: done}
+  - {find: whatsapp_opt_out, if: "event.state == 'confirmed'", where: number == event.wa_number, as: out}
+  - {find: outlet, if: "event.state == 'confirmed' && app_installed('pos')", where: name == sale.outlet, as: o}
+  - create: whatsapp_message
+    if: event.state == 'confirmed' && app_installed('pos') && done == null && event.wa_number != ''
+    set:
+      key: event.name + ':order_reply:1'
+      message_type: "'order_reply'"
+      template: "'pesanan_diterima'"
+      document: event.name
+      customer: "event.customer != '' ? event.customer : (known != null ? known.name : added.name)"
+      number_tail: "'…' + event.wa_number.replace(truncate(event.wa_number, size(event.wa_number) - 4), '')"
+      amount: sale.grand_total
+      status: "out != null ? 'skipped' : 'queued'"
+      error: "out != null ? 'opted_out' : ''"
+      status_at: now()
+    as: msg
+  - call: rangka_whatsapp.send_template
+    if: event.state == 'confirmed' && app_installed('pos') && done == null && event.wa_number != '' && out == null
+    with:
+      to: "'+' + event.wa_number"
+      template: "'pesanan_diterima'"
+      type: "'order_reply'"
+      idempotency_key: event.name + ':order_reply:1'
+      components: >-
+        [{'type': 'body', 'parameters': [
+          {'type': 'text', 'text': truncate(event.customer_name.trim(), 60)},
+          {'type': 'text', 'text': event.name},
+          {'type': 'text', 'text': o != null ? o.outlet_name : org.legal_name},
+          {'type': 'text', 'text': truncate(event.lines.filter(l, l.item != '').map(l, string(l.qty) + ' ' + l.item_name).join(', '), 500)},
+          {'type': 'text', 'text': msg.amount_text}]}]
+  - {find: whatsapp_order, if: "event.state == 'confirmed'", where: name == event.name, as: me}
+  - update: me
+    if: event.state == 'confirmed'
+    set:
+      customer: "event.customer != '' ? event.customer : (known != null ? known.name : added.name)"
+      confirmed_by: user.name
+      confirmed_at: now()
+      confirmed_date: today()
+  - update: me
+    if: event.state == 'confirmed' && app_installed('pos')
+    set:
+      sale: sale.name
+      reply_total: "done == null && event.wa_number != '' ? msg.amount : 0"
+      reply: "done == null && event.wa_number != '' ? msg.name : ''"

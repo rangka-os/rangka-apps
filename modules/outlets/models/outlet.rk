@@ -126,6 +126,15 @@ fields:
     label: {id: Modal kas kasir}
     help: {id: 'Uang kembalian di laci tiap sesi kasir dibuka. Kosongkan kalau kasir yang mengisi'}
     depends_on: app_installed('pos') && (location_type == '' || location_type == 'store' || location_type == 'vehicle')
+  # module whatsapp_order: the store that takes the orders customers write on WhatsApp (their drafts get this outlet,
+  # so its cashiers see and confirm them). With none ticked, a business with one store uses it; with several and none
+  # ticked, head office sets the outlet on each order.
+  - name: wa_orders
+    type: check
+    label: {id: Terima pesanan WhatsApp}
+    help: {id: 'Pesanan yang ditulis pelanggan di WhatsApp masuk ke outlet ini'}
+    default: 'false'
+    depends_on: app_installed('whatsapp_order') && (location_type == '' || location_type == 'store')
   # module attendance (staff clock-in per outlet): the outlet's point and radius are the geofence of the clock screen
   # (screens/absen_outlet.rk), and the default hours are the schedule lateness is measured against when the employee has
   # no shift. Decimal degrees, as a phone's GPS or a map gives them (Bandung is about -6.9, 107.6).

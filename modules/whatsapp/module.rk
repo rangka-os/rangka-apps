@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: whatsapp
-version: 1.0.0
+version: 1.1.0
 title: {id: WhatsApp ke pelanggan, en: WhatsApp to customers}
 summary:
   id: Catatan pesan WhatsApp ke pelanggan (terkirim, dibaca, gagal) dan daftar pelanggan yang tidak mau dikirimi WA.
@@ -8,7 +8,7 @@ summary:
 category: sales
 icon: send-plane-line
 # The shared part of the WhatsApp message types (whatsapp_receipt, whatsapp_reminder, whatsapp_order_ready,
-# whatsapp_booking): each of those is its own module, so switching one type on or off is a change set the owner
+# whatsapp_booking, whatsapp_order): each of those is its own module, so switching one type on or off is a change set the owner
 # approves (config.modules). Messages go out through connector rangka_whatsapp (Rangka Cloud's relay, contract 0063
 # §7): the relay checks the opt-out list, the kill switch, the template's approval and the caps before every send,
 # and sends a key once. This module keeps what the business sees:

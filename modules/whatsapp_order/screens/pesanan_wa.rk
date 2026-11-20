@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+# Pesanan dari WhatsApp: the drafts the customers' messages made, in three columns. "Perlu dicek": a line to choose
+# (two sizes of a drink: no button until staff open the order, Pesanan WhatsApp, and pick the item) or a line no item
+# matched (shown on the card as a note, the order can still be confirmed). "Siap dikonfirmasi": every line has its
+# item. One tap on Konfirmasi confirms (flow whatsapp_order_on_update: the cashier's draft sale and the reply).
+# A confirmed card leaves the screen (two columns fit a tablet beside the menu; a third was cut off): the order and its
+# sale are in Pesanan WhatsApp (menu), and the sale is paid at the counter like any held basket. The renderer's
+# "Urungkan" after Konfirmasi is refused (bad_step): a confirmed order made a sale and a reply.
+name: pesanan_wa
+type: queue
+label: {id: Pesanan dari WhatsApp, en: WhatsApp orders}
+description: {id: 'Pesanan yang ditulis pelanggan di WhatsApp. Cek isinya, lalu tekan Konfirmasi: transaksinya masuk ke kasir dan pelanggan dibalas totalnya.'}
+icon: chat-check-line
+roles: [cashier, head_office]
+device: any
+queue:
+  source: {model: whatsapp_order, filter: "state == 'new'", sort: first_message_at}
+  card: {title: customer_name, subtitle: check_note, lines: lines, line: [qty, item, note, flag], fields: [total_text], age_from: first_message_at}
+  columns: {by: stage, values: [check, ready]}
+  steps:
+    - {when: "state == 'new' && open_choices == 0 && item_lines > 0", set: {state: confirmed}, label: {id: Konfirmasi}}
+  refresh: 10
