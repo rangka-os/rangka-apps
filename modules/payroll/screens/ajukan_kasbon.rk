@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+name: ajukan_kasbon
+type: entry
+label: {id: Ajukan kasbon, en: Request a cash advance}
+description: {id: 'Minta kasbon tanpa bunga, dipotong dari gaji tiap bulan sebesar yang kamu pilih.'}
+icon: wallet
+# A staff member asks for a kasbon from their phone (contract 0030 §2 entry, rangka-apps#117): a draft cash_advance is
+# the request. Finance picks the worker, checks it and submits it, which pays the money out; staff never submit it.
+roles: [employee, cashier, outlet_staff, outlet_supervisor]
+device: phone
+entry:
+  model: cash_advance
+  fields: [amount, installment, notes]
+  submit: false
+  again: false

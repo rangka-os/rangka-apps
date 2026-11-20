@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+name: klaim_biaya
+type: entry
+label: {id: Klaim biaya, en: Expense claim}
+description: {id: 'Minta ganti uang yang kamu pakai untuk usaha, dengan foto struknya.'}
+icon: receipt
+# A staff member claims a cost back from their phone (contract 0030 §2 entry, rangka-apps#117): one expense_claim,
+# submitted at once, which waits for the outlet supervisor or head office (expense_claim approvals). The claimant is
+# always the person signed in; the outlet defaults to theirs. Online only: the receipt photo needs the connection.
+roles: [employee, cashier, outlet_staff, outlet_supervisor]
+device: phone
+entry:
+  model: expense_claim
+  fields: [category, amount, description, receipt, claim_date, pay_with]
+  set: {employee: user.name}
+  submit: true

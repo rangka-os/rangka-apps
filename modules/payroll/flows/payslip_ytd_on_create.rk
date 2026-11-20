@@ -37,6 +37,22 @@ steps:
   - find_all: payslip
     where: worker == event.worker && cash_advance != '' && docstatus == 1
     as: repaid
+  # The open kasbon with an installment plan (rangka-apps#117): the slip deducts min(installment, what is left).
+  - find_all: cash_advance_balance
+    where: worker == event.worker && !cancelled && installment > 0 && repaid_total < amount
+    sort: advance_date
+    as: bal
+  # Expense claims of the employee to be paid with salary and not paid yet (module reimbursement, rangka-apps#117).
+  - if: "app_installed('reimbursement') && event.employee != ''"
+    then:
+      - find_all: claim_settlement
+        where: "employee == event.employee && pay_with == 'payroll' && !paid && !cancelled"
+        as: claims
+    else:
+      # without the module (or the employee record) an empty list: a find on a model that is not installed fails
+      - find_all: payslip
+        where: "name == ''"
+        as: claims
   - find: payslip
     where: name == event.name
     as: me
@@ -47,3 +63,7 @@ steps:
       ytd_pension: "prev.map(p, p.jht_employee + p.jp_employee).sum()"
       ytd_months: "size(prev)"
       open_advance: "kas.exists(k, repaid.map(p, p.cash_advance == k.name ? p.other_deduction : 0).sum() < k.amount) ? kas.filter(k, repaid.map(p, p.cash_advance == k.name ? p.other_deduction : 0).sum() < k.amount)[0].name : ''"
+      # only where finance typed nothing (a kasbon link, a deduction or a reimbursement typed at create stays)
+      cash_advance: "event.cash_advance == '' && event.other_deduction == 0 && size(bal) > 0 ? bal[0].cash_advance : event.cash_advance"
+      other_deduction: "event.cash_advance == '' && event.other_deduction == 0 && size(bal) > 0 ? (bal[0].installment < bal[0].remaining ? bal[0].installment : bal[0].remaining) : event.other_deduction"
+      reimbursement: "event.reimbursement == 0 ? claims.map(c, c.amount).sum() : event.reimbursement"

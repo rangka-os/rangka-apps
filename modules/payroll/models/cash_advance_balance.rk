@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: cash_advance_balance
+label: {id: Sisa kasbon, en: Cash advance balance}
+icon: wallet
+naming: SKB-{######}
+title_field: cash_advance
+# What is left of one submitted kasbon (rangka-apps#117). A submitted cash_advance cannot change (contract 0022), so
+# its repayment is kept here: made by flow cash_advance_balance_on_submit, repaid_total recomputed from the submitted
+# slips that link the kasbon by payslip_advance_repaid_on_submit and _on_cancel, cancelled by
+# cash_advance_balance_on_cancel. Nobody types it. A kasbon submitted before #117 has none: the slip flows still read
+# such a kasbon from the slips (open_advance), only this summary is missing.
+permissions:
+  # finance's slip submits and cancels keep it (flows run as the person acting)
+  - {role: finance_manager, read: true, create: true, write: true, export: true}
+  - {role: head_office, read: true, export: true}
+  # the recap flow of a client run reads it when it drafts a slip (payslip_from_recap runs as the project admin)
+  - {role: project_admin, read: true}
+  - {role: employee, read: true, if: "employee == user.name"}
+  - {role: cashier, read: true, if: "employee == user.name"}
+  - {role: outlet_staff, read: true, if: "employee == user.name"}
+  - {role: outlet_supervisor, read: true, if: "employee == user.name"}
+fields:
+  - name: cash_advance
+    type: link
+    to: cash_advance
+    label: {id: Kasbon}
+    required: true
+    unique: true
+    read_only: true
+    in_list: true
+  - {name: worker, type: link, to: worker, label: {id: Tenaga kerja}, read_only: true, in_list: true}
+  - {name: employee, type: link, to: user, label: {id: Karyawan, en: Employee}, read_only: true}
+  - {name: advance_date, type: date, label: {id: Tanggal kasbon}, read_only: true}
+  - {name: amount, type: currency, label: {id: Jumlah kasbon}, default: '0', read_only: true, in_list: true}
+  - {name: installment, type: currency, label: {id: Potongan per bulan}, default: '0', read_only: true}
+  - {name: repaid_total, type: currency, label: {id: Sudah dipotong, en: Repaid}, default: '0', read_only: true, in_list: true}
+  - {name: cancelled, type: check, label: {id: Kasbon dibatalkan}, default: 'false', read_only: true}
+  - name: remaining
+    type: currency
+    label: {id: Sisa, en: Remaining}
+    compute: "cancelled ? 0 : amount - repaid_total"
+    in_list: true
+  - name: state
+    type: select
+    label: {id: Status kasbon, en: State}
+    compute: "cancelled ? 'cancelled' : (repaid_total >= amount ? 'repaid' : 'open')"
+    in_list: true
+    options:
+      - {value: open, label: {id: Belum lunas, en: Open}}
+      - {value: repaid, label: {id: Lunas, en: Repaid}}
+      - {value: cancelled, label: {id: Dibatalkan, en: Cancelled}}
+views:
+  list:
+    columns: [cash_advance, worker, amount, repaid_total, remaining, state]
+    filters: [worker, state]
+    sort: -advance_date

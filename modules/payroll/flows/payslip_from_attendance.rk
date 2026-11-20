@@ -97,6 +97,20 @@ steps:
               - find_all: payslip
                 where: worker == p.worker && cash_advance != '' && docstatus == 1
                 as: repaid
+              - find_all: cash_advance_balance
+                where: worker == p.worker && !cancelled && installment > 0 && repaid_total < amount
+                sort: advance_date
+                as: bal
+              # Expense claims of the employee to be paid with salary and not paid yet (module reimbursement, rangka-apps#117).
+              - if: "app_installed('reimbursement') && workers.filter(w, w.name == p.worker)[0].employee != ''"
+                then:
+                  - find_all: claim_settlement
+                    where: "employee == workers.filter(w, w.name == p.worker)[0].employee && pay_with == 'payroll' && !paid && !cancelled"
+                    as: claims
+                else:
+                  - find_all: payslip
+                    where: "name == ''"
+                    as: claims
               # Days present, minutes late and overtime hours are the sums of the worker's summaries in the period. Unpaid
               # days stay 0 (absence is not unpaid leave until leave is recorded, rangka-apps#114) and the days with
               # overtime stay 0: a summary has no count of them, so without a weighted overtime rate every hour is paid 2x
@@ -118,6 +132,9 @@ steps:
                   ytd_pension: "prev.map(x, x.jht_employee + x.jp_employee).sum()"
                   ytd_months: "size(prev)"
                   open_advance: "kas.exists(k, repaid.map(x, x.cash_advance == k.name ? x.other_deduction : 0).sum() < k.amount) ? kas.filter(k, repaid.map(x, x.cash_advance == k.name ? x.other_deduction : 0).sum() < k.amount)[0].name : ''"
+                  cash_advance: "size(bal) > 0 ? bal[0].cash_advance : ''"
+                  other_deduction: "size(bal) > 0 ? (bal[0].installment < bal[0].remaining ? bal[0].installment : bal[0].remaining) : 0"
+                  reimbursement: "claims.map(c, c.amount).sum()"
           - if: "workers.exists(w, w.name == p.worker && (w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee) : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0))) && own.exists(d, d.worker == p.worker && (d.att_days != sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.days_present).sum() || d.att_late != sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.late_min_total).sum() || d.att_ot != sums.filter(s, s.employee == workers.filter(w, w.name == p.worker)[0].employee).map(s, s.overtime_hours).sum() || !sums.exists(s, s.name == d.attendance_summary)))"
             then:
               - find: payslip

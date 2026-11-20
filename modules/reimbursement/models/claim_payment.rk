@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: claim_payment
+label: {id: Pembayaran klaim, en: Claim payment}
+icon: wallet
+is_submittable: true
+naming: BKL-{YYYY}-{#####}
+title_field: claim
+# Finance pays back one approved expense claim from cash or bank (rangka-apps#117). Submitting it marks the claim paid
+# (claim_payment_on_submit, refused when the claim was already paid by another payment or a slip) and books Dr 2-1510
+# Utang reimburse karyawan / Cr Kas or Bank (accounting). Cancelling it releases the claim. A claim chosen to be paid
+# with the salary may still be paid here (the employee asked for it earlier); the next slip then leaves it out.
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: head_office, read: true, export: true, print: true}
+fields:
+  - name: claim
+    type: link
+    to: expense_claim
+    label: {id: Klaim, en: Claim}
+    required: true
+    in_list: true
+  - {name: employee, type: link, to: user, label: {id: Karyawan, en: Employee}, compute: claim.employee, in_list: true}
+  - {name: amount, type: currency, label: {id: Jumlah dibayar, en: Amount paid}, compute: claim.amount, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, compute: claim.outlet, depends_on: app_installed('outlets')}
+  - name: payment_date
+    type: date
+    label: {id: Tanggal bayar, en: Payment date}
+    required: true
+    default: today()
+    in_list: true
+  - name: method
+    type: select
+    label: {id: Dibayar dari, en: Paid from}
+    required: true
+    default: "'cash'"
+    options:
+      - {value: cash, label: {id: Kas}}
+      - {value: bank, label: {id: Bank}}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: claim_approved
+    on: save
+    check: claim.docstatus == 1
+    message: {id: 'Klaim yang dibayar harus sudah disetujui'}
+  - name: not_before_claim
+    on: save
+    check: payment_date >= claim.claim_date
+    message: {id: 'Tanggal bayar tidak boleh sebelum tanggal biaya'}
+views:
+  list:
+    columns: [name, payment_date, claim, employee, amount, method, status]
+    filters: [employee, method]
+    sort: -payment_date

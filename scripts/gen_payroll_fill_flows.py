@@ -53,6 +53,11 @@ EMP, MINE = EMP0, MINE0
 # submitted summaries reach the period's first and last day). It gates the first fill (new slips), not the refresh.
 GATE = ("size(open_periods) == 0 && (!app_installed('attendance') || (sums.exists(s, s.period_from == run.period_from)"
         " && sums.exists(s, s.period_to == run.period_to)))")
+# The worker's open kasbon with an installment plan (rangka-apps#117; at most one open, cash_advance_open_guard): the
+# new slip deducts min(installment, what is left), read from its cash_advance_balance (`bal`).
+KASBON = '''cash_advance: "size(bal) > 0 ? bal[0].cash_advance : ''"
+other_deduction: "size(bal) > 0 ? (bal[0].installment < bal[0].remaining ? bal[0].installment : bal[0].remaining) : 0"
+reimbursement: "claims.map(c, c.amount).sum()"'''
 ATTENDANCE = f'''attendance_summary: "size({MINE}) > 0 ? {MINE}[size({MINE}) - 1].name : ''"
 days: "{MINE}.map(s, s.days_present).sum()"
 late_min_total: "{MINE}.map(s, s.late_min_total).sum()"
@@ -157,6 +162,20 @@ def fill(auto):
         - find_all: payslip
           where: worker == p.worker && cash_advance != '' && docstatus == 1
           as: repaid
+        - find_all: cash_advance_balance
+          where: worker == p.worker && !cancelled && installment > 0 && repaid_total < amount
+          sort: advance_date
+          as: bal
+        # Expense claims of the employee to be paid with salary and not paid yet (module reimbursement, rangka-apps#117).
+        - if: "app_installed('reimbursement') && {EMP} != ''"
+          then:
+            - find_all: claim_settlement
+              where: "employee == {EMP} && pay_with == 'payroll' && !paid && !cancelled"
+              as: claims
+          else:
+            - find_all: payslip
+              where: "name == ''"
+              as: claims
         # Days present, minutes late and overtime hours are the sums of the worker's summaries in the period. Unpaid
         # days stay 0 (absence is not unpaid leave until leave is recorded, rangka-apps#114) and the days with
         # overtime stay 0: a summary has no count of them, so without a weighted overtime rate every hour is paid 2x
@@ -171,7 +190,7 @@ def fill(auto):
             ytd_pension: "prev.map(x, x.jht_employee + x.jp_employee).sum()"
             ytd_months: "size(prev)"
             open_advance: "kas.exists(k, repaid.map(x, x.cash_advance == k.name ? x.other_deduction : 0).sum() < k.amount) ? kas.filter(k, repaid.map(x, x.cash_advance == k.name ? x.other_deduction : 0).sum() < k.amount)[0].name : ''"
-    - if: "{REFRESH}"
+{indent(KASBON, 12)}    - if: "{REFRESH}"
       then:
         - find: payslip
           where: payroll_run == run.name && worker == p.worker && docstatus == 0 && from_fill

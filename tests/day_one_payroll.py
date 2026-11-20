@@ -144,6 +144,10 @@ def scenario_payroll_month(api):
         check("the MP-001 slip names the kasbon it repays", st == 200, (st, resp))
         st, resp = fm.patch("payslip", by_no["MP-002"]["name"], {"cash_advance": CTX["cash_advance"]})
         check("another worker's slip cannot name MP-001's kasbon -> 422", st == 422, (st, resp))
+    # audit #117 F3: without module reimbursement no claim stands behind a reimbursement, so the field stays 0
+    st, resp = fm.patch("payslip", by_no["MP-001"]["name"], {"reimbursement": 5_000_000})
+    rules = [e.get("rule") for e in (resp or {}).get("errors", [])] if isinstance(resp, dict) else []
+    check("a reimbursement on a slip of a site without expense claims -> 422", st == 422 and "reimbursement_needs_claims" in rules, (st, resp))
     bad = []
     for no, s in list(by_no.items()):
         st, resp = fm.verb("payslip", s["name"], "submit", {"force": True} if no == "MP-015" else None)

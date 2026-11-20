@@ -143,6 +143,9 @@ def expected_pl(api, d0, d1):
     for x in docs(api, "asset_disposal"):               # gain (+) or loss (-) on selling or writing off (4-9300)
         if inm(x["disposal_date"]):
             e["other_income"] += x["gain_loss"]
+    for x in docs(api, "expense_claim"):                # module reimbursement: an approved claim, on its category's account
+        if inm(x["claim_date"]):
+            e["project_costs" if x["expense_account"] == "51400" else "operating_expenses"] += x["amount"]
     e["net_revenue"] = e["revenue"] - e["sales_returns"]
     e["net_profit"] = (e["net_revenue"] - e["cogs"] - e["stock_loss"] - e["direct_labour"] - e["project_costs"]
                        - e["operating_expenses"] - e["tax_expense"] + e["other_income"])

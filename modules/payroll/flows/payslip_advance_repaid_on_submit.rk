@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: payslip_advance_repaid_on_submit
+label: {id: Sisa kasbon berkurang saat slip diajukan}
+# The kasbon the slip repays: its balance's repaid_total is the sum of the deductions of the submitted slips that link it
+# (this one included), recomputed, never added to, so a retried submit cannot count twice. payslip_advance_guard
+# refuses the submit first when that sum would pass the kasbon.
+on: payslip.submitted
+if: event.cash_advance != ''
+steps:
+  - find: cash_advance_balance
+    where: cash_advance == event.cash_advance
+    as: bal
+  - if: bal != null
+    find_all: payslip
+    where: cash_advance == event.cash_advance && docstatus == 1 && name != event.name
+    as: others
+  - if: bal != null
+    update: bal
+    set:
+      repaid_total: "others.map(p, p.other_deduction).sum() + event.other_deduction"

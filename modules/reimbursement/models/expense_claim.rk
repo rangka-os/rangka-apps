@@ -1,0 +1,154 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: expense_claim
+label: {id: Klaim biaya, en: Expense claim}
+icon: receipt
+is_submittable: true
+naming: KLM-{YYYY}-{#####}
+title_field: description
+# A cost a staff member paid from their own pocket for the business (parking, fuel, supplies), claimed back with the
+# receipt photo (rangka-apps#117). The staff member drafts and submits it; the submit waits for the outlet supervisor of
+# the claim's outlet or head office (approvals below, contract 0007), never for the claimant themself: a supervisor's
+# own claim goes to head office, and a supervisor of another outlet cannot read the claim (row scope), so cannot
+# approve it. The approve runs the submit as the claimant (0007 §2): the claim is then approved and booked (accounting:
+# Dr the category's expense account / Cr 2-1510 Utang reimburse karyawan, gl_expense_claim_post).
+#
+# Paying it back (pay_with): cash or bank by finance (claim_payment), or with the next salary (payslip.reimbursement,
+# untaxed). A submitted claim cannot change, so whether it was paid lives on its claim_settlement (made by
+# claim_settlement_on_submit). A claim already paid cannot be cancelled (claim_cancel_guard): cancel the payment or the
+# slip first. Raka may suggest category and amount from the receipt into a draft; a person submits, an approver
+# approves: money is never decided by an LLM.
+permissions:
+  # Staff: their own claims only (permission if:, which also filters lists and dashboards). No cancel, no amend.
+  - {role: employee, read: true, create: true, write: true, delete: true, submit: true, if: "employee == user.name"}
+  - {role: cashier, read: true, create: true, write: true, delete: true, submit: true, if: "employee == user.name"}
+  - {role: outlet_staff, read: true, create: true, write: true, delete: true, submit: true, if: "employee == user.name"}
+  # The outlet supervisor reads the claims of their outlets (role row scope on outlet) to approve them, and claims too.
+  - {role: outlet_supervisor, read: true, print: true}
+  - {role: outlet_supervisor, create: true, write: true, delete: true, submit: true, if: "employee == user.name"}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, export: true, print: true}
+  - {role: finance_manager, read: true, cancel: true, export: true, print: true}
+fields:
+  # The claimant (contract 0056 employee record). Only head office names someone else (rule own_claim).
+  - name: employee
+    type: link
+    to: user
+    label: {id: Karyawan, en: Employee}
+    required: true
+    default: user.name
+    set_once: true
+    in_list: true
+  - name: employee_name
+    type: data
+    label: {id: Nama, en: Name}
+    read_only: true
+    compute: "employee != '' ? employee.full_name : ''"
+  - name: claim_date
+    type: date
+    label: {id: Tanggal biaya, en: Expense date}
+    required: true
+    default: today()
+    in_list: true
+  - name: category
+    type: link
+    to: expense_category
+    label: {id: Kategori, en: Category}
+    required: true
+    in_list: true
+  - name: amount
+    type: currency
+    label: {id: Jumlah, en: Amount}
+    required: true
+    in_list: true
+  - name: description
+    type: data
+    label: {id: Untuk apa, en: What for}
+    required: true
+  - name: receipt
+    type: image
+    label: {id: Foto struk, en: Receipt photo}
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    depends_on: app_installed('outlets')
+    default: "user.outlets.size() > 0 ? user.outlets[0] : ''"
+    in_list: true
+  - name: project
+    type: link
+    to: project
+    label: {id: Proyek, en: Project}
+    depends_on: app_installed('projects')
+  - name: pay_with
+    type: select
+    label: {id: Dibayar lewat, en: Paid back with}
+    required: true
+    default: "'payroll'"
+    in_list: true
+    options:
+      - {value: payroll, label: {id: Bersama gaji berikutnya, en: With the next salary}}
+      - {value: cash, label: {id: Tunai, en: Cash}}
+      - {value: bank, label: {id: Transfer bank, en: Bank transfer}}
+  # Copied from the category when the claim is saved, so a later change of the category does not move a booked claim.
+  - name: expense_account
+    type: data
+    label: {id: Akun beban, en: Expense account}
+    hidden: true
+    compute: "category != '' && category.expense_account != '' ? category.expense_account : '61900'"
+  - {name: needs_receipt, type: check, label: {id: Wajib struk}, hidden: true, compute: "category != '' && category.needs_receipt"}
+  - {name: max_per_claim, type: currency, label: {id: Batas kategori}, hidden: true, compute: "category != '' ? category.max_per_claim : 0"}
+rules:
+  - name: amount_positive
+    on: save
+    check: amount > 0 && amount == round(amount)
+    message: {id: 'Jumlah klaim rupiah bulat lebih dari 0'}
+  - name: receipt_needed
+    on: submit
+    check: "!needs_receipt || receipt != ''"
+    message: {id: 'Kategori ini wajib foto struk: tambahkan foto struknya'}
+  - name: within_limit
+    on: save
+    check: max_per_claim == 0 || amount <= max_per_claim
+    message: {id: 'Jumlah klaim melebihi batas per klaim kategori ini'}
+  - name: category_active
+    on: submit
+    check: category.active
+    message: {id: 'Kategori klaim ini sudah tidak aktif'}
+  - name: own_claim
+    on: save
+    check: "employee == user.name || 'head_office' in user.roles || 'owner' in user.roles"
+    message: {id: 'Klaim hanya bisa diajukan untuk dirimu sendiri'}
+  # The claim's outlet decides who approves it and which outlet's books carry it: staff name only one of their own
+  # outlets (audit #117 F2); head office and the owner may name any.
+  - name: own_outlet
+    on: save
+    check: "outlet == '' || outlet in user.outlets || 'head_office' in user.roles || 'owner' in user.roles"
+    message: {id: 'Outlet klaim harus outlet tempatmu bekerja'}
+  - name: not_in_future
+    on: save
+    check: claim_date <= today()
+    message: {id: 'Tanggal biaya tidak boleh di masa depan'}
+approvals:
+  # Staff claims: the supervisor of the claim's outlet or head office. A supervisor holds one of the approver roles, so
+  # their own claim would approve itself (0007 §2.4): it goes to head office instead. Head office and the owner approve
+  # their own (self-approval is recorded).
+  - name: staff_claim
+    on: submit
+    when: "!('outlet_supervisor' in user.roles) && !('head_office' in user.roles)"
+    approvers: [outlet_supervisor, head_office]
+    label: {id: Persetujuan klaim biaya, en: Expense claim approval}
+  - name: supervisor_claim
+    on: submit
+    when: "'outlet_supervisor' in user.roles && !('head_office' in user.roles)"
+    approvers: [head_office]
+    label: {id: Persetujuan klaim biaya kepala outlet, en: Supervisor expense claim approval}
+views:
+  list:
+    columns: [name, claim_date, employee, category, amount, pay_with, outlet, status]
+    filters: [employee, category, pay_with, outlet]
+    sort: -claim_date
+  form:
+    layout:
+      - section: {id: Klaim}
+        columns:
+          - [employee, employee_name, claim_date, category, amount]
+          - [description, receipt, outlet, project, pay_with]

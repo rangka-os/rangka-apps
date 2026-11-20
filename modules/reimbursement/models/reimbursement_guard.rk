@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: reimbursement_guard
+label: {id: Penjaga klaim biaya, en: Expense claim guard}
+icon: check
+naming: RGD-{######}
+title_field: reason
+# Never stored (the pattern of payroll.payroll_guard): a flow that must refuse the action it runs in creates one, and
+# the rule of its reason fails with that message, which rolls the whole action back.
+permissions:
+  - {role: finance_manager, create: true}
+  - {role: head_office, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: claim_paid, label: {id: Klaim sudah dibayar}}
+      - {value: claim_cancelled, label: {id: Klaim dibatalkan}}
+      - {value: reimbursement_changed, label: {id: Klaim berubah sejak slip dibuat}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: claim_paid
+    on: save
+    check: reason != 'claim_paid'
+    message: {id: 'Klaim ini sudah dibayar (pembayaran klaim atau slip gaji yang diajukan); batalkan pembayarannya dulu'}
+  - name: claim_cancelled
+    on: save
+    check: reason != 'claim_cancelled'
+    message: {id: 'Klaim ini sudah dibatalkan, tidak ada yang perlu dibayar'}
+  - name: reimbursement_changed
+    on: save
+    check: reason != 'reimbursement_changed'
+    message: {id: 'Penggantian biaya slip ini tidak sama dengan klaim yang menunggu dibayar bersama gaji: perbarui Penggantian biaya'}

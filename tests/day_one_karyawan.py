@@ -298,7 +298,7 @@ def scenario_karyawan_month(api):
     if check("finance downloads the transfer list as CSV", st == 200 and ctype.startswith("text/csv"), (st, ctype, body[:200])):
         rows = list(csv.reader(io.StringIO(body.lstrip("﻿"))))
         head, data = rows[0], [x for x in rows[1:] if x]
-        eq("the file has the transfer columns in order", head, ["No. rekening", "Nama pemilik rekening", "Bank", "Gaji bersih", "Berita transfer"])
+        eq("the file has the transfer columns in order", head, ["No. rekening", "Nama pemilik rekening", "Bank", "Gaji bersih diterima", "Berita transfer"])
         with_acct = [s for s in subs if s.get("bank_account") and s["net_pay"] > 0]
         eq("one row per slip with an account (Fajar left out), sorted by name",
            [x[1] for x in data], sorted(s["account_holder"] for s in with_acct))
@@ -400,4 +400,276 @@ def multi_period(api, fm, hq, R, P2, pf, pt):
        (200, CTX.get("eko_days", 1) - 1, CTX.get("eko_days", 1) - 1, ["0 slip baru", "1 slip diperbarui"]))
 
 
-SCENARIOS = [scenario_karyawan_month, scenario_karyawan_outlet_run]
+def month_run(fm, g, base, k):
+    """An internal run of all outlets for the k-th month after `base` (a first of month), opened by finance."""
+    m = base
+    for _ in range(k):
+        m = (m + datetime.timedelta(days=32)).replace(day=1)
+    last = (m + datetime.timedelta(days=32)).replace(day=1) - datetime.timedelta(days=1)
+    st, run = fm.create("payroll_run", dict(g.RUN, period_from=str(m), period_to=str(last), tax_year=m.year, tax_month=m.month, pay_date=str(last)))
+    return (run or {}).get("name", "") if st == 201 else ""
+
+
+def pending(resp):
+    return [a for a in (resp or {}).get("approvals", []) if a.get("state") == "pending"] if isinstance(resp, dict) else []
+
+
+def receipt(cl, name):
+    jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" + b"\x00" * 64 + b"\xff\xd9"
+    st, resp = cl.upload(f"/api/v1/r/expense_claim/{Api.q(name)}/attachments", {}, "struk.jpg", jpeg)
+    return (resp or {}).get("id", "") if st == 201 else ""
+
+
+def rules_of(resp):
+    return [e.get("rule") for e in (resp or {}).get("errors", [])] if isinstance(resp, dict) else []
+
+
+def scenario_karyawan_kasbon_claims(api):
+    """rangka-apps#117. Kasbon: Citra (shop supervisor) asks for Rp 1.500.000 interest-free, Rp 500.000 a month, from her
+    phone; she cannot submit it or name someone else's worker; finance picks her worker and submits it; a second kasbon
+    while it is open is refused; three monthly slips deduct 500.000 each by themselves until it is repaid; cancelling the
+    third slip gives 500.000 back; a fourth month deducts nothing.
+    Claims: Ayu (cashier, shop) claims Rp 75.000 parking with salary: over the category limit and without a receipt are
+    refused; the claim waits for the shop supervisor; Ayu cannot approve her own, Citra cannot approve a kitchen claim,
+    Citra's own claim goes to head office. Ayu's next slip carries the 75.000 outside the taxable gross: gross, PPh 21 and
+    BPJS equal the oracle and the same slip without it, net pay + 75.000. A claim approved after the draft was made
+    refuses the submit until the slip is corrected; the slip then marks the claims paid; cancelling it gives them back.
+    A cash payment pays a claim once; a paid claim cannot be cancelled."""
+    got = members("fm", "hq", "ayu", "bagas", "citra", "eko")
+    if not got or not CTX.get("karyawan_period"):
+        fail("kasbon and claims: members and the month's run", CTX.get("login_error") or "no period")
+        return
+    fm, hq, ayu, bagas, citra, eko = got
+    g = gen()
+    base = datetime.date.fromisoformat(CTX["karyawan_period"][1]).replace(day=1)
+    worker = {w["employee"]: w["name"] for w in fm.find("worker", "employee != ''")}
+    profile = {}
+    for p in fm.find("payroll_profile", "active"):
+        e = next((u for u, w in worker.items() if w == p["worker"]), "")
+        if e:
+            profile[e] = p["name"]
+
+    # --- kasbon request (screen ajukan_kasbon: a draft cash_advance)
+    st, k = citra.create("cash_advance", {"amount": 1_500_000, "installment": 500_000, "notes": "Biaya sekolah anak"})
+    if not check("Citra asks for a kasbon of 1.500.000, 500.000 a month, from her phone: a draft without a worker",
+                 st == 201 and k.get("docstatus") == 0 and not k.get("worker") and k.get("employee") == "USR-005" and k.get("installments") == 3, (st, k)):
+        return
+    K = k["name"]
+    st, resp = citra.verb("cash_advance", K, "submit")
+    check("Citra cannot submit her own kasbon (finance pays it out) -> 403", denied(st, resp), (st, resp))
+    st, resp = bagas.call("GET", f"/api/v1/r/cash_advance/{Api.q(K)}")
+    check("Bagas cannot read Citra's kasbon", st in (403, 404), (st, resp))
+    st, resp = bagas.create("cash_advance", {"worker": worker.get("USR-005", "x"), "amount": 100_000, "installment": 100_000})
+    check("Bagas cannot request a kasbon for Citra's worker (refused by rule or by the worker link he cannot read)", st in (403, 422), (st, resp))
+    st, resp = citra.patch("cash_advance", K, {"installment": 2_000_000})
+    check("an installment above the amount is refused", st == 422 and "installment_range" in rules_of(resp), (st, resp))
+    st, resp = fm.verb("cash_advance", K, "submit")
+    check("finance cannot submit a request before picking the worker", st == 422 and "worker_on_submit" in rules_of(resp), (st, resp))
+    st, resp = fm.patch("cash_advance", K, {"worker": worker.get("USR-005", "x")})
+    check("finance picks Citra's worker", st == 200 and rec(resp).get("employee") == "USR-005", (st, resp))
+    st, resp = citra.patch("cash_advance", K, {"amount": 5_000_000})
+    check("once finance has picked the worker, Citra cannot raise her request (audit F1) -> 403", denied(st, resp), (st, resp))
+    st, fk = fm.create("cash_advance", {"worker": worker.get("USR-006", "x"), "amount": 100_000, "installment": 100_000})
+    st, resp = eko.patch("cash_advance", (fk or {}).get("name", "x"), {"amount": 5_000_000})
+    check("Eko reads a kasbon finance drafted for him but cannot change it -> 403", denied(st, resp), (st, resp))
+    fm.call("DELETE", f"/api/v1/r/cash_advance/{Api.q((fk or {}).get('name', 'x'))}")
+    st, resp = fm.verb("cash_advance", K, "submit")
+    if not check("finance submits the kasbon (pays it out)", st == 200 and rec(resp).get("amount") == 1_500_000, (st, resp)):
+        return
+    K = rec(resp).get("name") or K
+    bal = (fm.find("cash_advance_balance", f"cash_advance == '{K}'") or [{}])[0]
+    eq("its balance: 1.500.000 open, 500.000 a month, nothing repaid",
+       (bal.get("amount"), bal.get("installment"), bal.get("repaid_total"), bal.get("remaining"), bal.get("state")), (1_500_000, 500_000, 0, 1_500_000, "open"))
+    eq("Citra reads her own kasbon balance, Ayu reads none", (len(citra.find("cash_advance_balance", "true")), len(ayu.find("cash_advance_balance", "true"))), (1, 0))
+    st, k2 = fm.create("cash_advance", {"worker": worker.get("USR-005", "x"), "amount": 100_000})
+    st, resp = fm.verb("cash_advance", k2.get("name", "x"), "submit") if st == 201 else (st, k2)
+    check("a second kasbon while the first is open is refused (one open kasbon per worker)", st == 422 and "advance_open" in rules_of(resp), (st, resp))
+    fm.call("DELETE", f"/api/v1/r/cash_advance/{Api.q(k2.get('name', 'x'))}")
+
+    runs = [month_run(fm, g, base, i) for i in (2, 3, 4, 5)]
+    if not check("finance opens four monthly internal runs after the paid month", all(runs), runs):
+        return
+
+    def slip(run, who):
+        st, sl = fm.create("payslip", {"payroll_run": run, "profile": profile.get(who, "x")})
+        return st, (sl or {})
+
+    def submit(name):
+        st, resp = fm.verb("payslip", name, "submit", {"force": True})
+        return st, resp, rec(resp).get("name", name)
+
+    deducted = []
+    for i in range(3):
+        st, sl = slip(runs[i], "USR-005")
+        deducted.append((st, sl.get("cash_advance"), sl.get("other_deduction")))
+        st, resp, n = submit(sl.get("name", "x"))
+        check(f"Citra's slip of month {i + 1} submits", st == 200, (st, resp))
+        if i == 2:
+            third = n
+    eq("three slips each fill the kasbon and its 500.000 installment by themselves", deducted, [(201, K, 500_000)] * 3)
+    bal = fm.get("cash_advance_balance", bal.get("name", "x"))
+    eq("after three slips the kasbon is repaid", (bal.get("repaid_total"), bal.get("remaining"), bal.get("state")), (1_500_000, 0, "repaid"))
+    st, resp = fm.verb("payslip", third, "cancel")
+    bal = fm.get("cash_advance_balance", bal.get("name", "x"))
+    eq("cancelling the third slip gives its 500.000 back", (st, bal.get("repaid_total"), bal.get("remaining"), bal.get("state")), (200, 1_000_000, 500_000, "open"))
+    st, sl = slip(runs[2], "USR-005")
+    st2, resp, _ = submit(sl.get("name", "x"))
+    bal = fm.get("cash_advance_balance", bal.get("name", "x"))
+    eq("a new slip of that month deducts the 500.000 again and repays it", (sl.get("other_deduction"), st2, bal.get("state")), (500_000, 200, "repaid"))
+    st, sl = slip(runs[3], "USR-005")
+    eq("a fourth month deducts nothing", (st, sl.get("cash_advance") or "", sl.get("other_deduction")), (201, "", 0))
+    rows_ = []
+    flt = f"payroll_run == '{runs[0]}' && docstatus == 1 && employee == 'USR-005'"
+    st, body, ctype = fm.html(f"/api/v1/export/r/payslip?filter={Api.q(flt)}&columns={TRANSFER_COLUMNS}")
+    rows_ = [x for x in csv.reader(io.StringIO(body.lstrip("\ufeff"))) if x][1:] if st == 200 else []
+    c1 = (fm.find("payslip", flt) or [{}])[0]
+    eq("the transfer list pays Citra her net after the 500.000 kasbon installment",
+       [int(x[3]) for x in rows_], [c1.get("cash_gross", 0) - c1.get("employee_bpjs", 0) - c1.get("pph21", 0) - 500_000 + c1.get("reimbursement", 0)])
+    fm.call("DELETE", f"/api/v1/r/payslip/{Api.q(sl.get('name', 'x'))}")
+    st, resp = fm.verb("cash_advance", K, "cancel")
+    check("a kasbon repaid by submitted slips cannot be cancelled", st == 422 and "advance_repaid" in rules_of(resp), (st, resp))
+
+    # --- expense claims
+    cats = {}
+    for name, acct, needs, cap in (("Parkir", "61600", True, 100_000), ("ATK", "61800", False, 0)):
+        st, c = hq.create("expense_category", {"category_name": name, "expense_account": acct, "needs_receipt": needs, "max_per_claim": cap})
+        cats[name] = (c or {}).get("name", "x")
+        check(f"head office sets the claim category {name}", st == 201, (st, c))
+    st, resp = bagas.create("expense_claim", {"category": cats["ATK"], "amount": 10_000, "description": "Plastik", "pay_with": "cash", "outlet": SHOP})
+    check("Bagas (kitchen) cannot put his claim on the shop, whose supervisor would approve it (audit F2)", st == 422 and "own_outlet" in rules_of(resp), (st, resp))
+    st, resp = ayu.create("expense_claim", {"category": cats["Parkir"], "amount": 150_000, "description": "Parkir antar kue", "pay_with": "payroll"})
+    check("a parking claim over the category's limit is refused", st == 422 and "within_limit" in rules_of(resp), (st, resp))
+    st, c = ayu.create("expense_claim", {"category": cats["Parkir"], "amount": 75_000, "description": "Parkir antar kue", "pay_with": "payroll"})
+    if not check("Ayu drafts a 75.000 parking claim paid with salary (outlet defaults to the shop)", st == 201 and c.get("employee") == "USR-003" and c.get("outlet") == SHOP, (st, c)):
+        return
+    C1 = c["name"]
+    st, resp = ayu.verb("expense_claim", C1, "submit")
+    check("without the receipt photo the claim is refused", st == 422 and "receipt_needed" in rules_of(resp), (st, resp))
+    ayu.patch("expense_claim", C1, {"receipt": receipt(ayu, C1)})
+    st, resp = ayu.verb("expense_claim", C1, "submit")
+    pend = pending(resp)
+    if not check("with the photo it waits for the shop supervisor or head office (202)", st == 202 and pend and set(pend[0].get("approvers", [])) == {"outlet_supervisor", "head_office"}, (st, resp)):
+        return
+    st, resp = decide(ayu, pend[0]["id"])
+    check("Ayu cannot approve her own claim -> 403", st == 403, (st, resp))
+    st, e = eko.create("expense_claim", {"category": cats["ATK"], "amount": 20_000, "description": "Plastik roti", "pay_with": "cash"})
+    st, resp = eko.verb("expense_claim", (e or {}).get("name", "x"), "submit")
+    pe = pending(resp)
+    if check("Eko (kitchen) claims 20.000 supplies in cash without a receipt (not needed): waits (202)", st == 202 and pe, (st, resp)):
+        st, resp = decide(citra, pe[0]["id"])
+        check("Citra, the shop supervisor, cannot approve a kitchen claim -> 403", st == 403, (st, resp))
+        st, resp = decide(hq, pe[0]["id"])
+        check("head office approves Eko's claim", st == 200, (st, resp))
+    E1 = rec(resp).get("name") or (e or {}).get("name", "x")
+    st, cc = citra.create("expense_claim", {"category": cats["ATK"], "amount": 30_000, "description": "Spidol label", "pay_with": "cash"})
+    st, resp = citra.verb("expense_claim", (cc or {}).get("name", "x"), "submit")
+    pc = pending(resp)
+    if check("Citra's own claim waits for head office only (202)", st == 202 and pc and pc[0].get("approvers") == ["head_office"], (st, resp)):
+        st, resp = decide(citra, pc[0]["id"])
+        check("Citra cannot approve her own claim -> 403", st == 403, (st, resp))
+        st, resp = decide(hq, pc[0]["id"])
+        check("head office approves it", st == 200, (st, resp))
+    st, resp = decide(citra, pend[0]["id"])
+    if not check("Citra approves Ayu's parking claim: submitted", st == 200 and rec(resp).get("docstatus") == 1, (st, resp)):
+        return
+    C1 = rec(resp).get("name") or C1
+    due = {x["claim"]: x for x in fm.find("claim_settlement", "true")}
+    eq("approved claims wait to be paid, each once", sorted((x["employee"], x["amount"], x["pay_with"], x["state"]) for x in due.values()),
+       sorted([("USR-003", 75_000, "payroll", "due"), ("USR-006", 20_000, "cash", "due"), ("USR-005", 30_000, "cash", "due")]))
+    eq("Ayu sees only her own claims", sorted(x["employee"] for x in ayu.find("expense_claim", "true")), ["USR-003"])
+    st, resp = ayu.create("claim_payment", {"claim": C1})
+    check("Ayu cannot pay a claim -> 403", denied(st, resp), (st, resp))
+
+    # Ayu's next slip carries the claim, untaxed
+    R = runs[0]
+    st, sl = slip(R, "USR-003")
+    S = sl.get("name", "x")
+    eq("Ayu's slip of the next month carries the 75.000 claim as reimbursement", (st, sl.get("reimbursement")), (201, 75_000))
+    fm.patch("payslip", S, {"reimbursement": 0})
+    without = fm.get("payslip", S)
+    fm.patch("payslip", S, {"reimbursement": 75_000})
+    withr = fm.get("payslip", S)
+    eq("the reimbursement changes nothing but the net pay: gross, PPh 21 and BPJS equal the slip without it, net + 75.000",
+       tuple(withr.get(f) for f in ("cash_gross", "gross_taxable", "pph21", "employee_bpjs", "employer_cost", "net_pay")),
+       tuple(without.get(f) for f in ("cash_gross", "gross_taxable", "pph21", "employee_bpjs", "employer_cost")) + (without.get("net_pay", 0) + 75_000,))
+    w = oracle.slip(profile_input(g, "USR-003", withr), oracle_run())
+    diff = {f: (withr.get(f), w[ORACLE_KEY.get(f, f)]) for f in SLIP_FIELDS if f != "net_pay" and withr.get(f) != w[ORACLE_KEY.get(f, f)]}
+    check("the oracle: every amount of the slip equals the slip without a claim, and net = oracle net + 75.000",
+          not diff and withr.get("net_pay") == w["net_pay"] + 75_000, (diff, withr.get("net_pay"), w["net_pay"]))
+    st, c2 = ayu.create("expense_claim", {"category": cats["Parkir"], "amount": 25_000, "description": "Parkir belanja tepung", "pay_with": "payroll"})
+    C2 = (c2 or {}).get("name", "x")
+    ayu.patch("expense_claim", C2, {"receipt": receipt(ayu, C2)})
+    st, resp = ayu.verb("expense_claim", C2, "submit")
+    p2 = pending(resp)
+    st, resp = decide(citra, p2[0]["id"]) if p2 else (st, resp)
+    C2 = rec(resp).get("name") or C2
+    check("Ayu's second parking claim (25.000) is approved after the slip was drafted", st == 200, (st, resp))
+    st, resp, _ = submit(S)
+    check("the slip no longer matches the claims due: refused until corrected", st == 422 and "reimbursement_changed" in rules_of(resp), (st, resp))
+    fm.patch("payslip", S, {"reimbursement": 100_000})
+    st, resp, S = submit(S)
+    if not check("finance corrects the reimbursement to 100.000: the slip submits", st == 200 and rec(resp).get("net_pay") == withr.get("net_pay", 0) + 25_000, (st, resp)):
+        return
+    paid = {x["claim"]: x for x in fm.find("claim_settlement", "employee == 'USR-003'")}
+    eq("both of Ayu's claims are paid by the slip", sorted((x["amount"], x["paid"], x["paid_by"]) for x in paid.values()), [(25_000, True, S), (75_000, True, S)])
+    eq("the run's totals hold the reimbursement inside the net pay", fm.get("payroll_run", R).get("total_reimbursement"), 100_000)
+    st, resp = fm.verb("payslip", S, "cancel")
+    paid = {x["claim"]: x for x in fm.find("claim_settlement", "employee == 'USR-003'")}
+    eq("cancelling the slip gives both claims back", (st, sorted((x["paid"], x["paid_by"] or "") for x in paid.values())), (200, [(False, ""), (False, "")]))
+    # finance pays the 25.000 in cash instead; once only
+    st, pay = fm.create("claim_payment", {"claim": C2, "method": "cash"})
+    st, resp = fm.verb("claim_payment", (pay or {}).get("name", "x"), "submit") if st == 201 else (st, pay)
+    P1 = rec(resp).get("name", "x")
+    check("finance pays Ayu's 25.000 claim in cash", st == 200 and rec(resp).get("amount") == 25_000, (st, resp))
+    st, pay2 = fm.create("claim_payment", {"claim": C2, "method": "bank"})
+    st, resp = fm.verb("claim_payment", (pay2 or {}).get("name", "x"), "submit") if st == 201 else (st, pay2)
+    check("a second payment of the same claim is refused", st == 422 and "claim_paid" in rules_of(resp), (st, resp))
+    fm.call("DELETE", f"/api/v1/r/claim_payment/{Api.q((pay2 or {}).get('name', 'x'))}")
+    st, resp = hq.verb("expense_claim", C2, "cancel")
+    check("a paid claim cannot be cancelled", st == 422 and "claim_paid" in rules_of(resp), (st, resp))
+    st, sl = slip(R, "USR-003")
+    st2, resp, S2 = submit(sl.get("name", "x"))
+    eq("a new slip of the month carries only the claim still due (75.000) and pays it", (sl.get("reimbursement"), st2), (75_000, 200))
+    # the transfer list pays the slip's one received amount: net after BPJS, PPh 21 and the kasbon, plus the claims
+    s2 = fm.get("payslip", S2)
+    flt = f"name == '{S2}'"
+    st, body, ctype = fm.html(f"/api/v1/export/r/payslip?filter={Api.q(flt)}&columns={TRANSFER_COLUMNS}")
+    rows_ = [x for x in csv.reader(io.StringIO(body.lstrip("\ufeff"))) if x][1:] if st == 200 else []
+    eq("the transfer list pays Ayu cash gross - BPJS - PPh 21 - kasbon + reimbursement (75.000 included, untaxed)",
+       [int(x[3]) for x in rows_], [s2.get("cash_gross", 0) - s2.get("employee_bpjs", 0) - s2.get("pph21", 0) - s2.get("other_deduction", 0) + 75_000])
+    st, pe2 = fm.create("claim_payment", {"claim": E1, "method": "cash"})
+    st, resp = fm.verb("claim_payment", (pe2 or {}).get("name", "x"), "submit") if st == 201 else (st, pe2)
+    check("finance pays Eko's claim in cash", st == 200, (st, resp))
+    st, resp = fm.verb("claim_payment", P1, "cancel")
+    st2, resp2 = hq.verb("expense_claim", C2, "cancel")
+    eq("cancelling the cash payment gives the claim back, which head office may then cancel",
+       (st, st2, (fm.find("claim_settlement", f"claim == '{C2}'") or [{}])[0].get("state")), (200, 200, "cancelled"))
+    ws = dashboard(ayu, "klaim_kasbon_saya", 92)
+    if ws:
+        eq("klaim_kasbon_saya for Ayu: no claim waiting, nothing due, no kasbon", (num(ws["claims_waiting"]), num(ws["claims_due"]), num(ws["kasbon_left"])), (0, 0, 0))
+    ws = dashboard(citra, "klaim_kasbon_saya", 92)
+    if ws:
+        eq("klaim_kasbon_saya for Citra: her 30.000 claim due in cash, her kasbon repaid", (num(ws["claims_due"]), num(ws["kasbon_left"])), (30_000, 0))
+    ws = dashboard(fm, "gaji_ringkas", 92)
+    if ws:
+        eq("gaji_ringkas: claims due 30.000 (Citra's), no kasbon left", (num(ws["claims_due"]), num(ws["kasbon_open"])), (30_000, 0))
+    st, cl = fm.create("payroll_close", {"payroll_run": R})
+    st, resp = fm.verb("payroll_close", (cl or {}).get("name", "x"), "submit") if st == 201 else (st, cl)
+    check("finance closes the month that paid Ayu's claim", st == 200, (st, resp))
+    CL = rec(resp).get("name", "x")
+    st, resp = fm.call("GET", "/api/v1/meta")
+    if "gl_entry" in ((resp or {}).get("models") or {}):   # pembukuan installed: the journals of #117
+        def lines(v):
+            return sorted((x["account"], x["amount"]) for x in fm.find("gl_entry", f"voucher == '{v}' && entry == 'post'"))
+        eq("journal of Ayu's approved parking claim: Dr Beban transport 75.000 / Cr Utang reimburse karyawan", lines(C1), [("21510", -75_000), ("61600", 75_000)])
+        eq("journal of Eko's supplies claim: Dr Beban perlengkapan / Cr Utang reimburse karyawan", lines(E1), [("21510", -20_000), ("61800", 20_000)])
+        pays = [x["name"] for x in fm.find("claim_payment", f"claim == '{E1}' && docstatus == 1")]
+        eq("journal of the cash payment: Dr Utang reimburse karyawan / Cr Kas", lines(pays[0] if pays else "x"), [("11100", -20_000), ("21510", 20_000)])
+        eq("the payroll close debits Utang reimburse karyawan with the claims the slips paid", [a_ for a_ in lines(CL) if a_[0] == "21510"], [("21510", 75_000)])
+        left = sum(x["amount"] for x in fm.find("gl_entry", "account == '21510'"))
+        eq("Utang reimburse karyawan = the claims still due (Citra's 30.000)", left, -30_000)
+        eq("journal of the kasbon: Dr Piutang karyawan / Cr Kas", lines(K), [("11100", -1_500_000), ("11330", 1_500_000)])
+    CTX["karyawan_claims"] = {"slip": S2, "claims": [C1, C2, E1], "kasbon": K}
+
+
+SCENARIOS = [scenario_karyawan_month, scenario_karyawan_outlet_run, scenario_karyawan_kasbon_claims]

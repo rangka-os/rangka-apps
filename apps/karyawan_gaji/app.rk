@@ -1,10 +1,10 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
 name: karyawan_gaji
-version: 1.0.0
+version: 1.1.0
 title: {id: Karyawan dan gaji, en: Staff and payroll}
 label: {id: Rangka Karyawan dan Gaji, en: Rangka Staff and Payroll}
 summary:
-  id: Data karyawan dan gajinya, absen dari HP jadi slip gaji dengan BPJS dan PPh 21, potongan kasbon, file transfer gaji ke bank.
+  id: Data karyawan dan gajinya, absen dari HP jadi slip gaji dengan BPJS dan PPh 21, cicilan kasbon, klaim biaya, file transfer gaji.
 category: people
 icon: team-line
 rangka: '>=0.5'
@@ -21,13 +21,21 @@ modules:
   workforce: ^1.1
   outlets: ^1.6
   attendance: ^1.0
-  payroll: ^2.1
-dashboards: [gaji_ringkas, transfer_gaji]
+  payroll: ^2.2
+  reimbursement: ^1.0
+dashboards: [gaji_ringkas, transfer_gaji, klaim_kasbon_saya]
 roles: [finance_manager, head_office, outlet_supervisor, cashier, outlet_staff, employee]
 home: {dashboard: gaji_ringkas}
+# rangka-apps#117: staff claim expenses and ask for a kasbon from their phone (Kerja group); the clock stays their home
+# (absen_karyawan).
+work:
+  - {screen: klaim_biaya, roles: [employee, cashier, outlet_staff, outlet_supervisor]}
+  - {screen: ajukan_kasbon, roles: [employee, cashier, outlet_staff, outlet_supervisor]}
 menu:
   - group: {id: Gaji}
-    items: [payroll_run, payslip, payroll_close, cash_advance]
+    items: [payroll_run, payslip, payroll_close, cash_advance, cash_advance_balance]
+  - group: {id: Klaim biaya}
+    items: [expense_claim, claim_settlement, claim_payment, expense_category]
   - group: {id: Karyawan}
     items: [worker, payroll_profile, user]
 onboarding:

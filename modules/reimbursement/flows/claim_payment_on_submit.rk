@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: claim_payment_on_submit
+label: {id: Klaim ditandai dibayar}
+# Inside a claim_payment submit (finance): the claim must still be due (not paid by another payment or a slip, not
+# cancelled); it is then marked paid by this payment. The find takes the flow read lock of claim_settlement (contract
+# 0025): two payments of one claim, or a payment and a slip, submitted at the same moment run one after the other and
+# the second is refused.
+on: claim_payment.submitted
+steps:
+  - find: claim_settlement
+    where: claim == event.claim
+    as: s
+  - if: s == null || s.cancelled
+    create: reimbursement_guard
+    set:
+      reason: "'claim_cancelled'"
+      document: event.claim
+  - if: s != null && !s.cancelled && s.paid
+    create: reimbursement_guard
+    set:
+      reason: "'claim_paid'"
+      document: s.paid_by
+  - if: s != null && !s.cancelled && !s.paid
+    update: s
+    set:
+      paid: 'true'
+      paid_by: event.name
+      paid_on: event.payment_date
