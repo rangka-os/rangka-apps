@@ -87,10 +87,6 @@ rules:
     on: save
     check: "items.map(l, items.map(x, x.item == l.item ? x.qty : 0).sum() <= fulfilment.items.map(b, b.item == l.item ? b.ordered_qty - b.delivered_qty : 0).sum() + 0.0005 ? 0 : 1).sum() == 0"
     message: {id: Jumlah kirim melebihi sisa pesanan yang belum dikirim}
-  - name: lot_of_item
-    on: save
-    check: "items.map(i, i.lot != '' && i.lot_item != i.item ? 1 : 0).sum() == 0"
-    message: {id: 'Lot yang dipilih bukan lot barang itu'}
 views:
   list:
     columns: [name, delivery_date, customer, salesman, outlet, total_qty, status]

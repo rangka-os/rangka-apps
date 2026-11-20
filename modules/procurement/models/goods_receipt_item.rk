@@ -43,8 +43,6 @@ fields:
   # rangka-os contract 0070 §7 (goods_receipt stays on the kernel's Go rule, which reads these line fields): the lot
   # number and dates printed on the pack, and for a serial item one serial per line. Empty lot number on a lot item puts
   # the quantity in the no-lot bucket; a lot item with expiry needs it (409 lot_required at submit).
-  # the item's tracking on the line, for the document's rules (a rule reads line fields, not links of lines)
-  - {name: tracking, type: data, label: {id: Pelacakan}, compute: item.tracking, hidden: true}
   - name: lot_no
     type: data
     label: {id: Nomor lot / batch}

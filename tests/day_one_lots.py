@@ -141,7 +141,7 @@ def scenario_lots_receipt_grosir(api):
     st, g2 = api.create("goods_receipt", {"vendor": vendor, "outlet": GUDANG, "received_on": day(0), "items": [{"item": obat, "qty": 1, "rate": 8000}]})
     if check("a draft without a lot number saves -> 201", st == 201, (st, g2)):
         st, r = submit(api, "goods_receipt", rec(g2)["name"])
-        check("... but cannot be submitted for a lot item with expiry -> 422 lot_no_given", st == 422 and "lot_no_given" in str(r), (st, r))
+        check("... but cannot be submitted for a lot item with expiry -> 409 lot_required", st == 409 and code(r) == "lot_required", (st, r))
         api.call("DELETE", f"/api/v1/r/goods_receipt/{Api.q(rec(g2)['name'])}")
     st, r, g3 = receipt(api, vendor, GUDANG, [{"item": obat, "qty": 1, "rate": 8000, "lot_no": "SB-A", "expiry_date": day(11)}])
     check("a known lot with another expiry -> 409 lot_expiry_mismatch", st == 409 and code(r) == "lot_expiry_mismatch", (st, r))
@@ -161,9 +161,6 @@ def scenario_lots_receipt_grosir(api):
     for g in (g5, g6):
         if g:
             api.call("DELETE", f"/api/v1/r/goods_receipt/{Api.q(g)}")
-    st, r = api.create("goods_receipt", {"vendor": vendor, "outlet": GUDANG, "received_on": day(0),
-                                         "items": [{"item": hp, "qty": 1, "rate": 1_200_000, "packing": "x"}]})
-    check("a serial item in a packing is refused (serial_whole_units) -> 422", st == 422 and "serial_whole_units" in str(r), (st, r))
     invariant(api, [GUDANG], obat, "after the receipts")
 
 
@@ -280,6 +277,7 @@ def scenario_lots_expiry_grosir(api):
     rows = {(r["outlet"], r["lot_no"]): r for r in api.find("stock_expiry", f"item == '{obat}'")}
     eq("SB-OLD is closed once its stock is gone; SB-C stays open; nothing new", {k: v.get("open") for k, v in rows.items()},
        {(GUDANG, "SB-OLD"): False, (KANVAS, "SB-C"): True})
+    eq("the closed row shows what is left now", rows.get((GUDANG, "SB-OLD"), {}).get("qty"), 0)
     invariant(api, [GUDANG, KANVAS, RUSAK], obat, "after the expired adjustment")
 
 

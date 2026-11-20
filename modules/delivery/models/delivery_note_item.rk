@@ -13,5 +13,3 @@ fields:
   # item, the serials that leave, one per line. The lots taken are on the stock moves of this note.
   - {name: lot, type: link, to: stock_lot, label: {id: Lot}, depends_on: "item.tracking in ['lot', 'lot_expiry']", help: {id: 'Kosongkan: lot yang paling dulu kedaluwarsa dikirim'}}
   - {name: serial_nos, type: text, label: {id: Nomor seri}, depends_on: "item.tracking == 'serial'", help: {id: 'Satu nomor seri per baris'}}
-  # the picked lot's item, for the note's rule lot_of_item (a rule reads line fields, not links of lines)
-  - {name: lot_item, type: data, label: {id: Barang lot}, compute: "lot != '' ? lot.item : ''", hidden: true}

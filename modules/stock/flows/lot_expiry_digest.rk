@@ -2,7 +2,7 @@
 # Every morning at 06:40 (scheduler.timezone), and by the owner from the flow list: lot balances with stock whose lot
 # expires within the item's expiry_warning_days (or has expired) are compared with the open stock_expiry rows
 # (rangka-os#260, contract 0070).
-#   - an open row whose lot balance is used up (qty <= 0), gone, or no longer in the window is closed;
+#   - an open row whose lot balance is used up (qty <= 0), gone, or no longer in the window is closed with today's qty;
 #   - an open row still in the window gets today's qty, days_left and state (soon, or expired once the date passed);
 #   - a lot balance in the window without an open row gets one, and head office and the warehouse are told once about
 #     the rows new today (notice stock_expiry). A lot that stays in the window tells nobody again.
@@ -30,7 +30,7 @@ steps:
       - {find: item, where: name == m.item, as: mi}
       - if: "mb == null || mi == null || mb.qty <= 0 || days_between(today(), m.expiry_date) > mi.expiry_warning_days"
         update: m
-        set: {open: 'false'}
+        set: {open: 'false', qty: "mb == null ? 0 : mb.qty"}
       - if: "mb != null && mi != null && mb.qty > 0 && days_between(today(), m.expiry_date) <= mi.expiry_warning_days"
         update: m
         set:

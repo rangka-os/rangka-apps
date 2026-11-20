@@ -69,15 +69,6 @@ rules:
     on: save
     check: "items.map(i, i.rate < 0 ? 1 : 0).sum() == 0"
     message: {id: Harga tidak boleh negatif}
-  # rangka-os contract 0070: the kernel refuses these at submit too; the rules say it in the form first
-  - name: lot_no_given
-    on: submit
-    check: "items.map(i, i.tracking == 'lot_expiry' && i.lot_no == '' ? 1 : 0).sum() == 0"
-    message: {id: 'Barang yang dilacak per lot dengan kedaluwarsa wajib diisi nomor lotnya'}
-  - name: serial_whole_units
-    on: save
-    check: "items.map(i, i.tracking == 'serial' && i.packing != '' ? 1 : 0).sum() == 0"
-    message: {id: 'Barang bernomor seri diterima per unit, tanpa kemasan'}
 views:
   list:
     columns: [name, vendor, outlet, received_on, status, total_value]

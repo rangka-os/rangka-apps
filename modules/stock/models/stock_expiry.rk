@@ -38,6 +38,6 @@ fields:
   - {name: open, type: check, label: {id: Masih ada stoknya}, read_only: true, in_list: true, in_filter: true}
 views:
   list:
-    columns: [item, lot, expiry_date, days_left, outlet, qty, state, open]
+    columns: [item, lot, expiry_date, days_left, outlet, qty, state]
     filters: [outlet, item, state, open]
     sort: expiry_date
