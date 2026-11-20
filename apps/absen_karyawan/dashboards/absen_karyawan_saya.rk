@@ -5,7 +5,7 @@ description: {id: 'Absen masuk dan pulang kamu, hari hadir dan menit terlambat b
 # Every widget filters on the member's own employee record, so head office and outlet supervisors (who read more logs)
 # also see only their own days here. Staff are limited to their own logs anyway (staff_attendance read if:).
 default_period: 31
-roles: [cashier, outlet_staff, employee, outlet_supervisor, head_office]
+roles: [member]
 cache: 1m
 widgets:
   - {name: days_present, type: number, label: {id: Hari hadir}, model: staff_attendance, filter: "employee == user.name && docstatus == 1", period: work_date, compact: true, span: 4}

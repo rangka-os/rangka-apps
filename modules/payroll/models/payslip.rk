@@ -15,6 +15,10 @@ permissions:
   - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   # Recaps are submitted by the project admin; their flow makes the draft slip as that person (no submit).
   - {role: project_admin, read: true, create: true}
+  # Every employee reads and prints their own slip from the phone, whatever their role (member grant, rangka-os contract
+  # 0074; rangka-os#261), once it is released: submitted, and its run closed or its pay date reached. A draft or a
+  # submitted slip before pay day stays with finance, so a figure still being checked is never shown.
+  - {role: member, read: true, print: true, if: "employee == user.name && docstatus == 1 && (payroll_run.closed || (payroll_run.pay_date != '' && payroll_run.pay_date <= today()))"}
 fields:
   - name: payroll_run
     type: link
@@ -49,6 +53,14 @@ fields:
     to: user
     label: {id: Karyawan, en: Employee}
     compute: profile.worker.employee
+  # Who the slip is for and where it is paid, copied from the worker and the profile so the printed slip (print payslip)
+  # needs no read of them: an employee reading their own slip (member grant) does not read the worker record, which
+  # holds the cost rates.
+  - {name: slip_worker_name, type: data, label: {id: Nama pekerja, en: Worker name}, hidden: true, compute: profile.worker.worker_name}
+  - {name: slip_employee_no, type: data, label: {id: No. pegawai, en: Employee number}, hidden: true, compute: profile.worker.employee_no}
+  - {name: slip_role_title, type: data, label: {id: Jabatan, en: Job title}, hidden: true, compute: profile.worker.role_title}
+  - {name: slip_bank_name, type: data, label: {id: Bank, en: Bank}, hidden: true, compute: profile.bank_name}
+  - {name: slip_bank_account, type: data, label: {id: Nomor rekening, en: Account number}, hidden: true, compute: profile.bank_account}
   - name: project
     type: link
     to: project

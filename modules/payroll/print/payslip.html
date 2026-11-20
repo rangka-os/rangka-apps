@@ -14,9 +14,9 @@
 {{template "letterhead" .}}
 <h1>Slip gaji</h1>
 <table class="meta">
-  <tr><td>Nama</td><td>: {{.Links.worker.worker_name}}</td><td>No. slip</td><td>: {{.Doc.name}}</td></tr>
-  <tr><td>No. pegawai</td><td>: {{.Links.worker.employee_no}}</td><td>Masa pajak</td><td>: {{.Doc.tax_month}}/{{.Doc.tax_year}}</td></tr>
-  <tr><td>Jabatan</td><td>: {{.Links.worker.role_title}}</td><td>Periode</td><td>: {{date .Links.payroll_run.period_from}} s.d. {{date .Links.payroll_run.period_to}}</td></tr>
+  <tr><td>Nama</td><td>: {{.Doc.slip_worker_name}}</td><td>No. slip</td><td>: {{.Doc.name}}</td></tr>
+  <tr><td>No. pegawai</td><td>: {{.Doc.slip_employee_no}}</td><td>Masa pajak</td><td>: {{.Doc.tax_month}}/{{.Doc.tax_year}}</td></tr>
+  <tr><td>Jabatan</td><td>: {{.Doc.slip_role_title}}</td><td>Periode</td><td>: {{date .Doc.run_period_from}} s.d. {{date .Doc.run_period_to}}</td></tr>
   <tr><td>Hari hadir</td><td>: {{.Doc.days}}</td><td>Lembur</td><td>: {{.Doc.overtime_hours}} jam</td></tr>
 </table>
 <div class="cols">
@@ -55,4 +55,4 @@
 <div class="net"><span>Gaji bersih diterima</span><span>{{rupiah .Doc.net_pay}}</span></div>
 <p class="note">Ditanggung perusahaan, tidak dipotong dari gaji: JKK {{rupiah .Doc.jkk}}, JKM {{rupiah .Doc.jkm}}, JHT 3,7% {{rupiah .Doc.jht_employer}}, JP 2% {{rupiah .Doc.jp_employer}}, BPJS Kesehatan 4% {{rupiah .Doc.kes_employer}}.
 Dasar upah BPJS {{rupiah .Doc.bpjs_base}}. {{if .Doc.ter_daily}}PPh 21 TER harian, bruto sehari {{rupiah .Doc.daily_gross}}{{else}}PPh 21 kategori TER {{.Doc.ter_category}}{{end}}, bruto {{rupiah .Doc.gross_taxable}}.</p>
-{{if .Links.profile.bank_account}}<p class="note">Ditransfer ke {{.Links.profile.bank_name}} {{.Links.profile.bank_account}}.</p>{{end}}
+{{if .Doc.slip_bank_account}}<p class="note">Ditransfer ke {{.Doc.slip_bank_name}} {{.Doc.slip_bank_account}}.</p>{{end}}

@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: reimbursement
-version: 1.0.0
+version: 1.1.0
 title: {id: Klaim biaya karyawan, en: Expense claims}
 summary:
   id: Karyawan mengajukan klaim biaya dengan foto struk, atasan menyetujui, keuangan membayar tunai, transfer, atau bersama gaji tanpa dipajaki.

@@ -36,6 +36,8 @@ permissions:
   - {role: outlet_staff, create: true, write: true, delete: true, if: "requested_by == user.name && worker == ''"}
   - {role: outlet_supervisor, read: true, if: "requested_by == user.name || employee == user.name"}
   - {role: outlet_supervisor, create: true, write: true, delete: true, if: "requested_by == user.name && worker == ''"}
+  # Every employee whatever their role reads their own kasbon (member grant, rangka-os contract 0074).
+  - {role: member, read: true, if: "requested_by == user.name || employee == user.name"}
 fields:
   # Empty on a staff request (staff do not read the worker list): finance picks it before submitting (rule
   # worker_on_submit), and on a request it must be the requester's own worker record (rule request_own_worker).

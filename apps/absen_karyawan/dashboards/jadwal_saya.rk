@@ -7,7 +7,7 @@ description: {id: 'Shift kamu hari ini dan 13 hari ke depan, dan permintaan tuka
 # (shift_assignment read if:).
 periods: [1]
 default_period: 1
-roles: [cashier, outlet_staff, employee, outlet_supervisor, head_office]
+roles: [member]
 cache: 1m
 widgets:
   - {name: today, type: list, label: {id: Hari ini}, model: shift_assignment, filter: "employee == user.name && published && work_date == today()", columns: [shift_label, outlet, outcome], limit: 1, span: 12}

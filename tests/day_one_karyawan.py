@@ -284,6 +284,7 @@ def scenario_karyawan_month(api):
             bad.append((u, st, resp))
     check(f"finance submits all {len(slips)} slips (confirming the warnings)", not bad, bad)
     check_print("a slip filled from attendance", fm, "payslip", named.get("USR-004", "x"), "payslip", ["Bagas Contoh"])
+    self_service(fm, ayu, bagas, R, named)
     st, c = fm.create("payroll_close", {"payroll_run": R})
     st, resp = fm.verb("payroll_close", (c or {}).get("name", "x"), "submit") if st == 201 else (st, c)
     check("finance closes the run", st == 200 and fm.get("payroll_run", R).get("closed") is True, (st, resp))
@@ -318,6 +319,34 @@ def scenario_karyawan_month(api):
         eq("gaji_ringkas: no draft slip left, one submitted slip without an account", (num(ws["draft_slips"]), num(ws["no_account"])), (0, 1))
     st, resp = hq.call("GET", "/api/v1/dashboards/gaji_ringkas")
     check("head office does not get the payroll dashboard", st in (403, 404), (st, resp))
+
+
+def self_service(fm, ayu, bagas, R, named):
+    """The employee app (rangka-os#261 slice a, member grants of contract 0074): each person reads and prints only their
+    own released slip, whatever their role, and the saya dashboard shows it; before pay day a submitted slip stays hidden."""
+    def own(cl):
+        st, resp = cl.call("GET", "/api/v1/r/payslip?limit=50")
+        return st, sorted(r_.get("employee") for r_ in (resp or {}).get("data", [])) if st == 200 else resp
+    eq("Ayu (cashier) lists her own slip only, through the member grant", own(ayu), (200, ["USR-003"]))
+    eq("Bagas (employee) lists his own slip only", own(bagas), (200, ["USR-004"]))
+    st, resp = ayu.call("GET", f"/api/v1/r/payslip/{Api.q(named.get('USR-004', 'x'))}")
+    check("Ayu cannot open Bagas's slip", st in (403, 404), (st, resp))
+    st, resp = ayu.patch("payslip", named.get("USR-003", "x"), {"other_income": 1})
+    check("Ayu cannot change her own slip (member grant is read and print)", st in (403, 409, 422) and st != 200, (st, resp))
+    check_print("Ayu prints her own slip", ayu, "payslip", named.get("USR-003", "x"), "payslip", ["Ayu Contoh"])
+    st, raw, _ = ayu.print_html("payslip", named.get("USR-004", "x"), "payslip")
+    check("Ayu cannot print Bagas's slip", st in (403, 404), (st, raw[:200]))
+    ws = dashboard(ayu, "saya")
+    eq("saya (Ayu): one slip, hers", [r_.get("name") for r_ in (ws.get("slips") or {}).get("rows", [])], [named.get("USR-003")])
+    # before pay day: the run's pay date moves to tomorrow while it is open, and the submitted slips are hidden again
+    tomorrow = str(kernel_today() + datetime.timedelta(days=1))
+    pay = fm.get("payroll_run", R).get("pay_date")
+    st, resp = fm.patch("payroll_run", R, {"pay_date": tomorrow})
+    if check("finance moves the pay date of the open run to tomorrow", st == 200, (st, resp)):
+        eq("before pay day Ayu sees no slip", own(ayu), (200, []))
+        st, resp = fm.patch("payroll_run", R, {"pay_date": pay})
+        check("finance puts the pay date back", st == 200, (st, resp))
+    eq("on pay day Ayu sees her slip again", own(ayu), (200, ["USR-003"]))
 
 
 def scenario_karyawan_outlet_run(api):
