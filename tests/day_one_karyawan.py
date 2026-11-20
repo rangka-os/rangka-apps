@@ -336,6 +336,13 @@ def self_service(fm, ayu, bagas, R, named):
     check_print("Ayu prints her own slip", ayu, "payslip", named.get("USR-003", "x"), "payslip", ["Ayu Contoh"])
     st, raw, _ = ayu.print_html("payslip", named.get("USR-004", "x"), "payslip")
     check("Ayu cannot print Bagas's slip", st in (403, 404), (st, raw[:200]))
+    # the employee's copy leaves out the tax working fields and the links she cannot open; finance keeps them
+    hidden = ("payroll_run", "profile", "ptkp_status", "has_tax_id", "last_month", "year_pph21")
+    st, mine = ayu.call("GET", f"/api/v1/r/payslip/{Api.q(named.get('USR-003', 'x'))}")
+    check("Ayu's slip carries no tax working fields or run and profile links", st == 200 and not [k for k in hidden if mine.get(k) not in (None, "")], (st, [k for k in hidden if (mine or {}).get(k) not in (None, "")]))
+    check("Ayu's slip still carries the pay", st == 200 and mine.get("net_pay") not in (None, ""), (st, mine))
+    full = fm.get("payslip", named.get("USR-003", "x")) or {}
+    check("finance still sees run, profile and the tax fields", all(full.get(k) not in (None, "") for k in ("payroll_run", "profile", "ptkp_status")), {k: full.get(k) for k in hidden})
     ws = dashboard(ayu, "saya")
     eq("saya (Ayu): one slip, hers", [r_.get("name") for r_ in (ws.get("slips") or {}).get("rows", [])], [named.get("USR-003")])
     # before pay day: the run's pay date moves to tomorrow while it is open, and the submitted slips are hidden again
