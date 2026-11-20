@@ -170,7 +170,7 @@ member sees only their own logs and summaries, never a colleague's selfie or pos
 | --- | --- | --- | --- |
 | staff_attendance (staff: no delete or cancel; a held submit is decided in Persetujuan; employee, outlet and day set once) | r c w s (own) | r p (own outlets); c w s (own, held for head office) | all but amend (d: stuck drafts) |
 | attendance_period (Rekap absen karyawan; notes hidden from staff) | r (the guards read it) | r | all |
-| attendance_summary (written by the period flows only) | r (own) | r (own outlets) | r c w e p |
+| attendance_summary (written by the period flows only; finance_manager r, for payroll_run_fill) | r (own) | r (own outlets) | r c w e p |
 | staff_attendance_guard (never stored; a flow's refusal) | c | c | c |
 | outlet | r (cashier, outlet_staff as before; employee: own outlets only) | r p | as before |
 | user (phone, email hidden) | | r | as before |
@@ -286,3 +286,51 @@ The flows of its documents run as it, so it also reads `item`, `uom`, `uom_conve
 | stock_adjustment_value | r c | r c | r c e |
 | stock_balance, stock_move | r | r (values hidden) | r e |
 | goods_receipt | r c w s | r c w s | all |
+
+### Members, points and deposit (module loyalty, next to the kasir piece)
+
+A member (`loyalty_account`) is signed up by a cashier at the counter or by head office at the desk; its tier figures,
+points, deposit, the year's spend and the tier are `read_only` and written only by the loyalty flows, which run as
+whoever pays the sale, takes the top-up or submits the payment. That is why the cashier (and finance or the sales
+manager for invoice payments from the deposit) holds `write` on `loyalty_account`: with every balance read-only, a
+client write can only change the name and number (the customer link and the active switch are `read_only_for` the
+cashier, the finance and the sales manager). The ledgers `loyalty_entry`, `deposit_entry` and `member_spend` are
+append-only (contract 0026); every run of a sale's loyalty flows writes a `member_spend` row, so a flow started again by
+hand is refused as a whole. A deposit refund and a
+points correction are head office's; above Rp 1.000.000 or 1.000 points they wait for finance or the owner (contract
+0007: head office does not hold `finance_manager`, so it never approves its own). Tiers are head office's. The member
+model has no `outlet` field (`joined_outlet`), so a member is found at every outlet; the ledgers carry `outlet`, so a
+cashier lists only its outlet's rows. `MATRIX` rows live in `tests/day_one_loyalty.py`.
+
+| Model | cashier | outlet_staff | head_office | finance_manager |
+| --- | --- | --- | --- | --- |
+| member_tier | r | r | r c w d e | r |
+| loyalty_account (balances read-only; customer and active read-only for everyone but head office; no delete: switched off instead) | r c w p | r | r c w e p | r w e |
+| member_spend (append-only; one row per paid or voided member receipt) | r c | none | r c e | r e |
+| loyalty_entry (append-only) | r c | none | r c e | r e |
+| deposit_entry (append-only) | r c | none | r c e | r c e |
+| deposit_topup (cashier: cash or QRIS on its own open shift; the desk: transfer or cash) | r c w d s x p | none | r c w d s x e p | r c w d s x e p |
+| deposit_refund (approval above Rp 1.000.000) | none | none | r c w d s x e p | r e p (approves) |
+| points_adjustment (approval above 1.000 points) | none | none | r c w d s x e | r e (approves) |
+| loyalty_mismatch (written by the nightly check) | none | none | r c w d e | none |
+| loyalty_guard (never stored; a flow's refusal) | c | none | c | c |
+
+### Fixed assets (module fixed_assets, rangka-apps#113)
+
+Assets and their depreciation are finance's and head office's. The purchasing manager's bill posted as "Aset tetap"
+drafts the assets (flow `asset_from_vendor_bill` runs as them), so they create drafts and read the threshold; finance
+completes and submits them. Warehouse staff of a rental business see which unit is which asset, never what it cost
+(`hidden_for: [rental_staff]`, contract 0027). The register row (`asset_book`) and the rental unit's `asset` are written
+only by this module's flows (their fields are read_only); head office writes `rental_unit` for that reason. `MATRIX`
+rows live in `tests/day_one_fixed_assets.py`.
+
+| Model | finance_manager | head_office | purchasing_manager | rental_staff |
+| --- | --- | --- | --- | --- |
+| fixed_asset (submit journals the purchase by source) | r c w d s x a e p i | r c w d s x a e p i | r c | r (cost, residual, depreciation hidden) |
+| asset_book (written by flows only) | r c w e p | r c w e p | none | r (money hidden) |
+| depreciation_run (only the latest cancels) | r c w d s x e p | r c w d s x e p | none | none |
+| asset_disposal | r c w d s x a e p | r c w d s x a e p | none | none |
+| asset_category | r c w d e | r c w d e | r | r |
+| fixed_asset_setting | r c w | r c w | r | none |
+| asset_bill_line (written by the bill's flow only; every field read-only) | r c | r c | r c | none |
+| asset_guard (never stored; a flow's refusal) | c | c | c | none |

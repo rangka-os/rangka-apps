@@ -1,0 +1,165 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One fixed asset (a camera body, a car, a laptop) depreciated straight-line per month: (cost - residual value) /
+# useful life, rounded to the rupiah; the last month takes what is left, so the depreciation adds up to the cost minus
+# the residual exactly. Its submit journals the purchase by its source (accounting flow gl_fixed_asset_post, none for
+# a vendor bill: the bill already debited 1-2100) and opens its asset_book (flow fixed_asset_on_submit): a submitted
+# document cannot change, so the accumulated depreciation, the last month depreciated and the state live there,
+# written only by the flows of this module. Cancelling an asset that has been depreciated or disposed of is refused.
+name: fixed_asset
+label: {id: Aset tetap, en: Fixed asset}
+icon: building-2-line
+is_submittable: true
+naming: AST-{YYYY}-{####}
+title_field: asset_name
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true, import: true}
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true, import: true}
+  # the bill's submit drafts the assets (flow asset_from_vendor_bill runs as the purchasing manager); finance completes
+  # and submits them
+  - {role: purchasing_manager, read: true, create: true}
+  # the warehouse sees which unit is which asset, not what it cost (hidden_for below, contract 0027)
+  - {role: rental_staff, read: true}
+fields:
+  - {name: asset_name, type: data, label: {id: Nama aset}, required: true, in_list: true}
+  - name: category
+    type: link
+    to: asset_category
+    label: {id: Kelompok aset}
+    in_list: true
+    peek: [useful_life_months, residual_percent, fiscal_group]
+  - name: source
+    type: select
+    label: {id: Asal aset}
+    required: true
+    default: "'other'"
+    options:
+      - {value: vendor_bill, label: {id: Dibeli lewat tagihan pemasok}}
+      - {value: opening, label: {id: Aset lama (saldo awal)}}
+      - {value: other, label: {id: Dibeli tunai atau transfer tanpa tagihan}}
+  - name: vendor_bill
+    type: link
+    to: vendor_bill
+    label: {id: Tagihan pemasok}
+    depends_on: app_installed('procurement') && source == 'vendor_bill'
+  # the bill line this asset came from (its idx): its submit checks the cost against asset_bill_line, which only the
+  # bill's flow writes (audit F1: a cost typed by hand never reaches the register)
+  - {name: bill_line, type: int, label: {id: Baris tagihan}, hidden: true}
+  - name: paid_from
+    type: select
+    label: {id: Dibayar dari}
+    default: "'bank'"
+    depends_on: source == 'other'
+    options:
+      - {value: cash, label: {id: Kas}}
+      - {value: bank, label: {id: Bank}}
+  - {name: acquisition_date, type: date, label: {id: Tanggal beli}, required: true, in_list: true}
+  - name: book_date
+    type: date
+    label: {id: Tanggal dicatat di buku}
+    help: {id: 'Aset lama: tanggal saldo awal pembukuan. Selain itu sama dengan tanggal beli'}
+    default: acquisition_date
+    relative_to: acquisition_date
+    required: true
+  - name: cost
+    type: currency
+    label: {id: Harga perolehan}
+    required: true
+    in_list: true
+    hidden_for: [rental_staff]
+  - name: useful_life_months
+    type: int
+    label: {id: Umur manfaat (bulan)}
+    default: category.useful_life_months
+  - name: residual_value
+    type: currency
+    label: {id: Nilai sisa}
+    help: {id: 'Perkiraan nilai jual di akhir umur manfaat. Tidak ikut disusutkan'}
+    default: "round(cost * category.residual_percent / 100)"
+    hidden_for: [rental_staff]
+  - name: depreciation_start
+    type: date
+    label: {id: Mulai disusutkan}
+    help: {id: 'Bulan pertama penyusutan, biasanya bulan setelah aset dibeli atau dicatat'}
+    default: "add_months(truncate(string(book_date), 7) + '-01', 1)"
+    required: true
+  - name: opening_accumulated
+    type: currency
+    label: {id: Akumulasi penyusutan sebelumnya}
+    help: {id: 'Aset lama: penyusutan yang sudah dicatat sampai tanggal saldo awal'}
+    default: '0'
+    depends_on: source == 'opening'
+    hidden_for: [rental_staff]
+  - {name: outlet, type: link, to: outlet, label: {id: Cabang}, in_list: true, depends_on: app_installed('outlets')}
+  - {name: project, type: link, to: project, label: {id: Proyek}, depends_on: app_installed('projects')}
+  - {name: rental_unit, type: link, to: rental_unit, label: {id: Unit alat sewa}, depends_on: app_installed('rental')}
+  - {name: serial_no, type: data, label: {id: Nomor seri}}
+  - name: monthly_depreciation
+    type: currency
+    label: {id: Penyusutan per bulan}
+    compute: "useful_life_months > 0 ? round((cost - residual_value) / useful_life_months) : 0"
+    hidden_for: [rental_staff]
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: cost_positive
+    on: save
+    check: cost > 0
+    message: {id: Harga perolehan harus lebih dari 0}
+  - name: residual_below_cost
+    on: save
+    check: residual_value >= 0 && residual_value < cost
+    message: {id: Nilai sisa tidak boleh negatif dan harus di bawah harga perolehan}
+  # A draft made by a vendor bill's submit has no category or life yet: finance completes it, so these two are checked
+  # at submit only.
+  - name: category_set
+    on: submit
+    check: category != ''
+    message: {id: Pilih kelompok aset dulu}
+  - name: life_positive
+    on: submit
+    check: useful_life_months > 0 && useful_life_months <= 600
+    message: {id: Umur manfaat antara 1 dan 600 bulan}
+  - name: depreciation_positive
+    on: submit
+    check: monthly_depreciation > 0 || opening_accumulated >= cost - residual_value
+    message: {id: 'Penyusutan per bulan 0 rupiah: harga dikurangi nilai sisa terlalu kecil untuk umur manfaatnya'}
+  - name: start_is_month_start
+    on: save
+    check: "string(depreciation_start) == truncate(string(depreciation_start), 7) + '-01'"
+    message: {id: Mulai disusutkan selalu tanggal 1}
+  - name: start_after_book
+    on: save
+    check: depreciation_start > book_date
+    message: {id: 'Penyusutan dimulai bulan setelah aset dicatat di buku'}
+  - name: book_not_before_purchase
+    on: save
+    check: book_date >= acquisition_date
+    message: {id: Tanggal dicatat di buku tidak boleh sebelum tanggal beli}
+  - name: opening_accumulated_range
+    on: save
+    check: "opening_accumulated >= 0 && opening_accumulated <= cost - residual_value && (source == 'opening' || opening_accumulated == 0)"
+    message: {id: 'Akumulasi penyusutan sebelumnya hanya untuk aset lama, dan tidak boleh melebihi harga dikurangi nilai sisa'}
+  - name: bill_source
+    on: submit
+    check: "source != 'vendor_bill' || (vendor_bill != '' && vendor_bill.docstatus == 1 && vendor_bill.posting == 'asset')"
+    message: {id: 'Aset dari tagihan pemasok: tagihannya harus sudah diajukan sebagai Aset tetap'}
+  - name: bill_only_from_bill
+    on: save
+    check: source == 'vendor_bill' || vendor_bill == ''
+    message: {id: 'Aset yang menunjuk tagihan pemasok berasal dari tagihan itu'}
+views:
+  list:
+    columns: [name, asset_name, category, outlet, acquisition_date, cost, status]
+    filters: [category, outlet, source]
+    sort: -acquisition_date
+  form:
+    layout:
+      - section: {id: Aset}
+        columns:
+          - [asset_name, category, serial_no, outlet, project, rental_unit]
+          - [source, vendor_bill, paid_from, acquisition_date, book_date]
+      - section: {id: Penyusutan}
+        columns:
+          - [cost, residual_value, useful_life_months, depreciation_start, opening_accumulated]
+          - [monthly_depreciation]
+      - section: {id: Catatan}
+        fields: [notes]

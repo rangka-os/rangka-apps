@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# Daftar aset lama from a spreadsheet: one row per asset the business already had before its books started in Rangka.
+# Headers: Nama aset, Kelompok (the category name), Tanggal beli, Tanggal saldo awal, Harga perolehan, Akumulasi
+# penyusutan, Umur manfaat (bulan), Nomor seri. Each row arrives as a draft fixed asset with source "Aset lama":
+# check it (outlet, rental unit), then submit it to post (cost against the depreciation it had and Ekuitas saldo
+# awal). Sample: examples/fixtures/imports/asset-list.csv.
+name: asset_list
+label: {id: Daftar aset lama, en: Opening asset list}
+model: fixed_asset
+source: csv
+header_row: 1
+key: [Nama aset, Tanggal beli, Nomor seri]
+map:
+  asset_name: Nama aset
+  source: "='opening'"
+  category: {value: Kelompok, match: category_name}
+  acquisition_date: Tanggal beli
+  book_date: Tanggal saldo awal
+  cost: Harga perolehan
+  opening_accumulated: Akumulasi penyusutan
+  useful_life_months: Umur manfaat (bulan)
+  serial_no: Nomor seri

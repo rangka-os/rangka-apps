@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# The cost each line of a vendor bill posted as "Aset tetap" put in 1-2100 (the line, plus its share of PPN when the
+# business is not PKP), written by flow asset_from_vendor_bill only (every field read_only: a client cannot create or
+# change one). A fixed asset from a bill is submitted only at exactly this cost and only once per line (flow
+# fixed_asset_on_submit), so the register can never hold more or less than the bill debited.
+name: asset_bill_line
+label: {id: Baris tagihan aset, en: Asset bill line}
+icon: file-list-line
+naming: ABL-{######}
+title_field: bill_line_key
+permissions:
+  # the bill's flow runs as the person who submits it; the asset's submit (finance, head office) reads the line
+  - {role: purchasing_manager, read: true, create: true}
+  - {role: finance_manager, read: true, create: true}
+  - {role: head_office, read: true, create: true}
+fields:
+  - {name: vendor_bill, type: link, to: vendor_bill, label: {id: Tagihan pemasok}, required: true, read_only: true}
+  - {name: bill_line, type: int, label: {id: Baris tagihan}, required: true, read_only: true}
+  - {name: cost, type: currency, label: {id: Nilai aset baris ini}, required: true, read_only: true}
+  - {name: bill_line_key, type: data, label: {id: Kunci baris}, unique: true, compute: "vendor_bill + ':' + string(bill_line)"}
+views:
+  list:
+    columns: [vendor_bill, bill_line, cost]
+    sort: vendor_bill

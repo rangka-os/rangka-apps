@@ -13,7 +13,10 @@ rangka: '>=0.5'
 modules:
   users: ^1.0
   accounting: ^1.0
+  fixed_assets: ^1.0
 roles: [head_office]
 menu:
   - group: {id: Pembukuan}
     items: [financial_report, gl_entry, opening_balance, period_close]
+  - group: {id: Aset tetap}
+    items: [asset_book, fixed_asset, depreciation_run, asset_disposal, asset_category, fixed_asset_setting]

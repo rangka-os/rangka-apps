@@ -23,6 +23,8 @@ modules:
 # own menu group, and the dashboard shows its widgets only where it is installed
 optional:
   promotions: ^1.0
+  # loyalty (rangka-apps#102): members, points and deposit at the counter, added per site like promotions
+  loyalty: ^1.0
 dashboards: [kasir_ringkas]
 roles: [cashier, head_office]
 home: {model: pos_sale}

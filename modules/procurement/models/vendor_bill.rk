@@ -155,7 +155,8 @@ fields:
     in_list: true
   # Accounting (module accounting): what the bill pays for. A project's cost goes to Biaya proyek; goods received
   # into stock through a goods receipt or PO (or consigned goods sold) clear "Utang belum ditagih", only where the
-  # stock module keeps stock; anything else to the expense account chosen. The default follows the links on the bill.
+  # stock module keeps stock; a fixed asset (module fixed_assets) to Aset tetap, one draft asset per line (flow
+  # asset_from_vendor_bill); anything else to the expense account chosen. The default follows the links on the bill.
   - name: posting
     type: select
     label: {id: Dicatat sebagai}
@@ -165,6 +166,7 @@ fields:
       - {value: stock, label: {id: Barang dagang atau bahan (sudah diterima)}}
       - {value: project, label: {id: Biaya proyek}}
       - {value: expense, label: {id: Beban operasional}}
+      - {value: asset, label: {id: Aset tetap}}
   - name: expense_account
     type: select
     label: {id: Akun beban}
@@ -195,6 +197,10 @@ rules:
     on: save
     check: posting != 'stock' || app_installed('stock')
     message: {id: Tagihan barang dagang hanya untuk usaha yang mencatat stok; pilih Beban operasional atau Biaya proyek}
+  - name: posting_asset_needs_module
+    on: save
+    check: "posting != 'asset' || (app_installed('fixed_assets') && (currency == '' || currency == 'IDR') && (goods_receipt == '' || !app_installed('stock')))"
+    message: {id: 'Tagihan aset tetap hanya untuk usaha yang memakai modul Aset tetap, dalam rupiah, dan tanpa penerimaan barang ke stok'}
   - name: posting_project_needs_project
     on: save
     check: (posting != 'project' || project != '') && (project == '' || posting == 'project' || posting == null)

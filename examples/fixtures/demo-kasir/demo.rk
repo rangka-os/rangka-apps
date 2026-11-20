@@ -60,6 +60,18 @@ promotion:
   - {name: PRM-0003, promo_name: Hemat 10 persen, kind: bill_pct, pct: 10, max_discount: 15000, min_spend: 50000, code_mode: shared, code: HEMAT10, max_uses: 100, valid_from: '2026-01-01', valid_until: '2030-12-31', channel: kasir, active: false}
   - {name: PRM-0004, promo_name: Gratis air mineral, kind: free_gift, gift_item: BRG-0001, gift_qty: 1, min_spend: 50000, code_mode: none, valid_from: '2026-01-01', valid_until: '2030-12-31', channel: kasir, active: false}
   - {name: PRM-0005, promo_name: Kupon ulang tahun, kind: bill_off, amount_off: 15000, min_spend: 60000, code_mode: unique, valid_from: '2026-01-01', valid_until: '2030-12-31', channel: kasir, active: false}
+# members (module loyalty): three tiers (the base one at Rp 0) and two members with no points or deposit yet; the
+# scenarios of tests/day_one_loyalty.py sign up their own. Phone numbers are in the 0000 range, never a real line.
+member_tier:
+  - {name: TIER-01, tier_name: Member, tier_code: MEMBER, min_spend: 0, earn_spend: 10000, earn_multiplier_pct: 100, point_value: 100, max_redeem_pct: 50, member_discount_pct: 0, expiry_months: 12, active: true}
+  - {name: TIER-02, tier_name: Silver, tier_code: SILVER, min_spend: 1000000, earn_spend: 10000, earn_multiplier_pct: 125, point_value: 100, max_redeem_pct: 50, member_discount_pct: 5, expiry_months: 12, active: true}
+  - {name: TIER-03, tier_name: Gold, tier_code: GOLD, min_spend: 5000000, earn_spend: 10000, earn_multiplier_pct: 150, point_value: 100, max_redeem_pct: 50, member_discount_pct: 10, expiry_months: 12, active: true}
+customer:
+  - {name: CUST-0001, customer_name: Ibu Laras Contoh, city: Bandung, phone: '081200000301'}
+  - {name: CUST-0002, customer_name: Bapak Yoga Contoh, city: Bandung, phone: '081200000302'}
+loyalty_account:
+  - {name: MBR-00001, member_name: Ibu Laras Contoh, phone: '081200000301', customer: CUST-0001, joined_outlet: OUT-02, tier: TIER-01, tier_name: Member, earn_spend: 10000, earn_multiplier_pct: 100, point_value: 100, max_redeem_pct: 50, member_discount_pct: 0, expiry_months: 12, active: true}
+  - {name: MBR-00002, member_name: Bapak Yoga Contoh, phone: '081200000302', customer: CUST-0002, joined_outlet: OUT-03, tier: TIER-01, tier_name: Member, earn_spend: 10000, earn_multiplier_pct: 100, point_value: 100, max_redeem_pct: 50, member_discount_pct: 0, expiry_months: 12, active: true}
 # kitchen tickets (module kitchen): Kedai Riau has a bar for the coffees and a kitchen for the food; the shops have no
 # station, so their receipts make no ticket
 kitchen_station:

@@ -27,6 +27,8 @@ permissions:
   # a cashier reads the lines of its receipts; the close's lines (cash difference) are created by its flow but not read
   # by the cashier (blind count, audit kasir M4)
   - {role: cashier, read: true, create: true, if: "voucher_type == 'pos_sale'"}
+  # a deposit top-up taken at the counter (module loyalty) and its void
+  - {role: cashier, read: true, create: true, if: "voucher_type == 'deposit_topup'"}
   - {role: cashier, create: true, if: "voucher_type == 'pos_shift_close'"}
 fields:
   - name: posting_date
@@ -72,6 +74,7 @@ fields:
       - {value: '41200', label: {id: '4-1200 Retur penjualan'}}
       - {value: '49100', label: {id: '4-9100 Pendapatan lain-lain'}}
       - {value: '49200', label: {id: '4-9200 Pendapatan denda dan ganti rugi sewa'}}
+      - {value: '49300', label: {id: '4-9300 Laba (rugi) pelepasan aset tetap'}}
       - {value: '51100', label: {id: '5-1100 Harga pokok penjualan'}}
       - {value: '51200', label: {id: '5-1200 Selisih dan susut persediaan'}}
       - {value: '51300', label: {id: '5-1300 Upah langsung'}}
@@ -85,6 +88,7 @@ fields:
       - {value: '61700', label: {id: '6-1700 Beban pemasaran'}}
       - {value: '61800', label: {id: '6-1800 Beban perlengkapan dan perawatan'}}
       - {value: '61900', label: {id: '6-1900 Beban operasional lain'}}
+      - {value: '61950', label: {id: '6-1950 Beban penyusutan'}}
       - {value: '69100', label: {id: '6-9100 Beban pajak'}}
     # accounts:end
   # outlet staff and cashiers read the lines of their documents only because the posting flows run as them (a cancel

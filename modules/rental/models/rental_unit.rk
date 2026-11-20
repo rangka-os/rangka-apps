@@ -8,13 +8,16 @@ title_field: code
 # its serial number. An item with "Serah terima per unit" on (rental_item.track_units) goes out and comes back by
 # unit: the checkout and the return list which units, in what condition (checklist). Where the unit is (state,
 # booking, last documents) is written only by the flows of this module (rental_checkout_on_submit and the others);
-# the condition is also editable by hand, so a unit repaired or found again can go out again.
+# the condition is also editable by hand, so a unit repaired or found again can go out again. With the fixed_assets
+# module, `asset` is the fixed asset this unit is (written by that module's flows when the asset is submitted or
+# cancelled), so its cost and depreciation are read per unit.
 permissions:
   - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
   # write: the checkout and return flows of whoever submits or cancels them update the unit (state fields read_only)
   - {role: sales_manager, read: true, create: true, write: true, export: true}
   - {role: rental_staff, read: true, write: true, export: true}
-  - {role: head_office, read: true, export: true}
+  # write: only through the fixed_assets flows, which link the unit to its asset when head office submits one
+  - {role: head_office, read: true, write: true, export: true}
 fields:
   - {name: rental_item, type: link, to: rental_item, label: {id: Alat}, required: true, in_list: true}
   - name: code
@@ -53,6 +56,13 @@ fields:
   - {name: last_checkout, type: link, to: rental_checkout, label: {id: Alat keluar terakhir}, read_only: true}
   - {name: last_return, type: link, to: rental_return, label: {id: Alat kembali terakhir}, read_only: true}
   - {name: active, type: check, label: {id: Masih dipakai}, default: 'true'}
+  - name: asset
+    type: link
+    to: fixed_asset
+    label: {id: Aset tetap}
+    read_only: true
+    depends_on: app_installed('fixed_assets')
+    peek: [asset_name, acquisition_date]
   - {name: notes, type: text, label: {id: Catatan}}
 rules:
   # A unit out with a booking stays a unit of the booked item until it comes back (audit 8 Nov L2): moving it to another
@@ -71,7 +81,7 @@ views:
       - section: {id: Unit}
         columns:
           - [rental_item, code, serial_no, active]
-          - [condition, state, booking]
+          - [condition, state, booking, asset]
       - section: {id: Riwayat}
         columns:
           - [last_checkout]
