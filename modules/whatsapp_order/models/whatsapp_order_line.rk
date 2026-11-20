@@ -17,9 +17,9 @@ fields:
     type: data
     label: {id: Perlu dicek}
     compute: >-
-      item == '' && match == 'ambiguous' ? 'Pilih salah satu: ' + choices :
+      item == '' && match == 'pilih' ? 'Pilih salah satu: ' + choices :
       item == '' ? 'Tidak dikenali, jadi catatan: ' + text :
-      match == 'typo' ? 'Dibaca dari "' + text + '"' :
+      match == 'ejaan' ? 'Dibaca dari "' + text + '"' :
       quoted_rate > 0 && quoted_rate != rate ? 'Harga di pesan beda dengan harga barang; dipakai harga barang' : ''
   - {name: note, type: data, label: {id: Catatan}}
   - {name: amount, type: currency, label: {id: Jumlah}, compute: round(qty * rate)}
@@ -30,14 +30,14 @@ fields:
     type: select
     label: {id: Cara dibaca}
     read_only: true
-    default: "'manual'"
+    default: "'staf'"
     options:
-      - {value: exact, label: {id: Nama sama}}
-      - {value: partial, label: {id: Sebagian nama}}
-      - {value: typo, label: {id: Dari ejaan mirip}}
-      - {value: ambiguous, label: {id: Perlu dipilih}}
-      - {value: unknown, label: {id: Tidak dikenali}}
-      - {value: manual, label: {id: Diisi staf}}
+      - {value: sama, label: {id: Nama sama}}
+      - {value: sebagian, label: {id: Sebagian nama}}
+      - {value: ejaan, label: {id: Dari ejaan mirip}}
+      - {value: pilih, label: {id: Perlu dipilih}}
+      - {value: tak_dikenal, label: {id: Tidak dikenali}}
+      - {value: staf, label: {id: Diisi staf}}
   # the candidates of an ambiguous line, "Es Kopi Susu Regular / Es Kopi Susu Large"
   - {name: choices, type: data, label: {id: Pilihan}, read_only: true}
   - {name: unit, type: data, label: {id: Satuan ditulis}, read_only: true, hidden: true}

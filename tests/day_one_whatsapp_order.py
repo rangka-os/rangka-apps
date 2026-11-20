@@ -130,7 +130,7 @@ def scenario_wao_draft(api):
           and o.get("outlet") == RIU and o.get("phone") == RANI, o)
     susu = CTX["wao_items"]["susu"]
     eq("lines: 2 Kopi Susu (same name), 1 Roti bakar cokelat (part of the name)", lines_of(o),
-       [(2, susu, "exact", ""), (1, ROTI, "partial", "")])
+       [(2, susu, "sama", ""), (1, ROTI, "sebagian", "")])
     check("priced from the item records: 2 x 18.000 + 15.000 = 51.000",
           [l.get("rate") for l in o["lines"]] == [18000, 15000] and o.get("total") == 51000, o.get("lines"))
     check("nothing is ordered or sent before a person confirms: no sale, no reply, no customer",
@@ -149,7 +149,7 @@ def scenario_wao_draft(api):
     o3 = order(api, o["name"])
     check("a second message within 30 minutes joins the same draft: three lines, two messages, 66.000",
           m2 and m2.get("result") == "order_added" and m2.get("order") == o["name"] and len(orders_of(api, RANI)) == 1
-          and lines_of(o3)[2] == (1, KHT, "exact", "") and o3.get("messages") == 2 and o3.get("total") == 66000, (m2, o3))
+          and lines_of(o3)[2] == (1, KHT, "sama", "") and o3.get("messages") == 2 and o3.get("total") == 66000, (m2, o3))
     st, mid3 = send("makasih kak", RANI, [], signal=False, name="Rani", at=iso(3))
     m3 = wait_inbound(api, mid3)
     check("'makasih kak' is no order: kept as a message, the draft unchanged",
@@ -174,16 +174,16 @@ def scenario_wao_harder(api):
           o.get("customer") == CTX.get("wao_dewi") and o.get("customer_name") == "Dewi Contoh", o)
     ls = o.get("lines") or []
     check("'dua es kopi susu': two sizes -> a choice, no item guessed",
-          ls and ls[0].get("match") == "ambiguous" and not ls[0].get("item") and ls[0].get("qty") == 2
+          ls and ls[0].get("match") == "pilih" and not ls[0].get("item") and ls[0].get("qty") == 2
           and "Es Kopi Susu (Regular)" in ls[0].get("choices", "") and "Es Kopi Susu (Large)" in ls[0].get("choices", "")
           and ls[0].get("flag", "").startswith("Pilih salah satu"), ls[:1])
     check("'kopi suus': a typo read from the spelling -> Kopi Susu, flagged",
-          len(ls) > 1 and ls[1].get("item") == items["susu"] and ls[1].get("match") == "typo" and ls[1].get("flag", "").startswith("Dibaca dari"), ls[1:2])
+          len(ls) > 1 and ls[1].get("item") == items["susu"] and ls[1].get("match") == "ejaan" and ls[1].get("flag", "").startswith("Dibaca dari"), ls[1:2])
     check("'nasi goreng': not sold here -> kept as a flagged line without item or price",
-          len(ls) > 2 and not ls[2].get("item") and ls[2].get("match") == "unknown" and ls[2].get("amount") == 0
+          len(ls) > 2 and not ls[2].get("item") and ls[2].get("match") == "tak_dikenal" and ls[2].get("amount") == 0
           and "nasi goreng" in ls[2].get("flag", ""), ls[2:3])
     check("'roti bakar coklat' (spelt without e) -> Roti bakar cokelat, the note kept",
-          len(ls) > 3 and ls[3].get("item") == ROTI and ls[3].get("match") == "typo" and ls[3].get("note") == "less sugar", ls[3:4])
+          len(ls) > 3 and ls[3].get("item") == ROTI and ls[3].get("match") == "ejaan" and ls[3].get("note") == "less sugar", ls[3:4])
     check("the card: Perlu dicek, '1 baris perlu dipilih, 1 baris tidak dikenali', the pick-up note kept",
           o.get("stage") == "check" and o.get("check_note") == "1 baris perlu dipilih, 1 baris tidak dikenali" and o.get("notes") == "ambil jam 3", o)
 
@@ -395,7 +395,7 @@ def scenario_wao_normalize(api):
     o = order(api, (m or {}).get("order") or "x")
     got = {l.get("text"): (l.get("item"), l.get("match")) for l in o.get("lines") or []}
     check("each name as Rangka Cloud writes it matches its item exactly",
-          all(got.get(n) == (want[n], "exact") for n in want), (got, want))
+          all(got.get(n) == (want[n], "sama") for n in want), (got, want))
 
 
 def scenario_wao_reference_lines(api):
@@ -412,10 +412,10 @@ def scenario_wao_reference_lines(api):
     check("a source recorded on the draft and the message (whatsapp_text today)",
           o.get("source") == "whatsapp_text" and (m or {}).get("source") == "whatsapp_text" and (m or {}).get("kind") == "text", (o, m))
     check("SKU KSA -> Kopi susu aren at its own price 22.000; the line's 20.000 kept and flagged",
-          ls and ls[0].get("item") == "BRG-0021" and ls[0].get("match") == "exact" and ls[0].get("rate") == 22000
+          ls and ls[0].get("item") == "BRG-0021" and ls[0].get("match") == "sama" and ls[0].get("rate") == 22000
           and ls[0].get("quoted_rate") == 20000 and "beda dengan harga barang" in ls[0].get("flag", ""), ls[:1])
     check("an unknown SKU is never matched by name: unknown, flagged",
-          len(ls) > 1 and not ls[1].get("item") and ls[1].get("match") == "unknown", ls[1:2])
+          len(ls) > 1 and not ls[1].get("item") and ls[1].get("match") == "tak_dikenal", ls[1:2])
     check("the card says Perlu dicek with the price difference",
           o.get("stage") == "check" and o.get("check_note") == "1 baris tidak dikenali, 1 baris beda harga" and o.get("total") == 44000, o)
 

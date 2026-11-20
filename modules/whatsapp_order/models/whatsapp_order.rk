@@ -72,8 +72,8 @@ fields:
   - {name: line_count, type: int, label: {id: Jumlah baris}, hidden: true, compute: lines.size()}
   - {name: big_qty_lines, type: int, label: {id: Baris jumlah besar}, hidden: true, compute: "lines.map(l, l.qty > 999 ? 1 : 0).sum()"}
   - {name: item_lines, type: int, label: {id: Baris barang}, hidden: true, compute: "lines.map(l, l.item != '' ? 1 : 0).sum()"}
-  - {name: unknown_lines, type: int, label: {id: Baris tidak dikenali}, hidden: true, compute: "lines.map(l, l.item == '' && l.match != 'ambiguous' ? 1 : 0).sum()"}
-  - {name: open_choices, type: int, label: {id: Baris perlu dipilih}, hidden: true, compute: "lines.map(l, l.item == '' && l.match == 'ambiguous' ? 1 : 0).sum()"}
+  - {name: unknown_lines, type: int, label: {id: Baris tidak dikenali}, hidden: true, compute: "lines.map(l, l.item == '' && l.match != 'pilih' ? 1 : 0).sum()"}
+  - {name: open_choices, type: int, label: {id: Baris perlu dipilih}, hidden: true, compute: "lines.map(l, l.item == '' && l.match == 'pilih' ? 1 : 0).sum()"}
   - {name: price_diffs, type: int, label: {id: Baris beda harga}, hidden: true, compute: "lines.map(l, l.item != '' && l.quoted_rate > 0 && l.quoted_rate != l.rate ? 1 : 0).sum()"}
   # "2 Kopi Susu, 1 Roti Bakar Coklat": the lines with an item, as the reply writes them
   - name: summary
@@ -104,7 +104,7 @@ fields:
       int(total) < 1000000000 ? string(int(total) / 1000000) + '.' + ('x' + string(1000 + int(total) / 1000 - (int(total) / 1000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(total) - (int(total) / 1000) * 1000)).replace('x1', '') :
       string(int(total) / 1000000000) + '.' + ('x' + string(1000 + int(total) / 1000000 - (int(total) / 1000000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(total) / 1000 - (int(total) / 1000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(total) - (int(total) / 1000) * 1000)).replace('x1', ''))
   - {name: messages, type: int, label: {id: Jumlah pesan}, read_only: true, default: '0'}
-  - {name: first_message_at, type: datetime, label: {id: Pesan pertama}, read_only: true, in_list: true}
+  - {name: first_message_at, type: datetime, label: {id: Pesan pertama}, read_only: true}
   - {name: last_message_at, type: datetime, label: {id: Pesan terakhir}, read_only: true}
   # Unix seconds of the last message: the 30-minute window of flow whatsapp_order_intake
   - {name: last_epoch, type: int, label: {id: Pesan terakhir (detik)}, read_only: true, hidden: true, default: '0'}
@@ -143,7 +143,7 @@ rules:
     message: {id: Isi nama pelanggan}
 views:
   list:
-    columns: [name, customer_name, state, summary, total, first_message_at]
+    columns: [name, customer_name, state, summary, total]
     sort: -first_message_at
   form:
     layout:
