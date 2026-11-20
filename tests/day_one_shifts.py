@@ -164,6 +164,7 @@ def scenario_shifts_roster(api):
     eq("Eko's Wednesday is Malam 22:00 to 06:00 the next day (Dago, WIB)",
        (wed.get("shift_name"), wib(wed.get("start_at")), wib(wed.get("end_at"))),
        ("Malam", f"{nxt + datetime.timedelta(days=2)}T22:00", f"{nxt + datetime.timedelta(days=3)}T06:00"))
+    eq("its label for lists and dashboards is local time", wed.get("shift_label"), "Malam 22:00-06:00")
     thu = day_of(hq, eko_rec, nxt + datetime.timedelta(days=3))
     eq("an empty cell is a day off", (thu.get("day_off"), thu.get("shift_name"), thu.get("start_at") or ""), (True, "Libur", ""))
     eq("Eko reads only his own 7 days", sorted({x["employee"] for x in eko.list("shift_assignment")}), [eko_rec])

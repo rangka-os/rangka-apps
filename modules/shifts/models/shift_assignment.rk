@@ -39,6 +39,13 @@ fields:
     label: {id: Nama shift}
     read_only: true
     compute: "day_off ? 'Libur' : (shift_template != '' ? shift_template.shift_name : '')"
+  # "Malam 22:00-06:00": the shift and its local hours as text, for lists and dashboards (a datetime cell shows UTC there).
+  - name: shift_label
+    type: data
+    label: {id: Shift dan jam}
+    read_only: true
+    in_list: true
+    compute: "day_off ? 'Libur' : (shift_template != '' ? shift_template.shift_name + ' ' + shift_template.start + '-' + shift_template.end : '')"
   - name: published
     type: check
     label: {id: Diterbitkan}
@@ -105,7 +112,7 @@ rules:
     message: {id: 'Karyawan ini tidak bekerja di outlet itu. Tambahkan outletnya di Tim dulu'}
 views:
   list:
-    columns: [work_date, employee_name, outlet, shift_name, start_at, published, outcome]
+    columns: [work_date, employee_name, shift_label, outlet, published, outcome]
     filters: [outlet, employee, published, outcome]
     sort: -work_date
   form:

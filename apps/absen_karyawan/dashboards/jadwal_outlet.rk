@@ -14,6 +14,6 @@ widgets:
   - {name: present, type: number, label: {id: Sudah absen}, model: shift_assignment, filter: "work_date == today() && published && (outcome == 'present' || outcome == 'late')", compact: true, span: 3}
   - {name: late, type: number, label: {id: Terlambat (7 hari)}, model: shift_assignment, filter: "outcome == 'late' && days_between(work_date, today()) <= 6", compact: true, span: 3, good_when: down}
   - {name: absent, type: number, label: {id: Tidak hadir (7 hari)}, model: shift_assignment, filter: "outcome == 'absent' && days_between(work_date, today()) <= 6", compact: true, span: 3, good_when: down}
-  - {name: today, type: list, label: {id: Hari ini}, model: shift_assignment, filter: "work_date == today() && published", columns: [outlet, employee_name, shift_name, start_at, outcome, late_min], sort: start_at, limit: 50, span: 12}
-  - {name: tomorrow, type: list, label: {id: Besok}, model: shift_assignment, filter: "published && days_between(today(), work_date) == 1", columns: [outlet, employee_name, shift_name, start_at], sort: start_at, limit: 50, span: 12}
+  - {name: today, type: list, label: {id: Hari ini}, model: shift_assignment, filter: "work_date == today() && published", columns: [outlet, employee_name, shift_label, outcome, late_min], sort: start_at, limit: 50, span: 12}
+  - {name: tomorrow, type: list, label: {id: Besok}, model: shift_assignment, filter: "published && days_between(today(), work_date) == 1", columns: [outlet, employee_name, shift_label], sort: start_at, limit: 50, span: 12}
   - {name: swaps, type: list, label: {id: Tukar shift menunggu}, model: shift_swap, filter: "docstatus == 0", columns: [work_date, outlet, requested_name, my_shift_name, with_note], sort: work_date, limit: 20, span: 12}
