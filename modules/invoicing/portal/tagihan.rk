@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/portal.json
+# "Tautan tagihan" (rangka-os contract 0073): the customer opens one submitted invoice from a link the owner or
+# finance shares, without signing in, and sees what is left to pay and how to pay it: the bank account and static
+# QRIS copied onto the invoice when it was submitted (payment_instruction), with the invoice number as reference.
+# Only the fields listed here reach the customer. The link stays valid after the invoice is paid ("Lunas").
+type: document
+model: sales_invoice
+label: {id: Tagihan, en: Invoice}
+customer: customer
+amount: outstanding
+due: due_date
+fields: [posting_date, due_date, po_number, grand_total, paid_amount, outstanding, notes]
+lines: {field: items, columns: [description, qty, rate, discount, amount]}
+print: sales_invoice
+payment:
+  model: payment_instruction
+  link: sales_invoice
+  fields: [bank, account_no, holder, reference, instructions]
+  qris: qris_payload
+  qris_label: [qris_merchant_name, qris_nmid]
+share: [finance_manager, sales_manager]
+lifetime_days: 30
