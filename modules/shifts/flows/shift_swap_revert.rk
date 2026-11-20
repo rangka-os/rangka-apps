@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: shift_swap_revert
+label: {id: 'Tukar shift dibatalkan: kedua jadwal dikembalikan'}
+# Runs as the outlet supervisor or head office who submits or cancels. Both assignments must still be the same day,
+# published and without a clock-in (outcome planned); otherwise the whole action is refused (shift_guard swap_changed).
+# a0 and b0 are untouched copies, so the second update reads the values from before the first.
+on: shift_swap.cancelled
+if: "'docstatus' in event && event.docstatus == 2"
+steps:
+  - {find: shift_assignment, where: name == event.my_shift, as: a}
+  - {find: shift_assignment, where: name == event.their_shift, as: b}
+  - {find: shift_assignment, where: name == event.my_shift, as: a0}
+  - {find: shift_assignment, where: name == event.their_shift, as: b0}
+  - if: "a == null || b == null || a.work_date != b.work_date || !a.published || !b.published || a.outcome != 'planned' || b.outcome != 'planned' || !(a.swap == event.name && b.swap == event.name)"
+    create: shift_guard
+    set:
+      reason: "'swap_changed'"
+      document: event.name
+  - update: a
+    set: {shift_template: b0.shift_template, day_off: b0.day_off, swap: event.name}
+  - update: b
+    set: {shift_template: a0.shift_template, day_off: a0.day_off, swap: event.name}

@@ -5935,6 +5935,7 @@ import day_one_warehouses  # noqa: E402
 import day_one_loyalty  # noqa: E402
 import day_one_karyawan  # noqa: E402
 import day_one_fixed_assets  # noqa: E402
+import day_one_shifts  # noqa: E402
 import day_one_appointments  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
@@ -5961,6 +5962,7 @@ day_one_warehouses.bind(sys.modules[__name__])
 day_one_loyalty.bind(sys.modules[__name__])   # after day_one_promotions (same members)
 day_one_karyawan.bind(sys.modules[__name__])   # also registers demo-karyawan (orgs, members, setup)
 day_one_fixed_assets.bind(sys.modules[__name__])
+day_one_shifts.bind(sys.modules[__name__])   # after day_one_staff_attendance (its demo-fnb members)
 day_one_appointments.bind(sys.modules[__name__])   # also registers demo-salon (orgs, members, kernel env, setup)
 
 SCENARIOS = {
@@ -6002,6 +6004,10 @@ for _site, _extra in day_one_automation.SCENARIOS.items():
     SCENARIOS[_site][_i:_i] = _extra
 # outlet staff attendance (module attendance, rangka-apps#100): after the site's own scenarios, before the permission matrix
 for _site, _extra in day_one_staff_attendance.SCENARIOS.items():
+    _i = SCENARIOS[_site].index(scenario_permissions)
+    SCENARIOS[_site][_i:_i] = _extra
+# work shifts (module shifts, rangka-apps#120): after outlet staff attendance, before the permission matrix
+for _site, _extra in day_one_shifts.SCENARIOS.items():
     _i = SCENARIOS[_site].index(scenario_permissions)
     SCENARIOS[_site][_i:_i] = _extra
 # warehouses apart from stores (rangka-apps#104): after the site's own scenarios, before the permission matrix

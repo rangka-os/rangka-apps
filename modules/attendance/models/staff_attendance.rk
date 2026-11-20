@@ -107,21 +107,33 @@ fields:
   - {name: site_radius_m, type: int, label: {id: Radius outlet (m)}, read_only: true, compute: "outlet != '' && outlet.radius_m > 0 ? outlet.radius_m : 100"}
   - {name: utc_offset, type: data, label: {id: Zona waktu}, hidden: true, read_only: true, compute: "outlet == '' ? '+07:00' : (outlet.time_zone == 'wita' ? '+08:00' : (outlet.time_zone == 'wit' ? '+09:00' : '+07:00'))"}
   - {name: grace_min, type: int, label: {id: Toleransi terlambat (menit)}, hidden: true, read_only: true, compute: "outlet != '' && outlet.late_grace_min > 0 ? outlet.late_grace_min : 0"}
-  # The schedule of the day: the outlet's default hours (shifts, rangka-apps#120, will fill it per employee). Empty when
-  # the outlet has no hours: then no lateness or early leave is measured. A work_end before work_start ends the next day.
+  # The employee's published shift of the day (module shifts, rangka-apps#120), linked at clock-in by flow
+  # shifts/shift_attendance_link. Empty without shifts or without a shift that day.
+  - name: work_shift
+    type: link
+    to: shift_assignment
+    label: {id: Jadwal shift}
+    read_only: true
+    depends_on: app_installed('shifts')
+  # The schedule of the day: the linked shift's hours, else the outlet's default hours. Empty when neither is set: then
+  # no lateness or early leave is measured. An outlet work_end before work_start ends the next day; a shift's end_at
+  # already does.
   - name: sched_start
     type: datetime
     label: {id: Jadwal masuk}
     read_only: true
-    compute: "outlet != '' && outlet.work_start != '' ? string(work_date) + 'T' + outlet.work_start + ':00' + utc_offset : ''"
+    compute: >-
+      work_shift != '' && work_shift.start_at != '' ? work_shift.start_at
+        : (outlet != '' && outlet.work_start != '' ? string(work_date) + 'T' + outlet.work_start + ':00' + utc_offset : '')
   - name: sched_end
     type: datetime
     label: {id: Jadwal pulang}
     read_only: true
     compute: >-
-      outlet == '' || outlet.work_end == '' ? ''
-        : ((outlet.work_start != '' && outlet.work_end <= outlet.work_start ? string(work_date + duration(1)) : string(work_date))
-           + 'T' + outlet.work_end + ':00' + utc_offset)
+      work_shift != '' && work_shift.end_at != '' ? work_shift.end_at
+        : (outlet == '' || outlet.work_end == '' ? ''
+          : ((outlet.work_start != '' && outlet.work_end <= outlet.work_start ? string(work_date + duration(1)) : string(work_date))
+             + 'T' + outlet.work_end + ':00' + utc_offset))
   # distance_m is 1e9 without a position (contract 0030 §4): "no position" counts as far.
   - {name: in_m, type: float, label: {id: Jarak masuk dari titik (m)}, hidden: true, read_only: true, compute: "distance_m(in_pos, site_point)"}
   - {name: in_located, type: check, label: {id: Lokasi masuk ada}, read_only: true, compute: "in_m < 100000000.0"}
@@ -275,7 +287,7 @@ views:
           - [out_pos, out_site_m, out_inside]
       - section: {id: Jadwal}
         columns:
-          - [sched_start, late_min]
+          - [work_shift, sched_start, late_min]
           - [sched_end, early_min, worked_min]
       - section: {id: Alasan}
         fields: [reason]

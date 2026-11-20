@@ -1,0 +1,131 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: shift_assignment
+label: {id: Jadwal shift, en: Shift assignment}
+icon: calendar
+naming: JDW-{YYYY}{MM}-{#####}
+title_field: employee_name
+# One employee, one day: the shift they work (shift_template) at an outlet, or a day off. Made by publishing a weekly
+# roster (flow shift_roster_publish), or by hand by head office or the outlet supervisor for a one-off change. Only a
+# published assignment is the employee's schedule: staff read their own published days (permission if:, which also
+# filters lists and dashboards); the outlet supervisor reads and changes the assignments of their outlets (row scope).
+#
+# One per employee per day: day_key is unique (enforced by the kernel for every write, flows included). Assignments are
+# plain records, not documents: there is no cancel that would have to free the key; a wrong day is changed or deleted.
+#
+# start_at and end_at are the shift's hours on the work date at the outlet's local time (its time zone); a night shift
+# ends the next day. Attendance (module attendance) links a clock-in to this assignment (staff_attendance.work_shift,
+# flow shift_attendance_link) and measures lateness against start_at; flow shift_attendance_sync copies the result here
+# (outcome present, late or absent) for the outlet board.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true, print: true}
+  - {role: outlet_supervisor, read: true, create: true, write: true, delete: true, print: true}
+  - {role: cashier, read: true, if: "employee == user.name && published"}
+  - {role: outlet_staff, read: true, if: "employee == user.name && published"}
+  - {role: employee, read: true, if: "employee == user.name && published"}
+fields:
+  - {name: employee, type: link, to: user, label: {id: Karyawan}, required: true, in_list: true}
+  - name: employee_name
+    type: data
+    label: {id: Nama}
+    read_only: true
+    in_list: true
+    compute: "employee != '' ? employee.full_name : ''"
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, in_list: true}
+  - {name: work_date, type: date, label: {id: Tanggal}, required: true, in_list: true}
+  - {name: day_off, type: check, label: {id: Libur}, in_list: true}
+  - {name: shift_template, type: link, to: shift_template, label: {id: Shift}, in_list: true}
+  - name: shift_name
+    type: data
+    label: {id: Nama shift}
+    read_only: true
+    compute: "day_off ? 'Libur' : (shift_template != '' ? shift_template.shift_name : '')"
+  # "Malam 22:00-06:00": the shift and its local hours as text, for lists and dashboards (a datetime cell shows UTC there).
+  - name: shift_label
+    type: data
+    label: {id: Shift dan jam}
+    read_only: true
+    in_list: true
+    compute: "day_off ? 'Libur' : (shift_template != '' ? shift_template.shift_name + ' ' + shift_template.start + '-' + shift_template.end : '')"
+  - name: published
+    type: check
+    label: {id: Diterbitkan}
+    help: {id: 'Hanya jadwal yang diterbitkan terlihat oleh karyawan dan dipakai absen'}
+    in_list: true
+  - {name: note, type: data, label: {id: Catatan}}
+  # Set by the flows: the roster that published this day and the swap that last changed it.
+  - {name: roster, type: link, to: shift_roster, label: {id: Jadwal mingguan}, read_only: true}
+  - {name: swap, type: link, to: shift_swap, label: {id: Tukar shift}, read_only: true}
+  - {name: utc_offset, type: data, label: {id: Zona waktu}, hidden: true, read_only: true, compute: "outlet == '' ? '+07:00' : (outlet.time_zone == 'wita' ? '+08:00' : (outlet.time_zone == 'wit' ? '+09:00' : '+07:00'))"}
+  - name: start_at
+    type: datetime
+    label: {id: Mulai}
+    read_only: true
+    in_list: true
+    compute: "day_off || shift_template == '' ? '' : string(work_date) + 'T' + shift_template.start + ':00' + utc_offset"
+  - name: end_at
+    type: datetime
+    label: {id: Selesai}
+    read_only: true
+    compute: >-
+      day_off || shift_template == '' ? ''
+        : ((shift_template.end <= shift_template.start ? string(work_date + duration(1)) : string(work_date)) + 'T' + shift_template.end + ':00' + utc_offset)
+  # What happened, written by flow shift_attendance_sync (module attendance): planned until then.
+  - name: outcome
+    type: select
+    label: {id: Kehadiran}
+    default: "'planned'"
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: planned, label: {id: Terjadwal}}
+      - {value: present, label: {id: Hadir}}
+      - {value: late, label: {id: Terlambat}}
+      - {value: absent, label: {id: Tidak hadir}}
+  - {name: attendance, type: link, to: staff_attendance, label: {id: Absen}, read_only: true, depends_on: app_installed('attendance')}
+  - {name: clock_in, type: datetime, label: {id: Jam masuk}, read_only: true, depends_on: app_installed('attendance')}
+  - {name: late_min, type: int, label: {id: Terlambat (menit)}, read_only: true, depends_on: app_installed('attendance')}
+  - name: day_key
+    type: data
+    label: {id: Kunci hari}
+    hidden: true
+    read_only: true
+    unique: true
+    compute: "employee + ':' + string(work_date)"
+rules:
+  - name: shift_or_day_off
+    on: save
+    check: "day_off != (shift_template != '')"
+    message: {id: 'Pilih shift, atau centang Libur (salah satu)'}
+  - name: template_active
+    on: save
+    check: "shift_template == '' || shift_template.active"
+    message: {id: 'Pola shift ini sudah tidak aktif'}
+  - name: template_of_outlet
+    on: save
+    check: "shift_template == '' || shift_template.for_outlet == '' || shift_template.for_outlet == outlet"
+    message: {id: 'Pola shift ini untuk outlet lain'}
+  # Head office may name any outlet; the supervisor's row scope already keeps them to their own outlets.
+  - name: employee_of_outlet
+    on: save
+    check: "employee == '' || 'head_office' in user.roles || 'owner' in user.roles || employee.outlets.exists(o, o.outlet == outlet)"
+    message: {id: 'Karyawan ini tidak bekerja di outlet itu. Tambahkan outletnya di Tim dulu'}
+views:
+  list:
+    columns: [work_date, employee_name, shift_label, outlet, published, outcome]
+    filters: [outlet, employee, published, outcome]
+    sort: -work_date
+  form:
+    layout:
+      - section: {id: Jadwal}
+        columns:
+          - [employee, outlet, work_date]
+          - [shift_template, day_off, published]
+      - section: {id: Jam}
+        columns:
+          - [start_at, end_at]
+          - [shift_name, note]
+      - section: {id: Kehadiran}
+        columns:
+          - [outcome, clock_in, late_min]
+          - [attendance, roster, swap]
