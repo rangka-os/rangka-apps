@@ -28,6 +28,7 @@ steps:
       net_total: s.net_total - event.grand_total
       cash_total: s.cash_total - event.cash_amount
       qris_total: s.qris_total - event.qris_amount
+      deposit_total: s.deposit_total - event.deposit_used
       cogs_total: s.cogs_total - event.cogs_total
       void_count: s.void_count + 1
       void_total: s.void_total + event.grand_total

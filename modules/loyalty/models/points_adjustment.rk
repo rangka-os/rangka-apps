@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Koreksi poin: head office adds or takes points by hand (a complaint, a mistake), with a reason. More than 1.000 points
+# either way waits for the owner or finance (contract 0007, approvers finance_manager; the owner always may). A balance never goes below 0 (flow points_adjustment_on_submit).
+name: points_adjustment
+label: {id: Koreksi poin, en: Points adjustment}
+icon: edit
+is_submittable: true
+naming: KPN-{YYYY}-{#####}
+title_field: account
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, export: true}
+  - {role: finance_manager, read: true, export: true}
+fields:
+  - {name: account, type: link, to: loyalty_account, label: {id: Member}, required: true, in_list: true, peek: [phone, points_balance]}
+  - {name: date, type: date, label: {id: Tanggal}, default: today(), in_list: true}
+  - {name: points, type: int, label: {id: Poin}, help: {id: 'Plus menambah, minus mengurangi'}, required: true, in_list: true}
+  - {name: reason, type: text, label: {id: Alasan}, required: true}
+rules:
+  - name: not_zero
+    on: save
+    check: points != 0
+    message: {id: Koreksi poin tidak boleh 0}
+approvals:
+  - name: big_adjustment
+    on: submit
+    when: "(points > 1000 || points < -1000) && !('owner' in user.roles)"
+    approvers: [finance_manager]
+    label: {id: Persetujuan pemilik untuk koreksi di atas 1.000 poin, en: Owner approves an adjustment above 1.000 points}
+views:
+  list:
+    columns: [name, date, account, points, status]
+    filters: [account]
+    sort: -name

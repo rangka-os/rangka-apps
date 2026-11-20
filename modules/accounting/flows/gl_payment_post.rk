@@ -17,7 +17,7 @@ steps:
     if: "(event.direction == 'receive' ? (event.direction == 'receive' && event.method == 'sales_return' && event.sales_return != '' && ret != null && ret.return_total > 0 ? round(event.amount * 1.0 * ret.return_value / ret.return_total) : event.amount) : event.amount + event.withheld_total) != 0"
     set:
       posting_date: "event.payment_date"
-      account: "event.direction == 'receive' ? (event.method == 'cash' ? '11100' : (event.method == 'sales_return' ? '41200' : '11200')) : '21100'"
+      account: "event.direction == 'receive' ? (event.method == 'cash' ? '11100' : (event.method == 'sales_return' ? '41200' : (event.method == 'deposit' ? '21400' : '11200'))) : '21100'"
       amount: "event.direction == 'receive' ? (event.direction == 'receive' && event.method == 'sales_return' && event.sales_return != '' && ret != null && ret.return_total > 0 ? round(event.amount * 1.0 * ret.return_value / ret.return_total) : event.amount) : event.amount + event.withheld_total"
       voucher_type: event.model
       voucher: event.name
@@ -53,7 +53,7 @@ steps:
     if: "(0 - event.amount - event.withheld_total) != 0"
     set:
       posting_date: "event.payment_date"
-      account: "event.direction == 'receive' ? '11300' : (event.method == 'cash' ? '11100' : (event.method == 'sales_return' ? '41200' : '11200'))"
+      account: "event.direction == 'receive' ? '11300' : (event.method == 'cash' ? '11100' : (event.method == 'sales_return' ? '41200' : (event.method == 'deposit' ? '21400' : '11200')))"
       amount: "0 - event.amount - event.withheld_total"
       voucher_type: event.model
       voucher: event.name

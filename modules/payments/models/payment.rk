@@ -57,6 +57,10 @@ fields:
       - {value: va, label: {id: Virtual account}}
       - {value: ewallet, label: {id: E-wallet}}
       - {value: other, label: {id: Lainnya}}
+      # module loyalty (rangka-apps#102): paid from the customer's member deposit; always listed (an option cannot depend
+      # on an installed app), refused by rule deposit_method without the module, and checked against the balance by flow
+      # deposit_on_payment under the member's lock. Journal: 2-1400 instead of cash or bank.
+      - {value: deposit, label: {id: Saldo deposit}}
   - name: reference
     type: data
     label: {id: No. bukti/transfer}
@@ -134,6 +138,10 @@ fields:
   - {name: exchange_rate, type: float, label: {id: Kurs}, default: '1'}   # IDR per 1 unit of the foreign currency
   - {name: amount_fx, type: money, currency_field: currency, rate_field: exchange_rate, label: {id: Jumlah uang (valas)}, default: '0'}
 rules:
+  - name: deposit_method
+    on: save
+    check: "method != 'deposit' || (app_installed('loyalty') && direction == 'receive' && customer != '')"
+    message: {id: 'Saldo deposit hanya untuk pembayaran masuk dari pelanggan yang jadi member'}
   - name: giro_has_number_and_date
     on: save
     check: "!app_installed('distribution') || method != 'giro' || direction != 'receive' || (reference != '' && giro_bank != '' && giro_due_date != '')"

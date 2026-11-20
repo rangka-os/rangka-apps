@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A tier's figures changed: every member of the tier gets them (a sale reads them from the member in one hop).
+name: member_tier_on_update
+label: {id: 'Tier member diubah: salin ke membernya'}
+on: member_tier.updated
+steps:
+  - find_all: loyalty_account
+    where: tier == event.name
+    as: members
+  - for_each: members
+    as: m
+    do:
+      - update: m
+        set:
+          tier_name: event.tier_name
+          earn_spend: event.earn_spend
+          earn_multiplier_pct: event.earn_multiplier_pct
+          point_value: event.point_value
+          max_redeem_pct: event.max_redeem_pct
+          member_discount_pct: event.member_discount_pct
+          expiry_months: event.expiry_months
