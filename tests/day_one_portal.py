@@ -62,6 +62,7 @@ def scenario_portal_invoice_link(api):
           st == 409 and (resp or {}).get("error", {}).get("code") == "portal_not_submitted", (st, resp))
     st, resp = api.verb("sales_invoice", name, "submit", {"force": True})
     check("portal: submit the invoice", st == 200, (st, resp))
+    name = resp.get("name", name) if isinstance(resp, dict) else name   # a draft is renamed on submit
     inv = api.get("sales_invoice", name)
 
     # the owner shares a link
