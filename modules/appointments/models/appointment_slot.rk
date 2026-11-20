@@ -1,0 +1,124 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: appointment_slot
+label: {id: Jadwal janji, en: Appointment slot}
+icon: time-line
+naming: SLT-{######}
+title_field: heading
+# One row per submitted appointment, made by flow appointment_on_submit (a submitted document cannot change). The
+# clash check of a new appointment reads these rows, and the day's screens move `state`:
+#   booked -> arrived -> done   (staff: Datang, Selesai; one step back is the screen's Urungkan)
+#   booked -> no_show           (deposit kept or flagged for refund by the owner's setting)
+#   done -> billed              (cashier: Buat tagihan drafts the pos_sale)
+#   billed -> paid / done       (only flows: the receipt submitted / voided)
+#   booked -> cancelled         (only flows: the appointment cancelled)
+# Every field but state is read_only, so a person changes nothing else by hand; flow appointment_slot_on_update
+# refuses any other move. deposit_state follows the deposit invoice (flows on sales_invoice): none, draft, invoiced
+# (submitted), cancelled. deposit_applied is what the bill took off for it.
+# create: the submit's flow writes the slot as the person submitting (rule appointment_submitted and the unique
+# appointment keep a hand-made row out)
+permissions:
+  - {role: head_office, read: true, create: true, write: true, export: true}
+  - {role: sales_manager, read: true, create: true, write: true, export: true}
+  # write: the deposit invoice's flows record its state here as the person submitting or cancelling the invoice
+  - {role: finance_manager, read: true, write: true, export: true}
+  - {role: cashier, read: true, create: true, write: true}
+  - {role: service_staff, read: true, write: true}
+fields:
+  - {name: appointment, type: link, to: appointment, label: {id: Janji temu}, required: true, unique: true, read_only: true, in_list: true}
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, read_only: true}
+  - {name: kind, type: data, label: {id: Jenis}, read_only: true, hidden: true}
+  - {name: outlet, type: data, label: {id: Outlet}, read_only: true, hidden: true}
+  - {name: date, type: date, label: {id: Tanggal}, required: true, read_only: true, in_list: true}
+  - {name: start_time, type: data, label: {id: Jam mulai}, read_only: true, in_list: true}
+  - {name: end_time, type: data, label: {id: Jam selesai}, read_only: true, in_list: true}
+  - {name: start_min, type: int, label: {id: Mulai (menit)}, read_only: true, hidden: true}
+  - {name: end_min, type: int, label: {id: Selesai (menit)}, read_only: true, hidden: true}
+  - {name: staff, type: link, to: user, label: {id: Staf}, read_only: true, in_list: true}
+  - {name: resource, type: link, to: booking_resource, label: {id: Tempat atau meja}, read_only: true, in_list: true}
+  - {name: party_size, type: int, label: {id: Jumlah tamu}, read_only: true}
+  - {name: services, type: data, label: {id: Layanan}, read_only: true}
+  - {name: lines, type: table, of: appointment_slot_line, label: {id: Layanan yang ditagih}, read_only: true}
+  - {name: service_total, type: currency, label: {id: Total harga katalog saat dipesan}, read_only: true}
+  - name: state
+    type: select
+    label: {id: Status}
+    default: "'booked'"
+    in_list: true
+    in_filter: true
+    chip: true
+    options:
+      - {value: booked, label: {id: Dipesan}}
+      - {value: arrived, label: {id: Datang}}
+      - {value: done, label: {id: Selesai}}
+      - {value: billed, label: {id: Ditagih}}
+      - {value: paid, label: {id: Lunas}}
+      - {value: no_show, label: {id: Tidak datang}}
+      - {value: cancelled, label: {id: Batal}}
+  - {name: deposit, type: currency, label: {id: Uang muka}, read_only: true}
+  - name: deposit_state
+    type: select
+    label: {id: Faktur uang muka}
+    default: "'none'"
+    read_only: true
+    options:
+      - {value: none, label: {id: Tidak ada}}
+      - {value: draft, label: {id: Draf}}
+      - {value: invoiced, label: {id: Diajukan}}
+      - {value: cancelled, label: {id: Dibatalkan}}
+  - {name: deposit_invoice, type: data, label: {id: Nomor faktur uang muka}, read_only: true}
+  - {name: deposit_applied, type: currency, label: {id: Uang muka dipotong di tagihan}, read_only: true, default: '0'}
+  - name: deposit_action
+    type: select
+    label: {id: Uang muka saat tidak datang}
+    read_only: true
+    options:
+      - {value: forfeited, label: {id: Hangus}}
+      - {value: refund_due, label: {id: Perlu dikembalikan}}
+      - {value: refunded, label: {id: Sudah dikembalikan}}
+  - {name: sale, type: data, label: {id: Transaksi kasir}, read_only: true, in_list: true}
+  - {name: arrived_at, type: datetime, label: {id: Datang pada}, read_only: true}
+  - {name: done_at, type: datetime, label: {id: Selesai pada}, read_only: true}
+  # card text of the work screens
+  - {name: customer_name, type: data, label: {id: Nama pelanggan}, read_only: true, compute: customer.customer_name}
+  - {name: staff_name, type: data, label: {id: Nama staf}, read_only: true, compute: "staff != '' ? staff.full_name : ''"}
+  - {name: resource_title, type: data, label: {id: Nama tempat}, read_only: true, compute: "resource != '' ? resource.title : ''"}
+  - name: heading
+    type: data
+    label: {id: Judul}
+    read_only: true
+    compute: "start_time + '-' + end_time + ' ' + customer_name + (kind == 'table' ? ' (' + string(party_size) + ' tamu)' : '')"
+  # the queue card: the time on its own line as the title, the customer below it
+  - {name: time_range, type: data, label: {id: Jam}, read_only: true, compute: "start_time + '-' + end_time"}
+  - name: customer_line
+    type: data
+    label: {id: Pelanggan dan tamu}
+    read_only: true
+    compute: "customer_name + (kind == 'table' ? ' · ' + string(party_size) + ' tamu' : '')"
+  - name: where_who
+    type: data
+    label: {id: Siapa dan di mana}
+    read_only: true
+    compute: "(staff_name != '' ? staff_name : '') + (staff_name != '' && resource_title != '' ? ' · ' : '') + resource_title"
+  # the queue card's minutes (amber from 10, red from 20): arrived counts from the arrival (waiting for the service),
+  # done and billed from the finish (waiting for the bill); a booked card stays neutral
+  - name: queue_since
+    type: datetime
+    label: {id: Menunggu sejak}
+    read_only: true
+    hidden: true
+    compute: "state == 'arrived' ? arrived_at : (state == 'done' || state == 'billed' ? done_at : null)"
+  - name: bill_note
+    type: data
+    label: {id: Catatan tagihan}
+    read_only: true
+    compute: "services + (deposit_state == 'invoiced' ? ' · uang muka dipotong' : (deposit_state == 'draft' ? ' · faktur uang muka belum diajukan' : ''))"
+rules:
+  - name: appointment_submitted
+    on: save
+    check: appointment.docstatus != 0
+    message: {id: Jadwal janji hanya dibuat dari janji temu yang sudah diajukan}
+views:
+  list:
+    columns: [appointment, date, start_time, end_time, staff, resource, state, sale]
+    filters: [date, state, staff, resource]
+    sort: -date

@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# The owner's switch for a no-show's deposit. One record per business (`key` is unique and always 'usaha'); without
+# the record the deposit is kept. Every role of the module reads it: flow appointment_slot_on_update reads it as the
+# staff member who marks the no-show.
+name: appointment_setting
+label: {id: Pengaturan janji temu, en: Appointment settings}
+icon: settings-3-line
+naming: PJT-{##}
+title_field: title
+permissions:
+  - {role: head_office, read: true, create: true, write: true}
+  - {role: sales_manager, read: true}
+  - {role: finance_manager, read: true}
+  - {role: cashier, read: true}
+  - {role: service_staff, read: true}
+fields:
+  - {name: key, type: data, label: {id: Kunci}, default: "'usaha'", required: true, unique: true, read_only: true}
+  - {name: title, type: data, label: {id: Nama}, compute: "'Pengaturan janji temu'"}
+  - name: no_show_deposit
+    type: select
+    label: {id: Uang muka kalau pelanggan tidak datang}
+    required: true
+    default: "'forfeit'"
+    options:
+      - {value: forfeit, label: {id: Hangus (jadi pendapatan)}}
+      - {value: refund, label: {id: Dikembalikan ke pelanggan}}

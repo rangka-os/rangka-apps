@@ -1,0 +1,53 @@
+# Synthetic demo data for CV Contoh Rambut Rapi, a fictional salon with a cafe corner (rangka-apps#118). No real
+# people, businesses or brands. Appointments, shifts and sales are made by the scenarios
+# (tests/day_one_appointments.py), not seeded.
+uom:
+  - {name: UOM-001, uom_name: Pcs}
+  - {name: UOM-002, uom_name: Kali}
+outlet:
+  - {name: OUT-01, outlet_name: Salon Contoh Dago, code: SDG, city: Bandung, address: Jl. Contoh Rapi No. 7, sales_source: kasir, is_head_office: true, active: true}
+  - {name: OUT-02, outlet_name: Kafe Contoh Dago, code: KDG, city: Bandung, address: Jl. Contoh Rapi No. 7A, sales_source: kasir, active: true}
+item_category:
+  - {name: KTG-001, category_name: Layanan salon}
+  - {name: KTG-002, category_name: Minuman}
+item:
+  - {name: BRG-0001, category: KTG-001, item_name: Potong rambut, kind: service, stock_uom: UOM-002, sku: SVC-POTONG, rate: 75000}
+  - {name: BRG-0002, category: KTG-001, item_name: Creambath, kind: service, stock_uom: UOM-002, sku: SVC-CREAM, rate: 120000}
+  - {name: BRG-0003, category: KTG-001, item_name: Facial, kind: service, stock_uom: UOM-002, sku: SVC-FACIAL, rate: 200000}
+  - {name: BRG-0004, category: KTG-001, item_name: Pewarnaan rambut, kind: service, stock_uom: UOM-002, sku: SVC-WARNA, rate: 350000}
+  - {name: BRG-0011, category: KTG-002, item_name: Teh melati, kind: good, stock_uom: UOM-001, sku: TEH, rate: 15000, standard_cost: 4000}
+booking_service:
+  - {name: LYN-001, title: Potong rambut, item: BRG-0001, duration_min: 45, resource_kind: station, active: true}
+  - {name: LYN-002, title: Creambath, item: BRG-0002, duration_min: 60, resource_kind: station, active: true}
+  - {name: LYN-003, title: Facial, item: BRG-0003, duration_min: 60, resource_kind: room, active: true}
+  - {name: LYN-004, title: Pewarnaan rambut, item: BRG-0004, duration_min: 120, resource_kind: station, active: true}
+booking_resource:
+  - name: TMP-001
+    title: Kursi 1
+    kind: station
+    outlet: OUT-01
+    seats: 1
+    active: true
+    hours:
+      - {weekday: mon, open_time: '09:00', close_time: '20:00'}
+      - {weekday: tue, open_time: '09:00', close_time: '20:00'}
+      - {weekday: wed, open_time: '09:00', close_time: '20:00'}
+      - {weekday: thu, open_time: '09:00', close_time: '20:00'}
+      - {weekday: fri, open_time: '09:00', close_time: '20:00'}
+      - {weekday: sat, open_time: '09:00', close_time: '20:00'}
+      - {weekday: sun, open_time: '09:00', close_time: '20:00'}
+  - {name: TMP-002, title: Kursi 2, kind: station, outlet: OUT-01, seats: 1, active: true}
+  - {name: TMP-003, title: Ruang facial, kind: room, outlet: OUT-01, seats: 1, active: true}
+  - {name: TMP-004, title: Meja 1, kind: table, outlet: OUT-02, seats: 4, active: true}
+  - {name: TMP-005, title: Meja 2, kind: table, outlet: OUT-02, seats: 2, active: true}
+customer:
+  - {name: CUST-0001, customer_name: Ayu Contoh, city: Bandung, phone: '081200000101', payment_days: 0}
+  - {name: CUST-0002, customer_name: Bima Contoh, city: Bandung, phone: '081200000102', payment_days: 0}
+  - {name: CUST-0003, customer_name: Citra Contoh, city: Bandung, payment_days: 0}
+  - {name: CUST-0004, customer_name: Keluarga Contoh Darma, city: Bandung, phone: '081200000104', payment_days: 0}
+user:
+  - {name: USR-001, full_name: Maya Contoh, role: head_office, email: maya@contohsalon.test}
+  - {name: USR-002, full_name: Nina Contoh, role: cashier, email: nina@contohsalon.test}
+  - {name: USR-003, full_name: Oki Contoh, role: service_staff, email: oki@contohsalon.test}
+  - {name: USR-004, full_name: Putri Contoh, role: service_staff, email: putri@contohsalon.test}
+  - {name: USR-005, full_name: Rudi Contoh, role: sales_manager, email: rudi@contohsalon.test}

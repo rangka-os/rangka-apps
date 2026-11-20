@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: appointment_sale_on_delete
+label: {id: 'Draf tagihan janji dihapus: janji kembali menunggu tagihan'}
+# A deleted draft bill puts the slot back to done with no sale, so "Buat tagihan" can draft it again (the cashier's
+# shift closed, or the wrong outlet). Only the bill on the slot moves it.
+on: pos_sale.deleted
+if: event.buyer.contains('JNJ-')
+steps:
+  - {find: appointment_slot, where: sale == event.name, as: s}
+  - update: s
+    if: s != null && s.state == 'billed'
+    set: {state: "'done'", sale: "''", deposit_applied: '0'}
