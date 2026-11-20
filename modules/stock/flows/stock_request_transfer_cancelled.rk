@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The transfer of a request is cancelled before anything was received (a received one cannot be cancelled: 409
+# has_receipts): the request is open again and waits for a new decision of the warehouse (rangka-apps#104).
+name: stock_request_transfer_cancelled
+label: {id: Transfer permintaan barang dibatalkan, en: Stock request transfer cancelled}
+description: {id: 'Saat transfer dari permintaan barang dibatalkan, permintaan kembali menunggu keputusan gudang.'}
+on: stock_transfer.cancelled
+if: event.stock_request != ''
+steps:
+  - {find: stock_request, where: name == event.stock_request, as: req}
+  - update: req
+    if: "req != null && req.state == 'sent' && req.stock_transfer == event.name"
+    set: {state: "'open'", decision: "''", stock_transfer: "''"}

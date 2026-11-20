@@ -66,7 +66,13 @@ rules:
   - name: damaged_needs_outlet
     on: save
     check: "damaged_outlet != '' || items.map(l, l.condition == 'damaged' ? 1 : 0).sum() == 0"
-    message: {id: Pilih outlet untuk barang rusak}
+    message: {id: Pilih lokasi untuk barang rusak}
+  # rangka-apps#104: a warning, not a refusal, so sites without a quarantine location keep working
+  - name: damaged_to_quarantine
+    on: save
+    level: warn
+    check: "damaged_outlet == '' || damaged_outlet.location_type == 'quarantine'"
+    message: {id: 'Barang rusak sebaiknya masuk ke lokasi berjenis Barang rusak / karantina, supaya tidak terjual lagi'}
 views:
   list:
     columns: [name, return_date, customer, salesman, delivery_note, return_total, status]

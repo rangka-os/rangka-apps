@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A receipt of a request's transfer is submitted (rangka-apps#104): once the transfer is fully received the request
+# is Diterima. A partial receipt leaves it Dikirim.
+name: stock_request_receipt
+label: {id: Permintaan barang diterima, en: Stock request received}
+description: {id: 'Saat semua barang dari transfer permintaan diterima toko, permintaan ditandai Diterima.'}
+on: stock_transfer_receipt.submitted
+steps:
+  - {find: stock_transfer, where: name == event.stock_transfer, as: t}
+  - {find: stock_request, if: "t != null && t.stock_request != ''", where: name == t.stock_request, as: req}
+  - update: req
+    if: "t != null && t.stock_request != '' && req != null && t.state == 'received' && req.state == 'sent'"
+    set: {state: "'received'"}

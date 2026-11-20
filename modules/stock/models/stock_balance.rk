@@ -9,19 +9,33 @@ permissions:
   - {role: head_office, read: true, export: true}
   - {role: outlet_staff, read: true}
   - {role: cashier, read: true}
+  - {role: warehouse_staff, read: true}
 fields:
-  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, read_only: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Lokasi}, required: true, read_only: true, in_list: true}
   - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
   - {name: qty, type: float, label: {id: Qty}, read_only: true, in_list: true}
-  - {name: value, type: currency, label: {id: Nilai}, read_only: true, in_list: true, hidden_for: [outlet_staff, cashier]}
-  - {name: avg_cost, type: currency, label: {id: Rata-rata biaya}, read_only: true, in_list: true, hidden_for: [outlet_staff, cashier]}
+  - {name: value, type: currency, label: {id: Nilai}, read_only: true, in_list: true, hidden_for: [outlet_staff, cashier, warehouse_staff]}
+  - {name: avg_cost, type: currency, label: {id: Rata-rata biaya}, read_only: true, in_list: true, hidden_for: [outlet_staff, cashier, warehouse_staff]}
   - {name: negative, type: check, label: {id: Stok minus}, compute: qty < 0, in_list: true}
   - {name: last_move, type: data, label: {id: Mutasi terakhir}, read_only: true}
   # Written by stock.post_moves on each sale out of this balance (rangka-os#59); older
   # kernels leave it empty, so "not sold for N days" lists stay empty instead of listing every balance.
+  # rangka-apps#104: the location's type (store, warehouse, vehicle, quarantine, production), stored when the balance is
+  # written; flow stock_balance_location_backfill refreshes balances of retyped outlets.
+  - name: location_type
+    type: select
+    label: {id: Jenis lokasi}
+    read_only: true
+    compute: "outlet.location_type == '' ? 'store' : outlet.location_type"
+    options:
+      - {value: store, label: {id: Toko / outlet}}
+      - {value: warehouse, label: {id: Gudang}}
+      - {value: vehicle, label: {id: Mobil kanvas}}
+      - {value: quarantine, label: {id: Barang rusak / karantina}}
+      - {value: production, label: {id: Ruang produksi}}
   - {name: last_sale_date, type: date, label: {id: Terakhir terjual}, read_only: true, in_list: true}
 views:
   list:
     columns: [outlet, item, qty, value, avg_cost, negative]
-    filters: [outlet, item, negative]
+    filters: [outlet, location_type, item, negative]
     sort: outlet

@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The warehouse decides on an open request (rangka-apps#104). Proses drafts a stock_transfer from the warehouse to the
+# requesting location with the requested lines, unless a draft of this request is already there (any later save
+# reuses it, so one decision gives one draft). The warehouse edits the draft (it may send less) and submits it; flow
+# stock_request_transfer_submitted then marks the request sent. Tolak closes the request as rejected. Only a decision
+# saved by the warehouse, head office or the owner runs it: store staff cannot set it (read_only_for) or create transfers.
+name: stock_request_decided
+label: {id: Keputusan gudang atas permintaan barang, en: Stock request decided}
+description: {id: 'Saat gudang memilih Proses, draft transfer dari gudang ke toko disiapkan. Saat gudang memilih Tolak, permintaan ditutup.'}
+on: stock_request.updated
+if: "event.state == 'open' && event.decision != '' && ('warehouse_staff' in user.roles || 'head_office' in user.roles || 'owner' in user.roles)"
+steps:
+  - {find: stock_transfer, if: "event.decision == 'accept'", where: "docstatus == 0 && stock_request == event.name", as: draft}
+  - create: stock_transfer
+    if: "event.decision == 'accept' && draft == null"
+    set:
+      from_outlet: event.supply_outlet
+      to_outlet: event.outlet
+      stock_request: event.name
+      notes: "'Dari permintaan ' + event.name"
+      items: "event.items.map(i, {'item': i.item, 'qty': i.qty, 'uom': i.uom, 'packing': i.packing})"
+  - {find: stock_request, if: "event.decision == 'reject'", where: name == event.name, as: req}
+  - update: req
+    if: "event.decision == 'reject' && req != null"
+    set: {state: "'rejected'"}

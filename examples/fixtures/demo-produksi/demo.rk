@@ -10,9 +10,9 @@ item_category:
   - {name: KTG-002, category_name: Setengah jadi}
   - {name: KTG-003, category_name: Produk jadi}
 outlet:
-  - {name: OUT-01, outlet_name: Gudang Bahan, code: BHN, city: Cimahi, address: Jl. Contoh Industri Kecil No. 3, is_head_office: true, active: true}
-  - {name: OUT-02, outlet_name: Ruang Produksi, code: PRD, city: Cimahi, address: Jl. Contoh Industri Kecil No. 3, active: true}
-  - {name: OUT-03, outlet_name: Gudang Beku Barang Jadi, code: JDI, city: Cimahi, address: Jl. Contoh Industri Kecil No. 3, active: true}
+  - {name: OUT-01, outlet_name: Gudang Bahan, code: BHN, location_type: warehouse, city: Cimahi, address: Jl. Contoh Industri Kecil No. 3, is_head_office: true, active: true}
+  - {name: OUT-02, outlet_name: Ruang Produksi, code: PRD, location_type: production, city: Cimahi, address: Jl. Contoh Industri Kecil No. 3, active: true}
+  - {name: OUT-03, outlet_name: Gudang Beku Barang Jadi, code: JDI, location_type: warehouse, city: Cimahi, address: Jl. Contoh Industri Kecil No. 3, active: true}
 user:
   - {name: USR-001, full_name: Sari Contoh, role: Pemilik}
   - {name: USR-002, full_name: Tono Contoh, role: Mandor produksi}

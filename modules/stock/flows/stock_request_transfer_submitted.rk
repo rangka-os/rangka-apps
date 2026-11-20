@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The transfer of a request is sent (rangka-apps#104): the request is marked Dikirim and names the transfer.
+name: stock_request_transfer_submitted
+label: {id: Permintaan barang dikirim, en: Stock request sent}
+description: {id: 'Saat transfer dari permintaan barang diajukan, permintaan ditandai Dikirim.'}
+on: stock_transfer.submitted
+if: event.stock_request != ''
+steps:
+  - {find: stock_request, where: name == event.stock_request, as: req}
+  - update: req
+    if: "req != null && req.state == 'open'"
+    set: {state: "'sent'", stock_transfer: event.name}

@@ -9,11 +9,12 @@ on_cancel: [stock.reverse_moves]
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: outlet_staff, read: true, create: true, write: true, submit: true}
+  - {role: warehouse_staff, read: true, create: true, write: true, submit: true}
 fields:
   - name: outlet
     type: link
     to: outlet
-    label: {id: Outlet}
+    label: {id: Lokasi}
     required: true
     in_list: true
   - name: adjustment_date

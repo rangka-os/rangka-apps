@@ -6,6 +6,9 @@
 # submits the draft, where the site's own approval policy (custom/purchase_order.rk) applies as for any other PO.
 #   - quantity: item.reorder_qty, else up to the reorder level (stock_reorder.order_qty, fixed when the row opened);
 #   - price: the outlet's average cost of the item when the row opened (0 when it was never received);
+#   - a store supplied by a warehouse (outlet.supply_from, rangka-apps#104) gets no draft: its goods come from the
+#     warehouse by a stock request, and only the warehouse (or a store without one) orders from suppliers. Its rows stay
+#     open and undrafted, so the stock_low notice still names them; drafting a stock request instead is v2;
 #   - one episode gives one draft: the row is ticked `drafted`, so deleting the draft does not make a new one until
 #     the stock recovered and fell again. An item without a supplier is only in the stock_low notice.
 # A site without the stock module has no rows: the flow is skipped (if:).
@@ -26,6 +29,7 @@ steps:
     as: vendors
   - find_all: outlet
     if: size(need) > 0
+    where: supply_from == ''
     as: outlets
   - for_each: "size(need) > 0 ? vendors.filter(v, need.exists(r, r.vendor == v.name)) : []"
     as: v
