@@ -1,0 +1,103 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every morning at 06:40 (scheduler.timezone), and by the owner from the flow list: the expiry-soon list stock_expiry
+# (rangka-os#260, contract 0070). A lot balance is in the window when it holds stock and its lot expires within the item's
+# expiry_warning_days (0 = 30 days, the default of items made before catalogue 1.6), or has expired.
+#   1. Open rows, the 1000 least recently checked: a row whose lot balance is used up, gone, or out of the window is
+#      closed with today's qty; any other gets today's qty, days_left and state (soon, or expired once the date passed).
+#      Every row touched gets checked_on = today, so a business with more open rows refreshes them over several mornings.
+#   2. Candidates: the 500 lot balances in the window that expire soonest from today, and the 500 that expired most
+#      recently (so new ones are never starved by old expired stock). Each without an open row gets one.
+#   3. The rows not yet told about (notified false) go out once to head office and the warehouse (notice stock_expiry),
+#      then are marked notified. Running twice a day tells nobody twice.
+# Nothing is moved here: expired stock leaves through a stock adjustment with reason expired (the kernel takes expired
+# lots first), and deliveries skip expired lots by default.
+name: lot_expiry_digest
+label: {id: Kabari stok yang hampir kedaluwarsa, en: Expiring stock digest}
+description: {id: 'Tiap pagi, lot barang yang masih ada stoknya dan mendekati atau melewati tanggal kedaluwarsa dikabarkan sekali ke kantor pusat dan gudang.'}
+schedule: '40 6 * * *'
+steps:
+  - find_all: stock_expiry
+    where: open
+    sort: checked_on
+    limit: 1000
+    as: marks
+  - for_each: marks
+    as: m
+    do:
+      - {find: stock_lot_balance, where: name == m.balance, as: mb}
+      - {find: item, where: name == m.item, as: mi}
+      - if: "mb == null || mi == null || mb.qty <= 0 || days_between(today(), m.expiry_date) > (mi.expiry_warning_days > 0 ? mi.expiry_warning_days : 30)"
+        update: m
+        set: {open: 'false', qty: "mb == null ? 0 : mb.qty", checked_on: today()}
+      - if: "mb != null && mi != null && mb.qty > 0 && days_between(today(), m.expiry_date) <= (mi.expiry_warning_days > 0 ? mi.expiry_warning_days : 30)"
+        update: m
+        set:
+          qty: mb.qty
+          days_left: days_between(today(), m.expiry_date)
+          state: "days_between(today(), m.expiry_date) < 0 ? 'expired' : 'soon'"
+          checked_on: today()
+  - find_all: stock_lot_balance
+    where: "qty > 0 && lot != '' && expiry_date != '' && days_between(today(), expiry_date) >= 0 && days_between(today(), expiry_date) <= (item.expiry_warning_days > 0 ? item.expiry_warning_days : 30)"
+    sort: expiry_date
+    limit: 500
+    as: upcoming
+  - find_all: stock_lot_balance
+    where: "qty > 0 && lot != '' && expiry_date != '' && days_between(today(), expiry_date) < 0"
+    sort: -expiry_date
+    limit: 500
+    as: expired
+  - for_each: "upcoming + expired"
+    as: b
+    do:
+      - {find: stock_expiry, where: "open && balance == b.name", as: had}
+      - {find: stock_lot, where: name == b.lot, as: lt}
+      - {find: item, where: name == b.item, as: it}
+      - if: had == null
+        create: stock_expiry
+        set:
+          balance: b.name
+          outlet: b.outlet
+          item: b.item
+          lot: b.lot
+          lot_no: lt.lot_no
+          item_name: it.item_name
+          expiry_date: b.expiry_date
+          qty: b.qty
+          days_left: days_between(today(), b.expiry_date)
+          state: "days_between(today(), b.expiry_date) < 0 ? 'expired' : 'soon'"
+          alerted_on: today()
+          checked_on: today()
+          open: 'true'
+          notified: 'false'
+  - find_all: stock_expiry
+    where: "open && !notified"
+    sort: expiry_date
+    limit: 500
+    as: fresh
+  - {if: "fresh.size() > 0", find: stock_expiry, where: "name == fresh[0].name", as: ex}
+  # the notice links to the soonest new row and counts the others
+  - if: fresh.size() > 0
+    notify: head_office
+    notice: stock_expiry
+    channel: email
+    record: ex
+    id: "'expiry:' + ex.name"
+    title: '{fresh.size()} lot barang hampir kedaluwarsa'
+    template: >-
+      {ex.item_name} lot {ex.lot_no} ({ex.qty} tersisa) kedaluwarsa {ex.expiry_date}{fresh.size() > 1 ? ', dan ' + string(fresh.size() - 1) + ' lot lain juga baru masuk daftar' : ''}.
+      Buka daftar "Stok hampir kedaluwarsa" untuk melihat semuanya.
+  - if: fresh.size() > 0
+    notify: warehouse_staff
+    notice: stock_expiry
+    channel: email
+    record: ex
+    id: "'expiry-wh:' + ex.name"
+    title: '{fresh.size()} lot barang hampir kedaluwarsa'
+    template: >-
+      {ex.item_name} lot {ex.lot_no} kedaluwarsa {ex.expiry_date}. Keluarkan dulu lot yang paling dekat
+      kedaluwarsanya, dan catat barang yang sudah lewat di Penyesuaian stok dengan alasan Kedaluwarsa.
+  - for_each: fresh
+    as: f
+    do:
+      - update: f
+        set: {notified: 'true'}

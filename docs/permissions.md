@@ -356,3 +356,28 @@ scope and no money. `MATRIX` rows live in `tests/day_one_appointments.py`.
 | appointment | r c w d s x a p | r | all | all | r e p |
 | appointment_slot (only `state` writable; moves checked by a flow) | r c w | r w | r c w e | r c w e | r w e |
 | appointment_guard (never stored; a flow's refusal) | c | c | c | c | c |
+
+### Lots, expiry and serial numbers (modules catalogue 1.6, stock 1.6, rangka-os#260)
+
+rangka-os contract 0070. `item.tracking` (none, lot, lot_expiry, serial) and `expiry_warning_days` are item fields, so
+whoever writes items sets them. The registers `stock_lot`, `stock_lot_balance` and `serial_no` are written by the stock
+hooks only: no role creates, writes or deletes a row (head office may write `stock_lot.notes`). `stock_lot` is also read
+by the roles that pick a lot on a document line (`sales_manager` on delivery notes, `field_sales` who prints them).
+`stock_expiry` is the expiry-soon list, written by flow `lot_expiry_digest` only. The line fields (`lot`, `lot_no`,
+`expiry_date`, `made_date`, `serial_nos`) follow their document's permissions. `serial_no` is on the menu of
+grosir_distribusi and produksi_pabrik only: cashier files (`outlet_sales`, `outlet_return`) do not move serials yet. `stock_move.lot` and `serial_nos` are
+read-only like every move field.
+
+| Model | head_office | purchasing_manager | sales_manager | field_sales | outlet_staff | warehouse_staff | cashier |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| stock_lot | r w e p (`notes` only) | r e | r | r | r | r | r |
+| stock_lot_balance | r e | r e | r | | r | r | r |
+| serial_no | r e | r e | r | | r | r | r |
+| stock_expiry (written by flow `lot_expiry_digest` only) | r e | r e | r | | r | r | |
+| stock_guard (never stored; flow `item_tracking_lock`'s refusal; also finance_manager and project_admin: c) | c | c | c | | | | |
+
+`item.tracking` changes are checked by flow `item_tracking_lock` (inside the item's save): leaving the lot modes while a
+real lot holds stock, leaving serial while a serial is in stock or in transit, and switching to serial while the item has
+stock are refused. The flow reads the registers as the person saving the item, so a role that cannot read
+`stock_balance` cannot switch an item to serial (head office and the owner can). Stock counts stay whole-item in v1:
+a count line has no lot number (a no-lot line on a lot item would count only the no-lot bucket).

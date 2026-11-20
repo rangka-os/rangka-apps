@@ -37,7 +37,7 @@ menu:
   - group: {id: Pengiriman}
     items: [delivery_note, sales_return, order_fulfilment, return_credit]
   - group: {id: Gudang}
-    items: [stock_balance, stock_move, stock_request, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
+    items: [stock_balance, stock_lot_balance, stock_expiry, serial_no, stock_move, stock_request, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
   - group: {id: Pembelian}
     items: [purchase_order, goods_receipt, vendor_bill]
   - group: {id: Pembukuan}

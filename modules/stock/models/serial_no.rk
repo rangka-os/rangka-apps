@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: serial_no
+label: {id: Nomor seri, en: Serial number}
+icon: stock
+naming: SN-{######}
+title_field: serial
+# One row per item and serial (rangka-os contract 0070 §2 and §6): where the unit is and what moved it last. Written
+# only by the stock hooks. history is the kernel's stack of the forward moves still standing (one line
+# "<type>/<name>|<state before>" each, oldest first); with it a cancel must undo the serial's last document first
+# (409 serial_moved), so cancelling an old sale never puts a resold unit back on the shelf.
+permissions:
+  - {role: head_office, read: true, export: true}
+  - {role: purchasing_manager, read: true, export: true}
+  - {role: sales_manager, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: warehouse_staff, read: true}
+  - {role: cashier, read: true}
+fields:
+  - {name: serial, type: data, label: {id: Nomor seri}, required: true, read_only: true, in_list: true}
+  - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
+  - name: state
+    type: select
+    label: {id: Status}
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: in_stock, label: {id: Di gudang}}
+      - {value: in_transit, label: {id: Dalam perjalanan}}
+      - {value: sold, label: {id: Terjual}}
+      - {value: returned, label: {id: Diretur ke pemasok}}
+      - {value: consumed, label: {id: Dipakai produksi}}
+      - {value: scrapped, label: {id: Dibuang}}
+      - {value: cancelled, label: {id: Dibatalkan}}
+  - {name: outlet, type: link, to: outlet, label: {id: Lokasi}, read_only: true, in_list: true}
+  - {name: lot, type: link, to: stock_lot, label: {id: Lot}, read_only: true, hidden: true}
+  - {name: last_voucher_type, type: data, label: {id: Jenis dokumen terakhir}, read_only: true}
+  - {name: last_voucher, type: data, label: {id: Dokumen terakhir}, read_only: true, in_list: true}
+  - {name: in_date, type: date, label: {id: Tanggal masuk}, read_only: true}
+  - {name: out_date, type: date, label: {id: Tanggal keluar}, read_only: true}
+  - {name: prev_state, type: data, label: {id: Status sebelumnya}, read_only: true, hidden: true}
+  - {name: history, type: text, label: {id: Riwayat dokumen}, read_only: true}
+views:
+  list:
+    columns: [serial, item, state, outlet, last_voucher]
+    filters: [item, state, outlet]
+    sort: serial
+  form:
+    layout:
+      - section: {id: Nomor seri}
+        columns:
+          - [serial, item, in_date, last_voucher_type]
+          - [state, outlet, out_date, last_voucher]
+      - section: {id: Riwayat}
+        fields: [history]

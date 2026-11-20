@@ -40,8 +40,8 @@ fields:
 stock:
   date: return_date
   moves:
-    - {lines: items, in: outlet, if: "line.condition == 'good'", reason: return_in, cost: {source: delivery_note}}
-    - {lines: items, in: damaged_outlet, if: "line.condition == 'damaged'", reason: return_in, cost: {source: delivery_note}}
+    - {lines: items, in: outlet, if: "line.condition == 'good'", reason: return_in, cost: {source: delivery_note}, serials: serial_nos}
+    - {lines: items, in: damaged_outlet, if: "line.condition == 'damaged'", reason: return_in, cost: {source: delivery_note}, serials: serial_nos}
 rules:
   - name: qty_positive
     on: save

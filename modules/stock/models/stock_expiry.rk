@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# The expiry-soon list: one row per lot balance (outlet, item, lot) with stock that expires within the item's
+# expiry_warning_days, or has expired. Written only by flow lot_expiry_digest, every morning: it opens a row for a lot
+# balance newly in the window, refreshes qty, days_left and state of open rows, and closes a row (open = false) when the
+# lot is used up, so head office and the warehouse are told once per lot, not every day. Every field is read_only.
+name: stock_expiry
+label: {id: Stok hampir kedaluwarsa, en: Expiring stock}
+icon: alarm-warning-line
+naming: EXP-{YYYY}-{#####}
+title_field: item
+permissions:
+  - {role: head_office, read: true, export: true}
+  - {role: purchasing_manager, read: true, export: true}
+  - {role: sales_manager, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: warehouse_staff, read: true}
+fields:
+  - {name: balance, type: link, to: stock_lot_balance, label: {id: Stok per lot}, required: true, read_only: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Lokasi}, required: true, read_only: true, in_list: true}
+  - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
+  - {name: lot, type: link, to: stock_lot, label: {id: Lot}, required: true, read_only: true, in_list: true}
+  # the lot number and item name as text, for the notice (a template reads the row's own fields)
+  - {name: lot_no, type: data, label: {id: Nomor lot}, read_only: true}
+  - {name: item_name, type: data, label: {id: Nama barang}, read_only: true, hidden: true}
+  - {name: expiry_date, type: date, label: {id: Kedaluwarsa}, read_only: true, in_list: true}
+  - {name: qty, type: float, label: {id: Sisa qty}, read_only: true, in_list: true}
+  - {name: days_left, type: int, label: {id: Sisa hari}, read_only: true, in_list: true, help: {id: 'Dihitung tiap pagi; minus = sudah lewat'}}
+  - name: state
+    type: select
+    label: {id: Status}
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: soon, label: {id: Hampir kedaluwarsa}}
+      - {value: expired, label: {id: Sudah kedaluwarsa}}
+  - {name: alerted_on, type: date, label: {id: Tanggal dikabari}, read_only: true}
+  - {name: open, type: check, label: {id: Masih ada stoknya}, read_only: true, in_list: true, in_filter: true}
+  # the digest's bookkeeping: the day it last refreshed the row (it refreshes the least recently checked first) and
+  # whether the notice about the row went out
+  - {name: checked_on, type: date, label: {id: Terakhir diperiksa}, read_only: true}
+  - {name: notified, type: check, label: {id: Sudah dikabari}, read_only: true}
+views:
+  list:
+    columns: [item, lot, expiry_date, days_left, outlet, qty, state]
+    filters: [outlet, item, state, open]
+    sort: expiry_date
