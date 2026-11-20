@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/letterhead.json
+# Letterhead of the fictional CV Contoh Rambut Rapi (receipts, deposit invoices).
+legal_name: CV Contoh Rambut Rapi
+tagline: Salon dan kafe
+address: |
+  Jl. Contoh Rapi No. 7
+  Bandung 40000
+phone: '+62 22 000 0007'
+email: halo@contohsalon.test
+website: contohsalon.test
+bank:
+  - {bank: Bank Contoh, account: '999 000 0007', holder: CV Contoh Rambut Rapi, branch: Bandung}
+signatory: {name: Maya Contoh, title: Pemilik}
+footer: {id: Terima kasih sudah datang}

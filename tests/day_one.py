@@ -5917,6 +5917,7 @@ import day_one_warehouses  # noqa: E402
 import day_one_loyalty  # noqa: E402
 import day_one_karyawan  # noqa: E402
 import day_one_fixed_assets  # noqa: E402
+import day_one_appointments  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5942,6 +5943,7 @@ day_one_warehouses.bind(sys.modules[__name__])
 day_one_loyalty.bind(sys.modules[__name__])   # after day_one_promotions (same members)
 day_one_karyawan.bind(sys.modules[__name__])   # also registers demo-karyawan (orgs, members, setup)
 day_one_fixed_assets.bind(sys.modules[__name__])
+day_one_appointments.bind(sys.modules[__name__])   # also registers demo-salon (orgs, members, kernel env, setup)
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5962,6 +5964,7 @@ SCENARIOS = {
 }
 SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS
 SCENARIOS["demo-karyawan"] = day_one_karyawan.SCENARIOS + [scenario_permissions]
+SCENARIOS["demo-salon"] = day_one_appointments.SCENARIOS + [scenario_permissions]
 # module promotions on demo-jasa: the invoice promo as a new line's default discount, before the permission matrix
 _i = SCENARIOS["demo-jasa"].index(scenario_permissions)
 SCENARIOS["demo-jasa"][_i:_i] = day_one_promotions.SCENARIOS_JASA
