@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A member's purchases, append-only (contract 0026): one post row per paid receipt (flow loyalty_on_sale) and one
+# negated row when it is voided (loyalty_on_sale_cancel). The year's spend that moves a member up a tier is kept from
+# these rows. Every run of the sale's flows writes one, so a flow started again by hand is refused as a whole
+# (0026: a manual run writes no ledger row) and cannot add a sale's spend twice (audit #102 F1).
+name: member_spend
+label: {id: Belanja member, en: Member spend}
+icon: history
+naming: BLJ-{YYYY}-{######}
+append_only: true
+permissions:
+  - {role: head_office, read: true, create: true, export: true}
+  - {role: finance_manager, read: true, export: true}
+  - {role: cashier, read: true, create: true}
+fields:
+  - {name: account, type: link, to: loyalty_account, label: {id: Member}, required: true, in_list: true}
+  - {name: sale, type: data, label: {id: Struk}, index: true, in_list: true}
+  - {name: amount, type: currency, label: {id: Belanja}, help: {id: 'Minus untuk struk yang dibatalkan'}, required: true, in_list: true}
+  - {name: date, type: date, label: {id: Tanggal}, required: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, depends_on: app_installed('outlets')}
+  - name: entry
+    type: select
+    label: {id: Catatan}
+    required: true
+    options:
+      - {value: post, label: {id: Dibayar}}
+      - {value: reverse, label: {id: Dibatalkan}}
+  - {name: entry_key, type: data, label: {id: Kunci}, unique: true, hidden: true}
+views:
+  list:
+    columns: [name, date, account, sale, amount, entry]
+    filters: [account, outlet, entry]
+    sort: -name

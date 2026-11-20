@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A correction taken back: the points move the other way, never below 0.
+name: points_adjustment_on_cancel
+label: {id: 'Koreksi poin dibatalkan: kembalikan poin member'}
+on: points_adjustment.cancelled
+steps:
+  - {find: loyalty_account, where: name == event.account, as: a}
+  - if: a == null || a.points_balance - event.points < 0
+    create: loyalty_guard
+    set: {reason: "'balance_negative'", document: event.name}
+  - create: loyalty_entry
+    set:
+      account: a.name
+      kind: "'reverse'"
+      points: 0 - event.points
+      balance_after: a.points_balance - event.points
+      date: today()
+      source_type: "'points_adjustment'"
+      source: event.name
+      entry_key: "event.name + '|reverse'"
+  - update: a
+    set: {points_balance: a.points_balance - event.points}

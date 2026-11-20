@@ -16,8 +16,9 @@ orgs:
       org: {legal_name: CV Contoh Warung Rasa}
       tax: {pkp: true}
 apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan]
-# module promotions next to the kasir piece (rangka-apps#103; contract 0032 config.modules)
-modules: {promotions: ^1.0}
+# modules promotions (rangka-apps#103) and loyalty (members, points, deposit; rangka-apps#102) next to the kasir piece
+# (contract 0032 config.modules)
+modules: {promotions: ^1.0, loyalty: ^1.0}
 plan: tumbuh
 sso: {domains: [contohwarung.test], required: false}
 ai: {enabled: true, auto_apply: never, approvers: [owner, head_office]}

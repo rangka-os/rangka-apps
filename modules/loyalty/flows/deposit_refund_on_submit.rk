@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A refund paid: never more than the balance, read under the member's flow lock (a sale may have spent it since the
+# form was opened).
+name: deposit_refund_on_submit
+label: {id: 'Pengembalian deposit diajukan: kurangi saldo member'}
+on: deposit_refund.submitted
+steps:
+  - {find: loyalty_account, where: name == event.account, as: a}
+  - if: a == null || event.amount > a.deposit_balance
+    create: loyalty_guard
+    set: {reason: "'deposit_short'", document: event.name}
+  - create: deposit_entry
+    set:
+      account: a.name
+      kind: "'refund'"
+      amount: 0 - event.amount
+      balance_after: a.deposit_balance - event.amount
+      date: event.date
+      source_type: "'deposit_refund'"
+      source: event.name
+      entry_key: "event.name + '|refund'"
+  - update: a
+    set: {deposit_balance: a.deposit_balance - event.amount}

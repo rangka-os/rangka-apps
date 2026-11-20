@@ -63,7 +63,8 @@ MOVES = [
 NET = "moves.map(m, m.value).sum()"
 MOVE_DATE = "moves.size() > 0 ? moves[0].posting_date : today()"
 
-CASH = "event.method == 'cash' ? '11100' : (event.method == 'sales_return' ? '41200' : '11200')"
+# A payment from a member's deposit (module loyalty) takes the money out of 2-1400 Uang muka pelanggan.
+CASH = "event.method == 'cash' ? '11100' : (event.method == 'sales_return' ? '41200' : (event.method == 'deposit' ? '21400' : '11200'))"
 # What a vendor bill pays for (vendor_bill.posting, defaulted from its links; old bills without it follow the same
 # order): a project's cost, goods already received into stock (only where the stock module is installed), a fixed
 # asset (module fixed_assets: Aset tetap, one draft asset per line made by its flow asset_from_vendor_bill), else the
@@ -145,22 +146,26 @@ POSTINGS = {
         label="Jurnal transaksi kasir", date="event.date", outlet="event.outlet",
         # module pos: one receipt, booked like a day of outlet_sales. Cash and QRIS both wait in Kas outlet belum
         # disetor until the takings (outlet_takings) move them to Kas or Bank; revenue net of PPN, final PPh, HPP.
-        lines=[("'11150'", "event.grand_total"),
+        # The part paid from a member's deposit (module loyalty) comes out of 2-1400 Uang muka pelanggan (line 8, last,
+        # so the earlier lines keep their numbers); PPN is on the whole sale, also the deposit part.
+        lines=[("'11150'", "event.grand_total - event.deposit_used"),
                ("'41100'", "0 - (event.grand_total - event.ppn_in_sales)"),
                ("'21200'", "0 - event.ppn_in_sales"),
                ("'69100'", "event.pph_final"),
                ("'21310'", "0 - event.pph_final"),
                ("'51100'", "event.cogs_total"),
-               ("'11400'", "0 - event.cogs_total")]),
+               ("'11400'", "0 - event.cogs_total"),
+               ("'21400'", "event.deposit_used", {"party": "event.member"})]),
     "pos_shift_close": dict(
         label="Jurnal tutup sesi kasir", date="event.close_date", outlet="event.outlet",
         # Closing the shift settles what its receipts held in Kas outlet belum disetor: the cash counted (less the float,
         # which stays in the drawer) goes to Kas, the QRIS to Bank (settled by the provider; a QRIS MDR is not taken
         # here), and the counted difference is Selisih kas (more cash a gain, less a loss). Outlets on the cashier take
         # no outlet_takings (rule there), so the difference is booked once (audit kasir H1).
+        # Deposit top-ups taken on the shift (module loyalty) waited in 11150 like the receipts and settle with them.
         lines=[("'11100'", "event.counted_cash - event.opening_cash"),
-               ("'11200'", "event.qris_total"),
-               ("'11150'", "0 - (event.cash_total + event.qris_total)"),
+               ("'11200'", "event.qris_total + event.topup_qris_total"),
+               ("'11150'", "0 - (event.cash_total + event.qris_total + event.topup_cash_total + event.topup_qris_total)"),
                ("'61300'", "0 - event.cash_difference")]),
     "outlet_takings": dict(
         label="Jurnal setoran outlet", date="event.date", outlet="event.outlet",
@@ -268,6 +273,16 @@ POSTINGS = {
         lines=[("'21400'", "event.deposit"),
                ("'49200'", "0 - (event.covered_late + event.covered_damage)"),
                ("event.refund_method == 'cash' ? '11100' : '11200'", "0 - event.deposit_refund")]),
+    "deposit_topup": dict(
+        label="Jurnal isi deposit", date="event.date", outlet="event.outlet", party="event.account",
+        # module loyalty: a customer advance, not revenue (no PPN or PPh at top-up; due on the sale that spends it). At
+        # the counter the money waits in Kas outlet belum disetor until the shift closes; at the desk Kas or Bank.
+        lines=[("event.posting_method == 'outlet' ? '11150' : (event.posting_method == 'cash' ? '11100' : '11200')", "event.amount"),
+               ("'21400'", "0 - event.amount")]),
+    "deposit_refund": dict(
+        label="Jurnal pengembalian deposit", date="event.date", party="event.account",
+        lines=[("'21400'", "event.amount"),
+               ("event.method == 'cash' ? '11100' : '11200'", "0 - event.amount")]),
     "fixed_asset": dict(
         label="Jurnal aset tetap", date="event.book_date", outlet="event.outlet", project="event.project",
         # module fixed_assets. An asset bought on a vendor bill posts nothing: the bill already debited Aset tetap

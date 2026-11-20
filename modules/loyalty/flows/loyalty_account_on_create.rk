@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Sign-up (at the counter by the cashier, or at the desk): one member per number (also held by the unique wa_number,
+# this gives the cashier the sentence) and per customer; the customer picked, else a new one with the member's name and
+# number; the base tier (active, min_spend 0) with its figures. Without a base tier the sign-up is refused.
+name: loyalty_account_on_create
+label: {id: 'Member baru: hubungkan pelanggan dan tier dasar'}
+on: loyalty_account.created
+# a member that already has its tier was set up: a run started by hand changes nothing (audit #102 F1)
+if: event.tier == ''
+steps:
+  - {find: loyalty_account, where: name == event.name, as: me}
+  - find_all: loyalty_account
+    where: wa_number == event.wa_number && name != event.name
+    limit: 1
+    as: same_phone
+  - if: same_phone.size() > 0
+    create: loyalty_guard
+    set: {reason: "'phone_member'", document: event.name}
+  - find_all: loyalty_account
+    where: "event.customer != '' && customer == event.customer && name != event.name"
+    limit: 1
+    as: same_customer
+  - if: same_customer.size() > 0
+    create: loyalty_guard
+    set: {reason: "'customer_member'", document: event.name}
+  - find_all: member_tier
+    where: active && min_spend == 0
+    sort: tier_code
+    limit: 1
+    as: base
+  - if: base.size() == 0
+    create: loyalty_guard
+    set: {reason: "'no_base_tier'", document: event.name}
+  - if: event.customer == ''
+    create: customer
+    set:
+      customer_name: event.member_name
+      phone: event.phone
+    as: made
+  - if: event.customer == ''
+    update: me
+    set: {customer: made.name}
+  - update: me
+    set:
+      tier: base[0].name
+      tier_name: base[0].tier_name
+      earn_spend: base[0].earn_spend
+      earn_multiplier_pct: base[0].earn_multiplier_pct
+      point_value: base[0].point_value
+      max_redeem_pct: base[0].max_redeem_pct
+      member_discount_pct: base[0].member_discount_pct
+      expiry_months: base[0].expiry_months
+      last_activity: event.joined_on

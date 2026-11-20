@@ -1,0 +1,92 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Isi deposit: a member hands over money to keep as a balance (stored value). At an outlet the cashier takes it on
+# their open shift: cash goes into the drawer (the shift's expected cash grows, flow deposit_topup_on_submit under the
+# shift's lock) and QRIS into the outlet's QRIS, both waiting in Kas outlet belum disetor until the shift closes. At
+# the desk head office or finance takes a transfer (Bank) or cash (Kas) without a shift. Journal (accounting module):
+# the money against 2-1400 Uang muka pelanggan; no PPN or PPh at top-up (an advance: PPN is due on the sale that spends
+# it). No bonus in v1. A cancel gives the money back out the same way, only on the same day while the shift is open.
+name: deposit_topup
+label: {id: Isi deposit, en: Deposit top-up}
+icon: wallet-3-line
+is_submittable: true
+naming: DEP-{YYYY}-{#####}
+title_field: account
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, export: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, export: true, print: true}
+  - {role: cashier, read: true, create: true, write: true, delete: true, submit: true, cancel: true, print: true}
+fields:
+  - {name: account, type: link, to: loyalty_account, label: {id: Member}, required: true, in_list: true, peek: [phone, deposit_balance]}
+  - {name: date, type: date, label: {id: Tanggal}, default: today(), in_list: true}
+  - {name: amount, type: currency, label: {id: Jumlah}, required: true, in_list: true}
+  - name: method
+    type: select
+    label: {id: Cara bayar}
+    required: true
+    default: "'cash'"
+    in_list: true
+    chip: true
+    options:
+      - {value: cash, label: {id: Tunai}}
+      - {value: qris, label: {id: QRIS}}
+      - {value: transfer, label: {id: Transfer}}
+  - {name: ref, type: data, label: {id: Ref QRIS atau transfer}}
+  # at an outlet: the cashier's open shift (module pos); its outlet scopes the record to that outlet's cashiers
+  - name: shift
+    type: link
+    to: pos_shift
+    label: {id: Sesi kasir}
+    help: {id: 'Isi deposit di kasir masuk ke laci sesi ini'}
+    depends_on: app_installed('pos')
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, depends_on: app_installed('outlets'), compute: "shift != '' ? shift.outlet : ''"}
+  - {name: note, type: data, label: {id: Catatan}}
+  - name: posting_method
+    type: select
+    label: {id: Masuk ke}
+    hidden: true
+    compute: "shift != '' && method != 'transfer' ? 'outlet' : (method == 'cash' ? 'cash' : 'bank')"
+    options:
+      - {value: outlet, label: {id: Kas outlet belum disetor}}
+      - {value: cash, label: {id: Kas}}
+      - {value: bank, label: {id: Bank}}
+rules:
+  - name: amount_positive
+    on: save
+    check: amount > 0
+    message: {id: Jumlah isi deposit harus lebih dari 0}
+  - name: member_active
+    on: save
+    check: account.active
+    message: {id: 'Member ini tidak aktif'}
+  # a cashier takes money only on its own open shift, never in transfer (the desk books transfers)
+  - name: cashier_on_shift
+    on: save
+    check: "!('cashier' in user.roles) || 'head_office' in user.roles || 'finance_manager' in user.roles || 'owner' in user.roles || (shift != '' && method != 'transfer')"
+    message: {id: 'Di kasir, isi deposit tunai atau QRIS lewat sesi kasirmu yang sedang buka'}
+  - name: shift_open
+    on: save
+    check: shift == '' || shift.state == 'open'
+    message: {id: 'Sesi kasir ini sudah ditutup; buka sesi baru'}
+  - name: own_shift
+    on: save
+    check: "shift == '' || shift.cashier == user.email"
+    message: {id: 'Isi deposit hanya di sesi kasirmu sendiri; di kantor kosongkan Sesi kasir'}
+  - name: transfer_not_on_shift
+    on: save
+    check: shift == '' || method != 'transfer'
+    message: {id: 'Transfer dicatat di kantor tanpa sesi kasir'}
+  - name: paid_today
+    on: submit
+    check: date == today()
+    message: {id: 'Draf ini dari hari lain; buat isi deposit baru untuk hari ini'}
+views:
+  list:
+    columns: [name, date, account, amount, method, outlet, status]
+    filters: [account, method, outlet]
+    sort: -name
+  form:
+    layout:
+      - section: {id: Isi deposit}
+        columns:
+          - [account, amount, method, ref]
+          - [date, shift, outlet, note]

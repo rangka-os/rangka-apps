@@ -16,4 +16,4 @@ icon: receipt-line
 # Not in this version: per diem and mileage rules, corporate cards, multi-currency claims, receipt OCR filling the
 # amount, and the rebill of a project claim to the client (project_expense; follow-up of #117).
 requires: {rangka: '>=0.5', users: ^1.5}
-optional: {outlets: ^1.6, projects: ^1.0, payroll: ^2.2, accounting: ^1.5}
+optional: {outlets: ^1.6, projects: ^1.0, payroll: ^2.2, accounting: ^1.6}

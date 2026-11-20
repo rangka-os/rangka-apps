@@ -1,0 +1,33 @@
+{{define "style"}}
+/* Arah E: pratinjau pesan netral; tombol utama ink, bukan hijau WhatsApp. */
+h1 { font-size: 1.3em; }
+.to { margin: 0 0 3mm; }
+.msg { white-space: pre-wrap; border: 1px solid #D6D3D1; border-radius: 3mm; border-top-left-radius: 0.8mm; background: #F5F5F4; padding: 4mm; margin: 3mm 0 4mm; font-size: 1.05em; max-width: 120mm; }
+.wa { display: inline-block; padding: 2.4mm 5mm; border-radius: 2mm; background: #1C1917; color: #fff; text-decoration: none; font-weight: 600; }
+.muted { color: #57534E; font-size: 0.9em; }
+@media print { .wa { display: none; } }
+{{end}}
+{{- $m := .Links.member -}}
+{{- $p := "" -}}{{- with $m -}}{{- with .wa_number -}}{{- $p = . -}}{{- end -}}{{- end -}}
+{{- $who := "" -}}{{- with $m -}}{{- $who = .member_name -}}{{- end -}}
+{{- $ds := printf "%v" .Doc.docstatus -}}
+{{- $msg := "" -}}
+{{- if ne $ds "1" -}}
+{{- $p = "" -}}
+{{- $msg = printf "Struk %s belum dibayar atau sudah dibatalkan. Tidak ada pesan untuk dikirim." .Doc.name -}}
+{{- else -}}
+{{- $msg = printf "Halo%s, terima kasih sudah belanja di %s.\n\nStruk %s\nTanggal %s\nTotal %s" (or (and $who (printf " %s" $who)) "") .Letterhead.legal_name .Doc.name (date .Doc.date) (rupiah .Doc.grand_total) -}}
+{{- if .Doc.deposit_used -}}{{- $msg = printf "%s\nDibayar dari deposit %s" $msg (rupiah .Doc.deposit_used) -}}{{- end -}}
+{{- if $who -}}
+{{- if .Doc.points_redeemed -}}{{- $msg = printf "%s\n\nPoin ditukar %s (hemat %s)" $msg (number .Doc.points_redeemed) (rupiah .Doc.points_discount) -}}{{- else -}}{{- $msg = printf "%s\n" $msg -}}{{- end -}}
+{{- if .Doc.points_earned -}}{{- $msg = printf "%s\nPoin didapat +%s" $msg (number .Doc.points_earned) -}}{{- end -}}
+{{- $msg = printf "%s\nSisa poin kamu %s" $msg (number .Doc.points_left) -}}
+{{- if or .Doc.deposit_used .Doc.deposit_left -}}{{- $msg = printf "%s\nSisa deposit kamu %s" $msg (rupiah .Doc.deposit_left) -}}{{- end -}}
+{{- end -}}
+{{- $msg = printf "%s\n\nSampai jumpa lagi." $msg -}}
+{{- end -}}
+<h1>Pesan struk WhatsApp</h1>
+<p class="to">{{if $who}}Untuk <strong>{{$who}}</strong>{{if $p}} · +{{$p}}{{end}}{{else}}<em>Transaksi tanpa member: pilih penerima di WhatsApp</em>{{end}}</p>
+<div class="msg">{{$msg}}</div>
+{{if $p}}<p><a class="wa" href="https://wa.me/{{$p}}?text={{$msg}}">Buka di WhatsApp</a></p>{{else if eq $ds "1"}}<p><a class="wa" href="https://wa.me/?text={{$msg}}">Buka di WhatsApp</a></p>{{end}}
+<p class="muted">Dikirim dari WhatsApp toko sendiri. Tanya dulu ke pembeli sebelum mengirim.</p>
