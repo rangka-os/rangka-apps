@@ -128,3 +128,6 @@ jobs:
       - name: day_one demo-karyawan
         working-directory: rangka-apps
         run: python tests/day_one.py --site demo-karyawan
+      - name: day_one demo-salon
+        working-directory: rangka-apps
+        run: python tests/day_one.py --site demo-salon
