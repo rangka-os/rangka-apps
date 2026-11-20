@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A receipt of a request's transfer is cancelled (rangka-apps#104): the request is Dikirim again until the goods are
+# received once more.
+name: stock_request_receipt_cancelled
+label: {id: Penerimaan permintaan barang dibatalkan, en: Stock request receipt cancelled}
+description: {id: 'Saat penerimaan barang dari permintaan dibatalkan, permintaan kembali berstatus Dikirim.'}
+on: stock_transfer_receipt.cancelled
+steps:
+  - {find: stock_transfer, where: name == event.stock_transfer, as: t}
+  - {find: stock_request, if: "t != null && t.stock_request != ''", where: name == t.stock_request, as: req}
+  - update: req
+    if: "t != null && t.stock_request != '' && req != null && t.state != 'received' && req.state == 'received'"
+    set: {state: "'sent'"}

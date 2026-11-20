@@ -20,7 +20,7 @@ fields:
   - {name: customer, type: link, to: customer, label: {id: Pelanggan}, default: customer_order.customer, read_only: true, in_list: true}
   - {name: salesman, type: link, to: user, label: {id: Salesman}, default: customer_order.salesman, read_only: true, in_list: true}
   - {name: fulfilment, type: link, to: order_fulfilment, label: {id: Pemenuhan pesanan}, default: customer_order.fulfilment, read_only: true}
-  - {name: outlet, type: link, to: outlet, label: {id: Dikirim dari}, help: {id: Gudang atau mobil kanvas}, required: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Dikirim dari}, help: {id: 'Gudang, mobil kanvas, atau toko'}, required: true, in_list: true}
   - {name: delivery_date, type: date, label: {id: Tanggal kirim}, default: today(), required: true, in_list: true}
   - {name: driver, type: data, label: {id: Sopir}}
   - {name: vehicle_no, type: data, label: {id: No. kendaraan}}
@@ -64,6 +64,11 @@ approvals:
     approvers: [sales_manager, finance_manager]
     label: {id: Melewati batas kredit, en: Over the credit limit}
 rules:
+  # rangka-apps#104: goods leave from a warehouse, a canvas van or a store; never from a damaged-goods or production room
+  - name: ships_from_stock
+    on: save
+    check: "outlet.location_type in ['', 'store', 'warehouse', 'vehicle']"
+    message: {id: 'Surat jalan dikirim dari gudang, mobil kanvas, atau toko; bukan dari ruang barang rusak atau ruang produksi'}
   - name: qty_positive
     on: save
     check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"

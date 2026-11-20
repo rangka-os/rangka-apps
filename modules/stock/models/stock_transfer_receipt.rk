@@ -9,6 +9,7 @@ on_cancel: [stock.reverse_moves]
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: outlet_staff, read: true, create: true, write: true, submit: true, cancel: true}
+  - {role: warehouse_staff, read: true, create: true, write: true, submit: true, cancel: true}
 fields:
   - name: stock_transfer
     type: link
@@ -19,7 +20,7 @@ fields:
   - name: outlet
     type: link
     to: outlet
-    label: {id: Outlet penerima}
+    label: {id: Lokasi penerima}
     help: {id: 'Harus outlet tujuan transfer; stok masuk ke outlet ini'}
     required: true
     in_list: true

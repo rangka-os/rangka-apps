@@ -7,17 +7,29 @@ cache: 1m
 # The home of outlet staff (contract 0030 §3: the first dashboard whose roles names one of the user's roles). Only
 # models outlet_staff may read, row-scoped to the member's outlets (role scope outlet, from_outlet, to_outlet), and no
 # money: the owner's grosir_overview and grosir_ar are for the managers (card t_19f909b9).
-roles: [outlet_staff, head_office]
+roles: [outlet_staff, warehouse_staff, head_office]
 widgets:
-  - {name: receipts_draft, type: number, label: {id: Penerimaan belum diajukan}, model: goods_receipt, filter: docstatus == 0, good_when: down, span: 3}
-  - {name: receipts_today, type: number, label: {id: Penerimaan hari ini}, model: goods_receipt, filter: "docstatus == 1 && received_on == today()", span: 3}
+  - {name: receipts_draft, type: number, label: {id: Penerimaan belum diajukan}, model: goods_receipt, filter: "docstatus == 0 && (user.outlets.size() == 0 || outlet in user.outlets)", good_when: down, span: 3}
+  - {name: receipts_today, type: number, label: {id: Penerimaan hari ini}, model: goods_receipt, filter: "docstatus == 1 && received_on == today() && (user.outlets.size() == 0 || outlet in user.outlets)", span: 3}
   - {name: to_receive, type: number, label: {id: Kiriman belum diterima}, model: stock_transfer, filter: "docstatus == 1 && state != 'received' && (user.outlets.size() == 0 || to_outlet in user.outlets)", good_when: down, span: 3}
-  - {name: counts_draft, type: number, label: {id: Opname belum diajukan}, model: stock_count, filter: docstatus == 0, good_when: down, span: 3}
+  - {name: counts_draft, type: number, label: {id: Opname belum diajukan}, model: stock_count, filter: "docstatus == 0 && (user.outlets.size() == 0 || outlet in user.outlets)", good_when: down, span: 3}
+  # rangka-apps#104: requests from stores. Warehouse staff have no row scope, so the filter narrows to the warehouses
+  # (supply_outlet) and stores (outlet) of the member; head office (no outlets) sees every request.
+  - {name: requests_open, type: number, label: {id: Permintaan barang menunggu}, model: stock_request, filter: "state == 'open' && (user.outlets.size() == 0 || supply_outlet in user.outlets || outlet in user.outlets)", good_when: down, span: 3}
+  - name: request_list
+    type: list
+    label: {id: Permintaan barang yang menunggu gudang}
+    model: stock_request
+    filter: "state == 'open' && (user.outlets.size() == 0 || supply_outlet in user.outlets || outlet in user.outlets)"
+    sort: request_date
+    limit: 20
+    columns: [name, request_date, outlet, supply_outlet, needed_by, decision]
+    span: 12
   - name: receipt_list
     type: list
     label: {id: Penerimaan barang yang belum diajukan}
     model: goods_receipt
-    filter: docstatus == 0
+    filter: "docstatus == 0 && (user.outlets.size() == 0 || outlet in user.outlets)"
     sort: received_on
     limit: 20
     columns: [name, received_on, vendor, outlet]

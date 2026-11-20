@@ -22,6 +22,8 @@ permissions:
   # project admins also read the debit line of vendor bills: a project expense on a bill moves its cost out of that line
   - {role: project_admin, read: true, create: true, if: "voucher_type in ['timesheet', 'project_expense'] || (voucher_type == 'vendor_bill' && line in ['1', '2'])"}
   - {role: outlet_staff, read: true, create: true, if: "voucher_type in ['outlet_sales', 'outlet_takings', 'goods_receipt', 'stock_adjustment', 'stock_count', 'stock_transfer_receipt', 'production_batch', 'outlet_return']"}
+  # rangka-apps#104: the warehouse's documents post their own lines (a flow runs as the person submitting)
+  - {role: warehouse_staff, read: true, create: true, if: "voucher_type in ['goods_receipt', 'stock_adjustment', 'stock_count', 'stock_transfer', 'stock_transfer_receipt']"}
   # a cashier reads the lines of its receipts; the close's lines (cash difference) are created by its flow but not read
   # by the cashier (blind count, audit kasir M4)
   - {role: cashier, read: true, create: true, if: "voucher_type == 'pos_sale'"}
@@ -102,9 +104,9 @@ fields:
     type: currency
     label: {id: 'Nilai (+ debit, - kredit)'}
     required: true
-    hidden_for: [outlet_staff, cashier]
-  - {name: debit, type: currency, label: {id: Debit}, compute: "amount > 0 ? amount : 0", in_list: true, hidden_for: [outlet_staff, cashier]}
-  - {name: credit, type: currency, label: {id: Kredit}, compute: "amount < 0 ? 0 - amount : 0", in_list: true, hidden_for: [outlet_staff, cashier]}
+    hidden_for: [outlet_staff, warehouse_staff, cashier]
+  - {name: debit, type: currency, label: {id: Debit}, compute: "amount > 0 ? amount : 0", in_list: true, hidden_for: [outlet_staff, warehouse_staff, cashier]}
+  - {name: credit, type: currency, label: {id: Kredit}, compute: "amount < 0 ? 0 - amount : 0", in_list: true, hidden_for: [outlet_staff, warehouse_staff, cashier]}
   - name: voucher_type
     type: data
     label: {id: Jenis dokumen}
@@ -135,7 +137,7 @@ fields:
   - {name: party, type: data, label: {id: Pihak}}
   # a project expense's credit line: the vendor bill whose cost it moved into the project
   - {name: against, type: data, label: {id: Tagihan asal}, hidden: true}
-  - {name: bill_left, type: currency, label: {id: Sisa biaya tagihan}, hidden: true, hidden_for: [outlet_staff, cashier]}
+  - {name: bill_left, type: currency, label: {id: Sisa biaya tagihan}, hidden: true, hidden_for: [outlet_staff, warehouse_staff, cashier]}
   - {name: lock_date, type: date, label: {id: Buku ditutup sampai}, hidden: true}
   - name: account_class
     type: select

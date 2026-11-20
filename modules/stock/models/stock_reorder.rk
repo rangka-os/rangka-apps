@@ -15,7 +15,7 @@ permissions:
   - {role: purchasing_manager, read: true, export: true}
 fields:
   - {name: balance, type: link, to: stock_balance, label: {id: Saldo stok}, required: true, read_only: true}
-  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, read_only: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Lokasi}, required: true, read_only: true, in_list: true}
   - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
   - {name: alerted_on, type: date, label: {id: Tanggal dikabari}, read_only: true, in_list: true}
   - {name: qty, type: float, label: {id: Stok saat dikabari}, read_only: true, in_list: true}
