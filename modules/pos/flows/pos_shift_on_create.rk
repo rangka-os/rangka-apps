@@ -7,6 +7,11 @@ label: {id: 'Sesi kasir dibuka: hanya satu sesi terbuka per kasir per outlet'}
 on: pos_shift.created
 steps:
   - {find: outlet, where: name == event.outlet, as: o}
+  # only a store sells (rangka-apps#104, rule shift_at_store): repeated here because a paired device's write turns the
+  # shift's own rules into exceptions (rangka-os contract 0058 §10), while a guard a flow writes still refuses
+  - if: o != null && o.location_type != '' && o.location_type != 'store'
+    create: pos_guard
+    set: {reason: "'not_a_store'", document: event.name}
   - if: o != null && o.cash_float > 0 && event.opening_cash != o.cash_float
     create: pos_guard
     set: {reason: "'float_of_outlet'", document: event.name}

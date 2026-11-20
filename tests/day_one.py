@@ -5938,6 +5938,7 @@ import day_one_fixed_assets  # noqa: E402
 import day_one_portal  # noqa: E402
 import day_one_shifts  # noqa: E402
 import day_one_appointments  # noqa: E402
+import day_one_offline  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5966,6 +5967,7 @@ day_one_fixed_assets.bind(sys.modules[__name__])
 day_one_portal.bind(sys.modules[__name__])
 day_one_shifts.bind(sys.modules[__name__])   # after day_one_staff_attendance (its demo-fnb members)
 day_one_appointments.bind(sys.modules[__name__])   # also registers demo-salon (orgs, members, kernel env, setup)
+day_one_offline.bind(sys.modules[__name__])   # after day_one_pos (CTX kernel and org)
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -5981,7 +5983,7 @@ SCENARIOS = {
     "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],
     "demo-kursus": day_one_courses.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-langganan": day_one_subscriptions.SCENARIOS + day_one_loyalty.SCENARIOS_LANGGANAN + [scenario_permissions, day_one_accounting.scenario_accounting],
-    "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + day_one_promotions.SCENARIOS + day_one_loyalty.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
+    "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + day_one_promotions.SCENARIOS + day_one_loyalty.SCENARIOS + day_one_offline.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-kepingan-keuangan": day_one_keuangan.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
 SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS

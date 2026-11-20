@@ -28,6 +28,7 @@ fields:
       - {value: cashier_same_day, label: {id: Outlet sudah memakai kasir di tanggal itu}}
       - {value: cashier_takings, label: {id: Setoran hari kasir}}
       - {value: float_of_outlet, label: {id: Modal kas beda dengan outlet}}
+      - {value: not_a_store, label: {id: Lokasi bukan toko}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: shift_already_open
@@ -74,3 +75,9 @@ rules:
     on: save
     check: reason != 'float_of_outlet'
     message: {id: 'Modal kas outlet ini sudah ditetapkan kantor pusat; isi sesuai Modal kas kasir di data outlet'}
+  # a paired device's shift open passes the shift's own save rules as exceptions (contract 0058 §10); this guard keeps
+  # rule shift_at_store (rangka-apps#104) a refusal there too: a guard is a record a flow writes, so it still refuses
+  - name: not_a_store
+    on: save
+    check: reason != 'not_a_store'
+    message: {id: 'Sesi kasir hanya bisa dibuka di lokasi berjenis Toko'}

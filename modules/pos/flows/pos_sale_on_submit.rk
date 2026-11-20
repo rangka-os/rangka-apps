@@ -45,7 +45,10 @@ steps:
   - if: day != null && day.source == ''
     update: day
     set: {source: "'kasir'", document: event.name}
-  - if: s == null
+  # A receipt paid on a paired device was already paid at the outlet (rangka-os contract 0058 §10): a shift head office
+  # closed meanwhile does not refuse it (rule shift_open becomes a rule_overridden exception for head office) and the
+  # closed shift's totals stay as counted.
+  - if: s == null && device.id == ''
     create: pos_guard
     set: {reason: "'shift_closed'", document: event.name}
   - update: s
