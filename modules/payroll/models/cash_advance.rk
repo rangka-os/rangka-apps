@@ -25,11 +25,17 @@ title_field: worker
 permissions:
   - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: project_admin, read: true}
-  # Staff request their own kasbon and read their own; they never submit (finance pays it out).
-  - {role: employee, read: true, create: true, write: true, delete: true, if: "requested_by == user.name || employee == user.name"}
-  - {role: cashier, read: true, create: true, write: true, delete: true, if: "requested_by == user.name || employee == user.name"}
-  - {role: outlet_staff, read: true, create: true, write: true, delete: true, if: "requested_by == user.name || employee == user.name"}
-  - {role: outlet_supervisor, read: true, create: true, write: true, delete: true, if: "requested_by == user.name || employee == user.name"}
+  # Staff request their own kasbon and read their own; they never submit (finance pays it out). They edit or delete
+  # only their own request and only until finance picks the worker: a kasbon finance drafted, or a request finance has
+  # taken up, cannot be raised by the worker before finance's submit pays it out (audit #117 F1).
+  - {role: employee, read: true, if: "requested_by == user.name || employee == user.name"}
+  - {role: employee, create: true, write: true, delete: true, if: "requested_by == user.name && worker == ''"}
+  - {role: cashier, read: true, if: "requested_by == user.name || employee == user.name"}
+  - {role: cashier, create: true, write: true, delete: true, if: "requested_by == user.name && worker == ''"}
+  - {role: outlet_staff, read: true, if: "requested_by == user.name || employee == user.name"}
+  - {role: outlet_staff, create: true, write: true, delete: true, if: "requested_by == user.name && worker == ''"}
+  - {role: outlet_supervisor, read: true, if: "requested_by == user.name || employee == user.name"}
+  - {role: outlet_supervisor, create: true, write: true, delete: true, if: "requested_by == user.name && worker == ''"}
 fields:
   # Empty on a staff request (staff do not read the worker list): finance picks it before submitting (rule
   # worker_on_submit), and on a request it must be the requester's own worker record (rule request_own_worker).

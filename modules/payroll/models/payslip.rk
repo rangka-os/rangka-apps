@@ -399,6 +399,12 @@ rules:
     on: save
     check: tax_year == payroll_run.tax_year && tax_month == payroll_run.tax_month
     message: {id: 'Tahun dan bulan pajak slip harus sama dengan periode gajinya'}
+  # Only approved claims are paid back here, and only module reimbursement checks the amount against them at submit:
+  # without it the field stays 0, so no untaxed money is paid through the slip (audit #117 F3).
+  - name: reimbursement_needs_claims
+    on: save
+    check: reimbursement == 0 || app_installed('reimbursement')
+    message: {id: 'Penggantian biaya hanya untuk klaim biaya yang disetujui (modul klaim biaya belum terpasang)'}
   - name: reimbursement_whole
     on: save
     check: reimbursement >= 0 && reimbursement == round(reimbursement)

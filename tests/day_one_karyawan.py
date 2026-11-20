@@ -467,8 +467,14 @@ def scenario_karyawan_kasbon_claims(api):
     check("finance cannot submit a request before picking the worker", st == 422 and "worker_on_submit" in rules_of(resp), (st, resp))
     st, resp = fm.patch("cash_advance", K, {"worker": worker.get("USR-005", "x")})
     check("finance picks Citra's worker", st == 200 and rec(resp).get("employee") == "USR-005", (st, resp))
+    st, resp = citra.patch("cash_advance", K, {"amount": 5_000_000})
+    check("once finance has picked the worker, Citra cannot raise her request (audit F1) -> 403", denied(st, resp), (st, resp))
+    st, fk = fm.create("cash_advance", {"worker": worker.get("USR-006", "x"), "amount": 100_000, "installment": 100_000})
+    st, resp = eko.patch("cash_advance", (fk or {}).get("name", "x"), {"amount": 5_000_000})
+    check("Eko reads a kasbon finance drafted for him but cannot change it -> 403", denied(st, resp), (st, resp))
+    fm.call("DELETE", f"/api/v1/r/cash_advance/{Api.q((fk or {}).get('name', 'x'))}")
     st, resp = fm.verb("cash_advance", K, "submit")
-    if not check("finance submits the kasbon (pays it out)", st == 200, (st, resp)):
+    if not check("finance submits the kasbon (pays it out)", st == 200 and rec(resp).get("amount") == 1_500_000, (st, resp)):
         return
     K = rec(resp).get("name") or K
     bal = (fm.find("cash_advance_balance", f"cash_advance == '{K}'") or [{}])[0]
@@ -522,6 +528,8 @@ def scenario_karyawan_kasbon_claims(api):
         st, c = hq.create("expense_category", {"category_name": name, "expense_account": acct, "needs_receipt": needs, "max_per_claim": cap})
         cats[name] = (c or {}).get("name", "x")
         check(f"head office sets the claim category {name}", st == 201, (st, c))
+    st, resp = bagas.create("expense_claim", {"category": cats["ATK"], "amount": 10_000, "description": "Plastik", "pay_with": "cash", "outlet": SHOP})
+    check("Bagas (kitchen) cannot put his claim on the shop, whose supervisor would approve it (audit F2)", st == 422 and "own_outlet" in rules_of(resp), (st, resp))
     st, resp = ayu.create("expense_claim", {"category": cats["Parkir"], "amount": 150_000, "description": "Parkir antar kue", "pay_with": "payroll"})
     check("a parking claim over the category's limit is refused", st == 422 and "within_limit" in rules_of(resp), (st, resp))
     st, c = ayu.create("expense_claim", {"category": cats["Parkir"], "amount": 75_000, "description": "Parkir antar kue", "pay_with": "payroll"})

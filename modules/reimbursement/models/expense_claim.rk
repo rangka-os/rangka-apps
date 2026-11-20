@@ -117,6 +117,12 @@ rules:
     on: save
     check: "employee == user.name || 'head_office' in user.roles || 'owner' in user.roles"
     message: {id: 'Klaim hanya bisa diajukan untuk dirimu sendiri'}
+  # The claim's outlet decides who approves it and which outlet's books carry it: staff name only one of their own
+  # outlets (audit #117 F2); head office and the owner may name any.
+  - name: own_outlet
+    on: save
+    check: "outlet == '' || outlet in user.outlets || 'head_office' in user.roles || 'owner' in user.roles"
+    message: {id: 'Outlet klaim harus outlet tempatmu bekerja'}
   - name: not_in_future
     on: save
     check: claim_date <= today()
