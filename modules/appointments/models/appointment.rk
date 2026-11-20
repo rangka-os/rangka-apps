@@ -1,0 +1,161 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: appointment
+label: {id: Janji temu, en: Appointment}
+icon: calendar-check-line
+is_submittable: true
+naming: JNJ-{YYYY}-{#####}
+title_field: customer
+# One customer, one date, one start time. Kind service: services done by one staff member (a user) at a resource
+# (a chair, bed or room; none when no service needs one). Kind table: a table reservation for a party, held for
+# table_minutes. Submitting it books the time (flow appointment_on_submit: clash with the same staff member or
+# resource, opening hours, time off, under the read lock of contract 0025) and writes the appointment_slot that the
+# day's screens move. A deposit (service appointments only: its invoice line is the first service's item) becomes a
+# draft sales_invoice tagged "(JNJ-...)", so only the roles that make invoices may take one. Cancel: only while the
+# slot is still booked and the deposit invoice is not submitted (appointment_on_cancel).
+# The weekday is computed from a Monday (2024-01-01) because the rule language has no weekday function; times are
+# "HH:MM" text and start_min / end_min are minutes since midnight. An inactive service and a service that needs a
+# resource booked without one are refused by the submit's flow (guards services_active, resource_needed): a rule
+# cannot read a link through a line.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: finance_manager, read: true, export: true, print: true}
+  # the front desk of a salon is often the cashier: books, moves and cancels appointments
+  - {role: cashier, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, print: true}
+  - {role: service_staff, read: true}
+fields:
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, required: true, in_list: true}
+  - {name: customer_name, type: data, label: {id: Nama pelanggan}, read_only: true, hidden: true, compute: customer.customer_name}
+  - name: kind
+    type: select
+    label: {id: Jenis}
+    required: true
+    default: "'service'"
+    in_list: true
+    chip: true
+    options:
+      - {value: service, label: {id: Layanan}}
+      - {value: table, label: {id: Reservasi meja}}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, depends_on: app_installed('outlets'), in_list: true}
+  - {name: date, type: date, label: {id: Tanggal}, required: true, default: today(), in_list: true}
+  - {name: start_time, type: data, label: {id: Jam mulai}, required: true, default: "'10:00'", help: {id: 'JJ:MM, misalnya 14:30'}, in_list: true}
+  - {name: staff, type: link, to: user, label: {id: Staf}, in_list: true, help: {id: 'Yang mengerjakan layanan'}, depends_on: "kind == 'service'"}
+  - {name: resource, type: link, to: booking_resource, label: {id: Tempat atau meja}, in_list: true}
+  - {name: party_size, type: int, label: {id: Jumlah tamu}, default: '1', depends_on: "kind == 'table'"}
+  - {name: table_minutes, type: int, label: {id: Meja dipakai (menit)}, default: '90', depends_on: "kind == 'table'"}
+  - {name: lines, type: table, of: appointment_line, label: {id: Layanan}, depends_on: "kind == 'service'"}
+  - name: duration_min
+    type: int
+    label: {id: Lama (menit)}
+    read_only: true
+    depends_on: duration_min > 0
+    compute: "kind == 'table' ? table_minutes : lines.map(l, l.duration_min).sum()"
+  - name: start_min
+    type: int
+    label: {id: Mulai (menit dari 00:00)}
+    read_only: true
+    hidden: true
+    compute: "start_time.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$') ? int(truncate(start_time, 2)) * 60 + int(start_time.replace(truncate(start_time, 3), '')) : 0"
+  - {name: end_min, type: int, label: {id: Selesai (menit dari 00:00)}, read_only: true, hidden: true, compute: start_min + duration_min}
+  - name: end_time
+    type: data
+    label: {id: Jam selesai}
+    read_only: true
+    in_list: true
+    depends_on: duration_min > 0
+    compute: "(end_min / 60 < 10 ? '0' : '') + string(end_min / 60) + ':' + (end_min % 60 < 10 ? '0' : '') + string(end_min % 60)"
+  - name: weekday
+    type: data
+    label: {id: Hari}
+    read_only: true
+    hidden: true
+    compute: "date == '' ? '' : ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][((days_between('2024-01-01', date) % 7) + 7) % 7]"
+  - {name: service_total, type: currency, label: {id: Total harga katalog}, read_only: true, compute: "lines.map(l, l.price).sum()", in_list: true, depends_on: "kind == 'service'"}
+  - {name: deposit, type: currency, label: {id: Uang muka}, default: '0', depends_on: "kind == 'service'", help: {id: 'Dibuatkan draf faktur. Dipotong dari tagihan di kasir kalau fakturnya sudah diajukan'}}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: time_format
+    on: save
+    check: "start_time.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')"
+    message: {id: 'Jam mulai ditulis JJ:MM, misalnya 14:30'}
+  - name: same_day
+    on: save
+    check: end_min <= 1440
+    message: {id: Janji harus selesai di hari yang sama (paling lambat 24:00)}
+  - name: not_before_2024
+    on: save
+    check: date >= '2024-01-01'
+    message: {id: Tanggal janji tidak valid}
+  - name: not_in_past
+    on: submit
+    check: date >= today()
+    message: {id: 'Tanggal janji sudah lewat'}
+  - name: service_lines
+    on: save
+    check: "kind != 'service' || lines.size() > 0"
+    message: {id: Pilih minimal satu layanan}
+  - name: table_without_lines
+    on: save
+    check: "kind != 'table' || lines.size() == 0"
+    message: {id: 'Reservasi meja tidak memakai daftar layanan. Pesanan makanannya dicatat di kasir'}
+  - name: durations
+    on: save
+    check: "lines.map(l, l.duration_min < 5 || l.duration_min > 720 ? 1 : 0).sum() == 0 && (kind != 'table' || (table_minutes >= 15 && table_minutes <= 720))"
+    message: {id: Lama layanan atau pemakaian meja 5 sampai 720 menit}
+  - name: staff_needed
+    on: save
+    check: "kind != 'service' || staff != ''"
+    message: {id: Pilih staf yang mengerjakan}
+  - name: resource_kind_matches
+    on: save
+    check: "resource == '' || (kind == 'table') == (resource.kind == 'table')"
+    message: {id: 'Reservasi meja memakai tempat jenis Meja; layanan memakai kursi, bed, atau ruang'}
+  - name: resource_active
+    on: save
+    check: "resource == '' || resource.active"
+    message: {id: Tempat ini sudah tidak aktif}
+  - name: resource_outlet
+    on: save
+    check: "!app_installed('outlets') || resource == '' || resource.outlet == '' || resource.outlet == outlet"
+    message: {id: Tempat ini milik outlet lain}
+  - name: party_fits
+    on: save
+    check: "kind != 'table' || (party_size >= 1 && resource != '' && party_size <= resource.seats)"
+    message: {id: Jumlah tamu melebihi kursi meja ini}
+  - name: deposit_range
+    on: save
+    check: "deposit >= 0 && (deposit == 0 || (kind == 'service' && deposit <= service_total))"
+    message: {id: 'Uang muka hanya untuk janji layanan, dan tidak lebih dari total harga layanan'}
+  # the deposit is a draft invoice made by the submit's flow, as the person submitting: only the roles that both submit
+# appointments and make invoices (finance_manager makes invoices but does not book)
+  # the deposit invoice's rate is the deposit as it is: an invoice adds PPN on top while the cashier's prices include it,
+  # so for a PKP business the deposit and the bill would not add up to the catalogue price (Dede note, follow-up)
+  - name: deposit_not_pkp
+    on: save
+    check: "deposit == 0 || !tax.pkp"
+    message: {id: 'Uang muka janji belum bisa dipakai usaha PKP. Kosongkan uang mukanya'}
+  - name: deposit_by_invoicing_role
+    on: submit
+    check: "deposit == 0 || 'owner' in user.roles || 'sales_manager' in user.roles"
+    message: {id: 'Janji dengan uang muka diajukan oleh pemilik atau manajer penjualan, karena uang muka dibuatkan faktur'}
+views:
+  list:
+    columns: [name, customer, kind, date, start_time, end_time, staff, resource, status]
+    filters: [kind, date, staff, resource]
+    sort: -date
+  form:
+    layout:
+      - section: {id: Janji}
+        columns:
+          - [customer, kind, outlet]
+          - [date, start_time, end_time, duration_min]
+      - section: {id: Siapa dan di mana}
+        columns:
+          - [staff, resource]
+          - [party_size, table_minutes]
+      - section: {id: Layanan}
+        fields: [lines, service_total]
+      - section: {id: Uang muka dan catatan}
+        columns:
+          - [deposit]
+          - [notes]

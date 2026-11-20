@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: janji_temu
+version: 1.0.0
+title: {id: Janji temu, en: Appointments}
+label: {id: Rangka Janji Temu, en: Rangka Appointments}
+summary:
+  id: Janji layanan per staf dan reservasi meja tanpa bentrok, jadwal hari ini, uang muka, dan tagihan di kasir.
+category: operations
+icon: calendar-check-line
+rangka: '>=0.5'
+# A piece (riset/desain/11-susunan-kepingan.md) for salons, barbershops, clinics and restaurants that take bookings
+# (rangka-apps#118 v1; online self-booking is phase 2, rangka-os#264). Staff (service_staff) land on Jadwal hari ini;
+# the cashier opens Pesanan terbuka to bill a finished service at the counter of the kasir piece (pos is optional:
+# without it nothing is billed here). Deposits are invoices, collected through faktur_piutang. WhatsApp reminders come
+# with module whatsapp_booking (contract 0032 config.modules).
+modules:
+  users: ^1.2
+  contacts: ^1.3
+  catalogue: ^1.3
+  invoicing: ^1.0
+  appointments: ^1.0
+roles: [head_office, sales_manager, finance_manager, cashier, service_staff]
+home: {model: appointment}
+work:
+  - {screen: jadwal_hari_ini, roles: [service_staff], home: true}
+  - {screen: jadwal_hari_ini, roles: [cashier, head_office, sales_manager]}
+  - {screen: pesanan_terbuka, roles: [cashier, head_office]}
+menu:
+  - group: {id: Janji temu}
+    items: [appointment, appointment_slot, resource_time_off]
+  - group: {id: Layanan dan tempat}
+    items: [booking_service, booking_resource, appointment_setting, customer, item]
+onboarding:
+  - ask: {id: 'Layanan apa saja yang bisa dipesan pelanggan, dan berapa lama masing-masing?'}
+    sets: seed.products

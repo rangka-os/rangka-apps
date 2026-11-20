@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: booking_service
+label: {id: Layanan janji, en: Bookable service}
+icon: scissors-line
+naming: LYN-{###}
+title_field: title
+# A service a customer books (potong rambut, creambath, facial): its catalogue item gives the price (the bill drafts a
+# pos_sale line of that item, whose rate the cashier model computes from the item), and its duration in minutes is
+# how long the staff member and the resource are busy.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true, print: true}
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, export: true, print: true}
+  - {role: finance_manager, read: true}
+  - {role: cashier, read: true}
+  - {role: service_staff, read: true}
+fields:
+  - {name: title, type: data, label: {id: Nama layanan}, required: true, in_list: true}
+  - {name: item, type: link, to: item, label: {id: Barang atau jasa di katalog}, required: true, help: {id: 'Harganya diambil dari katalog'}}
+  - {name: price, type: currency, label: {id: Harga katalog}, read_only: true, compute: item.rate, in_list: true}
+  - {name: duration_min, type: int, label: {id: Lama (menit)}, required: true, default: '60', in_list: true}
+  - name: resource_kind
+    type: select
+    label: {id: Butuh tempat}
+    default: "'station'"
+    options:
+      - {value: station, label: {id: Kursi atau bed}}
+      - {value: room, label: {id: Ruang}}
+      - {value: none, label: {id: Tidak perlu}}
+  - {name: active, type: check, label: {id: Aktif}, default: 'true', in_list: true}
+rules:
+  - name: duration_range
+    on: save
+    check: duration_min >= 5 && duration_min <= 720
+    message: {id: Lama layanan 5 sampai 720 menit}
+  - name: item_priced
+    on: save
+    check: item.rate > 0
+    message: {id: 'Barang di katalog belum punya harga jual. Isi harganya dulu'}
+views:
+  list:
+    columns: [title, price, duration_min, resource_kind, active]
+    filters: [active]
+    sort: title

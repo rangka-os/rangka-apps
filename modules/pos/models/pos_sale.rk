@@ -281,6 +281,12 @@ stock:
     - {lines: items, out: outlet, explode: recipe, reason: sale, cogs: cogs}
   cogs_total: cogs_total
 rules:
+  # Only a store sells (rangka-apps#104): a warehouse, vehicle, quarantine or production row takes no plan outlet seat
+  # (outlets limit_scope is_store), so a shift or sale there would be a free seat. Van sales belong to field_sales (#112).
+  - name: sale_at_store
+    on: save
+    check: "outlet.location_type == '' || outlet.location_type == 'store'"
+    message: {id: 'Penjualan kasir hanya bisa dicatat di lokasi berjenis Toko'}
   # a WhatsApp receipt needs a number that reads as one (module whatsapp_receipt)
   - name: wa_receipt_number
     on: save

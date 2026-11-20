@@ -19,6 +19,7 @@ append_only: true
 permissions:
   - {role: head_office, read: true, create: true, export: true}
   - {role: outlet_staff, read: true, create: true}
+  - {role: warehouse_staff, read: true, create: true}
 fields:
   - name: stock_adjustment
     type: link
@@ -38,7 +39,7 @@ fields:
   - name: outlet
     type: link
     to: outlet
-    label: {id: Outlet}
+    label: {id: Lokasi}
     read_only: true
     required: true
     in_list: true
@@ -58,7 +59,7 @@ fields:
     label: {id: 'Nilai (negatif = keluar)'}
     read_only: true
     in_list: true
-    hidden_for: [outlet_staff, cashier]
+    hidden_for: [outlet_staff, cashier, warehouse_staff]
   - name: entry_key
     type: data
     label: {id: Kunci baris}

@@ -14,9 +14,9 @@ item_category:
   - {name: KTG-006, category_name: Sabun dan deterjen}
   - {name: KTG-007, category_name: Susu}
 outlet:
-  - {name: OUT-01, outlet_name: Gudang Utama, code: GDG, city: Bandung, address: Jl. Contoh Industri No. 8, is_head_office: true, active: true}
-  - {name: OUT-02, outlet_name: Mobil Kanvas 1, code: KNV, city: Bandung, address: Kendaraan D 0000 CN, active: true}
-  - {name: OUT-03, outlet_name: Ruang Barang Rusak, code: RSK, city: Bandung, address: Jl. Contoh Industri No. 8 (belakang), active: true}
+  - {name: OUT-01, outlet_name: Gudang Utama, code: GDG, location_type: warehouse, city: Bandung, address: Jl. Contoh Industri No. 8, is_head_office: true, active: true}
+  - {name: OUT-02, outlet_name: Mobil Kanvas 1, code: KNV, location_type: vehicle, parent_location: OUT-01, city: Bandung, address: Kendaraan D 0000 CN, active: true}
+  - {name: OUT-03, outlet_name: Ruang Barang Rusak, code: RSK, location_type: quarantine, parent_location: OUT-01, city: Bandung, address: Jl. Contoh Industri No. 8 (belakang), active: true}
 user:
   - {name: USR-001, full_name: Rudi Contoh, role: Manajer penjualan}
   - {name: USR-002, full_name: Lina Contoh, role: Keuangan}

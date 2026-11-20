@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: appointment_sale_tag_lock
+label: {id: Nama pembeli tagihan janji dikunci}
+# The bill of an appointment is found by "(JNJ-...)" in pos_sale.buyer. Nobody edits it on the draft (a bill
+# without its tag would escape appointment_sale_on_submit), nor adds the tag to another sale.
+on: pos_sale.updated
+if: event.before != null && event.buyer != event.before.buyer && (event.before.buyer.contains('JNJ-') || event.buyer.contains('JNJ-'))
+steps:
+  - create: appointment_guard
+    set: {reason: "'sale_tag'", document: event.name}

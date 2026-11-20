@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
+name: service_staff
+label: {id: Staf layanan}
+description: {id: 'Stylist, terapis, atau pelayan: melihat jadwal janji hari ini dan menandai pelanggan datang dan selesai'}
+# rangka-apps#118 (module appointments). No row scope: a small salon or restaurant shares one day, and a staff member
+# covers a colleague. No money: reads appointments and services, moves the day's slots (Datang, Selesai, Tidak datang);
+# billing and deposits stay with the cashier and the admin.
