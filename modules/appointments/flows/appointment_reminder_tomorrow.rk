@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every afternoon, when "Pengingat janji" is switched on (module whatsapp_booking, whose rental flow this follows):
+# each appointment or table reservation booked for tomorrow reminds its customer once (key
+# <appointment>:appointment:1, the same key shape as a rental booking's). Skipped, with the reason on the row: no
+# WhatsApp number that reads as one, or opted out. Cancelled slots are not booked, so they are not reminded.
+name: appointment_reminder_tomorrow
+label: {id: 'Janji temu besok: ingatkan pelanggan lewat WhatsApp'}
+schedule: '0 16 * * *'
+steps:
+  - find_all: appointment_slot
+    if: app_installed('whatsapp_booking')
+    where: "state == 'booked' && date == today() + duration(1)"
+    sort: start_min
+    limit: 300
+    as: tomorrow
+  - for_each: tomorrow
+    if: app_installed('whatsapp_booking')
+    as: b
+    do:
+      - {find: customer, where: name == b.customer, as: c}
+      - {find: whatsapp_message, where: "key == b.appointment + ':appointment:1'", as: done}
+      - find: whatsapp_opt_out
+        where: "c != null && c.wa_number != '' && number == c.wa_number"
+        as: out
+      - create: whatsapp_message
+        if: done == null && c != null
+        set:
+          key: b.appointment + ':appointment:1'
+          message_type: "'appointment'"
+          template: "'pengingat_janji'"
+          document: b.appointment
+          customer: c.name
+          number_tail: "c.wa_number != '' ? '…' + c.wa_number.replace(truncate(c.wa_number, size(c.wa_number) - 4), '') : ''"
+          status: "c.wa_number == '' || c.wa_opt_out || out != null ? 'skipped' : 'queued'"
+          error: "c.wa_number == '' ? 'no_number' : (c.wa_opt_out || out != null ? 'opted_out' : '')"
+          status_at: now()
+        as: msg
+      - call: rangka_whatsapp.send_template
+        if: done == null && c != null && msg.status == 'queued'
+        with:
+          to: "'+' + c.wa_number"
+          template: "'pengingat_janji'"
+          type: "'appointment'"
+          idempotency_key: msg.key
+          components: >-
+            [{'type': 'body', 'parameters': [
+              {'type': 'text', 'text': c.customer_name},
+              {'type': 'text', 'text': b.kind == 'table' ? 'reservasi meja untuk ' + string(b.party_size) + ' orang' : b.services},
+              {'type': 'text', 'text': b.resource_title != '' ? b.resource_title : 'tempat kami'},
+              {'type': 'text', 'text': string(int(b.date.replace(truncate(b.date, 8), ''))) + ' ' +
+                ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'][int(truncate(b.date, 7).replace(truncate(b.date, 5), '')) - 1] +
+                ' ' + truncate(b.date, 4) + ' jam ' + b.start_time}]}]

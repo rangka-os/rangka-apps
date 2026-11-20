@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: booking_resource
+label: {id: Tempat layanan, en: Booking resource}
+icon: layout-grid-line
+naming: TMP-{###}
+title_field: title
+# What an appointment takes for its time: a chair, bed or station (kind station), a room (room), or a restaurant table
+# (table: seats is the most guests it takes). Opening hours: one window per weekday; a resource without hours is open
+# all day, a weekday without a row is closed.
+# Contract 0048 §2 (dining_table) is not on main yet: a table resource is its own record for now, and a dining_table
+# link field comes when 0048 §2 lands (one optional link, no data move).
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true, print: true}
+  - {role: sales_manager, read: true, create: true, write: true, delete: true, export: true, print: true}
+  - {role: finance_manager, read: true}
+  - {role: cashier, read: true}
+  - {role: service_staff, read: true}
+fields:
+  - {name: title, type: data, label: {id: Nama}, required: true, in_list: true, help: {id: 'Misalnya Kursi 1, Ruang facial, Meja 4'}}
+  - name: kind
+    type: select
+    label: {id: Jenis}
+    required: true
+    default: "'station'"
+    in_list: true
+    chip: true
+    options:
+      - {value: station, label: {id: Kursi atau bed}}
+      - {value: room, label: {id: Ruang}}
+      - {value: table, label: {id: Meja}}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, in_list: true, depends_on: app_installed('outlets')}
+  - {name: seats, type: int, label: {id: Kursi (tamu)}, default: '1', help: {id: 'Untuk meja: jumlah tamu paling banyak'}, in_list: true}
+  - {name: active, type: check, label: {id: Aktif}, default: 'true', in_list: true}
+  - {name: hours, type: table, of: resource_hours, label: {id: Jam buka}, help: {id: 'Kosongkan kalau buka sepanjang hari. Hari yang tidak ada di daftar dianggap tutup'}}
+  # flow finds read no child rows: the hours are kept as one "HH:MM-HH:MM" text per weekday ('' = closed) and a flag
+  - {name: has_hours, type: check, label: {id: Punya jam buka}, read_only: true, hidden: true, compute: hours.size() > 0}
+  - {name: hours_mon, type: data, label: {id: Jam mon}, read_only: true, hidden: true, compute: "hours.exists(h, h.weekday == 'mon') ? hours.filter(h, h.weekday == 'mon')[0].open_time + '-' + hours.filter(h, h.weekday == 'mon')[0].close_time : ''"}
+  - {name: hours_tue, type: data, label: {id: Jam tue}, read_only: true, hidden: true, compute: "hours.exists(h, h.weekday == 'tue') ? hours.filter(h, h.weekday == 'tue')[0].open_time + '-' + hours.filter(h, h.weekday == 'tue')[0].close_time : ''"}
+  - {name: hours_wed, type: data, label: {id: Jam wed}, read_only: true, hidden: true, compute: "hours.exists(h, h.weekday == 'wed') ? hours.filter(h, h.weekday == 'wed')[0].open_time + '-' + hours.filter(h, h.weekday == 'wed')[0].close_time : ''"}
+  - {name: hours_thu, type: data, label: {id: Jam thu}, read_only: true, hidden: true, compute: "hours.exists(h, h.weekday == 'thu') ? hours.filter(h, h.weekday == 'thu')[0].open_time + '-' + hours.filter(h, h.weekday == 'thu')[0].close_time : ''"}
+  - {name: hours_fri, type: data, label: {id: Jam fri}, read_only: true, hidden: true, compute: "hours.exists(h, h.weekday == 'fri') ? hours.filter(h, h.weekday == 'fri')[0].open_time + '-' + hours.filter(h, h.weekday == 'fri')[0].close_time : ''"}
+  - {name: hours_sat, type: data, label: {id: Jam sat}, read_only: true, hidden: true, compute: "hours.exists(h, h.weekday == 'sat') ? hours.filter(h, h.weekday == 'sat')[0].open_time + '-' + hours.filter(h, h.weekday == 'sat')[0].close_time : ''"}
+  - {name: hours_sun, type: data, label: {id: Jam sun}, read_only: true, hidden: true, compute: "hours.exists(h, h.weekday == 'sun') ? hours.filter(h, h.weekday == 'sun')[0].open_time + '-' + hours.filter(h, h.weekday == 'sun')[0].close_time : ''"}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: seats_positive
+    on: save
+    check: seats >= 1
+    message: {id: Jumlah kursi minimal 1}
+  - name: hours_format
+    on: save
+    check: "hours.map(h, h.open_time.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$') && (h.close_time.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$') || h.close_time == '24:00') && h.close_time > h.open_time ? 0 : 1).sum() == 0"
+    message: {id: 'Jam buka ditulis JJ:MM, misalnya 09:00, dan jam tutup sesudah jam buka'}
+  - name: hours_one_per_day
+    on: save
+    check: "hours.map(h, hours.filter(x, x.weekday == h.weekday).size() > 1 ? 1 : 0).sum() == 0"
+    message: {id: 'Satu baris jam buka per hari'}
+views:
+  list:
+    columns: [title, kind, outlet, seats, active]
+    filters: [kind, outlet, active]
+    sort: title
+  form:
+    layout:
+      - section: {id: Tempat}
+        columns:
+          - [title, kind, seats]
+          - [outlet, active]
+      - section: {id: Jam buka}
+        fields: [hours]
+      - section: {id: Catatan}
+        fields: [notes]
