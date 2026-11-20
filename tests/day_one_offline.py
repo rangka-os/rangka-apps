@@ -135,9 +135,12 @@ def scenario_device_sale_named(api):
        {"pos_sale": "STRK-{outlet.code}-{device.code}-{YY}{MM}-{#####}", "pos_shift": "SESI-{outlet.code}-{device.code}-{YY}{MM}-{####}"})
     actor = staff_id(dev, name)
     CTX["dev_actor"] = actor
+    # the outlet's own float when head office set one (flow pos_shift_on_create, guard float_of_outlet)
+    flt = (api.get("outlet", DGO) or {}).get("cash_float") or 300000
+    CTX["dev_float"] = flt
     ym = yymm()
     shift = f"SESI-DGO-{dcode}-{ym}-0001"
-    r = dev.send({"screen": "kasir", "model": "pos_shift", "op": "create", "name": shift, "body": {"outlet": DGO, "opening_cash": 300000}}, actor)
+    r = dev.send({"screen": "kasir", "model": "pos_shift", "op": "create", "name": shift, "body": {"outlet": DGO, "opening_cash": flt}}, actor)
     check("device shift accepted with its own number", r.get("status") == "accepted" and str(r.get("ref", "")).endswith(shift), r)
     CTX["dev_shift"] = shift
     cashier = Api.login(k.base, DEWI[2], pw, CTX["org"])
@@ -155,9 +158,11 @@ def scenario_device_sale_named(api):
     sh = api.get("pos_shift", shift) or {}
     eq("the device shift's totals grow", (sh.get("sales_count"), sh.get("net_total")), (1, body["grand_total"]))
     # a sale in the browser (head office, no device) keeps the outlet's series without a device code
-    st, h = api.create("pos_shift", {"outlet": DGO, "opening_cash": 0})
-    hs = (h or {}).get("record", h) or {}
-    check("a browser shift keeps SESI-DGO-YYMM-n", str(hs.get("name", "")).startswith(f"SESI-DGO-{ym}-"), (st, hs.get("name")))
+    names = [x.get("name", "") for x in api.find("pos_shift", f"outlet == '{DGO}'")]
+    if not [n for n in names if n.startswith(f"SESI-DGO-{ym}-")]:
+        st, h = api.create("pos_shift", {"outlet": DGO, "opening_cash": flt})
+        names.append(((h or {}).get("record", h) or {}).get("name", ""))
+    check("a browser shift keeps SESI-DGO-YYMM-n", any(n.startswith(f"SESI-DGO-{ym}-") for n in names), names)
 
 
 def scenario_device_price_drift(api):
@@ -209,7 +214,7 @@ def scenario_device_offline_after_close(api):
     # the sale the device paid offline two minutes ago, still in its queue
     body = money_of(cashier, {"shift": shift, "outlet": DGO, "items": [{"item": AIR, "qty": 1}]})
     # head office closes the device's shift meanwhile, counting the drawer
-    st, c = api.create("pos_shift_close", {"shift": shift, "counted_cash": 300000})
+    st, c = api.create("pos_shift_close", {"shift": shift, "counted_cash": CTX.get("dev_float", 300000)})
     c = (c or {}).get("record", c) or {}
     st2, _ = api.verb("pos_shift_close", c.get("name", ""), "submit") if st == 201 else (st, None)
     check("head office closes the device shift", st == 201 and st2 == 200, (st, st2, c))
