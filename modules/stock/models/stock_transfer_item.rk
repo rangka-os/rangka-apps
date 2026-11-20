@@ -32,3 +32,7 @@ fields:
     compute: "packing == '' ? qty : qty * packing.factor"
   - {name: unit_cost, type: currency, read_only: true, label: {id: Biaya per satuan}, help: {id: 'Diisi saat transfer dikirim: rata-rata outlet asal'}, hidden_for: [outlet_staff, cashier, warehouse_staff]}
   - {name: received_qty, type: float, read_only: true, label: {id: Qty diterima}}
+  # rangka-os contract 0070 §7: the lot sent (empty = earliest expiry first) and the serials sent, one per line. The
+  # transfer receipt brings the same lots in.
+  - {name: lot, type: link, to: stock_lot, label: {id: Lot}, depends_on: "item.tracking in ['lot', 'lot_expiry']", help: {id: 'Kosongkan: lot yang paling dulu kedaluwarsa dikirim'}}
+  - {name: serial_nos, type: text, label: {id: Nomor seri}, depends_on: "item.tracking == 'serial'", help: {id: 'Satu nomor seri per baris'}}

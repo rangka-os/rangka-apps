@@ -1,0 +1,80 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every morning at 06:40 (scheduler.timezone), and by the owner from the flow list: lot balances with stock whose lot
+# expires within the item's expiry_warning_days (or has expired) are compared with the open stock_expiry rows
+# (rangka-os#260, contract 0070).
+#   - an open row whose lot balance is used up (qty <= 0), gone, or no longer in the window is closed;
+#   - an open row still in the window gets today's qty, days_left and state (soon, or expired once the date passed);
+#   - a lot balance in the window without an open row gets one, and head office and the warehouse are told once about
+#     the rows new today (notice stock_expiry). A lot that stays in the window tells nobody again.
+# Nothing is moved here: expired stock leaves through a stock adjustment with reason expired (the kernel takes expired
+# lots first), and deliveries skip expired lots by default.
+# `marks` is read before rows are opened, so the filter below sees yesterday's state. At most 500 lot balances (the
+# earliest expiry first) per run; the rest are picked up on a later morning.
+name: lot_expiry_digest
+label: {id: Kabari stok yang hampir kedaluwarsa, en: Expiring stock digest}
+description: {id: 'Tiap pagi, lot barang yang masih ada stoknya dan mendekati atau melewati tanggal kedaluwarsa dikabarkan sekali ke kantor pusat dan gudang.'}
+schedule: '40 6 * * *'
+steps:
+  - find_all: stock_lot_balance
+    where: "qty > 0 && lot != '' && expiry_date != '' && days_between(today(), expiry_date) <= item.expiry_warning_days"
+    sort: expiry_date
+    limit: 500
+    as: soon
+  - find_all: stock_expiry
+    where: open
+    as: marks
+  - for_each: marks
+    as: m
+    do:
+      - {find: stock_lot_balance, where: name == m.balance, as: mb}
+      - {find: item, where: name == m.item, as: mi}
+      - if: "mb == null || mi == null || mb.qty <= 0 || days_between(today(), m.expiry_date) > mi.expiry_warning_days"
+        update: m
+        set: {open: 'false'}
+      - if: "mb != null && mi != null && mb.qty > 0 && days_between(today(), m.expiry_date) <= mi.expiry_warning_days"
+        update: m
+        set:
+          qty: mb.qty
+          days_left: days_between(today(), m.expiry_date)
+          state: "days_between(today(), m.expiry_date) < 0 ? 'expired' : 'soon'"
+  - for_each: "soon.filter(b, !marks.exists(m, m.balance == b.name))"
+    as: b
+    do:
+      - {find: stock_lot, where: name == b.lot, as: lt}
+      - {find: item, where: name == b.item, as: it}
+      - create: stock_expiry
+        set:
+          balance: b.name
+          outlet: b.outlet
+          item: b.item
+          lot: b.lot
+          lot_no: lt.lot_no
+          item_name: it.item_name
+          expiry_date: b.expiry_date
+          qty: b.qty
+          days_left: days_between(today(), b.expiry_date)
+          state: "days_between(today(), b.expiry_date) < 0 ? 'expired' : 'soon'"
+          alerted_on: today()
+          open: 'true'
+        as: ex
+  # `ex` is the last row opened above: the notice links to it and names the count of the others
+  - if: "soon.filter(b, !marks.exists(m, m.balance == b.name)).size() > 0"
+    notify: head_office
+    notice: stock_expiry
+    channel: email
+    record: ex
+    id: "'expiry:' + ex.name"
+    title: '{soon.filter(b, !marks.exists(m, m.balance == b.name)).size()} lot barang hampir kedaluwarsa'
+    template: >-
+      {ex.item_name} lot {ex.lot_no} ({ex.qty} tersisa) kedaluwarsa {ex.expiry_date}{soon.filter(b, !marks.exists(m, m.balance == b.name)).size() > 1 ? ', dan ' + string(soon.filter(b, !marks.exists(m, m.balance == b.name)).size() - 1) + ' lot lain juga baru masuk daftar' : ''}.
+      Buka daftar "Stok hampir kedaluwarsa" untuk melihat semuanya.
+  - if: "soon.filter(b, !marks.exists(m, m.balance == b.name)).size() > 0"
+    notify: warehouse_staff
+    notice: stock_expiry
+    channel: email
+    record: ex
+    id: "'expiry-wh:' + ex.name"
+    title: '{soon.filter(b, !marks.exists(m, m.balance == b.name)).size()} lot barang hampir kedaluwarsa'
+    template: >-
+      {ex.item_name} lot {ex.lot_no} kedaluwarsa {ex.expiry_date}. Keluarkan dulu lot yang paling dekat kedaluwarsanya, dan catat
+      barang yang sudah lewat di Penyesuaian stok dengan alasan Kedaluwarsa.

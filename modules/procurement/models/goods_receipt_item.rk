@@ -40,3 +40,26 @@ fields:
     type: currency
     label: {id: Biaya per satuan stok}
     compute: "stock_qty > 0 ? round(amount / stock_qty) : 0"
+  # rangka-os contract 0070 §7 (goods_receipt stays on the kernel's Go rule, which reads these line fields): the lot
+  # number and dates printed on the pack, and for a serial item one serial per line. Empty lot number on a lot item puts
+  # the quantity in the no-lot bucket; a lot item with expiry needs it (409 lot_required at submit).
+  # the item's tracking on the line, for the document's rules (a rule reads line fields, not links of lines)
+  - {name: tracking, type: data, label: {id: Pelacakan}, compute: item.tracking, hidden: true}
+  - name: lot_no
+    type: data
+    label: {id: Nomor lot / batch}
+    depends_on: "item.tracking in ['lot', 'lot_expiry']"
+  - name: expiry_date
+    type: date
+    label: {id: Kedaluwarsa}
+    help: {id: 'Wajib untuk lot baru. Lot yang sudah tercatat memakai tanggalnya sendiri'}
+    depends_on: "item.tracking == 'lot_expiry'"
+  - name: made_date
+    type: date
+    label: {id: Tanggal produksi}
+    depends_on: "item.tracking in ['lot', 'lot_expiry']"
+  - name: serial_nos
+    type: text
+    label: {id: Nomor seri}
+    help: {id: 'Satu nomor seri per baris; jumlahnya sama dengan qty'}
+    depends_on: "item.tracking == 'serial'"

@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: stock_lot_balance
+label: {id: Stok per lot, en: Stock per lot}
+icon: stock
+naming: LB-{######}
+# Quantity per outlet, item and lot (rangka-os contract 0070 §2), written only by the stock hooks. The row with an empty
+# lot is the no-lot bucket: stock from before the item was tracked, or moved by a document without a lot, so the rows
+# of an outlet and item always add up to its stock_balance.qty. Value stays on stock_balance (moving average per
+# outlet and item, no cost per lot in v1). expiry_date and expiry_warn copy the lot and item when the row is written.
+permissions:
+  - {role: head_office, read: true, export: true}
+  - {role: purchasing_manager, read: true, export: true}
+  - {role: sales_manager, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: warehouse_staff, read: true}
+  - {role: cashier, read: true}
+fields:
+  - {name: outlet, type: link, to: outlet, label: {id: Lokasi}, required: true, read_only: true, in_list: true}
+  - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
+  - {name: lot, type: link, to: stock_lot, label: {id: Lot}, read_only: true, in_list: true, help: {id: 'Kosong = stok tanpa nomor lot'}}
+  - {name: qty, type: float, label: {id: Qty}, read_only: true, in_list: true}
+  - {name: expiry_date, type: date, label: {id: Kedaluwarsa}, read_only: true, in_list: true, compute: "lot != '' ? lot.expiry_date : ''"}
+  - {name: negative, type: check, label: {id: Stok minus}, compute: qty < 0, in_list: true}
+views:
+  list:
+    columns: [item, lot, expiry_date, outlet, qty, negative]
+    filters: [outlet, item, lot, negative]
+    sort: expiry_date

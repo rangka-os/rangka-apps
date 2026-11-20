@@ -356,3 +356,20 @@ scope and no money. `MATRIX` rows live in `tests/day_one_appointments.py`.
 | appointment | r c w d s x a p | r | all | all | r e p |
 | appointment_slot (only `state` writable; moves checked by a flow) | r c w | r w | r c w e | r c w e | r w e |
 | appointment_guard (never stored; a flow's refusal) | c | c | c | c | c |
+
+### Lots, expiry and serial numbers (modules catalogue 1.6, stock 1.6, rangka-os#260)
+
+rangka-os contract 0070. `item.tracking` (none, lot, lot_expiry, serial) and `expiry_warning_days` are item fields, so
+whoever writes items sets them. The registers `stock_lot`, `stock_lot_balance` and `serial_no` are written by the stock
+hooks only: no role creates, writes or deletes a row (head office may write `stock_lot.notes`). `stock_lot` is also read
+by the roles that pick a lot on a document line (`sales_manager` on delivery notes, `field_sales` who prints them).
+`stock_expiry` is the expiry-soon list, written by flow `lot_expiry_digest` only. The line fields (`lot`, `lot_no`,
+`expiry_date`, `made_date`, `serial_nos`) follow their document's permissions. `stock_move.lot` and `serial_nos` are
+read-only like every move field.
+
+| Model | head_office | purchasing_manager | sales_manager | field_sales | outlet_staff | warehouse_staff | cashier |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| stock_lot | r w e p (`notes` only) | r e | r | r | r | r | r |
+| stock_lot_balance | r e | r e | r | | r | r | r |
+| serial_no | r e | r e | r | | r | r | r |
+| stock_expiry (written by flow `lot_expiry_digest` only) | r e | r e | r | | r | r | |

@@ -16,3 +16,6 @@ fields:
     label: {id: Qty diterima}
     help: {id: 'Dalam satuan stok barang'}
     required: true
+  # rangka-os contract 0070 §7: the serials that arrived, one per line; empty when the line takes the whole remainder
+  # of the item (every serial still in transit comes in). Lots follow the transfer, nothing to type.
+  - {name: serial_nos, type: text, label: {id: Nomor seri diterima}, depends_on: "item.tracking == 'serial'", help: {id: 'Kosongkan kalau semua unit yang dikirim sudah sampai'}}

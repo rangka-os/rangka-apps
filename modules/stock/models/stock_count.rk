@@ -42,6 +42,11 @@ rules:
     on: save
     check: "items.map(i, i.counted_qty < 0 ? 1 : 0).sum() == 0"
     message: {id: Hasil hitung tidak boleh negatif}
+  # rangka-os contract 0070 §7: a lot item is counted one line per lot, so a lot written twice would count it twice
+  - name: lot_once
+    on: save
+    check: "items.map(i, i.lot_no != '' && items.map(j, j.item == i.item && j.lot_no == i.lot_no ? 1 : 0).sum() > 1 ? 1 : 0).sum() == 0"
+    message: {id: 'Satu lot hanya boleh dihitung di satu baris'}
 views:
   list:
     columns: [name, outlet, count_date, counted_by, status]

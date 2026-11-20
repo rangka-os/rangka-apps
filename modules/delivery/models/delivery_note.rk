@@ -42,7 +42,9 @@ fields:
 stock:
   date: delivery_date
   moves:
-    - {lines: items, out: outlet, reason: delivery, cogs: cogs}
+    # rangka-os contract 0070 §5: a lot item leaves from the lot picked on the line, else earliest expiry first
+    # (FEFO), skipping expired lots; a serial item names the units that leave
+    - {lines: items, out: outlet, reason: delivery, cogs: cogs, lot: {pick: lot}, serials: serial_nos}
   cogs_total: cogs_total
 # Credit control at the door (module distribution): goods do not leave for a customer on hold, overdue, or whose open
 # invoices + goods delivered and not yet invoiced + this delivery go over its limit, without the sales manager or
@@ -85,6 +87,10 @@ rules:
     on: save
     check: "items.map(l, items.map(x, x.item == l.item ? x.qty : 0).sum() <= fulfilment.items.map(b, b.item == l.item ? b.ordered_qty - b.delivered_qty : 0).sum() + 0.0005 ? 0 : 1).sum() == 0"
     message: {id: Jumlah kirim melebihi sisa pesanan yang belum dikirim}
+  - name: lot_of_item
+    on: save
+    check: "items.map(i, i.lot != '' && i.lot_item != i.item ? 1 : 0).sum() == 0"
+    message: {id: 'Lot yang dipilih bukan lot barang itu'}
 views:
   list:
     columns: [name, delivery_date, customer, salesman, outlet, total_qty, status]

@@ -6,3 +6,15 @@ fields:
   - {name: qty, type: float, label: {id: Qty}}
   - {name: uom, type: link, to: uom, label: {id: Satuan}, default: item.stock_uom}
   - {name: cost_share, type: float, label: {id: Porsi biaya bahan (%)}, default: '100'}
+  # rangka-os contract 0070: the batch's production code (printed on the pack) is the lot of what it made, else its
+  # production date; the main product takes the batch's expiry, a by-product its own shelf life. Not the batch number:
+  # a draft is named on submit, after its computes (follow-up: a kernel lot number from the document's own name).
+  # A serial product names its units.
+  - {name: lot_no, type: data, label: {id: Nomor lot}, compute: "parent.production_code != '' ? parent.production_code : string(parent.production_date)", depends_on: "item.tracking in ['lot', 'lot_expiry']"}
+  - name: expiry_date
+    type: date
+    label: {id: Kedaluwarsa}
+    compute: "item == parent.item ? parent.expiry_date : (item.shelf_life_days > 0 ? parent.production_date + duration(item.shelf_life_days) : '')"
+    depends_on: "item.tracking == 'lot_expiry'"
+  - {name: made_date, type: date, label: {id: Tanggal produksi}, compute: parent.production_date, hidden: true}
+  - {name: serial_nos, type: text, label: {id: Nomor seri}, depends_on: "item.tracking == 'serial'", help: {id: 'Satu nomor seri per baris'}}
