@@ -25,5 +25,6 @@ steps:
       total_employer_cost: "slips.map(s, s.employer_cost).sum()"
       total_timesheet_cost: "slips.map(s, s.timesheet_cost).sum()"
       total_other_deduction: "slips.map(s, s.other_deduction).sum()"
+      total_reimbursement: "slips.map(s, s.reimbursement).sum()"
       deposit_bpjs_tk: "slips.map(s, s.deposit_bpjs_tk).sum()"
       deposit_bpjs_kes: "slips.map(s, s.deposit_bpjs_kes).sum()"

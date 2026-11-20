@@ -1,0 +1,42 @@
+{{define "style"}}
+/* Neutral, landscape-friendly grid: one row per employee, seven day columns, day off muted. */
+@page { size: A4 landscape; }
+.head { display: flex; justify-content: space-between; align-items: flex-end; gap: 6mm; padding-bottom: 3mm; margin-bottom: 4mm; border-bottom: 1px solid #1C1917; }
+.head h1 { font-size: 1.6em; margin: 0; }
+.head .sub { color: #57534E; margin-top: 1mm; }
+.status { display: inline-block; padding: 0.6mm 2.4mm; border: 1px solid #1C1917; border-radius: 99px; font-size: 0.9em; font-weight: 600; }
+.grid { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.grid th { color: #57534E; font-weight: 600; font-size: 0.9em; text-align: left; border-bottom: 1px solid #1C1917; padding: 1.5mm; }
+.grid td { border-bottom: 1px solid #E7E5E4; padding: 1.8mm 1.5mm; vertical-align: top; font-size: 0.95em; }
+.grid td.name { font-weight: 600; width: 34mm; }
+.grid th.name { width: 34mm; }
+.off { color: #A8A29E; }
+.note { margin-top: 4mm; font-size: 0.9em; }
+{{end}}
+{{define "cell"}}<td{{if eq . "Libur"}} class="off"{{end}}>{{.}}</td>{{end}}
+{{- $ds := printf "%v" .Doc.docstatus -}}
+<div class="head">
+  <div>
+    <h1>Jadwal mingguan</h1>
+    <div class="sub">{{with .Links.outlet.outlet_name}}{{.}}{{else}}{{.Doc.outlet}}{{end}} · {{date .Doc.week_start "long"}} sampai {{date .Doc.week_end "long"}}</div>
+  </div>
+  <div class="status">{{if eq $ds "0"}}Draf, belum terbit{{else if eq $ds "2"}}Dibatalkan{{else}}Terbit{{end}} · {{.Doc.name}}</div>
+</div>
+<table class="grid">
+  <thead><tr><th class="name">Karyawan</th><th>Senin</th><th>Selasa</th><th>Rabu</th><th>Kamis</th><th>Jumat</th><th>Sabtu</th><th>Minggu</th></tr></thead>
+  <tbody>
+  {{range $r := .Doc.lines}}
+  <tr>
+    <td class="name">{{if $r.employee_name}}{{$r.employee_name}}{{else}}{{$r.employee}}{{end}}</td>
+    {{template "cell" $r.mon_label}}
+    {{template "cell" $r.tue_label}}
+    {{template "cell" $r.wed_label}}
+    {{template "cell" $r.thu_label}}
+    {{template "cell" $r.fri_label}}
+    {{template "cell" $r.sat_label}}
+    {{template "cell" $r.sun_label}}
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{if .Doc.note}}<p class="note"><span class="muted">Catatan:</span> {{.Doc.note}}</p>{{end}}

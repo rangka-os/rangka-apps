@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: shift_template
+label: {id: Pola shift, en: Shift pattern}
+icon: time
+title_field: shift_name
+naming: SHP-{###}
+# A named working time (Pagi 07:00 to 15:00, Malam 22:00 to 06:00) used by the weekly roster. Hours are local time at
+# the outlet of the assignment (its time zone). An end at or before the start ends the next day (a night shift).
+#
+# The outlet field is for_outlet, not outlet, on purpose: the outlet supervisor's row scope (contract 0010 §5) keys on
+# a field named outlet and would hide the patterns meant for every outlet (empty). Supervisors read every pattern (a name
+# and two times, nothing private) and make or change only the patterns of their own outlets (permission if:).
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true, print: true}
+  - {role: outlet_supervisor, read: true}
+  - {role: outlet_supervisor, create: true, write: true, if: "for_outlet != '' && for_outlet in user.outlets"}
+  # Staff read the pattern names and times on their own schedule.
+  - {role: cashier, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: employee, read: true}
+fields:
+  - {name: shift_name, type: data, label: {id: Nama shift}, required: true, in_list: true, help: {id: 'Misalnya Pagi, Siang, Malam'}}
+  - name: for_outlet
+    type: link
+    to: outlet
+    label: {id: Untuk outlet}
+    help: {id: 'Kosongkan kalau pola ini dipakai semua outlet'}
+    in_list: true
+  - {name: start, type: data, label: {id: Jam mulai}, required: true, in_list: true, help: {id: 'JJ:MM, misalnya 07:00'}}
+  - {name: end, type: data, label: {id: Jam selesai}, required: true, in_list: true, help: {id: 'JJ:MM. Kalau lebih awal dari jam mulai, selesai besok paginya'}}
+  - name: crosses_midnight
+    type: check
+    label: {id: Lewat tengah malam}
+    read_only: true
+    in_list: true
+    compute: "start != '' && end != '' && end <= start"
+  - {name: break_min, type: int, label: {id: Istirahat (menit)}, default: '0'}
+  - name: hours
+    type: float
+    label: {id: Lama kerja (jam)}
+    read_only: true
+    compute: >-
+      !start.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$') || !end.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$') ? 0.0
+        : double(epoch('2024-01-01T' + end + ':00Z') - epoch('2024-01-01T' + start + ':00Z') + (end <= start ? 86400 : 0) - break_min * 60) / 3600.0
+  - name: color
+    type: select
+    label: {id: Warna}
+    default: "'blue'"
+    options:
+      - {value: blue, label: {id: Biru}}
+      - {value: green, label: {id: Hijau}}
+      - {value: orange, label: {id: Oranye}}
+      - {value: purple, label: {id: Ungu}}
+      - {value: gray, label: {id: Abu-abu}}
+  - {name: active, type: check, label: {id: Aktif}, default: 'true', in_list: true}
+rules:
+  - name: hours_format
+    on: save
+    check: "start.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$') && end.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')"
+    message: {id: 'Jam mulai dan selesai ditulis JJ:MM, misalnya 07:00 atau 22:00'}
+  - name: not_zero_length
+    on: save
+    check: start != end
+    message: {id: 'Jam mulai dan selesai tidak boleh sama'}
+  - name: break_range
+    on: save
+    check: break_min >= 0 && break_min <= 240
+    message: {id: 'Istirahat 0 sampai 240 menit'}
+views:
+  list:
+    columns: [shift_name, for_outlet, start, end, crosses_midnight, active]
+    sort: start

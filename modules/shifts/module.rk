@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: shifts
+version: 1.0.0
+title: {id: Jadwal shift, en: Work shifts}
+summary:
+  id: Pola shift per outlet, jadwal mingguan yang diterbitkan, jadwal tiap karyawan, tukar shift, dan absen dibandingkan dengan jadwal.
+  en: Shift patterns per outlet, a published weekly roster, each employee's schedule, shift swaps, and attendance against the schedule.
+category: people
+icon: calendar-line
+# Work schedules of outlet staff (rangka-apps#120, tasks T1 to T5). A work shift is planned time; the cash drawer session
+# (pos_shift, module pos) is something else: it links to the work shift when the cashier has one, never needs it.
+# With module attendance, a clock-in links to the employee's published shift of that day and lateness is measured
+# against the shift instead of the outlet's default hours; flow shift_attendance_sync marks each shift present, late or
+# absent. The kernel clock screen's own shift slot (clock.shift, rangka-os 0030 known gap) is a later task.
+requires: {rangka: '>=0.5', users: ^1.5, outlets: ^1.6}
+optional: {attendance: ^1.1, pos: ^1.6}

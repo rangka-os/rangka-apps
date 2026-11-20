@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: shift_roster
+label: {id: Jadwal mingguan, en: Weekly roster}
+icon: calendar
+is_submittable: true
+naming: RST-{YYYY}-{####}
+title_field: outlet
+# The week's schedule of one outlet as a grid: one line per employee, one column per day holding the shift pattern
+# (empty = day off). Submitting it publishes the week (flow shift_roster_publish): one shift_assignment per employee per
+# day. Days before today are never written; a later day that already has an assignment is overwritten with the grid.
+# To change a published week: cancel, amend, change the grid, submit again (the history stays). Cancelling takes the
+# future days of this roster off the employees' schedules (unpublished, flow shift_roster_unpublish).
+#
+# Decision (rangka-apps#120 TBD, roster as a grid document vs a calendar view): a grid document now. The web app has no
+# calendar view (rangka-os contract 0030 has none); a desk form with a table is something every outlet supervisor can
+# already fill, and it keeps a submitted, cancellable trail of who changed which week.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: outlet_supervisor, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, print: true}
+fields:
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, in_list: true}
+  - name: week_start
+    type: date
+    label: {id: Minggu mulai (Senin)}
+    required: true
+    in_list: true
+  - name: week_end
+    type: date
+    label: {id: Sampai (Minggu)}
+    read_only: true
+    in_list: true
+    compute: "week_start + duration(6)"
+  - {name: lines, type: table, of: shift_roster_line, label: {id: Jadwal per karyawan}, min_rows: 1}
+  - {name: staff_count, type: int, label: {id: Jumlah karyawan}, read_only: true, in_list: true, compute: "lines.size()"}
+  - {name: note, type: text, label: {id: Catatan}}
+  # One live roster per outlet per week (flow shift_roster_guard_submitted).
+  - {name: week_key, type: data, label: {id: Kunci minggu}, hidden: true, read_only: true, compute: "outlet + ':' + string(week_start)"}
+rules:
+  # 2024-01-01 is a Monday.
+  - name: starts_monday
+    on: save
+    check: "days_between('2024-01-01', week_start) % 7 == 0"
+    message: {id: 'Minggu jadwal dimulai hari Senin'}
+  - name: one_line_per_employee
+    on: save
+    check: "lines.all(l, lines.filter(x, x.employee == l.employee).size() == 1)"
+    message: {id: 'Satu karyawan hanya satu baris di jadwal mingguan'}
+  - name: not_past_week
+    on: submit
+    check: "week_start + duration(6) >= today()"
+    message: {id: 'Minggu ini sudah lewat; jadwal hari yang sudah lewat tidak diubah'}
+views:
+  list:
+    columns: [name, outlet, week_start, week_end, staff_count, status]
+    filters: [outlet]
+    sort: -week_start
+  form:
+    layout:
+      - section: {id: Minggu}
+        columns:
+          - [outlet, week_start, week_end]
+      - section: {id: Jadwal per karyawan}
+        fields: [lines]
+      - section: {id: Catatan}
+        fields: [note]

@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: shift_guard
+label: {id: Penjaga jadwal shift, en: Shift guard}
+icon: check
+naming: SHG-{######}
+title_field: reason
+# Never stored (the pattern of attendance/models/staff_attendance_guard.rk): a flow that must refuse the action it runs
+# in creates one, and the rule of its reason fails with that message, which rolls the whole action back. Create is
+# granted to every role whose submits run those flows (flows run as the person who acts).
+permissions:
+  - {role: outlet_supervisor, create: true}
+  - {role: head_office, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: roster_exists, label: {id: Jadwal minggu itu sudah ada}}
+      - {value: other_outlet, label: {id: Karyawan sudah dijadwalkan di outlet lain}}
+      - {value: swap_changed, label: {id: Jadwal yang ditukar sudah berubah}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: roster_exists
+    on: save
+    check: reason != 'roster_exists'
+    message: {id: 'Outlet ini sudah punya jadwal mingguan yang diterbitkan untuk minggu itu. Batalkan dan ubah (amend) jadwal itu'}
+  - name: other_outlet
+    on: save
+    check: reason != 'other_outlet'
+    message: {id: 'Ada karyawan yang di hari itu sudah dijadwalkan masuk di outlet lain. Ubah jadwal outlet itu dulu, atau buat hari itu libur di sana'}
+  - name: swap_changed
+    on: save
+    check: reason != 'swap_changed'
+    message: {id: 'Jadwal yang mau ditukar sudah berubah (beda tanggal, belum diterbitkan, atau sudah absen). Buat permintaan tukar yang baru'}

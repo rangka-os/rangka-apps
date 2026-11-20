@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# The whole week of a roster on one page: one row per employee, one column per day with the pattern and its hours, for
+# the outlet's notice board and for reading the week at once (the desk form's read-only table shows only the first day
+# columns at tablet width, a rangka-os follow-up).
+name: jadwal_mingguan
+model: shift_roster
+label: {id: Jadwal mingguan, en: Weekly roster}
+paper: A4
+template: jadwal_mingguan.html
+default: true

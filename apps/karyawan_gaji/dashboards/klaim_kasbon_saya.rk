@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: klaim_kasbon_saya
+label: {id: Klaim dan kasbon saya, en: My claims and cash advances}
+description: {id: 'Klaim biaya kamu yang menunggu disetujui atau dibayar, dan sisa kasbon yang masih dipotong dari gaji'}
+# rangka-apps#117. Every widget filters on the member's own employee record, so head office and outlet supervisors (who
+# read more claims) also see only their own here. Staff are limited to their own rows anyway (permission if:).
+default_period: 92
+roles: [cashier, outlet_staff, employee, outlet_supervisor, head_office]
+cache: 1m
+widgets:
+  - {name: claims_waiting, type: number, label: {id: Klaim menunggu disetujui}, model: expense_claim, filter: "employee == user.name && docstatus == 0", compact: true, span: 4, good_when: down}
+  - {name: claims_due, type: number, label: {id: Klaim menunggu dibayar}, description: {id: 'Sudah disetujui, dibayar tunai, transfer, atau bersama gaji berikutnya'}, model: claim_settlement, aggregate: sum, field: amount, filter: "employee == user.name && !paid && !cancelled", compact: true, span: 4}
+  - {name: kasbon_left, type: number, label: {id: Sisa kasbon}, model: cash_advance_balance, aggregate: sum, field: remaining, filter: "employee == user.name && !cancelled", compact: true, span: 4, good_when: down}
+  - {name: claims, type: list, label: {id: Klaim saya}, model: expense_claim, filter: "employee == user.name && docstatus != 2", period: claim_date, columns: [claim_date, category, amount, pay_with, status], sort: -claim_date, limit: 31, span: 12}
+  - {name: kasbon, type: list, label: {id: Kasbon saya}, model: cash_advance_balance, filter: "employee == user.name && !cancelled", columns: [advance_date, amount, installment, repaid_total, remaining, state], sort: -advance_date, limit: 12, span: 12}

@@ -19,6 +19,7 @@ modules:
   outlets: ^1.2
   stock: ^1.2
   pos: ^1.0
+  shifts: ^1.0
 # promotions (rangka-apps#103) is added per site (config.modules, contract 0032): the kernel lists its models in their
 # own menu group, and the dashboard shows its widgets only where it is installed
 optional:

@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: shift_swap
+label: {id: Tukar shift, en: Shift swap}
+icon: refresh
+is_submittable: true
+naming: TKR-{YYYY}{MM}-{####}
+title_field: requested_name
+# A swap of two employees' shifts on the same day at the same outlet (Pagi for Malam, or a working day for a day off).
+# The employee asks on their own published shift and writes who they agreed with; the outlet supervisor of that outlet
+# (row scope outlet) or head office picks the colleague's shift and submits: the submit is the approval, and flow
+# shift_swap_apply swaps the two days' pattern and day off. Cancelling swaps them back (flow shift_swap_revert).
+#
+# The submit is the approval instead of an approval policy (contract 0007) on purpose: an approved submit runs as the
+# employee who asked, and staff cannot write other people's assignments. The supervisor submitting acts in their own name.
+# A swap of different days is two swaps (one per day), so the one-assignment-per-employee-per-day key always holds.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, export: true, print: true}
+  - {role: outlet_supervisor, read: true, create: true, write: true, delete: true, submit: true, cancel: true, print: true}
+  - {role: cashier, read: true, create: true, write: true, delete: true, if: "requested_by == user.name"}
+  - {role: outlet_staff, read: true, create: true, write: true, delete: true, if: "requested_by == user.name"}
+  - {role: employee, read: true, create: true, write: true, delete: true, if: "requested_by == user.name"}
+fields:
+  - {name: requested_by, type: link, to: user, label: {id: Diminta oleh}, default: user.name, read_only: true}
+  - {name: requested_name, type: data, label: {id: Nama}, read_only: true, in_list: true, compute: "requested_by != '' ? requested_by.full_name : ''"}
+  - {name: my_shift, type: link, to: shift_assignment, label: {id: Jadwal yang mau ditukar}, required: true}
+  - {name: work_date, type: date, label: {id: Tanggal}, read_only: true, in_list: true, compute: "my_shift != '' ? my_shift.work_date : ''"}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, read_only: true, in_list: true, compute: "my_shift != '' ? my_shift.outlet : ''"}
+  - {name: my_shift_name, type: data, label: {id: Shift sekarang}, read_only: true, in_list: true, compute: "my_shift != '' ? my_shift.shift_name : ''"}
+  - {name: with_note, type: data, label: {id: Tukar dengan}, help: {id: 'Nama rekan yang sudah setuju bertukar'}, required: true}
+  - {name: reason, type: text, label: {id: Alasan}}
+  # Picked by the outlet supervisor or head office before submitting.
+  - {name: their_shift, type: link, to: shift_assignment, label: {id: Jadwal rekan}, read_only_for: [cashier, outlet_staff, employee]}
+  - {name: their_name, type: data, label: {id: Rekan}, read_only: true, in_list: true, compute: "their_shift != '' ? their_shift.employee_name : ''"}
+  - {name: their_shift_name, type: data, label: {id: Shift rekan}, read_only: true, compute: "their_shift != '' ? their_shift.shift_name : ''"}
+rules:
+  - name: own_shift
+    on: save
+    check: "my_shift == '' || my_shift.employee == requested_by"
+    message: {id: 'Pilih jadwalmu sendiri'}
+  - name: shift_published
+    on: save
+    check: "my_shift == '' || my_shift.published"
+    message: {id: 'Jadwal ini belum diterbitkan'}
+  - name: not_past
+    on: save
+    check: "my_shift == '' || my_shift.work_date >= today()"
+    message: {id: 'Jadwal yang sudah lewat tidak bisa ditukar'}
+  - name: colleague_picked
+    on: submit
+    check: their_shift != ''
+    message: {id: 'Pilih jadwal rekan yang ditukar dulu'}
+  - name: same_day_outlet
+    on: submit
+    check: "their_shift == '' || (their_shift.work_date == work_date && their_shift.outlet == outlet && their_shift.employee != requested_by && their_shift.published)"
+    message: {id: 'Jadwal rekan harus di tanggal dan outlet yang sama, sudah diterbitkan, dan milik orang lain'}
+  - name: something_to_swap
+    on: submit
+    check: "their_shift == '' || their_shift.shift_name != my_shift_name"
+    message: {id: 'Kedua jadwal sama; tidak ada yang ditukar'}
+views:
+  list:
+    columns: [name, requested_name, work_date, outlet, my_shift_name, their_name, status]
+    filters: [outlet]
+    sort: -work_date
+  form:
+    layout:
+      - section: {id: Permintaan}
+        columns:
+          - [my_shift, work_date, outlet]
+          - [my_shift_name, with_note, requested_by]
+      - section: {id: Rekan}
+        columns:
+          - [their_shift, their_name, their_shift_name]
+      - section: {id: Alasan}
+        fields: [reason]

@@ -112,6 +112,29 @@ which pay date is three days away or less, with what is still missing. It runs n
   locks, contract 0025). A slip made while the worker has a kasbon not yet repaid notes it (`open_advance`); a
   deduction that does not link it is a warning at submit. It is read when the slip is made: a kasbon given after the
   draft (or a draft from before the upgrade) is not noted; make the slip again to check.
+- Kasbon request and installments (payroll 2.2, rangka-apps#117): a staff member drafts their own kasbon (screen
+  `ajukan_kasbon`: amount, monthly installment, purpose); the draft is the request. Finance picks the worker (staff do not
+  read the worker list; a request names only the requester's own worker) and submits it, which pays the money out: the
+  submit is the approval. A site that wants a second person above an amount adds an `approvals:` policy in
+  `custom/cash_advance.rk` (contract 0007 §1). A kasbon is interest-free: the worker repays exactly the amount, so it
+  stays a receivable (1-1330), never a loan product. One kasbon of a worker is open at a time (`cash_advance_open_guard`,
+  read from the kasbon and the slips, so a kasbon of before 2.2 counts), so a slip repays one kasbon.
+  `cash_advance_balance` keeps what is left (a submitted kasbon cannot change): made at submit, `repaid_total`
+  recomputed from the submitted slips that link the kasbon on every slip submit and cancel, `state` open, repaid or
+  cancelled. Every slip-making flow (`payslip_from_recap`, the three attendance fills, `payslip_ytd_on_create` for a slip
+  made by hand) puts `cash_advance` = the open kasbon and `other_deduction` = min(installment, remaining) when the kasbon
+  has an installment; finance may change both while the slip is a draft, and the cap of `payslip_advance_guard` stays.
+  A kasbon without an installment (0, all kasbon of before 2.2) keeps the typed deduction.
+- Expense claims paid with the salary (module `reimbursement`, docs/reimbursement.md): `reimbursement` is the sum of the
+  employee's approved claims to be paid with salary and still due, filled by the same slip-making flows. It is a
+  company expense paid back against its receipt, not a reward for work, so not PPh 21 income: it is
+  outside `cash_gross` and `gross_taxable`, so PPh 21 and BPJS do not change, and `net_pay = cash_gross - employee_bpjs
+  - pph21 - other_deduction + reimbursement`. `total_deduction` (employee BPJS + PPh 21 + other deductions) is what the
+  printed slip shows as Jumlah potongan. At submit the field must equal the claims still due
+  (`claim_settlement_on_payslip_submit`, a claim approved, paid in cash or cancelled since refuses the submit until the
+  field is corrected); they are then marked paid by the slip, and a slip cancel releases them. The run keeps
+  `total_reimbursement`; the payroll close credits Utang upah with the whole net pay and debits 2-1510 Utang reimburse
+  karyawan with the reimbursements, which the approved claims credited.
 - BPJS wage = basic pay + fixed allowance, never below the UMK. JKK 0,24-1,74%, JKM 0,3%, JHT 3,7% + 2%, JP 2% + 1%
   up to the JP cap, BPJS Kesehatan 4% + 1% up to 12.000.000. Rounded half up to the rupiah.
 - Overtime: the weighted pay rate per hour when set (worker or assignment), else PP 35/2021 on working days

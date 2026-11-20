@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: jadwal_outlet
+label: {id: Jadwal outlet, en: Outlet schedule}
+description: {id: 'Siapa masuk shift apa hari ini dan besok, siapa sudah absen, terlambat atau tidak hadir'}
+# Head office sees every outlet; the outlet supervisor only their own outlets (row scope outlet, contract 0010). The
+# outcome (present, late, absent) is written every hour by flow shift_attendance_sync; the clock-ins of today are also
+# on absen_hari_ini at once.
+periods: [1]
+default_period: 1
+roles: [head_office, outlet_supervisor]
+cache: 1m
+widgets:
+  - {name: scheduled, type: number, label: {id: Masuk hari ini}, model: shift_assignment, filter: "work_date == today() && published && !day_off", compact: true, span: 3}
+  - {name: present, type: number, label: {id: Sudah absen}, model: shift_assignment, filter: "work_date == today() && published && (outcome == 'present' || outcome == 'late')", compact: true, span: 3}
+  - {name: late, type: number, label: {id: Terlambat (7 hari)}, model: shift_assignment, filter: "outcome == 'late' && days_between(work_date, today()) <= 6", compact: true, span: 3, good_when: down}
+  - {name: absent, type: number, label: {id: Tidak hadir (7 hari)}, model: shift_assignment, filter: "outcome == 'absent' && days_between(work_date, today()) <= 6", compact: true, span: 3, good_when: down}
+  - {name: today, type: list, label: {id: Hari ini}, model: shift_assignment, filter: "work_date == today() && published", columns: [outlet, employee_name, shift_label, outcome, late_min], sort: start_at, limit: 50, span: 12}
+  - {name: tomorrow, type: list, label: {id: Besok}, model: shift_assignment, filter: "published && days_between(today(), work_date) == 1", columns: [outlet, employee_name, shift_label], sort: start_at, limit: 50, span: 12}
+  - {name: swaps, type: list, label: {id: Tukar shift menunggu}, model: shift_swap, filter: "docstatus == 0", columns: [work_date, outlet, requested_name, my_shift_name, with_note], sort: work_date, limit: 20, span: 12}
