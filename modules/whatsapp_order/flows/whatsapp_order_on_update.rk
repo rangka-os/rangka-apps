@@ -10,7 +10,9 @@
 #    order's outlet when it has one); head office or the owner without a shift of their own use an open shift of that
 #    outlet. The sale prices its lines from the item (and its promos), so paying it at the counter is a sale like any
 #    other: stock, receipt (with module whatsapp_receipt the WhatsApp receipt and the order-ready message too) and
-#    reports. The buyer is "<name> (WAO-…)" so the counter shows where it came from. Without module pos: refused
+#    reports. The buyer is "<name> (WAO-…)" so the counter shows where it came from. An order without an outlet is
+#    confirmed only on one's own shift (its outlet is then written on the order); otherwise refused (no_outlet).
+#    The reply lists the items up to 120 characters (Meta's 512-byte parameter limit, any script), else "N jenis barang". Without module pos: refused
 #    (no_target; a customer_order path for businesses without a kasir is a later step). No open shift: refused
 #    (no_shift), nothing kept.
 # 3. The reply: one whatsapp_message (key <order>:order_reply:1) and the template pesanan_diterima through Rangka Cloud,
@@ -47,15 +49,20 @@ steps:
     as: own
   - find_all: pos_shift
     if: event.state == 'confirmed' && app_installed('pos')
-    where: "state == 'open' && (event.outlet == '' || outlet == event.outlet)"
+    where: "event.outlet != '' && state == 'open' && outlet == event.outlet"
     sort: -opening_date
     limit: 1
     as: open_shifts
   - create: whatsapp_order_guard
     if: >-
       event.state == 'confirmed' && app_installed('pos') && own == null
-      && (open_shifts.size() == 0 || !('head_office' in user.roles || 'owner' in user.roles))
+      && event.outlet != '' && (open_shifts.size() == 0 || !('head_office' in user.roles || 'owner' in user.roles))
     set: {reason: "'no_shift'", document: event.name}
+  # without an outlet and without a shift of one's own, the order's outlet must be chosen first (never the shift that
+  # happens to be open somewhere)
+  - create: whatsapp_order_guard
+    if: event.state == 'confirmed' && app_installed('pos') && own == null && event.outlet == ''
+    set: {reason: "'no_outlet'", document: event.name}
   - create: pos_sale
     if: event.state == 'confirmed' && app_installed('pos')
     set:
@@ -98,7 +105,7 @@ steps:
           {'type': 'text', 'text': truncate(event.customer_name.trim(), 60)},
           {'type': 'text', 'text': event.name},
           {'type': 'text', 'text': o != null ? o.outlet_name : org.legal_name},
-          {'type': 'text', 'text': truncate(event.lines.filter(l, l.item != '').map(l, string(l.qty) + ' ' + l.item_name).join(', '), 500)},
+          {'type': 'text', 'text': size(event.summary) <= 120 ? event.summary : string(event.item_lines) + ' jenis barang'},
           {'type': 'text', 'text': msg.amount_text}]}]
   - {find: whatsapp_order, if: "event.state == 'confirmed'", where: name == event.name, as: me}
   - update: me
@@ -112,5 +119,6 @@ steps:
     if: event.state == 'confirmed' && app_installed('pos')
     set:
       sale: sale.name
+      outlet: "app_installed('outlets') ? sale.outlet : ''"
       reply_total: "done == null && event.wa_number != '' ? msg.amount : 0"
       reply: "done == null && event.wa_number != '' ? msg.name : ''"

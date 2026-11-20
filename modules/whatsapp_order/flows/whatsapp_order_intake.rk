@@ -18,7 +18,10 @@
 #    Only active items for sale with a price are candidates (kind not material, rate above 0).
 # 2. A draft order: the customer's open one (state new) when its last message is at most 30 minutes from this one,
 #    else a new one, but only when Rangka Cloud read an order in the text (order_signal) or, for the open one, at least
-#    one line matched. Rows are appended; the window moves with each message.
+#    one line matched. Rows are appended; the window moves with each message. An order holds at most 60 lines: a
+#    message that would pass it is kept (result order_full) and not added.
+#    Candidates are the first 5001 items read; a catalogue past 5000 marks the draft catalogue_capped, which keeps it
+#    in "Perlu dicek" (a single candidate may not be the only one).
 # 3. The customer: the one whose WhatsApp number this is, else the profile name as free text (created on confirm).
 #    The outlet: the store ticked "Terima pesanan WhatsApp" (outlet.wa_orders), else the only store, else empty (head
 #    office sets it).
@@ -40,7 +43,7 @@ steps:
     as: cust
   - find_all: item
     where: "kind != 'material' && active != false && rate > 0"
-    limit: 2000
+    limit: 5001
     as: menu
   - find_all: outlet
     if: "app_installed('outlets')"
@@ -60,6 +63,7 @@ steps:
       text: "'text' in event ? event.text : ''"
       received_at: event.at
       lines_read: "'lines' in event ? event.lines.size() : 0"
+      catalogue_capped: menu.size() > 5000
       outlet: "app_installed('outlets') && opens.size() > 0 ? opens[0].outlet : (app_installed('outlets') && ((stores.size() > 0 && stores[0].wa_orders) || stores.size() == 1) ? stores[0].name : '')"
       lines: >-
         !('lines' in event) || event.lines.size() == 0 ? [] : [menu.map(i, {'id': i.name, 'title': i.item_name, 'sku': i.sku, 'n': i.item_name.lowerAscii().replace('(', ' ').replace(')', ' ').replace('[', ' ').replace(']', ' ').replace('{', ' ').replace('}', ' ').replace('-', ' ').replace('/', ' ').replace('.', ' ').replace(',', ' ').replace(';', ' ').replace(':', ' ').replace('&', ' ').replace('+', ' ').replace('_', ' ').replace('#', ' ').replace('*', ' ').replace('!', ' ').replace('?', ' ').replace('~', ' ').replace("'", ' ').replace('"', ' ').replace('  ', ' ').replace('  ', ' ').replace('  ', ' ').trim()}).map(x, {'id': x.id, 'title': x.title, 'sku': x.sku, 'n': x.n, 'k': x.n.replace(' ', '').replace('a', '').replace('e', '').replace('i', '').replace('o', '').replace('u', '').replace('c', 'k').replace('q', 'k').replace('v', 'f').replace('z', 'j').replace('bb', 'b').replace('dd', 'd').replace('ff', 'f').replace('gg', 'g').replace('hh', 'h').replace('jj', 'j').replace('kk', 'k').replace('ll', 'l').replace('mm', 'm').replace('nn', 'n').replace('pp', 'p').replace('rr', 'r').replace('ss', 's').replace('tt', 't').replace('ww', 'w').replace('xx', 'x').replace('yy', 'y'), 'w': (size(x.n) - size(x.n.replace(' ', '')))})].map(mm, event.lines.map(l, {'l': l, 'n': ('name' in l ? string(l.name) : '').lowerAscii().replace('(', ' ').replace(')', ' ').replace('[', ' ').replace(']', ' ').replace('{', ' ').replace('}', ' ').replace('-', ' ').replace('/', ' ').replace('.', ' ').replace(',', ' ').replace(';', ' ').replace(':', ' ').replace('&', ' ').replace('+', ' ').replace('_', ' ').replace('#', ' ').replace('*', ' ').replace('!', ' ').replace('?', ' ').replace('~', ' ').replace("'", ' ').replace('"', ' ').replace('  ', ' ').replace('  ', ' ').replace('  ', ' ').trim(), 'ref': 'sku' in l ? string(l.sku) : ''}).map(c, {'l': c.l, 'n': c.n, 'ref': c.ref, 'k': c.n.replace(' ', '').replace('a', '').replace('e', '').replace('i', '').replace('o', '').replace('u', '').replace('c', 'k').replace('q', 'k').replace('v', 'f').replace('z', 'j').replace('bb', 'b').replace('dd', 'd').replace('ff', 'f').replace('gg', 'g').replace('hh', 'h').replace('jj', 'j').replace('kk', 'k').replace('ll', 'l').replace('mm', 'm').replace('nn', 'n').replace('pp', 'p').replace('rr', 'r').replace('ss', 's').replace('tt', 't').replace('ww', 'w').replace('xx', 'x').replace('yy', 'y'), 'w': (size(c.n) - size(c.n.replace(' ', ''))), 'e': c.ref != '' ? mm.filter(x, x.sku == c.ref) : mm.filter(x, x.n == c.n), 'p': c.ref != '' || c.n == '' ? [] : mm.filter(x, (' ' + x.n + ' ').contains(' ' + c.n + ' ')), 'r': c.ref != '' || c.n == '' ? [] : mm.filter(x, (' ' + c.n + ' ').contains(' ' + x.n + ' '))}).map(c, {'l': c.l, 'n': c.n, 'e': c.e, 'p': c.p, 'rl': c.r.size() == 0 ? [] : c.r.filter(x, size(x.n) == max(c.r.map(y, size(y.n)))), 't': c.n == '' || c.ref != '' ? [] : mm.filter(x, size(x.n) >= 6 && x.k == c.k && x.w == c.w && truncate(x.n, 1) == truncate(c.n, 1))}).map(c, {'l': c.l, 'n': c.n, 'cand': c.e.size() > 0 ? c.e : (c.p.size() > 0 ? c.p : (c.rl.size() > 0 ? c.rl : c.t)), 'how': c.e.size() > 0 ? 'exact' : (c.p.size() > 0 ? 'partial' : (c.rl.size() > 0 ? 'partial' : (c.t.size() > 0 ? 'typo' : 'unknown'))), 'rest': c.e.size() == 0 && c.p.size() == 0 && c.rl.size() == 1 ? c.n.replace(c.rl[0].n, '').replace('  ', ' ').trim() : ''}).map(c, {'text': 'text' in c.l ? string(c.l.text) : '', 'qty': int(c.l.qty) > 0 ? int(c.l.qty) : 1, 'unit': 'unit' in c.l ? string(c.l.unit) : '', 'quoted_rate': 'price' in c.l ? int(c.l.price) : 0, 'item': c.cand.size() == 1 ? c.cand[0].id : '', 'match': c.cand.size() > 1 ? 'ambiguous' : c.how, 'choices': c.cand.size() > 1 ? truncate(c.cand.map(x, x.title).join(' / '), 240) : '', 'note': ['note' in c.l ? string(c.l.note) : '', c.rest].filter(s, s != '').join('; ')}))[0]
@@ -71,6 +75,7 @@ steps:
       customer_name: "cust != null ? cust.customer_name : ('profile_name' in event && event.profile_name.trim() != '' ? event.profile_name.trim() : 'Pelanggan WhatsApp')"
       customer: "cust != null ? cust.name : ''"
       source: inb.source
+      catalogue_capped: inb.catalogue_capped
       phone: event.from
       wa_number: event.from.replace('+', '')
       outlet: "app_installed('outlets') && ((stores.size() > 0 && stores[0].wa_orders) || stores.size() == 1) ? stores[0].name : ''"
@@ -85,28 +90,29 @@ steps:
   # a flow find leaves table rows out: an empty update loads them before rows are appended
   - find: whatsapp_order
     if: >-
-      seen == null && inb.lines.size() > 0 && (opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) && (event.order_signal == true || inb.lines.map(l, l.item != '' || l.match == 'ambiguous' ? 1 : 0).sum() > 0)
+      seen == null && inb.lines.size() > 0 && (opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) && opens[0].line_count + inb.lines.size() <= 60 && (event.order_signal == true || inb.lines.map(l, l.item != '' || l.match == 'ambiguous' ? 1 : 0).sum() > 0)
     where: name == opens[0].name
     as: o
   - update: o
     if: >-
-      seen == null && inb.lines.size() > 0 && (opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) && (event.order_signal == true || inb.lines.map(l, l.item != '' || l.match == 'ambiguous' ? 1 : 0).sum() > 0)
+      seen == null && inb.lines.size() > 0 && (opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) && opens[0].line_count + inb.lines.size() <= 60 && (event.order_signal == true || inb.lines.map(l, l.item != '' || l.match == 'ambiguous' ? 1 : 0).sum() > 0)
     set: {}
   - update: o
     if: >-
-      seen == null && inb.lines.size() > 0 && (opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) && (event.order_signal == true || inb.lines.map(l, l.item != '' || l.match == 'ambiguous' ? 1 : 0).sum() > 0)
+      seen == null && inb.lines.size() > 0 && (opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) && opens[0].line_count + inb.lines.size() <= 60 && (event.order_signal == true || inb.lines.map(l, l.item != '' || l.match == 'ambiguous' ? 1 : 0).sum() > 0)
     set:
       lines: >-
         o.lines.map(l, {'text': l.text, 'item': l.item, 'qty': l.qty, 'unit': l.unit, 'note': l.note, 'match': l.match, 'choices': l.choices, 'quoted_rate': l.quoted_rate}) + inb.lines.map(l, {'text': l.text, 'item': l.item, 'qty': l.qty, 'unit': l.unit, 'note': l.note, 'match': l.match, 'choices': l.choices, 'quoted_rate': l.quoted_rate})
       notes: "'notes' in event && event.notes.size() > 0 ? (o.notes != '' ? o.notes + '; ' : '') + event.notes.join('; ') : o.notes"
       messages: o.messages + 1
+      catalogue_capped: o.catalogue_capped || inb.catalogue_capped
       last_message_at: "epoch(event.at) > o.last_epoch ? event.at : o.last_message_at"
       last_epoch: max(o.last_epoch, epoch(event.at))
   - update: inb
     if: seen == null
     set:
       result: >-
-        seen == null && inb.lines.size() > 0 && event.order_signal == true && !(opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) ? 'order_new' : (seen == null && inb.lines.size() > 0 && (opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) && (event.order_signal == true || inb.lines.map(l, l.item != '' || l.match == 'ambiguous' ? 1 : 0).sum() > 0) ? 'order_added' : 'not_order')
+        seen == null && inb.lines.size() > 0 && event.order_signal == true && !(opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) ? 'order_new' : (seen == null && inb.lines.size() > 0 && (opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) && opens[0].line_count + inb.lines.size() <= 60 && (event.order_signal == true || inb.lines.map(l, l.item != '' || l.match == 'ambiguous' ? 1 : 0).sum() > 0) ? 'order_added' : (seen == null && inb.lines.size() > 0 && (opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) && opens[0].line_count + inb.lines.size() > 60 ? 'order_full' : 'not_order'))
       order: >-
-        seen == null && inb.lines.size() > 0 && event.order_signal == true && !(opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) ? fresh.name : (seen == null && inb.lines.size() > 0 && (opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) && (event.order_signal == true || inb.lines.map(l, l.item != '' || l.match == 'ambiguous' ? 1 : 0).sum() > 0) ? o.name : '')
+        seen == null && inb.lines.size() > 0 && event.order_signal == true && !(opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) ? fresh.name : (seen == null && inb.lines.size() > 0 && (opens.size() > 0 && epoch(event.at) - opens[0].last_epoch <= 1800 && opens[0].last_epoch - epoch(event.at) <= 1800) && opens[0].line_count + inb.lines.size() <= 60 && (event.order_signal == true || inb.lines.map(l, l.item != '' || l.match == 'ambiguous' ? 1 : 0).sum() > 0) ? o.name : '')
       lines_matched: "inb.lines.map(l, l.item != '' || l.match == 'ambiguous' ? 1 : 0).sum()"

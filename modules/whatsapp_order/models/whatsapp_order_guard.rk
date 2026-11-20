@@ -20,6 +20,8 @@ fields:
       - {value: bad_step, label: {id: Langkah status tidak boleh}}
       - {value: no_shift, label: {id: Belum ada sesi kasir}}
       - {value: no_target, label: {id: Kasir belum dipasang}}
+      - {value: no_outlet, label: {id: Outlet pesanan belum dipilih}}
+      - {value: locked, label: {id: Pesanan sudah dikonfirmasi}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: bad_step
@@ -34,3 +36,11 @@ rules:
     on: save
     check: reason != 'no_target'
     message: {id: 'Pasang Kasir dulu supaya pesanan WhatsApp bisa dikonfirmasi'}
+  - name: no_outlet
+    on: save
+    check: reason != 'no_outlet'
+    message: {id: 'Pilih outlet pesanan ini dulu, lalu konfirmasi lagi'}
+  - name: locked
+    on: save
+    check: reason != 'locked'
+    message: {id: 'Pesanan yang sudah dikonfirmasi tidak bisa diubah. Ubah transaksinya di kasir kalau perlu'}

@@ -253,6 +253,12 @@ def scenario_wao_confirm(api):
     st, r = sari.patch("whatsapp_order", name, {"state": "new"})
     check("Urungkan after confirm -> 422 (bad_step): a confirmed order stays, nothing more sent",
           st == 422 and order(api, name).get("state") == "confirmed" and len(wa().calls_for(api, key)) == 1, (st, r))
+    rows = [dict(l) for l in order(api, name).get("lines") or []]
+    if rows:
+        rows[0]["qty"] = 9
+    st, r = sari.patch("whatsapp_order", name, {"lines": rows})
+    check("editing a confirmed order -> 422 locked: the order still says what the sale and the reply say",
+          st == 422 and any(e.get("rule") == "locked" for e in (r or {}).get("errors", [])) and order(api, name).get("total") == 66000, (st, r))
 
     def bal(item):
         rows = api.find("stock_balance", f"outlet == '{RIU}' && item == '{item}'")
@@ -321,6 +327,21 @@ def scenario_wao_no_shift(api):
     check("nothing kept: the order is still new, no customer for Fajar, no reply",
           o.get("state") == "new" and not api.find("customer", "wa_number == '6281200000013'")
           and not wa().calls_for(api, m["order"] + ":order_reply:1"), o)
+    hq.patch("whatsapp_order", m["order"], {"outlet": ""})
+    st, r = hq.patch("whatsapp_order", m["order"], {"state": "confirmed"})
+    check("no outlet and no shift of one's own -> 422 no_outlet (never the shift that happens to be open)",
+          st == 422 and any(e.get("rule") == "no_outlet" for e in (r or {}).get("errors", [])), (st, r))
+    rows = [dict(l) for l in order(api, m["order"]).get("lines") or []]
+    rows[0]["qty"] = 1000
+    hq.patch("whatsapp_order", m["order"], {"lines": rows, "outlet": RIU})
+    st, r = CTX["sari"].patch("whatsapp_order", m["order"], {"state": "confirmed"})
+    check("a quantity over 999 -> 422 qty_sane", st == 422 and any(e.get("rule") == "qty_sane" for e in (r or {}).get("errors", [])), (st, r))
+    rows[0]["qty"] = 2
+    hq.patch("whatsapp_order", m["order"], {"lines": rows})
+    st, r = CTX["sari"].patch("whatsapp_order", m["order"], {"state": "confirmed"})
+    o = order(api, m["order"])
+    check("head office sets Kedai Riau; Sari confirms it on her shift there: sale and order at Kedai Riau",
+          st == 200 and o.get("outlet") == RIU and (api.get("pos_sale", o.get("sale") or "x") or {}).get("outlet") == RIU, (st, r, o))
 
 
 def scenario_wao_not_orders(api):

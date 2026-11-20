@@ -31,7 +31,7 @@ fields:
     type: select
     label: {id: Tahap}
     in_filter: true
-    compute: "state == 'confirmed' ? 'confirmed' : (state == 'rejected' ? 'rejected' : (open_choices > 0 || item_lines == 0 || unknown_lines > 0 || price_diffs > 0 ? 'check' : 'ready'))"
+    compute: "state == 'confirmed' ? 'confirmed' : (state == 'rejected' ? 'rejected' : (open_choices > 0 || item_lines == 0 || unknown_lines > 0 || price_diffs > 0 || catalogue_capped ? 'check' : 'ready'))"
     options:
       - {value: check, label: {id: Perlu dicek}}
       - {value: ready, label: {id: Siap dikonfirmasi}}
@@ -66,6 +66,11 @@ fields:
   - {name: lines, type: table, of: whatsapp_order_line, label: {id: Pesanan}}
   # pick-up, delivery or time remarks from the customer's messages, and the text of lines no item matched
   - {name: notes, type: text, label: {id: Catatan pelanggan}}
+  # more items for sale than the intake reads (5000): a line's single candidate may not be the only one, so the order
+  # waits for a look ("Perlu dicek")
+  - {name: catalogue_capped, type: check, label: {id: Katalog terlalu besar untuk dicocokkan penuh}, read_only: true, default: 'false'}
+  - {name: line_count, type: int, label: {id: Jumlah baris}, hidden: true, compute: lines.size()}
+  - {name: big_qty_lines, type: int, label: {id: Baris jumlah besar}, hidden: true, compute: "lines.map(l, l.qty > 999 ? 1 : 0).sum()"}
   - {name: item_lines, type: int, label: {id: Baris barang}, hidden: true, compute: "lines.map(l, l.item != '' ? 1 : 0).sum()"}
   - {name: unknown_lines, type: int, label: {id: Baris tidak dikenali}, hidden: true, compute: "lines.map(l, l.item == '' && l.match != 'ambiguous' ? 1 : 0).sum()"}
   - {name: open_choices, type: int, label: {id: Baris perlu dipilih}, hidden: true, compute: "lines.map(l, l.item == '' && l.match == 'ambiguous' ? 1 : 0).sum()"}
@@ -85,7 +90,8 @@ fields:
       (open_choices > 0 && unknown_lines > 0 ? ', ' : '') +
       (unknown_lines > 0 ? string(unknown_lines) + ' baris tidak dikenali' : '') +
       ((open_choices > 0 || unknown_lines > 0) && price_diffs > 0 ? ', ' : '') +
-      (price_diffs > 0 ? string(price_diffs) + ' baris beda harga' : '')
+      (price_diffs > 0 ? string(price_diffs) + ' baris beda harga' : '') +
+      (catalogue_capped ? (open_choices > 0 || unknown_lines > 0 || price_diffs > 0 ? ', ' : '') + 'katalog besar, cek barangnya' : '')
   - {name: total, type: currency, label: {id: Perkiraan total}, help: {id: 'Dari harga barang. Total akhir mengikuti transaksinya'}, compute: "lines.map(l, l.amount).sum()", in_list: true}
   # "Rp 66.000" for the work screen's card (a card prints numbers raw); the same cut as whatsapp_message.amount_text
   - name: total_text
@@ -123,6 +129,14 @@ rules:
     on: save
     check: "lines.map(l, l.qty <= 0 ? 1 : 0).sum() == 0"
     message: {id: Jumlah barang harus lebih dari 0}
+  - name: qty_sane
+    on: save
+    check: "state != 'confirmed' || big_qty_lines == 0"
+    message: {id: 'Ada baris dengan jumlah lebih dari 999. Cek lagi jumlahnya sebelum konfirmasi'}
+  - name: lines_limit
+    on: save
+    check: "line_count <= 60"
+    message: {id: 'Satu pesanan paling banyak 60 baris'}
   - name: name_given
     on: save
     check: "customer_name.trim() != ''"

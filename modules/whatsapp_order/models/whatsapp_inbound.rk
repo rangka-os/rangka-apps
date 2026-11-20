@@ -42,12 +42,16 @@ fields:
     options:
       - {value: order_new, label: {id: Pesanan baru}}
       - {value: order_added, label: {id: Ditambahkan ke pesanan}}
+      - {value: order_full, label: {id: 'Tidak ditambahkan, pesanan sudah 60 baris'}}
       - {value: not_order, label: {id: Bukan pesanan}}
   - {name: order, type: link, to: whatsapp_order, label: {id: Pesanan WhatsApp}, read_only: true, in_list: true}
   # the lines Rangka Cloud read in this message, matched against the items (flow whatsapp_order_intake): the order
   # copies them, and they stay here as what this one message said
   - {name: lines, type: table, of: whatsapp_order_line, label: {id: Baris terbaca}, read_only: true}
   # how many lines were read and how many of them matched an item (or are a choice)
+  # more items for sale than the intake reads (5000): a line's single candidate may not be the only one, so the order
+  # waits for a look ("Perlu dicek")
+  - {name: catalogue_capped, type: check, label: {id: Katalog terlalu besar untuk dicocokkan penuh}, read_only: true, default: 'false'}
   - {name: lines_read, type: int, label: {id: Baris terbaca}, read_only: true, default: '0'}
   - {name: lines_matched, type: int, label: {id: Baris cocok dengan barang}, read_only: true, default: '0'}
   # the outlet scopes the rows for the cashier (role scope outlet), the same outlet as the order's
