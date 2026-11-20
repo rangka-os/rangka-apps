@@ -13,4 +13,4 @@ icon: calendar-line
 # against the shift instead of the outlet's default hours; flow shift_attendance_sync marks each shift present, late or
 # absent. The kernel clock screen's own shift slot (clock.shift, rangka-os 0030 known gap) is a later task.
 requires: {rangka: '>=0.5', users: ^1.5, outlets: ^1.6}
-optional: {attendance: ^1.1, pos: ^1.4}
+optional: {attendance: ^1.1, pos: ^1.6}

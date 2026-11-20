@@ -29,6 +29,19 @@ fields:
     default: user.email
     read_only: true
     in_list: true
+  # The cashier's employee record (contract 0056) and, with module shifts, their published work shift of the opening day
+  # (filled by flow shifts/shift_pos_link). Never required: a cashier covering someone else must still sell
+  # (rangka-apps#120); such a session shows the chip "Tanpa jadwal" instead.
+  - {name: employee, type: link, to: user, label: {id: Karyawan}, default: user.name, read_only: true}
+  - {name: work_shift, type: link, to: shift_assignment, label: {id: Jadwal shift}, read_only: true, depends_on: app_installed('shifts')}
+  - name: no_schedule
+    type: check
+    label: {id: Tanpa jadwal}
+    read_only: true
+    in_list: true
+    chip: true
+    depends_on: app_installed('shifts')
+    compute: "work_shift == ''"
   - name: opening_cash
     type: currency
     label: {id: Modal kas}
@@ -88,6 +101,10 @@ views:
         columns:
           - [outlet, opening_date, cashier]
           - [opening_cash, state, closed_by]
+      - section: {id: Jadwal}
+        columns:
+          - [employee, work_shift]
+          - [no_schedule]
       - section: {id: Penjualan sesi ini}
         columns:
           - [sales_count, gross_total, discount_total, net_total]

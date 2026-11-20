@@ -308,4 +308,38 @@ def scenario_shifts_dashboards(api):
         eq("jadwal_outlet: the Braga supervisor sees no Dago shift", num(ws["scheduled"]), 0)
 
 
-SCENARIOS = {"demo-fnb": [scenario_shifts_templates, scenario_shifts_roster, scenario_shifts_attendance, scenario_shifts_swap, scenario_shifts_dashboards]}
+def scenario_shifts_pos_link(api):
+    """demo-kasir (T3): a cash session opened by a cashier with a published shift today links to it; a cashier without a
+    shift still opens a session (selling never stops), marked "Tanpa jadwal". Two new cashiers at Toko Dago, so the
+    sessions of the pos scenarios are not touched."""
+    k, hq = CTX.get("kernel"), CTX.get("hq")
+    if not (k and hq):
+        fail("shifts pos: kernel and head office signed in", CTX.get("login_error"))
+        return
+    dgo = "OUT-02"
+    pw = secrets.token_urlsafe(18)   # throwaway password of a throwaway database
+    cls = {}
+    for key, email, name in (("wati", "wati.dago@contohwarung.test", "Wati Contoh"), ("joko", "joko.dago@contohwarung.test", "Joko Contoh")):
+        code, out = k.user_add(email, "cashier", CTX.get("org") or "warung_contoh", name, outlets=dgo, password=pw)
+        cls[key] = Api.login(k.base, email, pw) if code == 0 else None
+        if not check(f"shifts pos: {name} signs in as cashier", cls[key] is not None, out):
+            return
+    wati = cls["wati"]
+    st, mt = wati.call("GET", "/api/v1/meta")
+    wati_rec = ((mt or {}).get("user") or {}).get("name", "")
+    st, tpl = hq.create("shift_template", {"shift_name": "Pagi", "for_outlet": dgo, "start": "07:00", "end": "15:00"})
+    st2, a = hq.create("shift_assignment", {"employee": wati_rec, "outlet": dgo, "work_date": str(kernel_today()),
+                                            "shift_template": rec(tpl).get("name", ""), "published": True})
+    if not check("head office publishes Wati's Pagi today at Toko Dago", st == 201 and st2 == 201, (st, tpl, st2, a)):
+        return
+    st, s = wati.create("pos_shift", {"outlet": dgo, "opening_cash": 0})
+    if check("Wati opens a cash session", st == 201, (st, s)):
+        got = wati.get("pos_shift", s["name"]) or {}
+        eq("the session links to her shift and names her employee record", (got.get("work_shift"), got.get("employee"), got.get("no_schedule")),
+           (a["name"], wati_rec, False))
+    st, s = cls["joko"].create("pos_shift", {"outlet": dgo, "opening_cash": 0})
+    check("Joko without a shift still opens a session, marked Tanpa jadwal", st == 201 and rec(s).get("no_schedule") is True and not rec(s).get("work_shift"), (st, s))
+
+
+SCENARIOS = {"demo-fnb": [scenario_shifts_templates, scenario_shifts_roster, scenario_shifts_attendance, scenario_shifts_swap, scenario_shifts_dashboards],
+             "demo-kasir": [scenario_shifts_pos_link]}
