@@ -332,12 +332,13 @@ def scenario_shifts_pos_link(api):
                                             "shift_template": rec(tpl).get("name", ""), "published": True})
     if not check("head office publishes Wati's Pagi today at Toko Dago", st == 201 and st2 == 201, (st, tpl, st2, a)):
         return
-    st, s = wati.create("pos_shift", {"outlet": dgo, "opening_cash": 0})
+    flt = (hq.get("outlet", dgo) or {}).get("cash_float") or 0   # an earlier pos scenario may have set the outlet's float
+    st, s = wati.create("pos_shift", {"outlet": dgo, "opening_cash": flt})
     if check("Wati opens a cash session", st == 201, (st, s)):
         got = wati.get("pos_shift", s["name"]) or {}
         eq("the session links to her shift and names her employee record", (got.get("work_shift"), got.get("employee"), got.get("no_schedule")),
            (a["name"], wati_rec, False))
-    st, s = cls["joko"].create("pos_shift", {"outlet": dgo, "opening_cash": 0})
+    st, s = cls["joko"].create("pos_shift", {"outlet": dgo, "opening_cash": flt})
     check("Joko without a shift still opens a session, marked Tanpa jadwal", st == 201 and rec(s).get("no_schedule") is True and not rec(s).get("work_shift"), (st, s))
 
 
