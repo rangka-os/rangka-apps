@@ -261,6 +261,33 @@ the cashier's manual discounts only (`manual_discount_total`). `MATRIX` rows liv
 | promotion_ledger (append-only; written by the sale's flows) | r c (amount hidden) | none | r e |
 | promo_guard (never stored; a flow's refusal) | c | none | c |
 
+
+### Warehouses and stock requests (modules outlets 1.7 and stock 1.5, rangka-apps#104)
+
+An `outlet` row is any stock location; `location_type` (store, warehouse, vehicle, quarantine, production) tells them
+apart, and only stores take a plan outlet seat (`limit_scope: {outlets: is_store}`, rangka-os contract 0057 §5). A store
+asks its warehouse for goods with `stock_request`; the warehouse sets `decision` (Proses or Tolak) and flow
+`stock_request_decided` drafts the transfer. Only a store runs the cashier: `pos_shift.shift_at_store` and
+`pos_sale.sale_at_store` (pos 1.6.0) refuse every other location type, vehicles too, since none of them takes a seat. `decision` and `reject_reason` are `read_only_for: [outlet_staff, cashier]`.
+
+`warehouse_staff` (Staf gudang stok, role file in the `users` module, offered by `stok_outlet`, `grosir_distribusi` and
+`produksi_pabrik`) has **no row scope** in v1: contract 0010 §5 lets a scoped member write only when every filled scope
+field is theirs, so a member scoped to the warehouse could not submit the warehouse to store transfer a request asks
+for. Costs stay hidden from it as from `outlet_staff` (`hidden_for`), and its dashboards narrow to its outlets by filter.
+The flows of its documents run as it, so it also reads `item`, `uom`, `uom_conversion`, `item_category`, `vendor`,
+`user`, `currency`, `exchange_rate`, `tax_code`, `outlet` and `period_close`, and creates `gl_entry` lines of
+`goods_receipt`, `stock_adjustment`, `stock_count`, `stock_transfer` and `stock_transfer_receipt`.
+
+| Model | outlet_staff | warehouse_staff | head_office |
+| --- | --- | --- | --- |
+| stock_request (state written by flows only) | r c w p (own outlet as requester) | r w p | r c w d e p |
+| stock_transfer | r | r c w d s x p | all |
+| stock_transfer_receipt | r c w s x | r c w s x | all |
+| stock_count, stock_adjustment | r c w s | r c w s | all |
+| stock_adjustment_value | r c | r c | r c e |
+| stock_balance, stock_move | r | r (values hidden) | r e |
+| goods_receipt | r c w s | r c w s | all |
+
 ### Members, points and deposit (module loyalty, next to the kasir piece)
 
 A member (`loyalty_account`) is signed up by a cashier at the counter or by head office at the desk; its tier figures,

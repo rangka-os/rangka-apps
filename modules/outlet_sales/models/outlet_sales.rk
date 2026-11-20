@@ -126,6 +126,11 @@ fields:
     label: {id: 'PPh final 0,5%'}
     compute: round((net_total - ppn_in_sales) * 5 / 1000)
 rules:
+  # rangka-apps#104: daily sales are booked at a store only, never at a warehouse, van, damaged-goods or production room
+  - name: outlet_is_store
+    on: save
+    check: "outlet.location_type == '' || outlet.location_type == 'store'"
+    message: {id: 'Penjualan harian hanya dicatat di lokasi berjenis Toko / outlet'}
   - name: moka_outlet_matches
     on: save
     check: "source != 'moka' || moka_outlet == outlet.moka_name"

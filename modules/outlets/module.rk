@@ -1,10 +1,13 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: outlets
-version: 1.6.0
-title: {id: Outlet, en: Outlets}
+version: 1.7.0
+title: {id: Outlet dan gudang, en: Outlets and warehouses}
 summary:
-  id: Daftar cabang atau lokasi usaha kamu.
-  en: Your branches or business locations.
+  id: Daftar cabang, gudang, dan lokasi stok usaha kamu.
+  en: Your branches, warehouses and stock locations.
 category: operations
 icon: map-pin-line
 requires: {rangka: '>=0.5', users: ^1.2}
+# rangka-os contract 0057 §5: the plan's outlets limit counts stores only (outlet.is_store); warehouses, canvas vans,
+# damaged-goods and production rooms are free (rangka-apps#104).
+limit_scope: {outlets: is_store}

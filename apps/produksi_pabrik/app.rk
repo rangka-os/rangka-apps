@@ -25,7 +25,7 @@ modules:
   invoicing: ^1.0
   coretax: ^1.0
 dashboards: [produksi_overview, produksi_upah]
-roles: [head_office, outlet_staff]
+roles: [head_office, outlet_staff, warehouse_staff]
 home: {dashboard: produksi_overview}
 # invoicing is only here because payments requires it; selling (orders, delivery notes) comes with grosir_distribusi.
 menu:
@@ -34,7 +34,7 @@ menu:
   - group: {id: Resep dan tarif}
     items: [bom, production_stage, worker]
   - group: {id: Stok}
-    items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
+    items: [stock_balance, stock_move, stock_request, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
   - group: {id: Pembelian}
     items: [purchase_order, goods_receipt, vendor_bill, payment]
   - group: {id: Pembukuan}

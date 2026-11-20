@@ -86,6 +86,12 @@ fields:
 # on every update the sales' flows make, so head office changing the outlet would stop an open shift. An outlet
 # without a code cannot open one (its number, SESI-<code>-..., is refused: 409 numbering).
 rules:
+  # Only a store sells (rangka-apps#104): a warehouse, vehicle, quarantine or production row takes no plan outlet seat
+  # (outlets limit_scope is_store), so a shift or sale there would be a free seat. Van sales belong to field_sales (#112).
+  - name: shift_at_store
+    on: save
+    check: "outlet.location_type == '' || outlet.location_type == 'store'"
+    message: {id: 'Sesi kasir hanya bisa dibuka di lokasi berjenis Toko'}
   - name: float_not_negative
     on: save
     check: opening_cash >= 0

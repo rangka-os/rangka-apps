@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: pos
-version: 1.6.0
+version: 1.7.0
 title: {id: Kasir, en: Point of sale}
 summary:
   id: Kasir di browser dengan sesi kas, transaksi dan tutup sesi per outlet.
@@ -20,6 +20,6 @@ icon: shopping-basket-line
 # A sale may name its customer (contacts), and with module promotions it takes item promos by itself and a bill promo,
 # voucher code or free gift picked at the counter's checkout (rangka-os contract 0069, rangka-apps#103). With module
 # loyalty the checkout also takes a member, points to redeem and a part paid from the member's deposit (rangka-apps#102).
-requires: {rangka: '>=0.5', users: ^1.2, contacts: ^1.4, catalogue: ^1.5, outlets: ^1.5, stock: ^1.2}
+requires: {rangka: '>=0.5', users: ^1.2, contacts: ^1.4, catalogue: ^1.5, outlets: ^1.7, stock: ^1.2}
 hooks: [stock.reverse_moves]
 optional: {accounting: ^1.4, outlet_sales: ^1.1, promotions: ^1.0, loyalty: ^1.0, shifts: ^1.0}

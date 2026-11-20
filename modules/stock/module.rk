@@ -1,14 +1,15 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: stock
-version: 1.4.0
+version: 1.5.0
 title: {id: Stok, en: Stock}
 summary:
-  id: Saldo dan mutasi stok, transfer antar outlet, opname dan penyesuaian.
-  en: Stock balances and moves, transfers between outlets, counts and adjustments.
+  id: Saldo dan mutasi stok per toko dan gudang, permintaan barang ke gudang, transfer, opname dan penyesuaian.
+  en: Stock balances and moves per store and warehouse, stock requests, transfers, counts and adjustments.
 category: stock
 icon: archive-line
 # contacts: stock_reorder.vendor links a vendor. catalogue already requires contacts, so no site gains a module.
-requires: {rangka: '>=0.5', users: ^1.2, contacts: ^1.0, catalogue: ^1.4, outlets: ^1.0}
+requires: {rangka: '>=0.5', users: ^1.2, contacts: ^1.0, catalogue: ^1.4, outlets: ^1.7}
+# outlets 1.7: location_type and supply_from (rangka-apps#104: warehouses apart from stores, stock_request).
 # Semantics fixed in docs/kernel-hooks.md (section stock). stock.post_moves is a core hook on the on_submit of
 # goods_receipt, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment and outlet_sales; stock.reverse_moves is declared here.
 hooks: [stock.reverse_moves]
@@ -26,3 +27,9 @@ notices:
     description: {id: 'Stok sebuah barang turun di bawah batas minimum yang kamu isi di data barang.'}
     severity: warn
     to: [owner, head_office, purchasing_manager]
+  # flow stock_request_on_create: a store asks its warehouse for goods (rangka-apps#104)
+  - name: stock_request
+    label: {id: Permintaan barang ke gudang, en: Stock request}
+    description: {id: 'Toko meminta barang ke gudang; gudang memproses atau menolak.'}
+    severity: info
+    to: [warehouse_staff, head_office]

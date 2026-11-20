@@ -9,11 +9,12 @@ on_cancel: [stock.reverse_moves]
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   - {role: outlet_staff, read: true, create: true, write: true, submit: true}
+  - {role: warehouse_staff, read: true, create: true, write: true, submit: true}
 fields:
   - name: outlet
     type: link
     to: outlet
-    label: {id: Outlet}
+    label: {id: Lokasi}
     required: true
     # staff with one outlet do not pick it (C1-2, kartu t_5b5a3ae5); head office with several picks as before
     default: "user.outlets.size() == 1 ? user.outlets[0] : ''"

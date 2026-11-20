@@ -28,7 +28,7 @@ modules:
   delivery: ^1.0
   bank_statement: ^1.0
 dashboards: [grosir_overview, grosir_ar, gudang_harian, salesman_harian]
-roles: [sales_manager, finance_manager, head_office, field_sales]
+roles: [sales_manager, finance_manager, head_office, field_sales, warehouse_staff]
 home: {dashboard: grosir_overview}
 # recipe is installed with stock but has no menu entry: a distributor sells goods as they are.
 menu:
@@ -37,7 +37,7 @@ menu:
   - group: {id: Pengiriman}
     items: [delivery_note, sales_return, order_fulfilment, return_credit]
   - group: {id: Gudang}
-    items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
+    items: [stock_balance, stock_move, stock_request, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment]
   - group: {id: Pembelian}
     items: [purchase_order, goods_receipt, vendor_bill]
   - group: {id: Pembukuan}

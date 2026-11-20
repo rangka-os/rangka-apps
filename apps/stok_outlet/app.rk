@@ -18,11 +18,11 @@ modules:
   outlets: ^1.0
   stock: ^1.0
 dashboards: [stok_ringkas, outlet_hari_ini]
-roles: [head_office, outlet_staff]
+roles: [head_office, outlet_staff, warehouse_staff]
 home: {dashboard: stok_ringkas}
 menu:
   - group: {id: Stok}
-    items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment, recipe]
+    items: [stock_balance, stock_move, stock_request, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment, recipe]
   - group: {id: Data barang}
     items: [outlet, item, uom, uom_conversion]
 onboarding:

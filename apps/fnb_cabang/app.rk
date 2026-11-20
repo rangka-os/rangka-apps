@@ -28,7 +28,7 @@ menu:
   - group: {id: Penjualan outlet}
     items: [outlet_sales, pos_refund, outlet_return, moka_sale_line, moka_transaction]
   - group: {id: Stok}
-    items: [stock_balance, stock_move, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment, recipe]
+    items: [stock_balance, stock_move, stock_request, stock_transfer, stock_transfer_receipt, stock_count, stock_adjustment, recipe]
   - group: {id: Pembelian}
     items: [purchase_request, purchase_order, goods_receipt, vendor_bill, payment, vendor]
   - group: {id: Pembukuan}
