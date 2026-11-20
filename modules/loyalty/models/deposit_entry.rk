@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Every change of a member's deposit (rupiah held for the customer), append-only (contract 0026): a top-up
+# (deposit_topup), a spend at the counter (flow loyalty_on_sale) or on an invoice payment (flow deposit_on_payment), a
+# refund (deposit_refund), and the reverse row of any of them when its document is cancelled. The member's
+# deposit_balance is the sum of its rows, and the sum over all members is what 2-1400 Uang muka pelanggan holds for
+# deposits (flow loyalty_check compares member by member). entry_key: one row per source and kind.
+name: deposit_entry
+label: {id: Mutasi deposit, en: Deposit entry}
+icon: history
+naming: DPM-{YYYY}-{######}
+append_only: true
+permissions:
+  - {role: head_office, read: true, create: true, export: true}
+  - {role: finance_manager, read: true, create: true, export: true}
+  - {role: sales_manager, read: true, create: true}
+  - {role: cashier, read: true, create: true}
+fields:
+  - {name: account, type: link, to: loyalty_account, label: {id: Member}, required: true, in_list: true}
+  - name: kind
+    type: select
+    label: {id: Jenis}
+    required: true
+    in_list: true
+    chip: true
+    options:
+      - {value: top_up, label: {id: Isi saldo}}
+      - {value: spend, label: {id: Dipakai}}
+      - {value: refund, label: {id: Dikembalikan}}
+      - {value: reverse, label: {id: Dibatalkan}}
+  - {name: amount, type: currency, label: {id: Jumlah}, help: {id: 'Plus menambah saldo, minus mengurangi'}, required: true, in_list: true}
+  - {name: balance_after, type: currency, label: {id: Sisa saldo}, in_list: true}
+  - {name: date, type: date, label: {id: Tanggal}, required: true, in_list: true}
+  - {name: source_type, type: data, label: {id: Jenis dokumen}}
+  - {name: source, type: data, label: {id: Dokumen}, index: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, depends_on: app_installed('outlets')}
+  - {name: entry_key, type: data, label: {id: Kunci}, unique: true, hidden: true}
+rules:
+  - name: not_zero
+    on: save
+    check: amount != 0
+    message: {id: Mutasi deposit tidak boleh 0}
+views:
+  list:
+    columns: [name, date, account, kind, amount, balance_after, source]
+    filters: [account, kind, outlet]
+    sort: -name

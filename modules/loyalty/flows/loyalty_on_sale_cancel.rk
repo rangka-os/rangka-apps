@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A voided sale (pos_sale_on_cancel holds it to its own day and open shift) gives back what it did to the member: one
+# reverse row negating the sale's points rows (earned taken back, redeemed given back) and one negating its deposit
+# spend, the balances and the year's spend. The points may go below 0 when the earned points were redeemed meanwhile;
+# the next purchases fill them up. The tier stays (loyalty_yearly reviews it). An amended sale posts again when paid.
+name: loyalty_on_sale_cancel
+label: {id: 'Transaksi kasir dibatalkan: kembalikan poin dan deposit'}
+on: pos_sale.cancelled
+if: app_installed('pos')
+steps:
+  - if: "event.member != ''"
+    then:
+      - find: loyalty_account
+        where: name == event.member
+        as: a
+      - find_all: loyalty_entry
+        where: source == event.name && source_type == 'pos_sale' && kind != 'reverse'
+        as: pe
+      - find_all: deposit_entry
+        where: source == event.name && source_type == 'pos_sale' && kind != 'reverse'
+        as: de
+      # one reverse spend row on every run: a run started by hand is refused as a whole (contract 0026, audit #102 F1)
+      - create: member_spend
+        if: a != null
+        set:
+          account: a.name
+          sale: event.name
+          amount: 0 - event.grand_total
+          date: today()
+          outlet: event.outlet
+          entry: "'reverse'"
+          entry_key: "event.name + '|reverse'"
+      - create: loyalty_entry
+        if: a != null && pe.map(e, e.points).sum() != 0
+        set:
+          account: a.name
+          kind: "'reverse'"
+          points: 0 - pe.map(e, e.points).sum()
+          balance_after: a.points_balance - pe.map(e, e.points).sum()
+          date: today()
+          source_type: "'pos_sale'"
+          source: event.name
+          outlet: event.outlet
+          entry_key: "event.name + '|reverse'"
+      - create: deposit_entry
+        if: a != null && de.map(e, e.amount).sum() != 0
+        set:
+          account: a.name
+          kind: "'reverse'"
+          amount: 0 - de.map(e, e.amount).sum()
+          balance_after: a.deposit_balance - de.map(e, e.amount).sum()
+          date: today()
+          source_type: "'pos_sale'"
+          source: event.name
+          outlet: event.outlet
+          entry_key: "event.name + '|reverse'"
+      - update: a
+        if: a != null
+        set:
+          points_balance: a.points_balance - pe.map(e, e.points).sum()
+          deposit_balance: a.deposit_balance - de.map(e, e.amount).sum()
+          spend_this_year: a.spend_this_year - event.grand_total

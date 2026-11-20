@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every night at 03:00: each member's points and deposit against the sums of its ledger rows. A difference is written
+# down (loyalty_mismatch, once per member and day) for head office; nothing corrects itself.
+name: loyalty_check
+label: {id: 'Cek saldo member terhadap mutasi'}
+schedule: '0 3 * * *'
+steps:
+  - find_all: loyalty_account
+    as: members
+  - find_all: loyalty_entry
+    as: pts
+  - find_all: deposit_entry
+    as: dep
+  - find_all: loyalty_mismatch
+    where: checked_on == today()
+    as: seen
+  - for_each: "members.filter(m, seen.filter(x, x.account == m.name).size() == 0).filter(m, pts.filter(e, e.account == m.name).map(e, e.points).sum() != m.points_balance || dep.filter(e, e.account == m.name).map(e, e.amount).sum() != m.deposit_balance)"
+    as: m
+    do:
+      - create: loyalty_mismatch
+        set:
+          account: m.name
+          checked_on: today()
+          points_balance: m.points_balance
+          points_ledger: "pts.filter(e, e.account == m.name).map(e, e.points).sum()"
+          deposit_balance: m.deposit_balance
+          deposit_ledger: "dep.filter(e, e.account == m.name).map(e, e.amount).sum()"
+          check_key: "m.name + '|' + string(today())"

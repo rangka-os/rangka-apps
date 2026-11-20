@@ -11,7 +11,8 @@ steps:
   - if: s == null || s.state != 'open'
     create: pos_guard
     set: {reason: "'shift_closed'", document: event.name}
-  - if: s != null && (s.cash_total != event.cash_total || s.qris_total != event.qris_total || s.opening_cash != event.opening_cash)
+  # a deposit top-up on the shift since the figures were read is stale too (module loyalty)
+  - if: s != null && (s.cash_total != event.cash_total || s.qris_total != event.qris_total || s.opening_cash != event.opening_cash || s.topup_cash_total != event.topup_cash_total || s.topup_qris_total != event.topup_qris_total)
     create: pos_guard
     set: {reason: "'close_stale'", document: event.name}
   - update: s

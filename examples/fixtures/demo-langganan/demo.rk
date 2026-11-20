@@ -18,6 +18,9 @@ item:
   - {name: BRG-0003, item_name: Internet usaha 50 Mbps, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: NET-50B, rate: 1500000}
   - {name: BRG-0004, item_name: IP publik statis, kind: service, stock_uom: UOM-001, sales_uom: UOM-001, sku: NET-IP, rate: 100000}
   - {name: BRG-0005, item_name: Biaya pasang baru, kind: service, stock_uom: UOM-002, sales_uom: UOM-002, sku: NET-PSG, rate: 200000}
+# deposits (module loyalty): one base tier without points (a deposit only); members are signed up by the scenarios
+member_tier:
+  - {name: TIER-01, tier_name: Pelanggan, tier_code: BASE, min_spend: 0, earn_spend: 0, earn_multiplier_pct: 100, point_value: 0, max_redeem_pct: 0, member_discount_pct: 0, expiry_months: 0, active: true}
 user:
   - {name: USR-001, full_name: Rani Contoh, role: finance_manager, email: rani@contohnet.test}
   - {name: USR-002, full_name: Dodi Contoh, role: collector, email: dodi@contohnet.test}

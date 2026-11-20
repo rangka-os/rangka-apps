@@ -35,16 +35,26 @@ body { font-size: 8.5pt; }
 </div>
 {{end}}
 <div class="rule"></div>
-{{if or .Doc.discount_amount .Doc.bill_promo}}<div class="row"><span>Subtotal</span><span class="num">{{rupiah .Doc.subtotal}}</span></div>{{end}}
+{{if or .Doc.discount_amount .Doc.bill_promo .Doc.member_discount .Doc.points_discount}}<div class="row"><span>Subtotal</span><span class="num">{{rupiah .Doc.subtotal}}</span></div>{{end}}
 {{if .Doc.bill_promo}}<div class="row"><span>Promo nota {{.Doc.promo_name}}</span><span class="num">-{{rupiah .Doc.bill_promo}}</span></div>{{end}}
+{{if .Doc.member_discount}}<div class="row"><span>Diskon member {{.Links.member.tier_name}}</span><span class="num">-{{rupiah .Doc.member_discount}}</span></div>{{end}}
+{{if .Doc.points_discount}}<div class="row"><span>Tukar {{number .Doc.points_redeemed}} poin</span><span class="num">-{{rupiah .Doc.points_discount}}</span></div>{{end}}
 {{if .Doc.discount_amount}}<div class="row"><span>Diskon nota</span><span class="num">-{{rupiah .Doc.discount_amount}}</span></div>{{end}}
 {{if .Doc.promo_total}}<div class="row muted"><span>Hemat dari promo</span><span class="num">{{rupiah .Doc.promo_total}}</span></div>{{end}}
 <div class="row big"><span>Total</span><span class="num">{{rupiah .Doc.grand_total}}</span></div>
 {{if .Doc.ppn_in_sales}}<div class="row muted"><span>Termasuk PPN</span><span class="num">{{rupiah .Doc.ppn_in_sales}}</span></div>{{end}}
+{{if .Doc.deposit_used}}<div class="row"><span>Deposit</span><span class="num">{{rupiah .Doc.deposit_used}}</span></div>{{end}}
 {{range $p := .Doc.payments}}<div class="row"><span>{{if eq (printf "%v" $p.method) "qris"}}QRIS{{with $p.ref}} {{.}}{{end}}{{else}}Tunai{{end}}</span><span class="num">{{rupiah $p.amount}}</span></div>
-{{else}}<div class="row"><span>Tunai</span><span class="num">{{rupiah $.Doc.grand_total}}</span></div>
+{{else}}{{if $.Doc.amount_due}}<div class="row"><span>Tunai</span><span class="num">{{rupiah $.Doc.amount_due}}</span></div>{{end}}
 {{end}}
 {{if .Doc.change_amount}}<div class="row"><span>Kembalian</span><span class="num">{{rupiah .Doc.change_amount}}</span></div>{{end}}
+{{with .Links.member}}{{if .name}}<div class="rule"></div>
+<div class="row"><span>Member</span><span>{{.member_name}} · {{.tier_name}}</span></div>
+{{if $.Doc.points_earned}}<div class="row"><span>Poin didapat</span><span class="num">+{{number $.Doc.points_earned}}</span></div>{{end}}
+{{if $.Doc.points_redeemed}}<div class="row"><span>Poin dipakai</span><span class="num">-{{number $.Doc.points_redeemed}}</span></div>{{end}}
+<div class="row"><span>Sisa poin</span><span class="num">{{number $.Doc.points_left}}</span></div>
+{{if or $.Doc.deposit_used $.Doc.deposit_left}}<div class="row"><span>Sisa deposit</span><span class="num">{{rupiah $.Doc.deposit_left}}</span></div>{{end}}
+{{end}}{{end}}
 <div class="c status">
   {{- if eq $ds "0"}}DRAF, BELUM DIBAYAR
   {{- else if eq $ds "2"}}BATAL
