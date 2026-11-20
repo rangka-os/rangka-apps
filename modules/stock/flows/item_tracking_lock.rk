@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Inside an item's save (rangka-os#260, audit 2026-11-21 F2/F3): item.tracking may change only where the stock registers
+# stay true. Switching lots on (none -> lot / lot_expiry, or between the two lot modes) is always allowed: stock from
+# before sits in the no-lot bucket (contract 0070 §2). Refused:
+#   - leaving the lot modes while a real lot still holds stock (the lot rows would freeze, and Σ lots would drift from
+#     stock_balance as the item keeps moving untracked);
+#   - leaving serial while a serial is in stock or in transit (the register would go stale);
+#   - switching to serial while the item has stock anywhere (no document could take those units out: every one would
+#     be refused serial_count_mismatch or serial_not_here).
+# Each find runs only for the switch it guards; a role that cannot read the register is refused by the kernel, so the
+# change fails safe (head office and the owner read every register).
+name: item_tracking_lock
+label: {id: Pelacakan stok hanya diubah bila stoknya cocok}
+on: item.updated
+if: "event.before != null && (event.before.tracking == '' ? 'none' : event.before.tracking) != (event.tracking == '' ? 'none' : event.tracking)"
+steps:
+  - if: "event.before.tracking in ['lot', 'lot_expiry'] && !(event.tracking in ['lot', 'lot_expiry'])"
+    find: stock_lot_balance
+    where: "item == event.name && lot != '' && qty != 0"
+    as: lb
+  - if: "event.before.tracking in ['lot', 'lot_expiry'] && !(event.tracking in ['lot', 'lot_expiry']) && lb != null"
+    create: stock_guard
+    set: {reason: "'lots_in_stock'", document: event.name}
+  - if: "event.before.tracking == 'serial'"
+    find: serial_no
+    where: "item == event.name && state in ['in_stock', 'in_transit']"
+    as: sn
+  - if: "event.before.tracking == 'serial' && sn != null"
+    create: stock_guard
+    set: {reason: "'serials_in_stock'", document: event.name}
+  - if: "event.tracking == 'serial'"
+    find: stock_balance
+    where: "item == event.name && qty != 0"
+    as: sb
+  - if: "event.tracking == 'serial' && sb != null"
+    create: stock_guard
+    set: {reason: "'stock_without_serials'", document: event.name}

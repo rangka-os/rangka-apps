@@ -124,7 +124,7 @@ def scenario_produksi_bom_cost(api):
 
 
 def scenario_produksi_work_order(api):
-    st, wo = api.create("work_order", {"item": DIMSUM, "qty": 200, "outlet": PRODUKSI, "due_date": "2026-11-20"})
+    st, wo = api.create("work_order", {"item": DIMSUM, "qty": 200, "outlet": PRODUKSI, "start_date": "2026-11-05", "due_date": "2026-11-20"})
     if not check("SPK for 200 pak dimsum -> 201", st == 201, (st, wo)):
         return
     wo = api.get("work_order", wo["name"])

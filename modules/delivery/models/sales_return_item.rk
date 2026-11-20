@@ -14,3 +14,6 @@ fields:
     options:
       - {value: good, label: {id: Baik (bisa dijual lagi)}}
       - {value: damaged, label: {id: Rusak}}
+  # rangka-os contract 0070: a lot item goes back into the lot its delivery note took (when that was one lot); a serial
+  # item names the units that came back, one per line
+  - {name: serial_nos, type: text, label: {id: Nomor seri}, depends_on: "item.tracking == 'serial'", help: {id: 'Satu nomor seri per baris'}}

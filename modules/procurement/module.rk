@@ -1,13 +1,13 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: procurement
-version: 1.4.0
+version: 1.5.0
 title: {id: Pembelian, en: Procurement}
 summary:
   id: Permintaan dan pesanan pembelian, barang datang dan tagihan pemasok.
   en: Purchase requests and orders, goods received and supplier bills.
 category: purchasing
 icon: shopping-bag-line
-requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0}
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.6}
 optional: {outlets: ^1.0, currency: ^1.0, stock: ^1.4, projects: ^1.0, fixed_assets: ^1.0}
 # Semantics fixed in docs/kernel-hooks.md (section procurement). stock.post_moves is a core hook (goods_receipt.on_submit);
 # stock.reverse_moves (goods_receipt.on_cancel) is declared here too, since stock is optional for procurement (a no-op without it).

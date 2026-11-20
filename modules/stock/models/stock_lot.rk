@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: stock_lot
+label: {id: Lot barang, en: Stock lot}
+icon: stock
+naming: LOT-{#####}
+title_field: lot_no
+# One row per item and lot number (rangka-os contract 0070 §2), created by the first incoming move that names the lot
+# (goods receipt, production batch, transfer receipt, count). Written only by the stock hooks: every field but notes is
+# read_only, and no role may create or delete one. The lot's trace is the stock_move list filtered by this lot.
+permissions:
+  - {role: head_office, read: true, write: true, export: true, print: true}
+  - {role: purchasing_manager, read: true, export: true}
+  - {role: sales_manager, read: true}
+  - {role: field_sales, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: warehouse_staff, read: true}
+  - {role: cashier, read: true}
+fields:
+  - {name: lot_no, type: data, label: {id: Nomor lot}, required: true, read_only: true, in_list: true}
+  - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
+  - {name: expiry_date, type: date, label: {id: Kedaluwarsa}, read_only: true, in_list: true}
+  - {name: made_date, type: date, label: {id: Tanggal produksi}, read_only: true}
+  - {name: first_voucher_type, type: data, label: {id: Pertama masuk lewat}, read_only: true}
+  - {name: first_voucher, type: data, label: {id: Dokumen pertama}, read_only: true, in_list: true}
+  - {name: notes, type: text, label: {id: Catatan}}
+views:
+  list:
+    columns: [lot_no, item, expiry_date, first_voucher]
+    filters: [item]
+    sort: expiry_date
+  form:
+    layout:
+      - section: {id: Lot}
+        columns:
+          - [lot_no, item, first_voucher_type]
+          - [expiry_date, made_date, first_voucher]
+      - section: {id: Catatan}
+        fields: [notes]
