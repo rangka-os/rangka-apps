@@ -10,6 +10,6 @@ default_period: 1
 roles: [member]
 cache: 1m
 widgets:
-  - {name: today, type: list, label: {id: Hari ini}, model: shift_assignment, filter: "employee == user.name && published && work_date == today()", columns: [shift_label, outlet, outcome], limit: 1, span: 12}
-  - {name: next, type: list, label: {id: 14 hari ke depan}, model: shift_assignment, filter: "employee == user.name && published && work_date > today() && days_between(today(), work_date) <= 13", columns: [work_date, shift_label, outlet], sort: work_date, limit: 14, span: 12}
-  - {name: swaps, type: list, label: {id: Tukar shift menunggu}, model: shift_swap, filter: "requested_by == user.name && docstatus == 0", columns: [work_date, my_shift_name, with_note], sort: work_date, limit: 10, span: 12}
+  - {name: today, type: list, empty: {id: 'Tidak ada shift hari ini.'}, label: {id: Hari ini}, model: shift_assignment, filter: "employee == user.name && published && work_date == today()", columns: [shift_label, outlet, outcome], limit: 1, span: 12}
+  - {name: next, type: list, empty: {id: 'Belum ada jadwal 14 hari ke depan.'}, label: {id: 14 hari ke depan}, model: shift_assignment, filter: "employee == user.name && published && work_date > today() && days_between(today(), work_date) <= 13", columns: [work_date, shift_label, outlet], sort: work_date, limit: 14, span: 12}
+  - {name: swaps, type: list, empty: {id: 'Tidak ada permintaan tukar shift.'}, label: {id: Tukar shift menunggu}, model: shift_swap, filter: "requested_by == user.name && docstatus == 0", columns: [work_date, my_shift_name, with_note], sort: work_date, limit: 10, span: 12}

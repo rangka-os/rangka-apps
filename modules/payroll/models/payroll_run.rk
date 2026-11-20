@@ -61,6 +61,7 @@ fields:
   # The tax month is the month the pay is paid (masa pajak), not the cut-off period.
   - name: tax_year
     type: int
+    grouping: false
     label: {id: Tahun pajak}
     required: true
   - name: tax_month
