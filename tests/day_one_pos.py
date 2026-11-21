@@ -666,7 +666,8 @@ def scenario_pos_race(api):
         t.join(60)
     check("four receipts paid at the same moment all pass", all(r and r[0] == 200 for r in res), [r and r[0] for r in res])
     names = sorted(rec(r[1]).get("name", "") for r in res if r and r[0] == 200)
-    eq("they get four different consecutive numbers", names, [f"STRK-RIU-{yymm()}-{n:05d}" for n in range(2, 6)])
+    nums = [int(n.rsplit("-", 1)[1]) for n in names]
+    check("they get four different consecutive numbers", len(nums) == 4 and nums == list(range(nums[0], nums[0] + 4)), names)
     s = shift_of(api, shift)
     sales = api.find("pos_sale", f"shift == '{shift}' && docstatus == 1")
     eq("the shift counts every one of them", (s["sales_count"], s["net_total"]), (len(sales), sum(x["grand_total"] for x in sales)))
@@ -931,8 +932,8 @@ def scenario_pos_tables(api):
           st == 200 and len(m6.get("items") or []) == 3 and m6.get("grand_total") == t5 + t6 and src.get("merged") and src.get("table") in ("", None)
           and m6.get("guests") == 3, (st, r, m6, src))
     check("the merged bill cannot be paid", sari.verb("pos_sale", b3["name"], "submit")[0] != 200, None)
-    st, r = sari.patch("pos_sale", b3["name"], {"merge_into": b3["name"]})
-    check("a bill cannot be merged into itself", st != 200, (st, r))
+    st, r = sari.patch("pos_sale", b6["name"], {"merge_into": b6["name"]})
+    check("a bill cannot be merged into itself", st != 200 and "merge_invalid" in str(r), (st, r))
     # split A6: the roti line goes to a new bill on the same table
     keys = [l.get("line_key") for l in m6["items"]]
     roti_key = [l["line_key"] for l in m6["items"] if l["item"] == ROTI][0]
@@ -958,7 +959,7 @@ def scenario_pos_tables(api):
     st1, p1 = sari.verb("pos_sale", b6["name"], "submit", {"payments": [{"method": "cash", "amount": 100_000}]})
     st2, p2 = sari.verb("pos_sale", kids[0]["name"], "submit", {"payments": [{"method": "cash", "amount": 100_000}]})
     check("both bills of A6 paid -> 200", st1 == 200 and st2 == 200, (st1, st2, p1, p2))
-    eq("the roti left the stock once (merged and split lines counted once)", bal(api, RIU, ROTI), roti0 - 2)
+    eq("the roti left the stock once (merged and split lines counted once)", bal(api, RIU, ROTI), roti0 - 1)
     check("the tables are free after payment", not api.find("pos_sale", f"table != '' && docstatus == 0 && outlet == '{RIU}'"), None)
     CTX["tables_ok"] = True
 

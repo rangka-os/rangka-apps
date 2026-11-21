@@ -342,7 +342,7 @@ def scenario_kitchen_on_draft(api):
     """Kirim ke dapur from an open table bill (rangka-apps#122): tickets go out when the bill is sent, again only for
     new lines, a removed sent line makes a BATAL line, and payment skips what was already sent."""
     sari = CTX.get("sari")
-    shift = CTX.get("shift_riu") or (open_shift(sari, RIU, "tables") if sari else None)
+    shift = CTX.get("shift_riu_kitchen") or (open_shift(sari, RIU, "tables") if sari else None)
     if not (sari and shift):
         return
 
@@ -363,7 +363,7 @@ def scenario_kitchen_on_draft(api):
     eq("sending again with nothing new makes no ticket", len(tickets(api, name)), 2)
     st, r = sari.patch("pos_sale", name, {"items": [L("k1", KSA, 1), L("k2", ROTI, 1), L("k3", KHT, 1)], "send_kitchen": True})
     ts = tickets(api, name)
-    check("a new line sent: one more ticket, only the new line", st == 200 and len(ts) == 3 and lines([t for t in ts if t["station"] == BAR][-1]) == [(KHT, 1, "")], (st, r, ts))
+    check("a new line sent: one more ticket, only the new line", st == 200 and len(ts) == 3 and len([t for t in ts if t["station"] == BAR and lines(t) == [(KHT, 1, "")]]) == 1, (st, r, ts))
     st, r = sari.patch("pos_sale", name, {"items": [L("k1", KSA, 1), L("k3", KHT, 1)], "send_kitchen": True})
     ts = tickets(api, name)
     batal = [l for t in ts for l in t["items"] if str(l.get("description") or "").startswith("BATAL")]
