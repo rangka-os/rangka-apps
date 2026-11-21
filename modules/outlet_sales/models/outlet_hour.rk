@@ -3,7 +3,9 @@
 # rangka-apps#115). Never typed by hand: written by the Moka item-details file import `moka_hours` (the file's Date and
 # Time columns, local time, one record per receipt with a line per item) and by flow moka_transaction_staged (the Moka
 # API, a UTC instant). A site with the cashier (module pos) reads pos_sale directly (it has its own hour and weekday), so
-# a receipt never lands here twice. hour and weekday follow the site timezone (hour_of, weekday_of).
+# a receipt never lands here twice. Known limits (audit of 22 Nov): the API amount is total_collected (after tax) while a
+# file receipt sums Net Sales; an API receipt refunded later is not changed; a file covering days the API already
+# delivered counts them twice, so import hours only for days before the outlet's moka_api_from. hour and weekday follow the site timezone (hour_of, weekday_of).
 name: outlet_hour
 label: {id: Struk per jam, en: Receipts by hour}
 icon: time

@@ -16,7 +16,8 @@ def bind(m):
 
 
 def moka_receipts(g, today, since):
-    """{(date, time, receipt no): net} of the generated Moka file for days on and after since, read back from the CSV."""
+    """{(date, receipt no): [net, hour of its first row]} of the generated Moka file for days on and after since (a refund
+    row joins its receipt), read back from the CSV."""
     import csv
     import datetime as dt
     import io
@@ -24,9 +25,10 @@ def moka_receipts(g, today, since):
     for r in csv.DictReader(io.StringIO(g.moka_csv(today).decode())):
         d = dt.datetime.strptime(r["Date"], "%d-%m-%Y").date().isoformat()
         if d >= since:
-            k = (d, r["Time"], r["Receipt Number"])
-            out[k] = out.get(k, 0) + int(float(r["Net Sales"]))
-    return out
+            k = (d, r["Receipt Number"])
+            cur = out.setdefault(k, [0, int(r["Time"][:2])])
+            cur[0] += int(float(r["Net Sales"]))
+    return {k: v[0] for k, v in out.items()}, {k: v[1] for k, v in out.items()}
 
 
 def scenario_outlet_compare_numbers(api):
@@ -39,7 +41,7 @@ def scenario_outlet_compare_numbers(api):
     if not c:
         return
     since = (today - datetime.timedelta(days=30)).isoformat()
-    want = moka_receipts(g, today, since)
+    want, _hours = moka_receipts(g, today, since)
     rows = [r for r in rows_all(api, "outlet_hour") if r["date"] >= since and r["outlet"] == CBR]
     eq("outlet_hour: one record per receipt of the file (30 days)", len(rows), len(want))
     eq("outlet_hour amounts sum to the file's Net Sales (30 days)", sum(r["amount"] for r in rows), sum(want.values()))
@@ -74,8 +76,8 @@ def scenario_peak_hours_heatmap(api):
     check("heatmap rows are weekdays", 1 <= len(h["rows"]) <= 7 and all(r["label"] in ("Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu") for r in h["rows"]), h["rows"])
     per_hour = [sum((row[j] or 0) for row in h["counts"]) for j in range(24)]
     want = {}
-    for (d, t, _), _n in moka_receipts(g, today, since).items():
-        want[int(t[:2])] = want.get(int(t[:2]), 0) + 1
+    for hr in moka_receipts(g, today, since)[1].values():
+        want[hr] = want.get(hr, 0) + 1
     eq("heatmap receipts per hour = the file's receipts per hour", per_hour, [want.get(i, 0) for i in range(24)])
     top2 = sorted(range(24), key=lambda i: -per_hour[i])[:2]
     eq("the two busiest hours are 12 and 19", sorted(top2), [12, 19])
