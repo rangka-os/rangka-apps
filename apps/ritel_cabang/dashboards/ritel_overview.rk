@@ -109,6 +109,22 @@ widgets:
     period: date
     sort: -value
     span: 6
+  # Terlaris per produk: the sizes and flavours of one product count together (hidden variant_group of the stock move);
+  # an item without a group counts under its own code.
+  - name: best_sellers_by_product
+    type: chart
+    chart: bar
+    label: {id: Terlaris per produk}
+    description: {id: 'Jumlah terjual per produk; semua varian satu produk dihitung bersama'}
+    model: stock_move
+    group_by: variant_group
+    aggregate: sum
+    field: sold_qty
+    filter: "sold_qty > 0 && variant_group != ''"
+    period: posting_date
+    sort: -value
+    limit: 10
+    span: 6
   - name: net_by_day
     type: chart
     chart: line

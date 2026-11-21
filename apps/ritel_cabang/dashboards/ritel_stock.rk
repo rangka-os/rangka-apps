@@ -96,6 +96,19 @@ widgets:
     limit: 20
     columns: [outlet, item, qty, value]
     span: 12
+  - name: stock_by_product
+    type: chart
+    chart: bar
+    label: {id: Stok per produk}
+    description: {id: 'Jumlah stok semua varian satu produk (ukuran, rasa) dijumlahkan'}
+    model: stock_balance
+    group_by: variant_group
+    aggregate: sum
+    field: qty
+    filter: "qty > 0 && variant_group != ''"
+    sort: -value
+    limit: 10
+    span: 6
   - name: stock_value_by_outlet
     type: chart
     chart: bar
