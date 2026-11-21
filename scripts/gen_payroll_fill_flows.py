@@ -31,7 +31,7 @@ out = os.path.join(ROOT, "modules", "payroll", "flows")
 
 # HAS(p): the worker of profile p has attendance that pays: a summary (monthly) or at least one day present (daily)
 HAS = ("w.employee != '' && (p.pay_basis == 'monthly' ? sums.exists(s, s.employee == w.employee)"
-       " : sums.filter(s, s.employee == w.employee).map(s, s.days_present).sum() > 0)")
+       " : sums.filter(s, s.employee == w.employee).map(s, s.days_present + s.leave_days).sum() > 0)")
 FALLBACK = "(run.outlet == '' && p.pay_basis == 'monthly' && !app_installed('projects'))"
 ONE_PROFILE = "profs.filter(q, q.worker == p.worker)[0].name == p.name"
 NEW = (f"workers.exists(w, w.name == p.worker && (({HAS}) || {FALLBACK}))"
@@ -58,8 +58,13 @@ GATE = ("size(open_periods) == 0 && (!app_installed('attendance') || (sums.exist
 KASBON = '''cash_advance: "size(bal) > 0 ? bal[0].cash_advance : ''"
 other_deduction: "size(bal) > 0 ? (bal[0].installment < bal[0].remaining ? bal[0].installment : bal[0].remaining) : 0"
 reimbursement: "claims.map(c, c.amount).sum()"'''
+# Leave (module leave, rangka-apps#114): the unpaid days of approved unpaid leave in the summaries become the slip's unpaid
+# days (a monthly salary is cut by them, a daily worker's are informational); a daily worker is also paid for the days of
+# paid leave (days = present + paid leave days), a monthly one is paid in full whatever the leave.
+LEAVE_PAID = f"(p.pay_basis == 'daily' ? {MINE}.map(s, s.leave_days).sum() : 0)"
 ATTENDANCE = f'''attendance_summary: "size({MINE}) > 0 ? {MINE}[size({MINE}) - 1].name : ''"
-days: "{MINE}.map(s, s.days_present).sum()"
+days: "{MINE}.map(s, s.days_present).sum() + {LEAVE_PAID}"
+unpaid_days: "{MINE}.map(s, s.unpaid_leave_days).sum()"
 late_min_total: "{MINE}.map(s, s.late_min_total).sum()"
 overtime_hours: "{MINE}.map(s, s.overtime_hours).sum()"
 att_days: "{MINE}.map(s, s.days_present).sum()"
@@ -176,8 +181,8 @@ def fill(auto):
             - find_all: payslip
               where: "name == ''"
               as: claims
-        # Days present, minutes late and overtime hours are the sums of the worker's summaries in the period. Unpaid
-        # days stay 0 (absence is not unpaid leave until leave is recorded, rangka-apps#114) and the days with
+        # Days present, unpaid leave days, minutes late and overtime hours are the sums of the worker's summaries in the
+        # period (absence without leave is not unpaid leave: only approved unpaid leave counts, module leave) and the days with
         # overtime stay 0: a summary has no count of them, so without a weighted overtime rate every hour is paid 2x
         # (PP 35/2021, never less than due) until finance enters them on the draft.
         - create: payslip

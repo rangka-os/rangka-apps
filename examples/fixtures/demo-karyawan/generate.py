@@ -37,6 +37,19 @@ STAFF = [
     ("USR-008", "Gita Contoh", "employee", "gita", "OUT-01", False, "Pembantu dapur", "daily", 0, 0, 100_000, 15_000, 0, "casual", "tk0", "0011000008"),
 ]
 DOMAIN = "contohroti.test"
+# Module leave (rangka-apps#114): the five standard types (the same rows flow leave_grant_daily makes on a site with none) and
+# the leave profile (join date, outlet) of the five employees who clock in, all with more than 12 months of service, so each
+# gets the annual balance. Gita (kitchen helper) has no profile: the tests give a recent one to show the 12-month rule.
+LEAVE_TYPES = [
+    {"name": "LVT-001", "type_name": "Cuti tahunan", "code": "annual", "kind": "paid", "tracked": True, "annual_days": 12, "joint_deducts": True, "active": True},
+    {"name": "LVT-002", "type_name": "Sakit dengan surat dokter", "code": "sick", "kind": "paid", "needs_note": True, "active": True},
+    {"name": "LVT-003", "type_name": "Izin tidak dibayar", "code": "unpaid", "kind": "unpaid", "active": True},
+    {"name": "LVT-004", "type_name": "Cuti melahirkan", "code": "maternity", "kind": "paid", "calendar_days": True, "max_days": 90, "active": True},
+    {"name": "LVT-005", "type_name": "Cuti bersama", "code": "joint", "kind": "paid", "active": True},
+]
+# (user, outlet, join date)
+LEAVE_PROFILES = [("USR-002", "OUT-01", "2021-03-01"), ("USR-003", "OUT-02", "2022-02-14"), ("USR-004", "OUT-01", "2022-05-02"),
+                  ("USR-005", "OUT-02", "2021-08-16"), ("USR-006", "OUT-01", "2023-01-09")]
 
 
 def row(d):
@@ -70,6 +83,11 @@ def seed():
                         "ptkp_status": s[14], "pay_basis": s[7], "employment": s[13], "monthly_salary": s[8], "fixed_allowance": s[9],
                         "daily_allowance": s[11], "bpjs_tk": True, "bpjs_jp": s[7] == "monthly", "bpjs_kes": True,
                         "bank_name": "Bank Contoh" if s[15] else "", "bank_account": s[15], "active": True}))
+    out.append("leave_type:")
+    out += [row(x) for x in LEAVE_TYPES]
+    out.append("leave_profile:")
+    for i, (u, o, d) in enumerate(LEAVE_PROFILES):
+        out.append(row({"name": f"LVP-{i + 1:03d}", "employee": u, "outlet": o, "join_date": d, "opening_used": 0, "active": True}))
     return "\n".join(out) + "\n"
 
 

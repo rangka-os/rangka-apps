@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Every morning at 06:00 and by head office from the flow list (event.as_of, YYYY-MM-DD, sets the day): makes the five
+# standard leave types when the site has none, then gives every active leave_profile its annual balance of the year once:
+# on the later of 1 January and the first work anniversary (UU Ketenagakerjaan: the right starts after 12 months of
+# continuous work), as soon as that day has come. The first balance of an employee starts with their opening_used days
+# already taken. The balance also starts with the cuti bersama days it covers, unless the annual type has joint_deducts
+# off. Monthly accrual is out of scope. Idempotent: an employee with a balance for the year gets no second one.
+name: leave_grant_daily
+label: {id: Jatah cuti tahunan diberikan, en: Annual leave granted}
+description: {id: 'Tiap pagi, karyawan yang sudah berhak cuti tahunan (1 Januari, atau setelah 12 bulan bekerja) diberi jatah 12 hari untuk tahun itu, sekali setahun.'}
+schedule: '0 6 * * *'
+steps:
+  - find_all: leave_type
+    where: "name != ''"
+    limit: 1
+    as: types
+  - if: size(types) == 0
+    create: leave_type
+    set:
+      type_name: "'Cuti tahunan'"
+      code: "'annual'"
+      kind: "'paid'"
+      tracked: "true"
+      annual_days: "12"
+      joint_deducts: "true"
+  - if: size(types) == 0
+    create: leave_type
+    set:
+      type_name: "'Sakit dengan surat dokter'"
+      code: "'sick'"
+      kind: "'paid'"
+      needs_note: "true"
+  - if: size(types) == 0
+    create: leave_type
+    set:
+      type_name: "'Izin tidak dibayar'"
+      code: "'unpaid'"
+      kind: "'unpaid'"
+  - if: size(types) == 0
+    create: leave_type
+    set:
+      type_name: "'Cuti melahirkan'"
+      code: "'maternity'"
+      kind: "'paid'"
+      calendar_days: "true"
+      max_days: "90"
+  - if: size(types) == 0
+    create: leave_type
+    set:
+      type_name: "'Cuti bersama'"
+      code: "'joint'"
+      kind: "'paid'"
+  - find: leave_type
+    where: code == 'annual' && active
+    as: lt
+  - find_all: leave_profile
+    where: active
+    as: profs
+  - find_all: leave_balance
+    where: "lt != null && leave_type == lt.name"
+    as: bals
+  - find_all: public_holiday
+    where: "joint && holiday_date >= (truncate(('as_of' in event ? event.as_of : today()), 4) + '-01-01') && holiday_date <= (truncate(('as_of' in event ? event.as_of : today()), 4) + '-12-31')"
+    as: joints
+  - for_each: profs
+    as: p
+    do:
+      - if: >-
+          lt != null && lt.tracked && lt.annual_days > 0 && (add_months(p.join_date, 12) > (truncate(('as_of' in event ? event.as_of : today()), 4) + '-01-01') ? add_months(p.join_date, 12) : (truncate(('as_of' in event ? event.as_of : today()), 4) + '-01-01')) <= ('as_of' in event ? event.as_of : today())
+          && !bals.exists(b, b.employee == p.employee && b.year == int(truncate(('as_of' in event ? event.as_of : today()), 4)))
+        create: leave_balance
+        set:
+          employee: p.employee
+          outlet: p.outlet
+          leave_type: lt.name
+          year: "int(truncate(('as_of' in event ? event.as_of : today()), 4))"
+          valid_from: "(add_months(p.join_date, 12) > (truncate(('as_of' in event ? event.as_of : today()), 4) + '-01-01') ? add_months(p.join_date, 12) : (truncate(('as_of' in event ? event.as_of : today()), 4) + '-01-01'))"
+          valid_to: "truncate(('as_of' in event ? event.as_of : today()), 4) + '-12-31'"
+          granted: lt.annual_days
+          used: "bals.exists(b, b.employee == p.employee) ? 0 : p.opening_used"
+          joint_used: "lt.joint_deducts ? joints.filter(h, h.holiday_date >= (add_months(p.join_date, 12) > (truncate(('as_of' in event ? event.as_of : today()), 4) + '-01-01') ? add_months(p.join_date, 12) : (truncate(('as_of' in event ? event.as_of : today()), 4) + '-01-01')) && days_between('2000-01-03', h.holiday_date) % 7 < 5).size() : 0"

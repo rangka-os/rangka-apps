@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: attendance
-version: 1.2.0
+version: 1.3.0
 title: {id: Absen karyawan, en: Staff attendance}
 summary:
   id: Absen masuk dan pulang dari HP di outlet, dengan lokasi GPS dan selfie, terlambat dan lembur, rekap bulanan per karyawan.
@@ -11,7 +11,8 @@ icon: time-line
 # project billing and work sites differ, so the two are not merged.
 requires: {rangka: '>=0.5', users: ^1.5, outlets: ^1.6}
 # shifts: a clock-in follows the employee's published shift of the day (staff_attendance.work_shift)
-optional: {shifts: ^1.0}
+# leave: approved leave fills the summary's leave days and a day on leave is not reported missing (rangka-apps#114)
+optional: {shifts: ^1.0, leave: ^1.0}
 notices:
   - name: attendance_missing
     label: {id: Belum absen masuk, en: Not clocked in yet}

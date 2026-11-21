@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: public_holiday
+label: {id: Hari libur nasional, en: Public holiday}
+icon: calendar
+naming: HLB-{#####}
+title_field: holiday_name
+# A day nobody works: not counted in any leave request of working days. A cuti bersama day (joint) is a day off too and,
+# while the annual type has joint_deducts on, takes one day off the annual balance of every employee (flow
+# public_holiday_joint_apply, once, when it is added). The list of the year is entered by head office from the SKB
+# three ministers; a holiday added after a request was drafted makes that request's days stale (refused at approval
+# until it is saved again).
+permissions:
+  - {role: head_office, read: true, create: true, write: true, export: true}
+  - {role: finance_manager, read: true}
+  - {role: outlet_supervisor, read: true}
+  - {role: cashier, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: employee, read: true}
+fields:
+  - {name: holiday_date, type: date, label: {id: Tanggal}, required: true, unique: true, in_list: true, set_once: true}
+  - {name: holiday_name, type: data, label: {id: Nama hari libur}, required: true, in_list: true}
+  - {name: joint, type: check, label: {id: Cuti bersama}, default: 'false', in_list: true}
+views:
+  list:
+    columns: [holiday_date, holiday_name, joint]
+    sort: holiday_date

@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: leave_guard
+label: {id: Penjaga cuti, en: Leave guard}
+icon: check
+naming: LGD-{######}
+title_field: reason
+# Never stored (the pattern of staff_attendance_guard): a flow that must refuse the action it runs in creates one, and
+# the rule of its reason fails with that message, which rolls the whole save, submit or cancel back.
+permissions:
+  - {role: cashier, create: true}
+  - {role: outlet_staff, create: true}
+  - {role: employee, create: true}
+  - {role: outlet_supervisor, create: true}
+  - {role: head_office, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: over_balance, label: {id: Jatah cuti tidak cukup}}
+      - {value: no_balance, label: {id: Belum ada jatah cuti}}
+      - {value: days_stale, label: {id: Hitungan hari berubah}}
+      - {value: overlap, label: {id: Tanggal bertabrakan}}
+      - {value: period_closed, label: {id: Absen periode itu sudah direkap}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: over_balance
+    on: save
+    check: reason != 'over_balance'
+    message: {id: 'Jatah cuti tidak cukup untuk jumlah hari ini. Kurangi harinya, atau minta izin tidak dibayar.'}
+  - name: no_balance
+    on: save
+    check: reason != 'no_balance'
+    message: {id: 'Belum ada jatah cuti tahun ini. Jatah cuti tahunan baru ada setelah 12 bulan bekerja; tanyakan ke kantor pusat.'}
+  - name: days_stale
+    on: save
+    check: reason != 'days_stale'
+    message: {id: 'Hitungan hari berubah karena ada hari libur yang baru ditambah. Simpan ulang pengajuan ini lalu setujui lagi.'}
+  - name: overlap
+    on: save
+    check: reason != 'overlap'
+    message: {id: 'Karyawan ini sudah punya cuti atau izin yang disetujui di tanggal itu.'}
+  - name: period_closed
+    on: save
+    check: reason != 'period_closed'
+    message: {id: 'Absen di tanggal itu sudah direkap dan gajinya dihitung dari rekap itu. Batalkan rekap absennya dulu.'}

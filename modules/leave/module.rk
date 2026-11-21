@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: leave
+version: 1.0.0
+title: {id: Cuti dan izin, en: Leave}
+summary:
+  id: Cuti, sakit dan izin dengan jatah, disetujui kepala outlet, izin tanpa bayar masuk slip.
+  en: Leave, sick days and permits with balances, approved by the outlet supervisor, unpaid leave reaches the payslip.
+category: people
+icon: calendar-event-line
+# Leave and permits with balances (rangka-apps#114). Contracts used: 0007 (the submit of a request is its approval),
+# 0010 (outlet row scope for the outlet supervisor), 0011 (attachment: the doctor's note), 0025 (the balance moves
+# under the flow read lock), 0074 (member grant: every employee reads their own requests and balances). Rules and
+# sources: docs/leave.md.
+requires: {rangka: '>=0.5', users: ^1.5, outlets: ^1.6}
+# attendance: approved leave fills leave_days and unpaid_leave_days of the attendance summary and a day on leave is not
+# reported missing; payroll reads unpaid_leave_days through the summary (slip fields unpaid_days, unpaid_deduction).
+optional: {attendance: ^1.2, payroll: ^2.3}

@@ -6,8 +6,8 @@ naming: RGA-{YYYY}-{#####}
 title_field: employee_name
 # One employee's attendance in one submitted attendance_period, written only by its flows (every field read only):
 # days present, lateness, early leave, overtime and minutes worked from the submitted staff_attendance logs. Payroll
-# for in-house staff reads it (rangka-apps#101). Leave days and absent days come with leave and shifts
-# (rangka-apps#114, #120). Cancelling the period marks its summaries cancelled; they are kept as the trail.
+# for in-house staff reads it (rangka-apps#101). Leave days come with module leave (leave_days, unpaid_leave_days,
+# rangka-apps#114); absent days come with shifts (rangka-apps#120). Cancelling the period marks its summaries cancelled; they are kept as the trail.
 permissions:
   - {role: head_office, read: true, create: true, write: true, export: true, print: true}
   # The outlet supervisor reads the summaries of their outlets (row scope outlet: the employee's outlet in the period).
@@ -31,8 +31,13 @@ fields:
   - {name: early_min_total, type: int, label: {id: Total pulang cepat (menit)}, read_only: true}
   - {name: overtime_hours, type: float, label: {id: Jam lembur}, read_only: true, in_list: true}
   - {name: worked_min_total, type: int, label: {id: Total lama kerja (menit)}, read_only: true}
+  # Approved leave inside the period (module leave, rangka-apps#114), working days only (every day for a type counting
+  # calendar days) less public holidays: paid leave and unpaid leave apart. A day on leave is not an absence. Payroll
+  # reads unpaid_leave_days into the slip's unpaid_days. 0 without the leave module.
+  - {name: leave_days, type: float, label: {id: Hari cuti dibayar}, default: '0', read_only: true, in_list: true}
+  - {name: unpaid_leave_days, type: float, label: {id: Hari izin tidak dibayar}, default: '0', read_only: true, in_list: true}
   - {name: cancelled, type: check, label: {id: Batal}, read_only: true, in_list: true, chip: true}
 views:
   list:
-    columns: [employee_name, outlet, period_from, period_to, days_present, late_min_total, overtime_hours, cancelled]
+    columns: [employee_name, outlet, period_from, period_to, days_present, leave_days, unpaid_leave_days, late_min_total, overtime_hours, cancelled]
     sort: -period_from

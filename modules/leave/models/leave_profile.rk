@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: leave_profile
+label: {id: Data cuti karyawan, en: Leave profile}
+icon: user
+naming: LVP-{###}
+title_field: employee_name
+# Who gets an annual balance and from when. UU Ketenagakerjaan: the right to annual leave starts after 12 months of
+# continuous work, so the daily grant flow gives the balance on the later of 1 January and the first work anniversary.
+# Head office fills it once per employee (the join date is not on the employee record).
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true}
+  - {role: finance_manager, read: true}
+  - {role: member, read: true, if: "employee == user.name"}
+fields:
+  - {name: employee, type: link, to: user, label: {id: Karyawan}, required: true, in_list: true}
+  - {name: employee_name, type: data, label: {id: Nama}, read_only: true, in_list: true, compute: "employee != '' ? employee.full_name : ''"}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, in_list: true}
+  - {name: join_date, type: date, label: {id: Tanggal mulai kerja}, required: true, in_list: true}
+  # Days already taken in the year this profile is first granted (a business moving from paper): the first grant starts
+  # with them used.
+  - {name: opening_used, type: float, label: {id: Cuti yang sudah diambil tahun ini}, default: '0'}
+  - {name: active, type: check, label: {id: Aktif}, default: 'true'}
+rules:
+  - name: opening_used_range
+    on: save
+    check: "opening_used >= 0 && opening_used <= 365"
+    message: {id: 'Cuti yang sudah diambil tidak boleh negatif'}
+views:
+  list:
+    columns: [employee_name, outlet, join_date, opening_used, active]

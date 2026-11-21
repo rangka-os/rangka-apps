@@ -19,12 +19,22 @@ steps:
   - find_all: staff_attendance
     where: work_date == today() && docstatus != 2 && clock_in != ''
     as: logs
-  - if: "emps.filter(u, !logs.exists(l, l.employee == u.name)).size() > 0"
+  # Employees on approved leave today (module leave, rangka-apps#114) are not expected; empty without the module.
+  - if: "app_installed('leave')"
+    then:
+      - find_all: leave_request
+        where: docstatus == 1 && date_from <= today() && date_to >= today()
+        as: away
+    else:
+      - find_all: staff_attendance
+        where: "name == ''"
+        as: away
+  - if: "emps.filter(u, !logs.exists(l, l.employee == u.name) && !away.exists(r, r.employee == u.name)).size() > 0"
     notify: head_office
     notice: attendance_missing
     channel: email
     id: "'missing:' + string(today())"
-    title: '{emps.filter(u, !logs.exists(l, l.employee == u.name)).size()} karyawan belum absen masuk hari ini'
+    title: '{emps.filter(u, !logs.exists(l, l.employee == u.name) && !away.exists(r, r.employee == u.name)).size()} karyawan belum absen masuk hari ini'
     template: >-
-      {emps.filter(u, !logs.exists(l, l.employee == u.name)).size()} karyawan outlet belum absen masuk sampai jam 10.
+      {emps.filter(u, !logs.exists(l, l.employee == u.name) && !away.exists(r, r.employee == u.name)).size()} karyawan outlet belum absen masuk sampai jam 10.
       Siapa yang sudah masuk ada di dasbor Absen hari ini.

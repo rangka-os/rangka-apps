@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
 name: saya
 label: {id: Saya, en: Me}
-description: {id: 'Slip gaji, absen, kasbon, klaim, dan jadwal kamu di satu tempat'}
+description: {id: 'Slip gaji, absen, kasbon, klaim, cuti, dan jadwal kamu di satu tempat'}
 # The employee app (rangka-os#261): every employee, whatever their role, opens it from the phone (Lainnya, or the
 # "Slip gaji" shortcut of the installed app). Every widget filters on the person's own employee record, and the member
 # grants (rangka-os contract 0074) let them read only their own rows: payslips once released (submitted, run closed or
@@ -16,5 +16,8 @@ widgets:
   - {name: slips, type: list, empty: {id: 'Belum ada slip gaji. Slip muncul setelah gaji periode itu dibayar.'}, label: {id: Slip gaji saya}, description: {id: 'Slip muncul setelah gaji periode itu dibayar. Buka slip untuk mencetak atau menyimpan PDF.'}, model: payslip, filter: "employee == user.name && docstatus == 1", columns: [run_period_from, net_pay, run_period_to], sort: -run_period_to, limit: 12, span: 12}
   - {name: next_shifts, type: list, empty: {id: 'Belum ada jadwal minggu ini.'}, label: {id: Jadwal 7 hari ke depan}, model: shift_assignment, filter: "employee == user.name && published && work_date >= today() && days_between(today(), work_date) <= 6", columns: [work_date, shift_label, outlet], sort: work_date, limit: 7, span: 12, if: "app_installed('shifts')"}
   - {name: kasbon_left, type: number, label: {id: Sisa kasbon}, model: cash_advance_balance, aggregate: sum, field: remaining, filter: "employee == user.name && !cancelled", compact: true, span: 6, good_when: down}
+  - {name: leave_left, type: number, label: {id: Sisa cuti tahunan}, description: {id: 'Hari cuti tahunan yang masih bisa kamu ajukan tahun ini'}, model: leave_balance, aggregate: sum, field: remaining, filter: "employee == user.name && valid_from <= today() && valid_to >= today()", compact: true, span: 6, if: "app_installed('leave')"}
+  - {name: leave_waiting, type: number, label: {id: Cuti menunggu persetujuan}, model: leave_request, filter: "employee == user.name && docstatus == 0 && !rejected", compact: true, span: 6, good_when: down, if: "app_installed('leave')"}
   - {name: claims_due, type: number, label: {id: Klaim menunggu dibayar}, model: claim_settlement, aggregate: sum, field: amount, filter: "employee == user.name && !paid && !cancelled", compact: true, span: 6}
   - {name: attendance, type: list, empty: {id: 'Belum ada absen di periode ini.'}, label: {id: Absen terakhir}, model: staff_attendance, filter: "employee == user.name && docstatus != 2", period: work_date, columns: [work_date, status], sort: -work_date, limit: 7, span: 12}
+  - {name: leaves, type: list, empty: {id: 'Belum ada pengajuan cuti.'}, label: {id: Cuti dan izin saya}, description: {id: 'Ajukan cuti dari menu Kerja, Ajukan cuti'}, model: leave_request, filter: "employee == user.name && docstatus != 2", columns: [date_from, date_to, leave_type, days, status], sort: -date_from, limit: 7, span: 12, if: "app_installed('leave')"}

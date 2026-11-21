@@ -1,0 +1,139 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: leave_request
+label: {id: Pengajuan cuti, en: Leave request}
+icon: calendar
+is_submittable: true
+naming: CTI-{YYYY}-{#####}
+title_field: employee_name
+# Leave, sick days or an unpaid permit of one employee (rangka-apps#114). The draft is the request: the employee makes
+# it from the phone (screen ajukan_cuti) and never submits it. The outlet supervisor of the request's outlet, or head
+# office when the outlet has none, decides: submitting is the approval (contract 0007), ticking "Ditolak" refuses it.
+# Approving a request of a tracked type spends its days from the employee's balance and cancelling it returns them
+# (flows leave_request_on_submit, leave_request_on_cancel, under the lock of contract 0025). A supervisor never approves
+# their own request: head office does.
+#
+# Days: Monday to Friday between the two dates minus public holidays (public_holiday), or every day for a type that
+# counts calendar days. The weekday count is the closed form below (days_between from Monday 3 Jan 2000, whole weeks
+# at 5 plus the weekdays of the remaining days); the holidays are counted by flow leave_request_prepare_* when the
+# draft is saved (a compute cannot read other records) and checked again at approval. Half days are out of scope.
+#
+# Unpaid leave (type kind unpaid) reaches the payslip through attendance_summary.unpaid_leave_days when the period is
+# summarised, so a request is refused for approval or cancel once a submitted attendance period covers its days
+# (flow guard period_closed). Cancelling approved leave is by the approver or head office, never the employee.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, submit: true, cancel: true, export: true, print: true}
+  # The supervisor decides requests of their outlets (row scope outlet) and may also make one for themself; a request
+  # of their own they cannot approve (rule no_self_approve).
+  - {role: outlet_supervisor, read: true, write: true, submit: true, cancel: true}
+  - {role: outlet_supervisor, create: true, delete: true, if: "employee == user.name"}
+  - {role: finance_manager, read: true, export: true}
+  # Staff request their own leave and edit or delete it only while it is a draft; they never submit or cancel it.
+  - {role: employee, read: true, create: true, write: true, delete: true, if: "employee == user.name"}
+  - {role: cashier, read: true, create: true, write: true, delete: true, if: "employee == user.name"}
+  - {role: outlet_staff, read: true, create: true, write: true, delete: true, if: "employee == user.name"}
+  # Every employee whatever their role reads their own requests (member grant, contract 0074).
+  - {role: member, read: true, if: "employee == user.name"}
+fields:
+  - name: employee
+    type: link
+    to: user
+    label: {id: Karyawan}
+    required: true
+    in_list: true
+    default: user.name
+    set_once: true
+  - {name: employee_name, type: data, label: {id: Nama}, read_only: true, in_list: true, compute: "employee != '' ? employee.full_name : ''"}
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    required: true
+    in_list: true
+    default: "user.outlets.size() > 0 ? user.outlets[0] : ''"
+  - {name: leave_type, type: link, to: leave_type, label: {id: Jenis cuti}, required: true, in_list: true}
+  - {name: date_from, type: date, label: {id: Dari tanggal}, required: true, in_list: true, default: today()}
+  - {name: date_to, type: date, label: {id: Sampai tanggal}, required: true, in_list: true, default: today()}
+  - {name: reason, type: text, label: {id: Alasan}}
+  # The doctor's note (a regular attachment on the form, contract 0011): required for a type with needs_note when the
+  # request is approved.
+  - {name: attach, type: attach, label: {id: Surat dokter atau lampiran}}
+  - name: days
+    type: float
+    label: {id: Jumlah hari}
+    in_list: true
+    compute: "leave_type != '' && leave_type.calendar_days ? days_between(date_from, date_to) + 1 : max(0, workdays - holiday_days)"
+  - name: workdays
+    type: int
+    label: {id: Hari kerja Senin sampai Jumat}
+    read_only: true
+    hidden: true
+    compute: "int(5 * (((days_between(date_from, date_to) + 1) - (days_between(date_from, date_to) + 1) % 7) / 7) + max(0, min((days_between('2000-01-03', date_from) % 7) + (days_between(date_from, date_to) + 1) % 7, 5) - (days_between('2000-01-03', date_from) % 7)) + max(0, min((days_between('2000-01-03', date_from) % 7) + (days_between(date_from, date_to) + 1) % 7, 12) - 7))"
+  # Public holidays on a weekday between the two dates, set by the prepare flows and checked at approval.
+  - {name: holiday_days, type: int, label: {id: Hari libur nasional di antaranya}, default: '0', read_only: true}
+  # What was left of the balance when the request was saved (a note for the approver, never checked: the approval reads
+  # the live balance).
+  - {name: balance_left, type: float, label: {id: Sisa jatah saat diajukan}, default: '0', read_only: true}
+  - {name: year, type: int, grouping: false, label: {id: Tahun}, read_only: true, hidden: true, compute: "int(truncate(date_from, 4))"}
+  - {name: is_unpaid, type: check, label: {id: Tidak dibayar}, read_only: true, in_list: true, compute: "leave_type != '' && leave_type.kind == 'unpaid'"}
+  - {name: tracked, type: check, label: {id: Memakai jatah}, read_only: true, hidden: true, compute: "leave_type != '' && leave_type.tracked"}
+  - {name: calendar, type: check, label: {id: Hitung semua hari}, read_only: true, hidden: true, compute: "leave_type != '' && leave_type.calendar_days"}
+  - {name: rejected, type: check, label: {id: Ditolak}, default: 'false', chip: true}
+  - {name: decision_note, type: text, label: {id: Catatan persetujuan}}
+  - name: status
+    type: select
+    label: {id: Status}
+    in_list: true
+    chip: true
+    compute: "docstatus == 2 ? 'cancelled' : (docstatus == 1 ? 'approved' : (rejected ? 'rejected' : 'requested'))"
+    options:
+      - {value: requested, label: {id: Menunggu persetujuan}}
+      - {value: approved, label: {id: Disetujui}}
+      - {value: rejected, label: {id: Ditolak}}
+      - {value: cancelled, label: {id: Dibatalkan}}
+rules:
+  - name: employee_self
+    on: save
+    check: "employee == user.name || 'head_office' in user.roles || 'outlet_supervisor' in user.roles || 'owner' in user.roles"
+    message: {id: 'Kamu hanya bisa mengajukan cuti untuk diri sendiri'}
+  - name: dates_valid
+    on: save
+    check: "date_to >= date_from && days_between(date_from, date_to) <= 120"
+    message: {id: 'Sampai tanggal tidak boleh sebelum dari tanggal, paling lama 120 hari'}
+  - name: has_days
+    on: save
+    check: "days > 0"
+    message: {id: 'Tanggal yang dipilih jatuh di akhir pekan atau hari libur, tidak ada hari cuti yang dipakai'}
+  - name: max_days
+    on: save
+    check: "leave_type == '' || leave_type.max_days == 0 || days <= leave_type.max_days"
+    message: {id: 'Jumlah hari melebihi batas paling lama untuk jenis cuti ini'}
+  - name: same_year
+    on: save
+    check: "!tracked || year == int(truncate(date_to, 4))"
+    message: {id: 'Cuti tahunan tidak boleh melewati pergantian tahun. Ajukan terpisah untuk tiap tahun.'}
+  - name: note_attached
+    on: submit
+    check: "leave_type == '' || !leave_type.needs_note || attach != ''"
+    message: {id: 'Jenis cuti ini wajib melampirkan surat dokter. Minta karyawan melampirkannya dulu.'}
+  - name: not_rejected
+    on: submit
+    check: "!rejected"
+    message: {id: 'Pengajuan ini sudah ditandai ditolak'}
+  - name: no_self_approve
+    on: submit
+    check: "employee != user.name || 'head_office' in user.roles || 'owner' in user.roles"
+    message: {id: 'Cuti sendiri disetujui kantor pusat, bukan oleh orangnya sendiri'}
+views:
+  list:
+    columns: [name, employee_name, leave_type, date_from, date_to, days, status]
+    filters: [leave_type, status]
+    sort: -date_from
+  form:
+    layout:
+      - section: {id: Pengajuan}
+        columns:
+          - [employee, outlet, leave_type, date_from, date_to]
+          - [days, balance_left, reason, attach]
+      - section: {id: Keputusan}
+        columns:
+          - [rejected, decision_note]

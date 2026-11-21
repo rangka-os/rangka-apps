@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: leave_balance
+label: {id: Jatah cuti, en: Leave balance}
+icon: calendar
+naming: LVB-{######}
+title_field: employee_name
+# The days of one tracked leave type an employee has in one calendar year: granted (flow leave_grant_daily, once per
+# employee, type and year), used (a submitted request spends it, a cancelled one returns it, both under the flow read
+# lock of contract 0025: flows leave_request_on_submit and leave_request_on_cancel read this model before they write,
+# so two approvals sent at the same moment run one after the other and the second sees the first one's days) and
+# joint_used (cuti bersama days taken off the annual balance by flow public_holiday_joint_apply). Nobody types the
+# numbers: every one is read only and written by the flows.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, export: true}
+  - {role: finance_manager, read: true}
+  # The outlet supervisor approves requests of their outlets: their flows read and write the balance as the person acting.
+  - {role: outlet_supervisor, read: true, write: true}
+  # Every employee reads their own balance (member grant, contract 0074); their request flows read it as them.
+  - {role: member, read: true, if: "employee == user.name"}
+fields:
+  - {name: employee, type: link, to: user, label: {id: Karyawan}, read_only: true, in_list: true}
+  - {name: employee_name, type: data, label: {id: Nama}, read_only: true, in_list: true, compute: "employee != '' ? employee.full_name : ''"}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, read_only: true, in_list: true}
+  - {name: leave_type, type: link, to: leave_type, label: {id: Jenis cuti}, read_only: true, in_list: true}
+  - {name: year, type: int, grouping: false, label: {id: Tahun}, read_only: true, in_list: true}
+  - {name: valid_from, type: date, label: {id: Berlaku sejak}, read_only: true}
+  - {name: valid_to, type: date, label: {id: Berlaku sampai}, read_only: true}
+  - {name: granted, type: float, label: {id: Jatah}, default: '0', read_only: true, in_list: true}
+  - {name: used, type: float, label: {id: Terpakai}, default: '0', read_only: true, in_list: true}
+  - {name: joint_used, type: float, label: {id: Terpotong cuti bersama}, default: '0', read_only: true}
+  - name: remaining
+    type: float
+    label: {id: Sisa, en: Remaining}
+    in_list: true
+    compute: "granted - used - joint_used"
+views:
+  list:
+    columns: [employee_name, leave_type, year, granted, used, joint_used, remaining]
+    filters: [leave_type, year]
+    sort: -year

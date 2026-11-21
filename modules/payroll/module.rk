@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: payroll
-version: 2.3.0
+version: 2.4.0
 title: {id: Penggajian, en: Payroll}
 summary:
   id: Data gaji pekerja, periode gaji, slip gaji dan tutup periode.
@@ -14,7 +14,8 @@ icon: money-dollar-box-line
 # - internal: the firm's own staff, no project, no client invoice. Needs none of the optional modules.
 # 2.0 moved projects, invoicing, contacts and catalogue from requires to optional (breaking only for what they pulled
 # in). 2.2 (rangka-apps#117): staff request a kasbon, repaid by a monthly installment the slips fill in (one open kasbon
-# per worker, cash_advance_balance), and slips pay approved expense claims (module reimbursement) untaxed. Rules and
+# per worker, cash_advance_balance), and slips pay approved expense claims (module reimbursement) untaxed. 2.4 (rangka-apps#114): unpaid leave from module
+# leave reaches the slip (unpaid_days from the attendance summary, unpaid_deduction and its printed basis). Rules and
 # sources: docs/payroll.md.
 requires: {rangka: '>=0.5', users: ^1.0, workforce: ^1.0}
 optional: {projects: ^1.0, invoicing: ^1.7, contacts: ^1.0, catalogue: ^1.0, outlets: ^1.0, attendance: ^1.0, reimbursement: ^1.0}

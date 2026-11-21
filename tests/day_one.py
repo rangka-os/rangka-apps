@@ -3195,6 +3195,18 @@ MATRIX = {
                          "outlet_supervisor": {"read", "create"}, "project_admin": _R},
     "claim_payment": {"finance_manager": _ALL, "head_office": {"read", "export", "print"}},
     "reimbursement_guard": {"finance_manager": {"create"}, "head_office": {"create"}},   # never stored (a flow's refusal)
+    # leave and permits (module leave, rangka-apps#114): staff request their own (permission if: own rows), the supervisor of the
+    # outlet or head office approves (the submit), head office keeps the types, the profiles and the holidays
+    "leave_type": {"head_office": {"read", "create", "write", "delete", "export"}, "finance_manager": _R, "outlet_supervisor": _R, "cashier": _R,
+                   "outlet_staff": _R, "employee": _R},
+    "leave_profile": {"head_office": {"read", "create", "write", "delete", "export"}, "finance_manager": _R},
+    "leave_balance": {"head_office": {"read", "create", "write", "export"}, "finance_manager": _R, "outlet_supervisor": {"read", "write"}},
+    "public_holiday": {"head_office": {"read", "create", "write", "export"}, "finance_manager": _R, "outlet_supervisor": _R, "cashier": _R,
+                       "outlet_staff": _R, "employee": _R},
+    "leave_request": {"head_office": {"read", "create", "write", "delete", "submit", "cancel", "export", "print"},
+                      "outlet_supervisor": {"read", "create", "write", "delete", "submit", "cancel"}, "finance_manager": {"read", "export"},
+                      "employee": _OWN_REQ, "cashier": _OWN_REQ, "outlet_staff": _OWN_REQ},
+    "leave_guard": {r: {"create"} for r in ("cashier", "outlet_staff", "employee", "outlet_supervisor", "head_office")},   # never stored
     "payslip": {"finance_manager": _ALL, "project_admin": {"read", "create"}},
     "payroll_guard": {"finance_manager": {"create"}, "project_admin": {"create"}, "sales_manager": {"create"}},   # never stored (a flow's refusal; recaps are cancelled by the project admin)
     # owner automation pack: the summaries and their switches are the owner's alone; reorder rows are written by flows
@@ -3211,7 +3223,7 @@ APPEND_ONLY = {"project_ledger", "stock_adjustment_value"}
 
 # Member grants (rangka-os contract 0074): every member holds them next to their own role, read-only own records here.
 MEMBER = {"payslip": _RP, "attendance_summary": _R, "staff_attendance": _R, "cash_advance": _R, "cash_advance_balance": _R,
-          "expense_claim": _R, "claim_settlement": _R, "shift_assignment": _R, "shift_swap": _R}
+          "leave_request": _R, "leave_balance": _R, "leave_profile": _R, "expense_claim": _R, "claim_settlement": _R, "shift_assignment": _R, "shift_swap": _R}
 
 
 def granted(role, model):
@@ -5940,6 +5952,7 @@ import day_one_promotions  # noqa: E402
 import day_one_warehouses  # noqa: E402
 import day_one_loyalty  # noqa: E402
 import day_one_karyawan  # noqa: E402
+import day_one_leave  # noqa: E402
 import day_one_fixed_assets  # noqa: E402
 import day_one_portal  # noqa: E402
 import day_one_shifts  # noqa: E402
@@ -5970,6 +5983,7 @@ day_one_promotions.bind(sys.modules[__name__])   # after day_one_pos and day_one
 day_one_warehouses.bind(sys.modules[__name__])
 day_one_loyalty.bind(sys.modules[__name__])   # after day_one_promotions (same members)
 day_one_karyawan.bind(sys.modules[__name__])   # also registers demo-karyawan (orgs, members, setup)
+day_one_leave.bind(sys.modules[__name__])
 day_one_fixed_assets.bind(sys.modules[__name__])
 day_one_portal.bind(sys.modules[__name__])
 day_one_shifts.bind(sys.modules[__name__])   # after day_one_staff_attendance (its demo-fnb members)
@@ -5994,7 +6008,7 @@ SCENARIOS = {
     "demo-kepingan-keuangan": day_one_keuangan.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
 SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS + day_one_whatsapp_order.SCENARIOS   # orders need its shift and key
-SCENARIOS["demo-karyawan"] = day_one_karyawan.SCENARIOS + [scenario_permissions]
+SCENARIOS["demo-karyawan"] = day_one_karyawan.SCENARIOS + day_one_leave.SCENARIOS + [scenario_permissions]
 SCENARIOS["demo-salon"] = day_one_appointments.SCENARIOS + [scenario_permissions]
 # module promotions on demo-jasa: the invoice promo as a new line's default discount, before the permission matrix
 _i = SCENARIOS["demo-jasa"].index(scenario_permissions)

@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: leave_request_on_submit
+label: {id: 'Cuti disetujui, jatah dipotong'}
+# Approval (the submit of a request): refuses stale days (a public holiday added since the draft was saved), a day that
+# overlaps leave already approved for the employee, and days an attendance period has already summarised (payroll reads
+# unpaid days from that summary, so a later approval would never reach the slip). For a type with a balance it then
+# spends the days from the balance: the find of leave_balance takes the flow read lock of contract 0025 and holds it to
+# the end of this submit, so two approvals of the same employee sent at the same moment run one after the other and the
+# second one sees the first one's days (day_one scenario leave_race). Reads in the order leave_type, public_holiday,
+# leave_request, attendance_period, leave_balance. Runs as the approver.
+on: leave_request.submitted
+steps:
+  - find: leave_type
+    where: name == event.leave_type
+    as: lt
+  - find_all: public_holiday
+    where: holiday_date >= event.date_from && holiday_date <= event.date_to
+    as: hols
+  - if: "!event.calendar && hols.filter(h, days_between('2000-01-03', h.holiday_date) % 7 < 5).size() != event.holiday_days"
+    create: leave_guard
+    set:
+      reason: "'days_stale'"
+      document: event.name
+  - find: leave_request
+    where: >-
+      employee == event.employee && docstatus == 1 && name != event.name
+      && date_from <= event.date_to && date_to >= event.date_from
+    as: other
+  - if: other != null
+    create: leave_guard
+    set:
+      reason: "'overlap'"
+      document: other.name
+  - if: "app_installed('attendance')"
+    then:
+      - find: attendance_period
+        where: >-
+          docstatus == 1 && period_from <= event.date_to && period_to >= event.date_from
+          && (only_outlet == '' || only_outlet == event.outlet)
+        as: closed
+    else:
+      - find: leave_request
+        where: "name == ''"
+        as: closed
+  - if: closed != null
+    create: leave_guard
+    set:
+      reason: "'period_closed'"
+      document: event.name
+  - if: lt != null && lt.tracked
+    find: leave_balance
+    where: employee == event.employee && leave_type == event.leave_type && year == event.year
+    as: bal
+  - if: lt != null && lt.tracked && bal == null
+    create: leave_guard
+    set:
+      reason: "'no_balance'"
+      document: event.name
+  - if: lt != null && lt.tracked && bal != null && bal.granted - bal.used - bal.joint_used < event.days
+    create: leave_guard
+    set:
+      reason: "'over_balance'"
+      document: event.name
+  - if: lt != null && lt.tracked && bal != null
+    update: bal
+    set:
+      used: "bal.used + event.days"

@@ -24,9 +24,10 @@
 <table class="items">
   <thead><tr><th>Penghasilan</th><th class="num">Rp</th></tr></thead>
   <tbody>
-  {{if .Doc.unpaid_deduction}}<tr><td>Gaji pokok sebulan</td><td class="num">{{rupiah .Doc.monthly_salary}}</td></tr>
-  <tr><td>Tidak dibayar {{.Doc.unpaid_days}} hari</td><td class="num">-{{rupiah .Doc.unpaid_deduction}}</td></tr>
-  {{else}}<tr><td>Gaji pokok</td><td class="num">{{rupiah .Doc.base_pay}}</td></tr>{{end}}
+  {{if and .Doc.unpaid_deduction (eq .Doc.pay_basis "monthly")}}<tr><td>Gaji pokok sebulan</td><td class="num">{{rupiah .Doc.monthly_salary}}</td></tr>
+  <tr><td>Tidak dibayar {{.Doc.unpaid_days}} hari ({{.Doc.unpaid_basis}})</td><td class="num">-{{rupiah .Doc.unpaid_deduction}}</td></tr>
+  {{else}}<tr><td>Gaji pokok</td><td class="num">{{rupiah .Doc.base_pay}}</td></tr>
+  {{if .Doc.unpaid_deduction}}<tr><td>Tidak dibayar {{.Doc.unpaid_days}} hari ({{.Doc.unpaid_basis}})</td><td class="num">sudah tidak dibayar {{rupiah .Doc.unpaid_deduction}}</td></tr>{{end}}{{end}}
   {{if .Doc.allowance_pay}}<tr><td>Tunjangan</td><td class="num">{{rupiah .Doc.allowance_pay}}</td></tr>{{end}}
   {{if .Doc.overtime_pay}}<tr><td>Lembur</td><td class="num">{{rupiah .Doc.overtime_pay}}</td></tr>{{end}}
   {{if .Doc.holiday_overtime_pay}}<tr><td>Lembur hari libur ({{.Doc.holiday_overtime_days}} hari)</td><td class="num">{{rupiah .Doc.holiday_overtime_pay}}</td></tr>{{end}}

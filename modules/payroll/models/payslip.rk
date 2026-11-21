@@ -122,7 +122,7 @@ fields:
       - {value: casual, label: {id: 'Tidak tetap, dibayar harian'}}
   - {name: days, type: float, label: {id: Hari hadir}, default: '0', in_list: true}
   # Days a monthly employee is not paid for (absent without leave, unpaid leave), typed by finance or filled from the
-  # attendance summary. Each costs one day of the monthly salary (salary / 25, or / 21 in a five-day week), taken off
+  # attendance summary (unpaid_leave_days, module leave). Each costs one day of the monthly salary (salary / 25, or / 21 in a five-day week), taken off
   # the base pay, so PPh 21 is withheld on what is paid. The BPJS base stays the contractual wage (salary + fixed
   # allowance, never below the UMK): PP 44/2015, 46/2015, 45/2015 and Perpres 82/2018 take upah pokok + tunjangan
   # tetap as reported, not the month's cut pay (audit 101a F1). A daily worker is paid for days present.
@@ -196,7 +196,14 @@ fields:
   - name: unpaid_deduction
     type: currency
     label: {id: Potongan hari tidak dibayar, en: Unpaid days deduction}
-    compute: "pay_basis == 'monthly' ? round(monthly_salary * unpaid_days * 1.0 / (payroll_run.workdays_per_week == 5 ? 21 : 25)) : 0"
+    compute: "pay_basis == 'monthly' ? round(monthly_salary * unpaid_days * 1.0 / (payroll_run.workdays_per_week == 5 ? 21 : 25)) : round(day_rate * unpaid_days)"
+  # How unpaid_deduction was worked out, printed on the slip (rangka-apps#114). A monthly salary is cut by salary / 25
+  # (21 in a five-day week) per day; a daily worker is paid for the days present only, so an unpaid day is already out of
+  # `days` and the amount (daily wage x unpaid days) is shown as what was not paid, never taken off base_pay twice.
+  - name: unpaid_basis
+    type: data
+    label: {id: Dasar potongan hari tidak dibayar, en: Unpaid days basis}
+    compute: "unpaid_days <= 0 ? '' : (pay_basis == 'monthly' ? 'Gaji pokok bulanan / ' + (payroll_run.workdays_per_week == 5 ? '21' : '25') + ' x ' + string(unpaid_days) + ' hari' : 'Upah harian x ' + string(unpaid_days) + ' hari, tidak dihitung sebagai hari hadir')"
   - name: base_pay
     type: currency
     label: {id: Gaji pokok}
@@ -403,11 +410,12 @@ rules:
       && holiday_hours_2x <= holiday_overtime_days * (payroll_run.workdays_per_week == 5 ? 8 : 7)
       && holiday_hours_3x <= holiday_overtime_days && holiday_hours_4x <= holiday_overtime_days * 3
     message: {id: 'Hari 0 sampai 31, jam hari libur per tarif tidak melebihi batas per hari (2x: 7 atau 8, 3x: 1, 4x: 3), tidak negatif'}
-  # A monthly salary is cut by at most the whole month; a daily worker is paid for the days present only.
+  # A monthly salary is cut by at most the whole month; a daily worker is paid for the days present only (unpaid days of a
+  # daily worker are informational: see unpaid_basis).
   - name: unpaid_days_range
     on: save
-    check: "unpaid_days >= 0 && unpaid_days <= (payroll_run.workdays_per_week == 5 ? 21 : 25) && (pay_basis == 'monthly' || unpaid_days == 0)"
-    message: {id: 'Hari tidak dibayar hanya untuk gaji bulanan, 0 sampai 25 hari (21 untuk 5 hari kerja)'}
+    check: "unpaid_days >= 0 && unpaid_days <= (payroll_run.workdays_per_week == 5 ? 21 : 25) && (pay_basis == 'monthly' || unpaid_days <= 31)"
+    message: {id: 'Hari tidak dibayar 0 sampai 25 hari untuk gaji bulanan (21 untuk 5 hari kerja), 0 sampai 31 hari untuk upah harian'}
   # Rest-day hours climb the tiers in order (PP 35/2021 Pasal 31; audit gelombang 3 r2 R4): an hour at 3x only after a
   # full day at 2x (at least 5 hours, the shortest day of a six-day week; 8 hours in a five-day week), hours at 4x only
   # after the hour at 3x (at most 3 per day that had one).
@@ -484,7 +492,7 @@ views:
           - [holiday_hours_2x, holiday_hours_3x, holiday_hours_4x]
       - section: {id: Penghasilan}
         columns:
-          - [unpaid_deduction, base_pay, overtime_pay, holiday_overtime_pay, allowance_pay]
+          - [unpaid_deduction, unpaid_basis, base_pay, overtime_pay, holiday_overtime_pay, allowance_pay]
           - [thr_pay, late_deduction, cash_gross]
       - section: {id: BPJS}
         columns:

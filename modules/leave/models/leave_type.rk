@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: leave_type
+label: {id: Jenis cuti, en: Leave type}
+icon: calendar
+naming: LVT-{###}
+title_field: type_name
+# One kind of leave. Five rows are made when the site has none (flow leave_grant_daily): annual leave 12 days (the only
+# one with a balance), sick with a doctor's note, unpaid permit, maternity 90 calendar days and cuti bersama. A site
+# edits the rows: the days a year, whether weekends count, whether cuti bersama is taken off the annual balance.
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true}
+  # Everyone who asks for leave picks a type, and the flows of a request read it as the person acting.
+  - {role: finance_manager, read: true}
+  - {role: outlet_supervisor, read: true}
+  - {role: cashier, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: employee, read: true}
+fields:
+  - {name: type_name, type: data, label: {id: Nama jenis}, required: true, in_list: true}
+  - name: code
+    type: select
+    label: {id: Macam}
+    required: true
+    in_list: true
+    options:
+      - {value: annual, label: {id: Cuti tahunan}}
+      - {value: sick, label: {id: Sakit}}
+      - {value: unpaid, label: {id: Izin tidak dibayar}}
+      - {value: maternity, label: {id: Cuti melahirkan}}
+      - {value: joint, label: {id: Cuti bersama}}
+      - {value: other, label: {id: Lainnya}}
+  - name: kind
+    type: select
+    label: {id: Dibayar atau tidak}
+    default: "'paid'"
+    in_list: true
+    options:
+      - {value: paid, label: {id: Dibayar}}
+      - {value: unpaid, label: {id: Tidak dibayar}}
+  # Only a tracked type has a balance (leave_balance) that a request spends.
+  - {name: tracked, type: check, label: {id: Ada jatah per tahun}, default: 'false', in_list: true}
+  - {name: annual_days, type: int, label: {id: Jatah hari per tahun}, default: '0', depends_on: tracked}
+  # Weekends and public holidays count (maternity leave is 3 months in a row); else only working days Monday to Friday
+  # not on a public holiday count.
+  - {name: calendar_days, type: check, label: {id: Hitung semua hari termasuk akhir pekan}, default: 'false'}
+  - {name: max_days, type: int, label: {id: 'Paling lama per pengajuan (hari, 0 = bebas)'}, default: '0'}
+  - {name: needs_note, type: check, label: {id: Wajib lampirkan surat dokter}, default: 'false'}
+  # Annual leave only: a cuti bersama day is taken off the annual balance of every employee (the default); untick to
+  # leave the balance alone.
+  - {name: joint_deducts, type: check, label: {id: Cuti bersama memotong cuti tahunan}, default: 'true', depends_on: "code == 'annual'"}
+  - {name: active, type: check, label: {id: Dipakai}, default: 'true'}
+views:
+  list:
+    columns: [type_name, kind, tracked, annual_days, needs_note, active]

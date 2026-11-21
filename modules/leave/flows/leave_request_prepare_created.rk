@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: leave_request_prepare_created
+label: {id: Hari libur dan sisa jatah pengajuan cuti (baru)}
+# When a draft request is saved: counts the public holidays on a weekday between its dates (a compute cannot read other
+# records) into holiday_days and notes the balance left. A request of a tracked type for more days than the balance has,
+# or for a year without a balance, is refused here already, so the employee hears it at once; the approval reads the
+# balance again under the lock (leave_request_on_submit). Runs as the person saving.
+on: leave_request.created
+steps:
+  - find: leave_request
+    where: name == event.name
+    as: me
+  - find: leave_type
+    where: name == event.leave_type
+    as: lt
+  - find_all: public_holiday
+    where: holiday_date >= event.date_from && holiday_date <= event.date_to
+    as: hols
+  - find: leave_balance
+    where: employee == event.employee && leave_type == event.leave_type && year == event.year
+    as: bal
+  - if: lt != null && lt.tracked && bal == null
+    create: leave_guard
+    set:
+      reason: "'no_balance'"
+      document: event.name
+  - if: >-
+      lt != null && lt.tracked && bal != null
+      && bal.granted - bal.used - bal.joint_used < (event.workdays - hols.filter(h, days_between('2000-01-03', h.holiday_date) % 7 < 5).size())
+    create: leave_guard
+    set:
+      reason: "'over_balance'"
+      document: event.name
+  - update: me
+    set:
+      holiday_days: "lt != null && lt.calendar_days ? 0 : hols.filter(h, days_between('2000-01-03', h.holiday_date) % 7 < 5).size()"
+      balance_left: "bal != null ? bal.granted - bal.used - bal.joint_used : 0"

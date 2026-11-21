@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: leave_request_on_cancel
+label: {id: 'Cuti dibatalkan, jatah kembali'}
+# Cancelling approved leave returns its days to the balance, under the same lock as the approval. Refused once an
+# attendance period covering the days is submitted (its summary already counted them): cancel that period first. The
+# balance is never pushed below 0 by a return that was already taken back by hand.
+on: leave_request.cancelled
+steps:
+  - find: leave_type
+    where: name == event.leave_type
+    as: lt
+  - if: "app_installed('attendance')"
+    then:
+      - find: attendance_period
+        where: >-
+          docstatus == 1 && period_from <= event.date_to && period_to >= event.date_from
+          && (only_outlet == '' || only_outlet == event.outlet)
+        as: closed
+    else:
+      - find: leave_request
+        where: "name == ''"
+        as: closed
+  - if: closed != null
+    create: leave_guard
+    set:
+      reason: "'period_closed'"
+      document: event.name
+  - if: lt != null && lt.tracked
+    find: leave_balance
+    where: employee == event.employee && leave_type == event.leave_type && year == event.year
+    as: bal
+  - if: lt != null && lt.tracked && bal != null
+    update: bal
+    set:
+      used: "bal.used - event.days > 0 ? bal.used - event.days : 0"

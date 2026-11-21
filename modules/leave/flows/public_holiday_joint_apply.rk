@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: public_holiday_joint_apply
+label: {id: Cuti bersama memotong cuti tahunan}
+# Once, when a cuti bersama day is added on a weekday: every annual balance of that year that already exists and began on
+# or before the day loses one day (joint_used), unless the annual type has joint_deducts off. A balance granted later
+# counts the joint days it covers when it is made (flow leave_grant_daily), so each pair is counted once. A joint day
+# on a weekend costs nothing. Wrongly added: head office fixes the balances by hand (docs/leave.md).
+on: public_holiday.created
+if: "event.joint && days_between('2000-01-03', event.holiday_date) % 7 < 5"
+steps:
+  - find: leave_type
+    where: code == 'annual' && active
+    as: lt
+  - if: lt != null && lt.joint_deducts
+    then:
+      - find_all: leave_balance
+        where: leave_type == lt.name && year == int(truncate(event.holiday_date, 4)) && valid_from <= event.holiday_date
+        as: bals
+      - for_each: bals
+        as: b
+        do:
+          - update: b
+            set:
+              joint_used: b.joint_used + 1

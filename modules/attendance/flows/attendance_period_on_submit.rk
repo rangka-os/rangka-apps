@@ -28,6 +28,27 @@ steps:
     set:
       reason: "'period_overlap'"
       document: other.name
+  # Approved leave (module leave, rangka-apps#114) overlapping the period, and the public holidays in it: an employee on
+  # leave is not absent, and the days of unpaid leave reach the payslip through unpaid_leave_days. Each request is cut to
+  # the period; Monday to Friday count (every day for a type counting calendar days) minus public holidays on a weekday.
+  # Without the leave module both lists are empty (a find on a model that is not installed fails).
+  - if: "app_installed('leave')"
+    then:
+      - find_all: public_holiday
+        where: holiday_date >= event.period_from && holiday_date <= event.period_to
+        as: hols
+      - find_all: leave_request
+        where: >-
+          docstatus == 1 && date_from <= event.period_to && date_to >= event.period_from
+          && (event.only_outlet == '' || outlet == event.only_outlet)
+        as: leaves
+    else:
+      - find_all: staff_attendance
+        where: "name == ''"
+        as: hols
+      - find_all: staff_attendance
+        where: "name == ''"
+        as: leaves
   - find_all: user
     where: access == 'active' && !attendance_exempt
     sort: full_name
@@ -41,7 +62,7 @@ steps:
   - for_each: emps
     as: u
     do:
-      - if: "event.only_outlet == '' || logs.exists(l, l.employee == u.name)"
+      - if: "event.only_outlet == '' || logs.exists(l, l.employee == u.name) || leaves.exists(r, r.employee == u.name)"
         create: attendance_summary
         set:
           attendance_period: event.name
@@ -58,3 +79,5 @@ steps:
           early_min_total: "logs.map(l, l.employee == u.name ? l.early_min : 0).sum()"
           overtime_hours: "logs.map(l, l.employee == u.name ? l.overtime_hours : 0.0).sum()"
           worked_min_total: "logs.map(l, l.employee == u.name ? l.worked_min : 0).sum()"
+          leave_days: "leaves.filter(r, r.employee == u.name && !r.is_unpaid).map(r, (r.calendar ? (days_between((r.date_from > event.period_from ? r.date_from : event.period_from), (r.date_to < event.period_to ? r.date_to : event.period_to)) + 1) : int(5 * (((days_between((r.date_from > event.period_from ? r.date_from : event.period_from), (r.date_to < event.period_to ? r.date_to : event.period_to)) + 1) - (days_between((r.date_from > event.period_from ? r.date_from : event.period_from), (r.date_to < event.period_to ? r.date_to : event.period_to)) + 1) % 7) / 7) + max(0, min((days_between('2000-01-03', (r.date_from > event.period_from ? r.date_from : event.period_from)) % 7) + (days_between((r.date_from > event.period_from ? r.date_from : event.period_from), (r.date_to < event.period_to ? r.date_to : event.period_to)) + 1) % 7, 5) - (days_between('2000-01-03', (r.date_from > event.period_from ? r.date_from : event.period_from)) % 7)) + max(0, min((days_between('2000-01-03', (r.date_from > event.period_from ? r.date_from : event.period_from)) % 7) + (days_between((r.date_from > event.period_from ? r.date_from : event.period_from), (r.date_to < event.period_to ? r.date_to : event.period_to)) + 1) % 7, 12) - 7)) - hols.filter(h, h.holiday_date >= (r.date_from > event.period_from ? r.date_from : event.period_from) && h.holiday_date <= (r.date_to < event.period_to ? r.date_to : event.period_to) && days_between('2000-01-03', h.holiday_date) % 7 < 5).size())).sum()"
+          unpaid_leave_days: "leaves.filter(r, r.employee == u.name && r.is_unpaid).map(r, (r.calendar ? (days_between((r.date_from > event.period_from ? r.date_from : event.period_from), (r.date_to < event.period_to ? r.date_to : event.period_to)) + 1) : int(5 * (((days_between((r.date_from > event.period_from ? r.date_from : event.period_from), (r.date_to < event.period_to ? r.date_to : event.period_to)) + 1) - (days_between((r.date_from > event.period_from ? r.date_from : event.period_from), (r.date_to < event.period_to ? r.date_to : event.period_to)) + 1) % 7) / 7) + max(0, min((days_between('2000-01-03', (r.date_from > event.period_from ? r.date_from : event.period_from)) % 7) + (days_between((r.date_from > event.period_from ? r.date_from : event.period_from), (r.date_to < event.period_to ? r.date_to : event.period_to)) + 1) % 7, 5) - (days_between('2000-01-03', (r.date_from > event.period_from ? r.date_from : event.period_from)) % 7)) + max(0, min((days_between('2000-01-03', (r.date_from > event.period_from ? r.date_from : event.period_from)) % 7) + (days_between((r.date_from > event.period_from ? r.date_from : event.period_from), (r.date_to < event.period_to ? r.date_to : event.period_to)) + 1) % 7, 12) - 7)) - hols.filter(h, h.holiday_date >= (r.date_from > event.period_from ? r.date_from : event.period_from) && h.holiday_date <= (r.date_to < event.period_to ? r.date_to : event.period_to) && days_between('2000-01-03', h.holiday_date) % 7 < 5).size())).sum()"

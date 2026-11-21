@@ -30,3 +30,15 @@ payroll_profile:
   - {name: PGJ-0006, worker: WRK-0006, nik: '9999070000000006', has_tax_id: true, ptkp_status: tk1, pay_basis: daily, employment: casual, monthly_salary: 0, fixed_allowance: 0, daily_allowance: 15000, bpjs_tk: true, bpjs_jp: false, bpjs_kes: true, bank_name: Bank Contoh, bank_account: '0011000006', active: true}
   - {name: PGJ-0007, worker: WRK-0007, nik: '9999070000000007', has_tax_id: true, ptkp_status: tk0, pay_basis: monthly, employment: permanent, monthly_salary: 2800000, fixed_allowance: 0, daily_allowance: 0, bpjs_tk: true, bpjs_jp: true, bpjs_kes: true, bank_name: '', bank_account: '', active: true}
   - {name: PGJ-0008, worker: WRK-0008, nik: '9999070000000008', has_tax_id: true, ptkp_status: tk0, pay_basis: daily, employment: casual, monthly_salary: 0, fixed_allowance: 0, daily_allowance: 15000, bpjs_tk: true, bpjs_jp: false, bpjs_kes: true, bank_name: Bank Contoh, bank_account: '0011000008', active: true}
+leave_type:
+  - {name: LVT-001, type_name: Cuti tahunan, code: annual, kind: paid, tracked: true, annual_days: 12, joint_deducts: true, active: true}
+  - {name: LVT-002, type_name: Sakit dengan surat dokter, code: sick, kind: paid, needs_note: true, active: true}
+  - {name: LVT-003, type_name: Izin tidak dibayar, code: unpaid, kind: unpaid, active: true}
+  - {name: LVT-004, type_name: Cuti melahirkan, code: maternity, kind: paid, calendar_days: true, max_days: 90, active: true}
+  - {name: LVT-005, type_name: Cuti bersama, code: joint, kind: paid, active: true}
+leave_profile:
+  - {name: LVP-001, employee: USR-002, outlet: OUT-01, join_date: '2021-03-01', opening_used: 0, active: true}
+  - {name: LVP-002, employee: USR-003, outlet: OUT-02, join_date: '2022-02-14', opening_used: 0, active: true}
+  - {name: LVP-003, employee: USR-004, outlet: OUT-01, join_date: '2022-05-02', opening_used: 0, active: true}
+  - {name: LVP-004, employee: USR-005, outlet: OUT-02, join_date: '2021-08-16', opening_used: 0, active: true}
+  - {name: LVP-005, employee: USR-006, outlet: OUT-01, join_date: '2023-01-09', opening_used: 0, active: true}

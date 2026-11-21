@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+name: ajukan_cuti
+type: entry
+label: {id: Ajukan cuti, en: Request leave}
+description: {id: 'Ajukan cuti, sakit atau izin. Kepala outlet atau kantor pusat yang menyetujui, jatah cuti tahunanmu ada di halaman Saya.'}
+icon: calendar
+# A staff member asks for leave from their phone (contract 0030 §2 entry, rangka-apps#114): a draft leave_request is the
+# request. The approver (the outlet supervisor, or head office) decides it; staff never submit it. The doctor's note is
+# the regular attachment field (no capture, DECISIONS.md 21 Nov 2026).
+roles: [employee, cashier, outlet_staff, outlet_supervisor]
+device: phone
+entry:
+  model: leave_request
+  fields: [leave_type, date_from, date_to, reason, attach]
+  submit: false
+  again: false

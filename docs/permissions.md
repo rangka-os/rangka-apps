@@ -397,3 +397,23 @@ real lot holds stock, leaving serial while a serial is in stock or in transit, a
 stock are refused. The flow reads the registers as the person saving the item, so a role that cannot read
 `stock_balance` cannot switch an item to serial (head office and the owner can). Stock counts stay whole-item in v1:
 a count line has no lot number (a no-lot line on a lot item would count only the no-lot bucket).
+
+## Leave (module leave, rangka-apps#114)
+
+Member grants (read, `employee == user.name`) come on top of the table: `leave_request`, `leave_balance`, `leave_profile`.
+c = create, r = read, w = write, d = delete, s = submit (the approval of a request), x = cancel, e = export, p = print.
+The outlet supervisor is row scoped by `outlet` (their outlets only); `if own` means `employee == user.name`.
+
+| Model | cashier, outlet_staff, employee | outlet_supervisor | head_office | finance_manager |
+| --- | --- | --- | --- | --- |
+| leave_request | r c w d (if own), no submit, no cancel | r w s x; c d (if own); cannot approve their own request | r c w d s x e p | r e |
+| leave_balance (numbers written by flows only, all fields read only) | r (member, own) | r w (the approval flows write it as them) | r c w e | r |
+| leave_type | r | r | r c w d e | r |
+| leave_profile | r (member, own) | | r c w d e | r |
+| public_holiday | r | r | r c w e | r |
+| leave_guard (never stored; flows' refusals) | c | c | c | |
+
+An approval or a cancel moves the balance as the person acting (flows `leave_request_on_submit`, `leave_request_on_cancel`),
+so the outlet supervisor needs write on `leave_balance`; the numbers cannot be typed in a form (read only), and a request
+needs `submit` that only the supervisor of its outlet and head office hold. A supervisor never approves their own request
+(rule `no_self_approve`); head office does. A request of an outlet without a supervisor is decided by head office.

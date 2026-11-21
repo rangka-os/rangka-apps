@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
 name: karyawan_gaji
-version: 1.2.0
+version: 1.3.0
 title: {id: Karyawan dan gaji, en: Staff and payroll}
 label: {id: Rangka Karyawan dan Gaji, en: Rangka Staff and Payroll}
 summary:
@@ -23,6 +23,7 @@ modules:
   attendance: ^1.0
   payroll: ^2.2
   reimbursement: ^1.0
+  leave: ^1.0
 # shifts (rangka-apps#120) comes with absen_karyawan; the saya dashboard shows the coming shifts where it is installed
 optional:
   shifts: ^1.0
@@ -35,9 +36,13 @@ home: {dashboard: gaji_ringkas}
 work:
   - {screen: klaim_biaya, roles: [employee, cashier, outlet_staff, outlet_supervisor]}
   - {screen: ajukan_kasbon, roles: [employee, cashier, outlet_staff, outlet_supervisor]}
+  # rangka-apps#114: staff ask for leave, sick days or an unpaid permit; their balance is on the Saya page
+  - {screen: ajukan_cuti, roles: [employee, cashier, outlet_staff, outlet_supervisor]}
 menu:
   - group: {id: Gaji}
     items: [payroll_run, payslip, payroll_close, cash_advance, cash_advance_balance]
+  - group: {id: Cuti dan izin}
+    items: [leave_request, leave_balance, leave_profile, leave_type, public_holiday]
   - group: {id: Klaim biaya}
     items: [expense_claim, claim_settlement, claim_payment, expense_category]
   - group: {id: Karyawan}
