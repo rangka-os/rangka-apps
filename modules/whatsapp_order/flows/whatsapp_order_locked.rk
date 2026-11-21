@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A confirmed WhatsApp order is final (audit 2026-11-21 finding 2): its sale and its reply were made from these lines,
+# so a person's later edit of the order (lines, quantities, customer, outlet) is refused. Changes go on the sale at
+# the kasir. Writes by flows start no flow, so the confirm's own write of the sale and the reply is not seen here.
+name: whatsapp_order_locked
+label: {id: 'Pesanan WhatsApp yang sudah dikonfirmasi tidak bisa diubah'}
+description: {id: 'Setelah dikonfirmasi, isi pesanan WhatsApp tetap seperti yang dibalas ke pelanggan. Perubahan dilakukan di transaksi kasirnya.'}
+on: whatsapp_order.updated
+if: event.before != null && event.before.state == 'confirmed' && event.state == 'confirmed'
+steps:
+  - create: whatsapp_order_guard
+    set: {reason: "'locked'", document: event.name}

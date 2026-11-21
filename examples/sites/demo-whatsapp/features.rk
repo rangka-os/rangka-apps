@@ -2,7 +2,7 @@
 plans:
   - name: tumbuh
     label: {id: Tumbuh, en: Growth}
-    apps: [kasir, stok_outlet, dapur, pembukuan, faktur_piutang, sewa_alat]
-    modules: [whatsapp, whatsapp_receipt, whatsapp_reminder, whatsapp_order_ready, whatsapp_booking]
+    apps: [kasir, stok_outlet, dapur, pembukuan, faktur_piutang, sewa_alat, pesanan_whatsapp]
+    modules: [whatsapp, whatsapp_receipt, whatsapp_reminder, whatsapp_order_ready, whatsapp_booking, whatsapp_order]
     capabilities: [realtime, queue, scheduler, files, search, notify_email, notify_whatsapp, api, mcp, ai]
     limits: {users: 15, outlets: 5, storage_mb: 10240, ai_credits_month: 2000}

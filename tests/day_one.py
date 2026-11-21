@@ -5930,6 +5930,7 @@ import day_one_doku  # noqa: E402
 import day_one_midtrans  # noqa: E402
 import day_one_pos_export  # noqa: E402
 import day_one_whatsapp  # noqa: E402
+import day_one_whatsapp_order  # noqa: E402
 import day_one_kitchen  # noqa: E402
 import day_one_attendance  # noqa: E402
 import day_one_staff  # noqa: E402
@@ -5959,6 +5960,7 @@ day_one_doku.bind(sys.modules[__name__])
 day_one_midtrans.bind(sys.modules[__name__])
 day_one_pos_export.bind(sys.modules[__name__])
 day_one_whatsapp.bind(sys.modules[__name__])   # also registers demo-whatsapp (orgs, kernel env, setup)
+day_one_whatsapp_order.bind(sys.modules[__name__])
 day_one_kitchen.bind(sys.modules[__name__])
 day_one_attendance.bind(sys.modules[__name__])
 day_one_staff.bind(sys.modules[__name__])
@@ -5991,7 +5993,7 @@ SCENARIOS = {
     "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + day_one_promotions.SCENARIOS + day_one_loyalty.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-kepingan-keuangan": day_one_keuangan.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
-SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS
+SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS + day_one_whatsapp_order.SCENARIOS   # orders need its shift and key
 SCENARIOS["demo-karyawan"] = day_one_karyawan.SCENARIOS + [scenario_permissions]
 SCENARIOS["demo-salon"] = day_one_appointments.SCENARIOS + [scenario_permissions]
 # module promotions on demo-jasa: the invoice promo as a new line's default discount, before the permission matrix
