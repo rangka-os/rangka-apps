@@ -26,6 +26,8 @@ modules:
 # shifts (rangka-apps#120) comes with absen_karyawan; the saya dashboard shows the coming shifts where it is installed
 optional:
   shifts: ^1.0
+  # commission (rangka-apps#110): submitted statements fill the slip's piece_income; the saya page shows the own month
+  commission: ^1.0
 # saya: the employee app's page (rangka-os#261, contract 0074), open to every employee whatever their role
 dashboards: [gaji_ringkas, transfer_gaji, klaim_kasbon_saya, saya]
 roles: [finance_manager, head_office, outlet_supervisor, cashier, outlet_staff, employee]

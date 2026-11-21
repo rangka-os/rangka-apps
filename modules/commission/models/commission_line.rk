@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One commission earned on one staff line of a receipt or invoice, made by the flows commission_on_*_submitted (never
+# typed). status ok = counted; no_staff = a rule matched the item but nobody was named; no_rule = someone was named but no
+# rule matched (so nothing is silently zero). A cancel before the statement cancels the line; after it, the line is marked
+# reversed and a negative correction line is made, dated the cancel day, so it lands in the next statement.
+name: commission_line
+label: {id: Komisi per barang, en: Commission line}
+icon: percent
+naming: KOM-{YYYY}-{#####}
+title_field: employee
+permissions:
+  # every field is read_only: the write grants are for the flows, which run as the user (a statement's submit locks lines as
+  # finance, a void cancels them as the seller)
+  - {role: head_office, read: true, write: true, export: true}
+  - {role: finance_manager, read: true, write: true, export: true}
+  # the seller's flows read the sale's lines to cancel them, so these roles read the lines of their own outlets (role scope);
+  # staff outside these roles read only their own (member grant)
+  - {role: cashier, read: true, create: true, write: true}
+  - {role: outlet_staff, read: true, create: true, write: true}
+  - {role: sales_manager, read: true, create: true, write: true}
+  - {role: member, read: true, if: "employee == user.name"}
+fields:
+  - {name: employee, type: link, to: user, label: {id: Karyawan}, read_only: true, in_list: true}
+  - name: source
+    type: select
+    label: {id: Sumber}
+    read_only: true
+    options:
+      - {value: pos, label: {id: Transaksi kasir}}
+      - {value: invoice, label: {id: Faktur penjualan}}
+  - {name: source_name, type: data, label: {id: Nomor transaksi}, read_only: true, in_list: true}
+  - {name: sale_date, type: date, label: {id: Tanggal}, read_only: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, read_only: true}
+  - {name: item, type: link, to: item, label: {id: Barang atau jasa}, read_only: true}
+  - {name: qty, type: float, label: {id: Qty}, read_only: true}
+  - {name: base_amount, type: currency, label: {id: Nilai bersih}, read_only: true, help: {id: 'Setelah diskon, sebelum PPN'}}
+  - {name: rule, type: link, to: commission_rule, label: {id: Aturan}, read_only: true}
+  - {name: basis, type: data, label: {id: Cara hitung}, read_only: true, hidden: true}
+  - {name: rate_value, type: float, label: {id: Persen atau nominal}, read_only: true}
+  - {name: amount, type: currency, label: {id: Komisi}, read_only: true, in_list: true}
+  - name: status
+    type: select
+    label: {id: Status}
+    default: "'ok'"
+    read_only: true
+    in_list: true
+    chip: true
+    options:
+      - {value: ok, label: {id: Dihitung}}
+      - {value: no_staff, label: {id: Tanpa staf}}
+      - {value: no_rule, label: {id: Tanpa aturan}}
+  - {name: correction, type: check, label: {id: Koreksi}, default: 'false', read_only: true}
+  - {name: reversed, type: check, label: {id: Sudah dikoreksi}, default: 'false', read_only: true}
+  - {name: cancelled, type: check, label: {id: Batal}, default: 'false', read_only: true, in_list: true}
+  - {name: statement, type: link, to: commission_statement, label: {id: Rekap komisi}, read_only: true}
+views:
+  list:
+    columns: [name, employee, sale_date, source_name, base_amount, amount, status, cancelled]
+    sort: -sale_date
+    filters: [employee, status, cancelled]

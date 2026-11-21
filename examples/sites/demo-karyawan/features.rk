@@ -12,5 +12,6 @@ plans:
     label: {id: Tumbuh, en: Growth}
     extends: mulai
     apps: [karyawan_gaji, absen_karyawan, pembukuan]
+    modules: [commission]
     capabilities: [realtime, queue, scheduler, files, search, notify_email, notify_whatsapp, api, mcp, ai, sso]
     limits: {users: 15, staff: 50, outlets: 5, storage_mb: 10240, ai_credits_month: 2000}

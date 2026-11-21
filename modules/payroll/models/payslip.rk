@@ -149,6 +149,10 @@ fields:
   # THR: months of service (12 or more = one month's wage, fewer = pro rata; under 1 = none). 0 = no THR this month.
   - {name: thr_tenure_months, type: float, label: {id: Masa kerja untuk THR (bulan)}, default: '0'}
   - {name: other_income, type: currency, label: {id: Insentif lain}, default: '0'}
+  # Commission (module commission, rangka-apps#110): the employee's submitted commission statements of this tax month,
+  # filled when a fill flow makes the slip, editable on the draft. Taxed income (inside cash_gross, so PPh 21 counts
+  # it as penghasilan bruto, PMK 168/2023) but not a fixed wage, so it stays out of bpjs_base.
+  - {name: piece_income, type: currency, label: {id: Komisi dan upah borongan}, default: '0'}
   - {name: other_deduction, type: currency, label: {id: Potongan lain (kasbon)}, default: '0'}
   # The kasbon this deduction repays (cash_advance of the same worker, submitted): its cancel is then refused, and the
   # live slips linking it never deduct more than it (payslip_advance_guard, audit gelombang 3 F5).
@@ -232,7 +236,7 @@ fields:
   - name: cash_gross
     type: currency
     label: {id: 'Penghasilan (gaji, tunjangan, lembur, THR)'}
-    compute: base_pay + overtime_pay + holiday_overtime_pay + allowance_pay + thr_pay + other_income - late_deduction
+    compute: base_pay + overtime_pay + holiday_overtime_pay + allowance_pay + thr_pay + other_income + piece_income - late_deduction
     in_list: true
   # BPJS wage: pokok + tunjangan tetap, never below the UMK of the site. A monthly salary counts whole: unpaid days and
   # lateness cut the pay, not the reported wage (audit 101a F1).
@@ -398,7 +402,7 @@ rules:
     check: >-
       days >= 0 && days <= 31 && day_rate >= 0 && monthly_salary >= 0 && fixed_allowance >= 0 && daily_allowance >= 0
       && overtime_hours >= 0 && overtime_hours <= 744 && overtime_days >= 0 && overtime_days <= days + 0.0001 && overtime_rate >= 0
-      && thr_tenure_months >= 0 && other_income >= 0 && other_deduction >= 0 && late_min_total >= 0
+      && thr_tenure_months >= 0 && other_income >= 0 && piece_income >= 0 && other_deduction >= 0 && late_min_total >= 0
       && holiday_overtime_days >= 0 && holiday_overtime_days <= 31 && holiday_hours_2x >= 0 && holiday_hours_3x >= 0 && holiday_hours_4x >= 0
       && holiday_hours_2x <= holiday_overtime_days * (payroll_run.workdays_per_week == 5 ? 8 : 7)
       && holiday_hours_3x <= holiday_overtime_days && holiday_hours_4x <= holiday_overtime_days * 3
@@ -477,7 +481,7 @@ views:
       - section: {id: Kehadiran dan upah}
         columns:
           - [pay_basis, employment, days, unpaid_days, late_min_total, day_rate, monthly_salary, fixed_allowance, daily_allowance]
-          - [overtime_hours, overtime_days, overtime_rate, thr_tenure_months, other_income, other_deduction, cash_advance, open_advance]
+          - [overtime_hours, overtime_days, overtime_rate, thr_tenure_months, other_income, piece_income, other_deduction, cash_advance, open_advance]
       - section: {id: Hari libur masuk kerja}
         columns:
           - [holiday_overtime_days]

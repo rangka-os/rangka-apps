@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Who earns what on a sale. Per source (cashier receipt or sales invoice), the most specific live rule wins: an item over
+# a category over everything, then the higher priority. The base is the line's net amount after discounts and before PPN.
+name: commission_rule
+label: {id: Aturan komisi, en: Commission rule}
+icon: percent
+title_field: rule_name
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true, export: true}
+  - {role: finance_manager, read: true}
+  # the sale's flows run as the seller and read the live rules (a flow reads as the user, like loyalty_entry)
+  - {role: cashier, read: true}
+  - {role: outlet_staff, read: true}
+  - {role: sales_manager, read: true}
+fields:
+  - {name: rule_name, type: data, label: {id: Nama aturan}, required: true, in_list: true, help: {id: 'Misalnya Jasa potong 30%'}}
+  - name: source
+    type: select
+    label: {id: Berlaku untuk}
+    default: "'pos'"
+    in_list: true
+    chip: true
+    options:
+      - {value: pos, label: {id: Transaksi kasir}}
+      - {value: invoice, label: {id: Faktur penjualan}}
+  - name: applies_to
+    type: select
+    label: {id: Barang atau jasa}
+    default: "'all'"
+    in_list: true
+    options:
+      - {value: all, label: {id: Semua}}
+      - {value: category, label: {id: Satu kategori}}
+      - {value: item, label: {id: Satu barang atau jasa}}
+  - {name: item, type: link, to: item, label: {id: Barang atau jasa}, depends_on: "applies_to == 'item'"}
+  - {name: item_category, type: link, to: item_category, label: {id: Kategori}, depends_on: "applies_to == 'category'"}
+  - {name: role_hint, type: data, label: {id: Untuk jabatan}, help: {id: 'Catatan saja, misalnya stylist. Tidak dipakai menghitung'}}
+  - name: basis
+    type: select
+    label: {id: Cara hitung}
+    default: "'percent'"
+    options:
+      - {value: percent, label: {id: Persen dari nilai bersih}}
+      - {value: per_qty, label: {id: Tetap per satuan}}
+  - {name: rate, type: percent, label: {id: Persen komisi}, default: '0', in_list: true, depends_on: "basis == 'percent'"}
+  - {name: amount_per_qty, type: currency, label: {id: Komisi per satuan}, default: '0', depends_on: "basis == 'per_qty'"}
+  - {name: valid_from, type: date, label: {id: Berlaku dari}, default: today(), required: true}
+  - {name: valid_until, type: date, label: {id: Berlaku sampai}, required: true, help: {id: 'Wajib diisi. Pakai tanggal yang jauh di depan untuk aturan tanpa batas'}}
+  - {name: priority, type: int, label: {id: Prioritas}, default: '0', help: {id: 'Angka lebih besar menang kalau dua aturan sama spesifik'}}
+  - {name: active, type: check, label: {id: Aktif}, default: 'true', in_list: true}
+  # the most specific rule has the highest rank: item 3000, category 2000, everything 1000, plus the priority
+  - name: rank
+    type: int
+    label: {id: Urutan}
+    hidden: true
+    compute: "(applies_to == 'item' ? 3000 : (applies_to == 'category' ? 2000 : 1000)) + priority"
+rules:
+  - name: rate_in_range
+    on: save
+    check: "rate >= 0 && rate <= 100 && amount_per_qty >= 0 && priority >= 0 && priority <= 999"
+    message: {id: 'Persen komisi 0 sampai 100, nominal tidak negatif, prioritas 0 sampai 999'}
+  - name: dates_in_order
+    on: save
+    check: valid_until >= valid_from
+    message: {id: Tanggal berakhir tidak boleh sebelum tanggal mulai}
+  - name: target_chosen
+    on: save
+    check: "(applies_to != 'item' || item != '') && (applies_to != 'category' || item_category != '')"
+    message: {id: Pilih barang atau kategori yang diberi komisi}
+views:
+  list:
+    columns: [rule_name, source, applies_to, basis, rate, valid_until, active]
+    sort: rule_name

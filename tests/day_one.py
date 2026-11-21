@@ -5939,6 +5939,7 @@ import day_one_staff_attendance  # noqa: E402
 import day_one_promotions  # noqa: E402
 import day_one_warehouses  # noqa: E402
 import day_one_loyalty  # noqa: E402
+import day_one_commission  # noqa: E402
 import day_one_karyawan  # noqa: E402
 import day_one_fixed_assets  # noqa: E402
 import day_one_portal  # noqa: E402
@@ -5969,6 +5970,7 @@ day_one_staff_attendance.bind(sys.modules[__name__])   # also adds the demo-fnb 
 day_one_promotions.bind(sys.modules[__name__])   # after day_one_pos and day_one_kitchen (their members)
 day_one_warehouses.bind(sys.modules[__name__])
 day_one_loyalty.bind(sys.modules[__name__])   # after day_one_promotions (same members)
+day_one_commission.bind(sys.modules[__name__])   # after day_one_pos and day_one_loyalty (same members)
 day_one_karyawan.bind(sys.modules[__name__])   # also registers demo-karyawan (orgs, members, setup)
 day_one_fixed_assets.bind(sys.modules[__name__])
 day_one_portal.bind(sys.modules[__name__])
@@ -5990,11 +5992,11 @@ SCENARIOS = {
     "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],
     "demo-kursus": day_one_courses.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-langganan": day_one_subscriptions.SCENARIOS + day_one_loyalty.SCENARIOS_LANGGANAN + [scenario_permissions, day_one_accounting.scenario_accounting],
-    "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + day_one_promotions.SCENARIOS + day_one_loyalty.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
+    "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + day_one_promotions.SCENARIOS + day_one_loyalty.SCENARIOS + day_one_commission.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-kepingan-keuangan": day_one_keuangan.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
 SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS + day_one_whatsapp_order.SCENARIOS   # orders need its shift and key
-SCENARIOS["demo-karyawan"] = day_one_karyawan.SCENARIOS + [scenario_permissions]
+SCENARIOS["demo-karyawan"] = day_one_karyawan.SCENARIOS + day_one_commission.SCENARIOS_KARYAWAN + [scenario_permissions]
 SCENARIOS["demo-salon"] = day_one_appointments.SCENARIOS + [scenario_permissions]
 # module promotions on demo-jasa: the invoice promo as a new line's default discount, before the permission matrix
 _i = SCENARIOS["demo-jasa"].index(scenario_permissions)

@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# The commission of one employee up to the end of a period. Finance ticks "Kunci rekap": every live, unlocked line of the
+# employee dated up to the period's last day joins it (an older line missed by an earlier statement joins too) and is locked
+# to it. A sale cancelled later is then corrected in the next statement. A locked statement of the slip's tax month is paid
+# through the payslip (payslip.piece_income); tick "Batal" (before the slip is submitted) to release its lines. It is not a
+# submittable document: a flow cannot write to a submitted document, and the total is filled by the lock flow.
+name: commission_statement
+label: {id: Rekap komisi, en: Commission statement}
+icon: card
+naming: REKOM-{YYYY}-{#####}
+title_field: employee
+permissions:
+  - {role: head_office, read: true, create: true, write: true, export: true, print: true}
+  - {role: finance_manager, read: true, create: true, write: true, export: true, print: true}
+  - {role: member, read: true, if: "employee == user.name"}
+fields:
+  - {name: employee, type: link, to: user, label: {id: Karyawan}, required: true, in_list: true}
+  - {name: period_from, type: date, label: {id: Dari tanggal}, required: true, in_list: true}
+  - {name: period_to, type: date, label: {id: Sampai tanggal}, required: true, in_list: true}
+  # the tax month the statement is paid in (the month of the period's last day), read by the payslip fill flows
+  - {name: tax_year, type: int, label: {id: Tahun pajak}, grouping: false, required: true}
+  - {name: tax_month, type: int, label: {id: Bulan pajak (1-12)}, required: true, help: {id: 'Bulan slip gaji yang membayar komisi ini'}}
+  - {name: locked, type: check, label: {id: Kunci rekap}, default: 'false', in_list: true, help: {id: 'Centang untuk mengunci baris komisi sampai tanggal akhir dan menghitung total'}}
+  - {name: cancelled, type: check, label: {id: Batal}, default: 'false', in_list: true, help: {id: 'Centang untuk melepas baris komisinya, sebelum slip gajinya diajukan'}}
+  # set by the flows: the lines are attached now
+  - {name: done, type: check, label: {id: Baris terkunci}, default: 'false', read_only: true, hidden: true}
+  - {name: total, type: currency, label: {id: Total komisi}, read_only: true, default: '0', in_list: true}
+  - {name: line_count, type: int, label: {id: Jumlah baris}, read_only: true, default: '0'}
+rules:
+  - name: tax_month_range
+    on: save
+    check: tax_month >= 1 && tax_month <= 12 && tax_year >= 2024 && tax_year <= 2100
+    message: {id: 'Bulan pajak 1 sampai 12, tahun pajak mulai 2024'}
+  - name: period_in_order
+    on: save
+    check: period_to >= period_from
+    message: {id: Tanggal akhir tidak boleh sebelum tanggal awal}
+views:
+  list:
+    columns: [name, employee, period_from, period_to, total, locked, cancelled]
+    sort: -period_to

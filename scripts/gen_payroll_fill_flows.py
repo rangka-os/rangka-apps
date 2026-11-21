@@ -57,7 +57,8 @@ GATE = ("size(open_periods) == 0 && (!app_installed('attendance') || (sums.exist
 # new slip deducts min(installment, what is left), read from its cash_advance_balance (`bal`).
 KASBON = '''cash_advance: "size(bal) > 0 ? bal[0].cash_advance : ''"
 other_deduction: "size(bal) > 0 ? (bal[0].installment < bal[0].remaining ? bal[0].installment : bal[0].remaining) : 0"
-reimbursement: "claims.map(c, c.amount).sum()"'''
+reimbursement: "claims.map(c, c.amount).sum()"
+piece_income: "comm.map(c, c.total).sum() > 0 ? comm.map(c, c.total).sum() : 0"'''
 ATTENDANCE = f'''attendance_summary: "size({MINE}) > 0 ? {MINE}[size({MINE}) - 1].name : ''"
 days: "{MINE}.map(s, s.days_present).sum()"
 late_min_total: "{MINE}.map(s, s.late_min_total).sum()"
@@ -176,6 +177,17 @@ def fill(auto):
             - find_all: payslip
               where: "name == ''"
               as: claims
+        # Commission (module commission, rangka-apps#110): the employee's submitted statements of the slip's tax month,
+        # a taxed income outside the BPJS wage. Net of corrections, never below 0 (a negative carries to the next statement).
+        - if: "app_installed('commission') && {EMP} != ''"
+          then:
+            - find_all: commission_statement
+              where: "employee == {EMP} && locked && !cancelled && tax_year == run.tax_year && tax_month == run.tax_month"
+              as: comm
+          else:
+            - find_all: payslip
+              where: "name == ''"
+              as: comm
         # Days present, minutes late and overtime hours are the sums of the worker's summaries in the period. Unpaid
         # days stay 0 (absence is not unpaid leave until leave is recorded, rangka-apps#114) and the days with
         # overtime stay 0: a summary has no count of them, so without a weighted overtime rate every hour is paid 2x

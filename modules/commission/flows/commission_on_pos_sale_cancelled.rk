@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A voided receipt takes its commission back: a line no statement holds yet is cancelled; a line a submitted statement
+# already holds is marked reversed and a negative correction line dated today is made, so it nets off in the next statement.
+name: commission_on_pos_sale_cancelled
+label: {id: Komisi transaksi kasir dibatalkan}
+on: pos_sale.cancelled
+steps:
+  - find_all: commission_line
+    where: source_name == event.name && !cancelled && !reversed && !correction
+    as: lines
+  - for_each: lines
+    as: c
+    do:
+      - update: c
+        if: "c.statement == ''"
+        set: {cancelled: true}
+      - update: c
+        if: "c.statement != ''"
+        set: {reversed: true}
+      - create: commission_line
+        if: "c.statement != '' && c.amount != 0"
+        set:
+          employee: c.employee
+          source: c.source
+          source_name: c.source_name
+          sale_date: today()
+          outlet: c.outlet
+          item: c.item
+          qty: c.qty
+          base_amount: -c.base_amount
+          rule: c.rule
+          basis: c.basis
+          rate_value: c.rate_value
+          amount: -c.amount
+          status: "'ok'"
+          correction: 'true'

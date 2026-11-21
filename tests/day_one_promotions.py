@@ -441,7 +441,7 @@ def scenario_promo_counter_screen(api):
     doc = ((sc or {}).get("counter") or (sc or {}).get("screen", {}).get("counter") or {}).get("document") or {}
     # module loyalty (rangka-apps#102) adds the member, points and deposit to the same slots; the counter's total is
     # amount_due (the total less the deposit part)
-    eq("checkout slot", doc.get("checkout"), ["customer", {"field": "member", "filter": "active"}, {"field": "promotion", "filter": "is_bill && live"}, "promo_code", "points_redeemed", "deposit_used"])
+    eq("checkout slot", doc.get("checkout"), ["customer", {"field": "member", "filter": "active"}, {"field": "promotion", "filter": "is_bill && live"}, "promo_code", "points_redeemed", "deposit_used", "staff"])
     eq("line amount and flag", ((doc.get("line") or {}).get("amount"), (doc.get("line") or {}).get("flag")), ("amount", "is_gift"))
     eq("summary", doc.get("summary"), ["gross_total", "promo_total", "member_discount", "points_discount", "manual_discount_total", "promo_shortfall", "deposit_used", "amount_due"])
 

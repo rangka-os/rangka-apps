@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+# Staff and sales commission (rangka-apps#110). Rules say who earns what (percent of the net line, or a fixed amount per
+# item, by item, category or everything). A submitted cashier receipt (module pos) or sales invoice with a salesman
+# (modules invoicing and distribution) makes one commission line per staff line; a cancel cancels the line, or, once a
+# monthly statement holds it, makes a negative correction line that lands in the next statement. Finance locks a
+# statement per employee and period; the payroll fill flows put the statements of the slip's tax month into the payslip
+# as piece_income (taxed, outside the BPJS wage). Commission is not computed from Raka: it only proposes rules.
+name: commission
+version: 1.0.0
+title: {id: Komisi, en: Commission}
+summary:
+  id: Komisi staf dari penjualan kasir dan faktur, rekap bulanan, masuk ke slip gaji.
+  en: Staff commission from cashier sales and invoices, monthly statements, paid through the payslip.
+category: people
+icon: percent-line
+requires: {rangka: '>=0.5', users: ^1.2, catalogue: ^1.5, outlets: ^1.0}
+optional: {pos: ^1.0, invoicing: ^1.0, distribution: ^1.0, payroll: ^2.2}

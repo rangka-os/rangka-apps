@@ -18,6 +18,8 @@ orgs:
 # pembukuan (rangka-apps#117): the bakery keeps its books here too, so the journals of kasbon, expense claims, claim
 # payments and the payroll close are checked by tests/day_one_accounting.py on this site.
 apps: [karyawan_gaji, absen_karyawan, pembukuan]
+# commission (rangka-apps#110): statements fill the slip's piece_income, the saya page shows the own month
+modules: {commission: ^1.0}
 plan: tumbuh
 sso: {domains: [contohroti.test], required: false}
 ai: {enabled: true, auto_apply: never, approvers: [owner, finance_manager]}

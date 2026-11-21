@@ -32,6 +32,7 @@
   {{if .Doc.holiday_overtime_pay}}<tr><td>Lembur hari libur ({{.Doc.holiday_overtime_days}} hari)</td><td class="num">{{rupiah .Doc.holiday_overtime_pay}}</td></tr>{{end}}
   {{if .Doc.thr_pay}}<tr><td>THR</td><td class="num">{{rupiah .Doc.thr_pay}}</td></tr>{{end}}
   {{if .Doc.other_income}}<tr><td>Insentif</td><td class="num">{{rupiah .Doc.other_income}}</td></tr>{{end}}
+  {{if .Doc.piece_income}}<tr><td>Komisi dan upah borongan</td><td class="num">{{rupiah .Doc.piece_income}}</td></tr>{{end}}
   {{if .Doc.late_deduction}}<tr><td>Potongan telat {{.Doc.late_min_total}} menit</td><td class="num">-{{rupiah .Doc.late_deduction}}</td></tr>{{end}}
   <tr class="total"><td>Jumlah penghasilan</td><td class="num">{{rupiah .Doc.cash_gross}}</td></tr>
   </tbody>

@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: komisi_bulan_ini
+label: {id: Komisi bulan ini, en: Commission this month}
+description: {id: 'Komisi staf dari penjualan bulan ini, per karyawan dan per outlet, dan penjualan yang belum jelas komisinya'}
+# rangka-apps#110 (module commission, added per site like promotions). Counted lines only (status ok, not cancelled);
+# corrections are negative lines in the day they were made. "Tanpa staf" and "Tanpa aturan" are lines a rule covers
+# without a named staff, or a named staff without a rule, so nothing is silently zero.
+default_period: 31
+periods: [31, 92, 365]
+roles: [head_office, finance_manager]
+cache: 5m
+widgets:
+  - {name: total, type: number, label: {id: Komisi bulan ini}, model: commission_line, aggregate: sum, field: amount, filter: "status == 'ok' && !cancelled", period: sale_date, compact: true, span: 4, if: "app_installed('commission')"}
+  - {name: no_staff, type: number, label: {id: Baris tanpa staf}, description: {id: 'Ada aturan komisinya tapi tidak ada staf yang dipilih'}, model: commission_line, filter: "status == 'no_staff' && !cancelled", period: sale_date, good_when: down, span: 4, if: "app_installed('commission')"}
+  - {name: no_rule, type: number, label: {id: Baris tanpa aturan}, description: {id: 'Ada staf yang dipilih tapi tidak ada aturan komisinya'}, model: commission_line, filter: "status == 'no_rule' && !cancelled", period: sale_date, good_when: down, span: 4, if: "app_installed('commission')"}
+  - {name: by_employee, type: chart, chart: bar, label: {id: Komisi per karyawan}, model: commission_line, group_by: employee, aggregate: sum, field: amount, filter: "status == 'ok' && !cancelled", period: sale_date, span: 6, if: "app_installed('commission')"}
+  - {name: by_outlet, type: chart, chart: bar, label: {id: Komisi per outlet}, model: commission_line, group_by: outlet, aggregate: sum, field: amount, filter: "status == 'ok' && !cancelled", period: sale_date, span: 6, if: "app_installed('commission')"}
+  - {name: by_item, type: chart, chart: bar, label: {id: Barang dan jasa dengan komisi terbesar}, model: commission_line, group_by: item, aggregate: sum, field: amount, filter: "status == 'ok' && !cancelled", period: sale_date, span: 12, if: "app_installed('commission')"}

@@ -11,6 +11,8 @@ permissions:
   - {role: project_admin, read: true}
   - {role: head_office, read: true}
   - {role: outlet_staff, read: true}
+  # the cashier picks the staff who did the work on a counter line (module commission, rangka-apps#110)
+  - {role: cashier, read: true}
   - {role: warehouse_staff, read: true}
   - {role: sales_rep, read: true}
   - {role: field_sales, read: true}

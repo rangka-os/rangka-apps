@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A submitted cashier receipt makes one commission line per line that a rule covers (rangka-apps#110). The staff of a line
+# is the line's own "Dikerjakan oleh", else the receipt's default. The base is the line's net amount after every discount
+# (line, promo, bill, member, points), before the PPN that PKP prices hold: line.amount * (total - ppn) / subtotal, the
+# bill-level discounts spread in proportion to the lines. A gift line is at 0 so it earns nothing. A line a rule covers
+# without staff, or with staff and no rule, still leaves a line (status no_staff, no_rule) so the statement shows the gap.
+name: commission_on_pos_sale_submitted
+label: {id: Komisi dari transaksi kasir}
+on: pos_sale.submitted
+if: "event.subtotal > 0"
+steps:
+  - for_each: event.items
+    as: l
+    do:
+      - find_all: commission_rule
+        where: >-
+          active && source == 'pos' && valid_from <= event.date && valid_until >= event.date
+          && (applies_to == 'all' || (applies_to == 'item' && item == l.item) || (applies_to == 'category' && item_category == l.category))
+        sort: -rank
+        limit: 1
+        as: hit
+      - create: commission_line
+        if: "size(hit) > 0 && l.amount > 0"
+        set:
+          employee: "l.staff != '' ? l.staff : event.staff"
+          source: "'pos'"
+          source_name: event.name
+          sale_date: event.date
+          outlet: event.outlet
+          item: l.item
+          qty: l.qty
+          base_amount: "round(l.amount * (event.grand_total - event.ppn_in_sales) / event.subtotal)"
+          rule: hit[0].name
+          basis: hit[0].basis
+          rate_value: "hit[0].basis == 'percent' ? hit[0].rate : hit[0].amount_per_qty"
+          amount: "(l.staff != '' || event.staff != '') ? (hit[0].basis == 'percent' ? round(round(l.amount * (event.grand_total - event.ppn_in_sales) / event.subtotal) * hit[0].rate / 100) : round(l.qty * hit[0].amount_per_qty)) : 0"
+          status: "(l.staff != '' || event.staff != '') ? 'ok' : 'no_staff'"
+      - create: commission_line
+        if: "size(hit) == 0 && (l.staff != '' || event.staff != '') && l.amount > 0 && app_installed('commission')"
+        set:
+          employee: "l.staff != '' ? l.staff : event.staff"
+          source: "'pos'"
+          source_name: event.name
+          sale_date: event.date
+          outlet: event.outlet
+          item: l.item
+          qty: l.qty
+          base_amount: "round(l.amount * (event.grand_total - event.ppn_in_sales) / event.subtotal)"
+          amount: '0'
+          status: "'no_rule'"

@@ -26,7 +26,9 @@ optional:
   promotions: ^1.0
   # loyalty (rangka-apps#102): members, points and deposit at the counter, added per site like promotions
   loyalty: ^1.0
-dashboards: [kasir_ringkas]
+  # commission (rangka-apps#110): staff picker on the counter, commission lines per sale, statements, payslip income
+  commission: ^1.0
+dashboards: [kasir_ringkas, komisi_bulan_ini]
 roles: [cashier, head_office]
 home: {model: pos_sale}
 # contract 0030: the cashier lands on the cashier screen; head office opens it from the Kerja group

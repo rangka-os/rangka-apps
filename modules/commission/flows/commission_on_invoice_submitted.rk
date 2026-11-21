@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# A submitted regular sales invoice with a salesman (module distribution) makes one commission line per invoice line a rule
+# covers (v1: commission on issued invoices; on paid invoices is a later phase, rangka-apps#110). The base is the line's
+# net amount after the invoice discount, before PPN and before any down payment taken off: line.amount * (subtotal -
+# discount) / subtotal.
+name: commission_on_invoice_submitted
+label: {id: Komisi dari faktur penjualan}
+on: sales_invoice.submitted
+if: "event.salesman != '' && event.kind == 'regular' && event.subtotal > 0"
+steps:
+  - for_each: event.items
+    as: l
+    do:
+      - find: item
+        where: name == l.item
+        as: it
+      - find_all: commission_rule
+        where: >-
+          active && source == 'invoice' && valid_from <= event.posting_date && valid_until >= event.posting_date
+          && (applies_to == 'all' || (applies_to == 'item' && item == l.item) || (applies_to == 'category' && it != null && item_category == it.category))
+        sort: -rank
+        limit: 1
+        as: hit
+      - create: commission_line
+        if: "size(hit) > 0 && l.amount > 0"
+        set:
+          employee: event.salesman
+          source: "'invoice'"
+          source_name: event.name
+          sale_date: event.posting_date
+          item: l.item
+          qty: l.qty
+          base_amount: "round(l.amount * (event.subtotal - event.discount_amount) / event.subtotal)"
+          rule: hit[0].name
+          basis: hit[0].basis
+          rate_value: "hit[0].basis == 'percent' ? hit[0].rate : hit[0].amount_per_qty"
+          amount: "hit[0].basis == 'percent' ? round(round(l.amount * (event.subtotal - event.discount_amount) / event.subtotal) * hit[0].rate / 100) : round(l.qty * hit[0].amount_per_qty)"

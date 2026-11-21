@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Ticking "Kunci rekap" locks the employee's live commission lines dated up to the period's last day that no statement holds
+# yet (an older line an earlier statement missed joins too), and fills the total and the line count. Corrections (negative
+# lines) join like any line. Only counted lines (status ok) are included. A flow's writes start no flows, so the
+# statement's own update here does not run this again; `done` also keeps a second tick from locking twice.
+name: commission_statement_on_lock_created
+label: {id: 'Rekap komisi dikunci: kunci baris dan hitung total'}
+on: commission_statement.created
+if: "event.locked && !event.cancelled && !event.done"
+steps:
+  - find_all: commission_line
+    where: employee == event.employee && sale_date <= event.period_to && !cancelled && !reversed && statement == '' && status == 'ok'
+    as: lines
+  - for_each: lines
+    as: c
+    do:
+      - update: c
+        set: {statement: event.name}
+  - find: commission_statement
+    where: name == event.name
+    as: me
+  - update: me
+    set:
+      total: "lines.map(c, c.amount).sum()"
+      line_count: "size(lines)"
+      done: 'true'

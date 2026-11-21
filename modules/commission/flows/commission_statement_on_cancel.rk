@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Ticking "Batal" on a locked statement releases its lines, so the next statement takes them.
+name: commission_statement_on_cancel
+label: {id: 'Rekap komisi dibatalkan: lepas baris'}
+on: commission_statement.updated
+if: "event.cancelled && event.done"
+steps:
+  - find_all: commission_line
+    where: statement == event.name
+    as: lines
+  - for_each: lines
+    as: c
+    do:
+      - update: c
+        set: {statement: "''"}
+  - find: commission_statement
+    where: name == event.name
+    as: me
+  - update: me
+    set: {total: '0', line_count: '0', done: 'false'}
