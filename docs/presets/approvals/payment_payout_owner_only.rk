@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
+# Preset "Persetujuan pengeluaran" (outgoing payment over a limit). Opt-in: onboarding asks the owner first, then copies
+# this file to custom/payment.rk. An outgoing payment above the limit waits for approval, so money cannot leave through
+# a payment without a bill or PO. Incoming payments are not affected. Rp 5.000.000 is an example (edit the number).
+# Approver: the owner (no staff role of the site holds purchasing_manager, and the owner may always approve). Roles only: no per-person limits. The approver must not be the role that normally submits the
+# document, because an approver who submits approves their own request and the policy would never hold.
+# A foreign-currency document always waits: its kurs is typed by the maker, so the rupiah value alone can be made small.
+model: payment
+approvals:
+  - name: payout_approval
+    on: submit
+    when: "direction == 'pay' && (amount > 5000000 || (currency != '' && currency != 'IDR'))"
+    approvers: [purchasing_manager]
+    label: {id: Persetujuan pembayaran keluar, en: Approval of an outgoing payment}

@@ -29,3 +29,7 @@ onboarding:
   - ask: {id: 'Apakah usaha kamu PKP (memungut PPN)?'}
     options: ['true', 'false']
     sets: tax.pkp
+# Approval presets are opt-in (docs/presets/approvals/README.md): the answer 'ya' makes Raka copy the preset to custom/.
+  - ask: {id: 'Mau pasang Persetujuan diskon besar? Faktur dengan diskon di atas 20% menunggu persetujuan dulu.'}
+    options: ['ya', 'tidak']
+    sets: approvals.big_discount

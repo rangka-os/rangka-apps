@@ -45,3 +45,10 @@ onboarding:
   - ask: {id: 'Satuan stok apa yang kamu pakai untuk bahan baku? (gram dan karung diisi sebagai kemasan)'}
     options: [kg, liter, pcs]
     sets: item.stock_uom
+# Approval presets are opt-in (docs/presets/approvals/README.md): the answer 'ya' makes Raka copy the preset to custom/.
+  - ask: {id: 'Mau pasang Persetujuan PO di atas batas? Pesanan pembelian di atas Rp 5.000.000 menunggu persetujuan dulu.'}
+    options: ['ya', 'tidak']
+    sets: approvals.po_threshold
+  - ask: {id: 'Mau pasang Persetujuan pengeluaran? Pembayaran keluar dan tagihan pemasok tanpa PO di atas Rp 5.000.000 menunggu persetujuan dulu.'}
+    options: ['ya', 'tidak']
+    sets: approvals.spending

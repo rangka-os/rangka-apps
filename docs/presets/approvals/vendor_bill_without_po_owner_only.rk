@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
+# Preset "Persetujuan pengeluaran" (vendor bill over a limit with no approved PO). Opt-in, copied by onboarding to
+# custom/vendor_bill.rk. Pairs with purchase_order_threshold: without it a PO approval could be skipped by billing
+# directly (contract 0007 §1). A bill is not asked again only when its PO is approved and live (submitted, docstatus 1:
+# not a draft still waiting, not cancelled) and the bill is not above the PO value; any other PO link counts as no PO.
+# A bill in another currency than the base (IDR, contract 0013) always waits, whatever its value and with or without a
+# PO: its kurs is typed by the maker, so neither the limit nor the PO value means anything in rupiah.
+# Approver: the owner (no staff role of the site holds purchasing_manager, and the owner may always approve). Roles only: no per-person limits. The approver must not be the role that normally submits the
+# document, because an approver who submits approves their own request and the policy would never hold.
+model: vendor_bill
+approvals:
+  - name: bill_without_po_approval
+    on: submit
+    when: "(currency != '' && currency != 'IDR') || ((purchase_order == '' || purchase_order.docstatus != 1 || grand_total > purchase_order.grand_total) && grand_total > 5000000)"
+    approvers: [purchasing_manager]
+    label: {id: Persetujuan tagihan tanpa PO, en: Approval of a bill without a PO}

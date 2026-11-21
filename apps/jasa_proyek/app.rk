@@ -69,3 +69,13 @@ onboarding:
     sets: settings.business_line
   - ask: {id: 'Berapa PT yang kamu kelola?'}
     sets: seed.orgs
+# Approval presets are opt-in (docs/presets/approvals/README.md): the answer 'ya' makes Raka copy the preset to custom/.
+  - ask: {id: 'Mau pasang Persetujuan PO di atas batas? Pesanan pembelian di atas Rp 5.000.000 menunggu persetujuan dulu.'}
+    options: ['ya', 'tidak']
+    sets: approvals.po_threshold
+  - ask: {id: 'Mau pasang Persetujuan pengeluaran? Pembayaran keluar dan tagihan pemasok tanpa PO di atas Rp 5.000.000 menunggu persetujuan dulu.'}
+    options: ['ya', 'tidak']
+    sets: approvals.spending
+  - ask: {id: 'Mau pasang Persetujuan diskon besar? Faktur dan penawaran dengan diskon di atas 20% menunggu persetujuan dulu.'}
+    options: ['ya', 'tidak']
+    sets: approvals.big_discount

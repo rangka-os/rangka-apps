@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
+# Preset "Persetujuan diskon besar" (sales invoice with a big discount). Opt-in: onboarding asks the owner first, then
+# copies this file to custom/sales_invoice.rk. An invoice waits for finance (or the owner) when a line discount is above
+# 20%, or the whole discount (lines plus the header discount) is above 20% of the price before discount. 20% is an
+# example: the percent is the owner's call (edit the number, keep the *100 form so no division is needed).
+# The line check uses the percent typed on each line, so it also holds on a foreign-currency document, whose line
+# amounts are in rupiah only through the kurs; the whole-invoice check on a foreign document looks at the header
+# discount only, against the rupiah subtotal. Roles only: no per-person limits.
+model: sales_invoice
+approvals:
+  - name: big_discount_approval
+    on: submit
+    when: "items.map(i, i.discount > 20 ? 1 : 0).sum() > 0 || discount_amount * 100 > subtotal * 20 || ((currency == '' || currency == 'IDR') && items.map(i, round(i.qty * i.rate)).sum() > 0 && (items.map(i, round(i.qty * i.rate)).sum() - subtotal + discount_amount) * 100 > items.map(i, round(i.qty * i.rate)).sum() * 20)"
+    approvers: [finance_manager]
+    label: {id: Persetujuan diskon besar, en: Approval of a big discount}
