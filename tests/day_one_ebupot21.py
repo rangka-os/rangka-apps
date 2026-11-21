@@ -217,6 +217,16 @@ def scenario_ebupot21_overlap(api):
     check("ebupot21 overlap: cancelling the March slip works", st == 200, (st, _))
     rows = {r["month_end"]: r for r in fm.find("pph21_annual", "worker == '%s' && tax_year == 2033" % w["name"])}
     eq("after the cancel the February summary is live again and the March one is void", (rows[2]["voided"], rows[3]["voided"]), (False, True))
+    # R3-F1: cancelling a plain slip (no summary of its own) must not bring a covered summary back
+    st, run = fm.create("payroll_run", dict(g.RUN, project=prj["name"], period_from="2033-03-21", period_to="2033-04-20", tax_month=4, tax_year=2033, billing_mode="none", pay_date="2033-04-25"))
+    st, s_ = fm.create("payslip", {"payroll_run": run["name"], "profile": prof["name"], "days": 22})
+    st, resp = fm.verb("payslip", s_["name"], "submit")
+    name4 = ((resp or {}).get("record", resp) or {}).get("name", s_["name"])
+    st, resp, c4 = dp.close_run(fm, run["name"])
+    fm.verb("payroll_close", c4, "cancel")
+    st, _ = fm.verb("payslip", name4, "cancel")
+    rows = {r["month_end"]: r for r in fm.find("pph21_annual", "worker == '%s' && tax_year == 2033" % w["name"])}
+    eq("cancelling a plain April slip leaves the summaries as they were (February live, March void)", (rows[2]["voided"], rows[3]["voided"]), (False, True))
 
 
 SCENARIOS = [scenario_ebupot21, scenario_ebupot21_overlap]
