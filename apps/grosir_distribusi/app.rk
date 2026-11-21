@@ -33,6 +33,7 @@ home: {dashboard: grosir_overview}
 # The salesman works from the phone (contract 0030 §3): the route is home, the van sale is one tap away.
 work:
   - {screen: kunjungan, roles: [field_sales], home: true}
+  - {screen: pesanan_lapangan, roles: [field_sales]}
 # recipe is installed with stock but has no menu entry: a distributor sells goods as they are.
 menu:
   - group: {id: Penjualan}
