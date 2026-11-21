@@ -6,7 +6,6 @@ A held document is a draft (202); the approver decides; an approved one proceeds
 """
 
 H = {}
-CUSTOMER = "CUST-0001"
 
 
 def bind(m):
@@ -29,9 +28,14 @@ def scenario_discount_preset_jasa(api):
     check("meta: sales_invoice carries big_discount_approval from the preset", "big_discount_approval" in policies(api, "sales_invoice"), policies(api, "sales_invoice"))
     check("meta: purchase_order carries po_approval from the preset", "po_approval" in policies(api, "purchase_order"), policies(api, "purchase_order"))
     item = services(api)[0]["name"]
+    # a fresh customer with a high credit limit, so the credit_limit warning of other scenarios does not interfere
+    st, cust = fm.create("customer", {"customer_name": "Klien Preset Diskon", "credit_limit": 1_000_000_000})
+    if not check("finance_manager creates a customer with a high credit limit", st == 201, (st, cust)):
+        return
+    customer = cust["name"]
 
     def draft(label, **extra):
-        body = invoice_body(CUSTOMER, item, rate=1_000_000, qty=10, **extra)
+        body = invoice_body(customer, item, rate=1_000_000, qty=10, **extra)
         if "line_discount" in extra:
             body["items"][0]["discount"] = body.pop("line_discount")
         st, inv = sm.create("sales_invoice", body)
