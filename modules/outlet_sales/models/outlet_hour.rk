@@ -10,7 +10,7 @@ icon: time
 naming: JAM-{YYYY}-{#####}
 title_field: receipt_no
 permissions:
-  - {role: head_office, read: true, create: true, export: true}
+  - {role: head_office, read: true, create: true, import: true, export: true}
 fields:
   - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, in_list: true}
   - name: source

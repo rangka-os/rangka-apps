@@ -5921,6 +5921,7 @@ import day_one_accounting  # noqa: E402
 import day_one_keuangan  # noqa: E402
 import day_one_payroll  # noqa: E402
 import day_one_returns  # noqa: E402
+import day_one_outlets  # noqa: E402
 import day_one_rental  # noqa: E402
 import day_one_courses  # noqa: E402
 import day_one_subscriptions  # noqa: E402
@@ -5951,6 +5952,7 @@ day_one_accounting.bind(sys.modules[__name__])
 day_one_keuangan.bind(sys.modules[__name__])
 day_one_payroll.bind(sys.modules[__name__])
 day_one_returns.bind(sys.modules[__name__])
+day_one_outlets.bind(sys.modules[__name__])
 day_one_rental.bind(sys.modules[__name__])   # also registers demo-sewa (orgs, members, matrix rows)
 day_one_courses.bind(sys.modules[__name__])
 day_one_subscriptions.bind(sys.modules[__name__])
@@ -5980,9 +5982,9 @@ SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
                   scenario_prints_jasa, scenario_coretax, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction, scenario_xendit_callbacks, scenario_bank_booked],
-    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods, scenario_bank_account_delete] + day_one_returns.SCENARIOS_FNB,
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods, scenario_bank_account_delete] + day_one_returns.SCENARIOS_FNB + day_one_outlets.SCENARIOS_FNB,
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
-                   scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
+                   scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access] + day_one_outlets.SCENARIOS_RITEL + [
                    scenario_permissions, scenario_payment_methods] + day_one_returns.SCENARIOS_RITEL + [scenario_bank_takings],
     "demo-grosir": day_one_grosir.SCENARIOS + [scenario_payment_instruction, scenario_permissions, scenario_payment_methods],
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
@@ -5990,7 +5992,7 @@ SCENARIOS = {
     "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],
     "demo-kursus": day_one_courses.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-langganan": day_one_subscriptions.SCENARIOS + day_one_loyalty.SCENARIOS_LANGGANAN + [scenario_permissions, day_one_accounting.scenario_accounting],
-    "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + day_one_promotions.SCENARIOS + day_one_loyalty.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
+    "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + day_one_promotions.SCENARIOS + day_one_loyalty.SCENARIOS + day_one_outlets.SCENARIOS_KASIR + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-kepingan-keuangan": day_one_keuangan.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
 SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS + day_one_whatsapp_order.SCENARIOS   # orders need its shift and key

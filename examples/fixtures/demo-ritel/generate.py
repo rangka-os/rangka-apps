@@ -303,9 +303,14 @@ MOKA_HEADER = ["Outlet", "Receipt Number", "Date", "Time", "Category", "Brand", 
                "Sales Type", "Collected By", "Served By", "Customer", "Payment Method", "Event Type", "Reason of Refund"]
 
 
+# weights of the hours 07 to 21: the peaks at 12 and 19 stand clear of the shoulders (rangka-apps#115)
+HOUR_WEIGHTS = [3, 4, 5, 8, 14, 34, 12, 5, 4, 5, 8, 14, 36, 12, 3]
+
+
 def moka_csv(end):
     """Moka Item Details export of Cibiru for the whole window (one row per item per receipt, 3 items per receipt)."""
     rng = random.Random(31)
+    hrng = random.Random(77)   # the hour of a receipt: a lunch peak at 12 and an evening peak at 19 (busy-hours heatmap)
     cats = {f"KTG-{i + 1:03d}": c for i, c in enumerate(CATEGORIES)}
     rows, receipt = [], 0
     for d, sold in daily_sales(end, CIBIRU).items():
@@ -320,7 +325,9 @@ def moka_csv(end):
         for basket in merged:
             receipt += 1
             no = f"CBR-{receipt:06d}"
-            t = f"{rng.randint(7, 21):02d}:{rng.randint(0, 59):02d}:00"
+            rng.randint(7, 21)   # keeps the original random stream, so every other value of the file stays what it was
+            hour = hrng.choices(range(7, 22), weights=HOUR_WEIGHTS)[0]
+            t = f"{hour:02d}:{rng.randint(0, 59):02d}:00"
             pay = rng.choice(["Cash", "Cash", "Cash", "QRIS", "QRIS", "Debit BCA"])
             for it, q in basket:
                 gross = it["rate"] * q
