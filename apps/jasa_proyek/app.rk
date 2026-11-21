@@ -73,7 +73,7 @@ onboarding:
   - ask: {id: 'Mau pasang Persetujuan PO di atas batas? Pesanan pembelian di atas Rp 5.000.000 menunggu persetujuan dulu.'}
     options: ['ya', 'tidak']
     sets: approvals.po_threshold
-  - ask: {id: 'Mau pasang Persetujuan pengeluaran? Pembayaran keluar dan tagihan pemasok tanpa PO di atas Rp 5.000.000 menunggu persetujuan dulu.'}
+  - ask: {id: 'Mau pasang Persetujuan pengeluaran? Pembayaran keluar dan tagihan pemasok di atas Rp 5.000.000 menunggu persetujuan dulu.'}
     options: ['ya', 'tidak']
     sets: approvals.spending
   - ask: {id: 'Mau pasang Persetujuan diskon besar? Faktur dan penawaran dengan diskon di atas 20% menunggu persetujuan dulu.'}

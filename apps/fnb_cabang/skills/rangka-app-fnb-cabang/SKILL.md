@@ -32,7 +32,7 @@ and the document proceeds when approved; a rejected one stays a draft.
 
 - What the owner gets: an outgoing payment above Rp 5.000.000, and a supplier bill above it that has no approved PO, wait for approval; incoming payments are not affected.
 - Say it like this: "Mau aku pasangkan Persetujuan pengeluaran? Mulai dari berapa?"
-- Files: `docs/presets/approvals/payment_payout_owner_only.rk` and `docs/presets/approvals/vendor_bill_without_po_owner_only.rk`. Read each with `rangka_skill_file`, replace the limit if the owner named another, and write it as a
+- Files: `docs/presets/approvals/payment_payout.rk` and `docs/presets/approvals/vendor_bill_threshold.rk`. Read each with `rangka_skill_file`, replace the limit if the owner named another, and write it as a
   change set to custom/payment.rk and custom/vendor_bill.rk (a copy of the file, named after its model). Each file starts with a plain-words header comment.
 - After install, tell the owner who will see the request: the owner (this app has no finance role, so the `_owner_only` files are used: the approver role is one nobody holds and the owner may always approve), in Persetujuan.
 

@@ -2727,7 +2727,8 @@ def scenario_project_margin(api):
             check("once the expense is cancelled, its bill can be cancelled", st == 200, (st, resp))
     # a project invoice with DPP 0 (fully discounted) submits and cancels: its post and reverse rows have distinct keys
     st, z = fm.create("sales_invoice", {"customer": customer, "project": p, "discount_amount": 1_000_000, "items": [{"item": ndt, "qty": 1, "rate": 1_000_000}]})
-    zn = submit_doc(fm, "sales_invoice", z["name"], "finance submits a DPP 0 project invoice", force=True) if st == 201 else None
+    # the owner submits it: the big discount preset of demo-jasa (docs/presets/approvals) holds a 100% discount for the owner
+    zn = submit_doc(api, "sales_invoice", z["name"], "owner submits a DPP 0 project invoice", force=True) if st == 201 else None
     if zn:
         st, resp = fm.verb("sales_invoice", zn, "cancel")
         check("the DPP 0 project invoice can be cancelled (no entry_key clash)", st == 200, (st, resp))

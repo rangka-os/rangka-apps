@@ -1,4 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
+# Known limit: the PO exemption compares a bill with its PO alone; nothing caps the total billed against one approved PO.
+# Prefer vendor_bill_threshold.rk for new sites. Kept as is because the demo-fnb scenarios rely on this behaviour.
 # Preset "Persetujuan pengeluaran" (vendor bill over a limit with no approved PO). Opt-in, copied by onboarding to
 # custom/vendor_bill.rk. Pairs with purchase_order_threshold: without it a PO approval could be skipped by billing
 # directly (contract 0007 §1). A bill is not asked again only when its PO is approved and live (submitted, docstatus 1:

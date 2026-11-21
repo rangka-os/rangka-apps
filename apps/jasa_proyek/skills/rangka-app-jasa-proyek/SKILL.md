@@ -13,7 +13,7 @@ and the document proceeds when approved; a rejected one stays a draft.
 ## Rules
 
 - **Opt-in.** Never switch a preset on by default. Ask the owner (onboarding question) and only an answer `ya` installs it.
-- **Roles only.** No per-person limits. The approver here is finance (`finance_manager`) or the owner.
+- **Roles only.** No per-person limits. The approver of the spending and big discount presets is the owner only (`approvers: [owner]`): finance can submit these documents, and an approver who submits approves their own request.
 - **The limit is the owner's call.** The files use Rp 5.000.000 (purchasing, payouts) and 20% (discount) as examples.
   Ask "mulai dari berapa?" and change the number in the `when:` expression of the copy, never in the preset file.
 - Money or tax questions beyond a threshold are not part of a preset: say so and offer the nearest preset.
@@ -26,15 +26,15 @@ and the document proceeds when approved; a rejected one stays a draft.
 - Say it like this: "Mau aku pasangkan Persetujuan PO di atas batas? Mulai dari berapa?"
 - Files: `docs/presets/approvals/purchase_order_threshold.rk`. Read each with `rangka_skill_file`, replace the limit if the owner named another, and write it as a
   change set to custom/purchase_order.rk (a copy of the file, named after its model). Each file starts with a plain-words header comment.
-- After install, tell the owner who will see the request: finance (`finance_manager`) or the owner, in Persetujuan.
+- After install, tell the owner the request shows in Persetujuan and only the owner approves it.
 
 ### Persetujuan pengeluaran
 
 - What the owner gets: an outgoing payment above Rp 5.000.000, and a supplier bill above it that has no approved PO, wait for approval; incoming payments are not affected.
 - Say it like this: "Mau aku pasangkan Persetujuan pengeluaran? Mulai dari berapa?"
-- Files: `docs/presets/approvals/payment_payout.rk` and `docs/presets/approvals/vendor_bill_without_po.rk`. Read each with `rangka_skill_file`, replace the limit if the owner named another, and write it as a
+- Files: `docs/presets/approvals/payment_payout.rk` and `docs/presets/approvals/vendor_bill_threshold.rk`. Read each with `rangka_skill_file`, replace the limit if the owner named another, and write it as a
   change set to custom/payment.rk and custom/vendor_bill.rk (a copy of the file, named after its model). Each file starts with a plain-words header comment.
-- After install, tell the owner who will see the request: finance (`finance_manager`) or the owner, in Persetujuan.
+- After install, tell the owner the request shows in Persetujuan and only the owner approves it.
 
 ### Persetujuan diskon besar
 
@@ -42,7 +42,7 @@ and the document proceeds when approved; a rejected one stays a draft.
 - Say it like this: "Mau aku pasangkan Persetujuan diskon besar? Mulai dari berapa?"
 - Files: `docs/presets/approvals/sales_invoice_discount.rk` and `docs/presets/approvals/quotation_discount.rk`. Read each with `rangka_skill_file`, replace the limit if the owner named another, and write it as a
   change set to custom/sales_invoice.rk and custom/quotation.rk (a copy of the file, named after its model). Each file starts with a plain-words header comment.
-- After install, tell the owner who will see the request: finance (`finance_manager`) or the owner, in Persetujuan.
+- After install, tell the owner the request shows in Persetujuan and only the owner approves it.
 
 ## Checks before you propose the change set
 

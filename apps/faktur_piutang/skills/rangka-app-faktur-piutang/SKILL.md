@@ -13,7 +13,7 @@ and the document proceeds when approved; a rejected one stays a draft.
 ## Rules
 
 - **Opt-in.** Never switch a preset on by default. Ask the owner (onboarding question) and only an answer `ya` installs it.
-- **Roles only.** No per-person limits. The approver here is finance (`finance_manager`) or the owner.
+- **Roles only.** No per-person limits. The approver of the spending and big discount presets is the owner only (`approvers: [owner]`): finance can submit these documents, and an approver who submits approves their own request.
 - **The limit is the owner's call.** The files use Rp 5.000.000 (purchasing, payouts) and 20% (discount) as examples.
   Ask "mulai dari berapa?" and change the number in the `when:` expression of the copy, never in the preset file.
 - Money or tax questions beyond a threshold are not part of a preset: say so and offer the nearest preset.
@@ -26,7 +26,7 @@ and the document proceeds when approved; a rejected one stays a draft.
 - Say it like this: "Mau aku pasangkan Persetujuan diskon besar? Mulai dari berapa?"
 - Files: `docs/presets/approvals/sales_invoice_discount.rk`. Read each with `rangka_skill_file`, replace the limit if the owner named another, and write it as a
   change set to custom/sales_invoice.rk (a copy of the file, named after its model). Each file starts with a plain-words header comment.
-- After install, tell the owner who will see the request: finance (`finance_manager`) or the owner, in Persetujuan.
+- After install, tell the owner the request shows in Persetujuan and only the owner approves it.
 
 ## Checks before you propose the change set
 

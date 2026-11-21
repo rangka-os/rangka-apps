@@ -5,11 +5,13 @@
 # example: the percent is the owner's call (edit the number, keep the *100 form so no division is needed).
 # The line check uses the percent typed on each line, so it also holds on a foreign-currency document, whose line
 # amounts are in rupiah only through the kurs; the whole-invoice check on a foreign document looks at the header
-# discount only, against the rupiah subtotal. Roles only: no per-person limits.
+# discount only, against the rupiah subtotal.
+# Approver: the owner only (approvers: [owner]). Finance and sales managers can submit an invoice, and an approver who
+# submits approves their own request (contract 0007 §2.4), so a finance approver would never hold. Roles only.
 model: sales_invoice
 approvals:
   - name: big_discount_approval
     on: submit
     when: "items.map(i, i.discount > 20 ? 1 : 0).sum() > 0 || discount_amount * 100 > subtotal * 20 || ((currency == '' || currency == 'IDR') && items.map(i, round(i.qty * i.rate)).sum() > 0 && (items.map(i, round(i.qty * i.rate)).sum() - subtotal + discount_amount) * 100 > items.map(i, round(i.qty * i.rate)).sum() * 20)"
-    approvers: [finance_manager]
+    approvers: [owner]
     label: {id: Persetujuan diskon besar, en: Approval of a big discount}

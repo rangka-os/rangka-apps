@@ -47,12 +47,12 @@ def scenario_discount_preset_jasa(api):
     st, resp = sm.verb("sales_invoice", at, "submit")
     check("a 20% line discount submits without an approval request", st == 200 and not approvals_of(api, "sales_invoice", at), (st, resp))
 
-    # 25% on the line: held for finance_manager, the maker cannot approve, the owner can
+    # 25% on the line: held for the owner, the maker cannot approve, the owner can
     big = draft("a 25% line discount", line_discount=25)
     st, resp = sm.verb("sales_invoice", big, "submit")
     held = st == 202 and resp["approval"]["state"] == "pending" and resp["approval"]["policy"] == "big_discount_approval" \
-        and resp["approval"]["approvers"] == ["finance_manager"]
-    check("a 25% line discount is held (202, big_discount_approval pending for finance_manager)", held, (st, resp))
+        and resp["approval"]["approvers"] == ["owner"]
+    check("a 25% line discount is held (202, big_discount_approval pending for the owner)", held, (st, resp))
     if held:
         eq("the held invoice is still a draft", sm.get("sales_invoice", big)["docstatus"], 0)
         st2, r2 = decide(sm, resp["approval"]["id"])
@@ -60,19 +60,26 @@ def scenario_discount_preset_jasa(api):
         st2, r2 = decide(api, resp["approval"]["id"])
         check("the owner approves: the invoice is submitted", st2 == 200 and r2.get("record", {}).get("docstatus") == 1, (st2, r2))
 
-    # a header discount of 30% of the subtotal: held; finance_manager rejects, it stays a draft, a smaller one goes through
+    # a header discount of 30% of the subtotal: held; the owner rejects, it stays a draft, a smaller one goes through
     hdr = draft("a header discount of 3.000.000 on 10.000.000", discount_amount=3_000_000)
     st, resp = sm.verb("sales_invoice", hdr, "submit")
     held = st == 202 and resp["approval"]["policy"] == "big_discount_approval"
     check("a header discount above 20% is held (202)", held, (st, resp))
     if held:
-        st2, r2 = decide(fm, resp["approval"]["id"], "reject", "Diskon terlalu besar")
-        check("finance_manager rejects the request", st2 == 200, (st2, r2))
+        st2, r2 = decide(api, resp["approval"]["id"], "reject", "Diskon terlalu besar")
+        check("the owner rejects the request", st2 == 200, (st2, r2))
         eq("the rejected invoice stays a draft", sm.get("sales_invoice", hdr)["docstatus"], 0)
         st3, r3 = sm.call("PATCH", f"/api/v1/r/sales_invoice/{Api.q(hdr)}", {"discount_amount": 1_000_000})
         check("the maker lowers the discount to 10%", st3 == 200, (st3, r3))
         st3, r3 = sm.verb("sales_invoice", hdr, "submit")
         check("the lowered invoice submits without a new request", st3 == 200, (st3, r3))
+
+    # finance_manager can submit invoices too: a big discount still waits for the owner (it never self-approves)
+    fin = draft("a 60% line discount made by finance", line_discount=60)
+    st, resp = fm.verb("sales_invoice", fin, "submit")
+    check("finance_manager submitting a 60% discount is held for the owner (202)", st == 202 and resp["approval"]["approvers"] == ["owner"], (st, resp))
+    st, resp = fm.verb("sales_invoice", draft("an invoice with no discount made by finance"), "submit")
+    check("finance_manager submitting an invoice without a discount is not held", st == 200, (st, resp))
 
     # an invoice without any discount is never held by the preset
     plain = draft("no discount")
