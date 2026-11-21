@@ -66,7 +66,8 @@ def expected_pl(api, d0, d1):
             e["tax_expense"] += s["pph_final"]
     for s in docs(api, "pos_sale"):                     # a cashier receipt (module pos) books like a day of outlet_sales
         if inm(s["date"]):
-            e["revenue"] += s["grand_total"] - s["ppn_in_sales"]
+            e["revenue"] += s["grand_total"] - s["ppn_in_sales"] - s["pbjt"] - s["rounding"]   # PBJT is owed to the region
+            e["other_income"] += s["rounding"]                                                  # rounding books on 4-9400
             e["cogs"] += s["cogs_total"]
             e["tax_expense"] += s["pph_final"]
     for sh in docs(api, "pos_shift_close"):             # a shift's counted drawer: selisih kas (6-1300)
