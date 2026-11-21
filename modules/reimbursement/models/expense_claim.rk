@@ -22,6 +22,9 @@ permissions:
   - {role: employee, read: true, create: true, write: true, delete: true, submit: true, if: "employee == user.name"}
   - {role: cashier, read: true, create: true, write: true, delete: true, submit: true, if: "employee == user.name"}
   - {role: outlet_staff, read: true, create: true, write: true, delete: true, submit: true, if: "employee == user.name"}
+  # Every employee whatever their role reads their own claims (member grant, rangka-os contract 0074); claiming stays
+  # with the roles above for now.
+  - {role: member, read: true, if: "employee == user.name"}
   # The outlet supervisor reads the claims of their outlets (role row scope on outlet) to approve them, and claims too.
   - {role: outlet_supervisor, read: true, print: true}
   - {role: outlet_supervisor, create: true, write: true, delete: true, submit: true, if: "employee == user.name"}

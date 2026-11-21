@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One message a customer wrote to the business's WhatsApp number, kept once by Meta's message id (unique; the flow's
+# idempotency key is the same id, so a webhook delivered twice makes one row and one draft). Written by flow
+# whatsapp_order_intake only. It says what the message did: started an order, added to one, or was no order. A later
+# shared inbox (rangka-apps#130) can read these rows instead of keeping its own copy.
+name: whatsapp_inbound
+label: {id: Pesan WhatsApp masuk, en: Incoming WhatsApp message}
+icon: chat-download-line
+naming: WAIN-{YY}{MM}-{######}
+title_field: sender
+permissions:
+  - {role: head_office, read: true, export: true}
+  - {role: sales_manager, read: true}
+  - {role: cashier, read: true}
+fields:
+  - {name: message_id, type: data, label: {id: ID pesan WhatsApp}, required: true, unique: true, read_only: true, hidden: true}
+  # where the order came from: the text a customer wrote (Rangka Cloud reads it into lines); whatsapp_cart (a WhatsApp
+  # catalogue cart with product references) is the next source, fed into the same matching (module doc "Next: A1b")
+  - name: source
+    type: select
+    label: {id: Sumber}
+    default: "'whatsapp_text'"
+    read_only: true
+    in_filter: true
+    options:
+      - {value: whatsapp_text, label: {id: Chat WhatsApp}}
+      - {value: whatsapp_cart, label: {id: Keranjang katalog WhatsApp}}
+  # Meta's message type (text, image, order, …): the raw text is kept in `text` for audit
+  - {name: kind, type: data, label: {id: Jenis pesan}, read_only: true}
+  - {name: sender, type: data, label: {id: Pengirim}, read_only: true, in_list: true}
+  - {name: phone, type: phone, label: {id: Nomor WhatsApp}, read_only: true}
+  - {name: wa_number, type: data, label: {id: Nomor WhatsApp (seragam)}, read_only: true, hidden: true, index: true}
+  - {name: text, type: text, label: {id: Isi pesan}, read_only: true}
+  - {name: received_at, type: datetime, label: {id: Diterima}, read_only: true, in_list: true}
+  - name: result
+    type: select
+    label: {id: Hasil}
+    read_only: true
+    in_list: true
+    in_filter: true
+    chip: true
+    options:
+      - {value: order_new, label: {id: Pesanan baru}}
+      - {value: order_added, label: {id: Ditambahkan ke pesanan}}
+      - {value: order_full, label: {id: 'Tidak ditambahkan, pesanan sudah 60 baris'}}
+      - {value: not_order, label: {id: Bukan pesanan}}
+  - {name: order, type: link, to: whatsapp_order, label: {id: Pesanan WhatsApp}, read_only: true, in_list: true}
+  # the lines Rangka Cloud read in this message, matched against the items (flow whatsapp_order_intake): the order
+  # copies them, and they stay here as what this one message said
+  - {name: lines, type: table, of: whatsapp_order_line, label: {id: Baris terbaca}, read_only: true}
+  # how many lines were read and how many of them matched an item (or are a choice)
+  # more items for sale than the intake reads (5000): a line's single candidate may not be the only one, so the order
+  # waits for a look ("Perlu dicek")
+  - {name: catalogue_capped, type: check, label: {id: Katalog terlalu besar untuk dicocokkan penuh}, read_only: true, default: 'false'}
+  - {name: lines_read, type: int, label: {id: Baris terbaca}, read_only: true, default: '0'}
+  - {name: lines_matched, type: int, label: {id: Baris cocok dengan barang}, read_only: true, default: '0'}
+  # the outlet scopes the rows for the cashier (role scope outlet), the same outlet as the order's
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, read_only: true, depends_on: app_installed('outlets')}
+views:
+  list:
+    columns: [name, sender, received_at, result, order]
+    sort: -received_at

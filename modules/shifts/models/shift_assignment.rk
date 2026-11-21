@@ -19,9 +19,8 @@ title_field: employee_name
 permissions:
   - {role: head_office, read: true, create: true, write: true, delete: true, export: true, print: true}
   - {role: outlet_supervisor, read: true, create: true, write: true, delete: true, print: true}
-  - {role: cashier, read: true, if: "employee == user.name && published"}
-  - {role: outlet_staff, read: true, if: "employee == user.name && published"}
-  - {role: employee, read: true, if: "employee == user.name && published"}
+  # their own published shifts: every employee whatever their role (member grant, rangka-os contract 0074)
+  - {role: member, read: true, if: "employee == user.name && published"}
 fields:
   - {name: employee, type: link, to: user, label: {id: Karyawan}, required: true, in_list: true}
   - name: employee_name

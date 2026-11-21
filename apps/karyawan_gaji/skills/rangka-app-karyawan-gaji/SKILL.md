@@ -26,6 +26,9 @@ runs) and `reimbursement`. Install `absen_karyawan` next to it for the clock scr
 6. Expense claims: staff claim with a receipt photo (screen `klaim_biaya`); the outlet supervisor or head office
    approves; finance pays it from cash or bank (`claim_payment`) or it rides on the next slip as `reimbursement`,
    outside the taxable gross. docs/reimbursement.md.
+7. Every employee, whatever their role, opens dashboard `saya` from the phone (or the "Slip gaji" shortcut of the
+   installed app): their own payslips, attendance, kasbon, claims and coming shifts (member grants, rangka-os contract
+   0074). A slip shows there once released: submitted, and its run closed or its pay date reached.
 
 ## First day (first-day.json)
 

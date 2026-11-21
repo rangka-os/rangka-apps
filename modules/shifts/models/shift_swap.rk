@@ -19,6 +19,8 @@ permissions:
   - {role: cashier, read: true, create: true, write: true, delete: true, if: "requested_by == user.name"}
   - {role: outlet_staff, read: true, create: true, write: true, delete: true, if: "requested_by == user.name"}
   - {role: employee, read: true, create: true, write: true, delete: true, if: "requested_by == user.name"}
+  # every employee whatever their role reads their own requests (member grant, rangka-os contract 0074; jadwal_saya)
+  - {role: member, read: true, if: "requested_by == user.name"}
 fields:
   - {name: requested_by, type: link, to: user, label: {id: Diminta oleh}, default: user.name, read_only: true}
   - {name: requested_name, type: data, label: {id: Nama}, read_only: true, in_list: true, compute: "requested_by != '' ? requested_by.full_name : ''"}

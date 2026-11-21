@@ -114,8 +114,12 @@ def scenario_payroll_month(api):
     eq("the slips carry the recap's labour cost (MP-002: 23 x 235.000 + 6 x 34.000)", (by_no.get("MP-002") or {}).get("timesheet_cost"), 23 * 235_000 + 6 * 34_000)
     st, resp = pa.verb("payslip", (by_no.get("MP-002") or {}).get("name", "x"), "submit")
     check("the project admin cannot submit a payslip (403)", denied(st, resp), (st, resp))
+    # every member may read their own released slip (member grant, rangka-os contract 0074): the sales manager is no
+    # worker here, so the list answers and is empty, and another person's slip stays closed
     st, resp = sm.call("GET", f"/api/v1/r/payslip?limit=5")
-    check("a sales manager cannot read payslips (403)", st == 403, (st, resp))
+    check("a sales manager lists no payslip (only their own, and they have none)", st == 200 and not (resp or {}).get("data"), (st, resp))
+    st, resp = sm.call("GET", f"/api/v1/r/payslip/{Api.q((by_no.get('MP-002') or {}).get('name', 'x'))}")
+    check("a sales manager cannot open a worker's payslip", st in (403, 404), (st, resp))
     # MP-001's kasbon of 300.000 (taken back from this slip, g.EDITS) given in cash earlier in the period: Dr Piutang
     # karyawan / Cr Kas, so the payroll close's Cr 11330 brings the receivable back to 0 (audit akuntansi r4 L-i)
     mp1 = (by_no.get("MP-001") or {}).get("worker", "x")

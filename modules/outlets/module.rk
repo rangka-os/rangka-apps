@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: outlets
-version: 1.7.0
+version: 1.8.0
 title: {id: Outlet dan gudang, en: Outlets and warehouses}
 summary:
   id: Daftar cabang, gudang, dan lokasi stok usaha kamu.

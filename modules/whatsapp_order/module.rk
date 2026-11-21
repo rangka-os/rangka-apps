@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: whatsapp_order
+version: 1.0.0
+title: {id: Pesanan dari WhatsApp, en: WhatsApp orders}
+summary:
+  id: Chat pesanan di WhatsApp jadi draf berharga dari data barangmu; staf konfirmasi sekali ketuk, pelanggan dibalas rincian dan totalnya.
+  en: WhatsApp chat orders become drafts priced from your items; staff confirm with one tap and the customer gets the items and total.
+category: sales
+icon: chat-check-line
+# rangka-plans A1 (the landing's lead scene). A customer writes to the business's WhatsApp number, for example "pesan
+# 2 kopi susu, 1 roti bakar coklat". Rangka Cloud reads the text into lines (qty, name, note) with its deterministic
+# parser (rangka-cloud internal/whatsapp/orderparse; no catalogue, no LLM) and forwards them with the connector
+# trigger rangka_whatsapp.message_received. This module:
+# - keeps every message it hears once, by Meta's message id (whatsapp_inbound; the kernel's flow key and a unique
+#   field), which a later shared inbox (rangka-apps#130) can read;
+# - matches each line against the business's own items in CEL (flow whatsapp_order_intake): the exact name, a name
+#   that holds the customer's words, the customer's words that hold a name (the rest becomes the line's note), then
+#   the spelling skeleton (vowels dropped, c/k alike, doubled letters as one) for a typo. One candidate fills the
+#   line; several are a choice the staff make; none leaves the line unknown, kept and flagged, never guessed. Prices
+#   are the item's rate, read by the line (whatsapp_order_line.rate), never a number from the text;
+# - puts the lines on a draft whatsapp_order of that customer (state new), or on the one still open from the same
+#   number when the last message came at most 30 minutes before (a burst of messages is one order). A message with
+#   no order in it (Rangka Cloud's order_signal false and nothing matched) starts no draft;
+# - links the customer by WhatsApp number (customer.wa_number); an unknown number keeps the WhatsApp profile name as
+#   free text the staff can edit, and the customer is created only on confirm;
+# - gives the draft its outlet: the store ticked "Terima pesanan WhatsApp" (outlet.wa_orders, the first one when
+#   several are), else the business's only store, else none (head office sets it); cashiers see their outlets' orders.
+# Confirm (state new -> confirmed, one tap on the work screen pesanan_wa, flow whatsapp_order_on_update) is a person's
+# act: nothing becomes an order without it, and no flow here confirms. It creates the customer when needed, then the
+# order the business already works with: a draft pos_sale on the confirming cashier's open shift (module pos: paying
+# it at the counter takes the stock out, prints the receipt and counts in the reports like any sale; a business
+# without a kasir, through customer_order, is a later step). The customer then gets the template pesanan_diterima
+# (type order_reply) with the items and the sale's total, through Rangka Cloud's relay (opt-out list respected, sent
+# once per key).
+# Meta's 24-hour rule: free-form text is allowed only within 24 hours of the customer's last message, a template at
+# any time. The reply is always a UTILITY template (inside the window Meta does not charge it), and the relay rebuilds
+# every message from template parameters (rangka-cloud relay.go parse), so no free-form message can leave here at all.
+# Free text is one source: reading a message into lines (Rangka Cloud) and matching lines into a priced draft (here)
+# stay apart, so a catalogue cart (lines with a product sku and Meta's price, kept only to compare) takes the same path
+# from matching to confirm. The draft records its source (README.md "Next: A1b").
+requires: {rangka: '>=0.5', users: ^1.2, contacts: ^1.3, catalogue: ^1.3, whatsapp: ^1.1}
+optional: {outlets: ^1.8, pos: ^1.3, whatsapp_receipt: ^1.0}

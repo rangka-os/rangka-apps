@@ -1,0 +1,164 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# An order a customer wrote on WhatsApp, as a draft until a person confirms it (module doc). Made and added to by flow
+# whatsapp_order_intake; confirmed or turned down by staff (state, on the work screen pesanan_wa or the form). Confirm
+# runs flow whatsapp_order_on_update in the same write: the customer, the cashier's draft sale, and the reply. A confirmed order is final here (its sale is voided at the kasir like any sale); a turned-down
+# one may be opened again.
+# The total is an estimate from the items' rates; the reply carries the total of the document confirm makes (a promo
+# at the kasir may lower it).
+name: whatsapp_order
+label: {id: Pesanan WhatsApp, en: WhatsApp order}
+icon: chat-check-line
+naming: WAO-{YY}{MM}-{#####}
+title_field: customer_name
+permissions:
+  - {role: head_office, read: true, write: true, export: true}
+  - {role: sales_manager, read: true, write: true, export: true}
+  - {role: cashier, read: true, write: true}
+fields:
+  - name: state
+    type: select
+    label: {id: Status}
+    default: "'new'"
+    in_list: true
+    in_filter: true
+    chip: true
+    options:
+      - {value: new, label: {id: Baru}}
+      - {value: confirmed, label: {id: Dikonfirmasi}}
+      - {value: rejected, label: {id: Ditolak}}
+  # where the card sits on the work screen: needs a look (a choice or an unknown line), ready, or done
+  - name: stage
+    type: select
+    label: {id: Tahap}
+    in_filter: true
+    compute: "state == 'confirmed' ? 'confirmed' : (state == 'rejected' ? 'rejected' : (open_choices > 0 || item_lines == 0 || unknown_lines > 0 || price_diffs > 0 || catalogue_capped ? 'check' : 'ready'))"
+    options:
+      - {value: check, label: {id: Perlu dicek}}
+      - {value: ready, label: {id: Siap dikonfirmasi}}
+      - {value: confirmed, label: {id: Dikonfirmasi}}
+      - {value: rejected, label: {id: Ditolak}}
+  # where the order came from: the text a customer wrote (Rangka Cloud reads it into lines); whatsapp_cart (a WhatsApp
+  # catalogue cart with product references) is the next source, fed into the same matching (module doc "Next: A1b")
+  - name: source
+    type: select
+    label: {id: Sumber}
+    default: "'whatsapp_text'"
+    read_only: true
+    in_filter: true
+    options:
+      - {value: whatsapp_text, label: {id: Chat WhatsApp}}
+      - {value: whatsapp_cart, label: {id: Keranjang katalog WhatsApp}}
+  # free text: the WhatsApp profile name of a new number, which staff may correct; a known customer's name otherwise
+  - {name: customer_name, type: data, label: {id: Nama pelanggan}, required: true, in_list: true}
+  - name: customer
+    type: link
+    to: customer
+    label: {id: Pelanggan}
+    help: {id: 'Kosong kalau nomor ini belum terdaftar. Pelanggan baru dibuat saat pesanan dikonfirmasi'}
+  - {name: phone, type: phone, label: {id: Nomor WhatsApp}, read_only: true}
+  - {name: wa_number, type: data, label: {id: Nomor WhatsApp (seragam)}, read_only: true, hidden: true, index: true}
+  - name: outlet
+    type: link
+    to: outlet
+    label: {id: Outlet}
+    help: {id: 'Outlet yang menyiapkan pesanan. Terisi sendiri kalau usaha punya satu toko'}
+    depends_on: app_installed('outlets')
+  - {name: lines, type: table, of: whatsapp_order_line, label: {id: Pesanan}}
+  # pick-up, delivery or time remarks from the customer's messages, and the text of lines no item matched
+  - {name: notes, type: text, label: {id: Catatan pelanggan}}
+  # more items for sale than the intake reads (5000): a line's single candidate may not be the only one, so the order
+  # waits for a look ("Perlu dicek")
+  - {name: catalogue_capped, type: check, label: {id: Katalog terlalu besar untuk dicocokkan penuh}, read_only: true, default: 'false'}
+  - {name: line_count, type: int, label: {id: Jumlah baris}, hidden: true, compute: lines.size()}
+  - {name: big_qty_lines, type: int, label: {id: Baris jumlah besar}, hidden: true, compute: "lines.map(l, l.qty > 999 ? 1 : 0).sum()"}
+  - {name: item_lines, type: int, label: {id: Baris barang}, hidden: true, compute: "lines.map(l, l.item != '' ? 1 : 0).sum()"}
+  - {name: unknown_lines, type: int, label: {id: Baris tidak dikenali}, hidden: true, compute: "lines.map(l, l.item == '' && l.match != 'pilih' ? 1 : 0).sum()"}
+  - {name: open_choices, type: int, label: {id: Baris perlu dipilih}, hidden: true, compute: "lines.map(l, l.item == '' && l.match == 'pilih' ? 1 : 0).sum()"}
+  - {name: price_diffs, type: int, label: {id: Baris beda harga}, hidden: true, compute: "lines.map(l, l.item != '' && l.quoted_rate > 0 && l.quoted_rate != l.rate ? 1 : 0).sum()"}
+  # "2 Kopi Susu, 1 Roti Bakar Coklat": the lines with an item, as the reply writes them
+  - name: summary
+    type: data
+    label: {id: Isi pesanan}
+    compute: "lines.filter(l, l.item != '').map(l, string(l.qty) + ' ' + l.item_name).join(', ')"
+  - name: check_note
+    type: data
+    label: {id: Yang perlu dicek}
+    compute: >-
+      state != 'new' ? '' :
+      item_lines == 0 && open_choices == 0 ? 'Belum ada barang yang cocok' :
+      (open_choices > 0 ? string(open_choices) + ' baris perlu dipilih' : '') +
+      (open_choices > 0 && unknown_lines > 0 ? ', ' : '') +
+      (unknown_lines > 0 ? string(unknown_lines) + ' baris tidak dikenali' : '') +
+      ((open_choices > 0 || unknown_lines > 0) && price_diffs > 0 ? ', ' : '') +
+      (price_diffs > 0 ? string(price_diffs) + ' baris beda harga' : '') +
+      (catalogue_capped ? (open_choices > 0 || unknown_lines > 0 || price_diffs > 0 ? ', ' : '') + 'katalog besar, cek barangnya' : '')
+  - {name: total, type: currency, label: {id: Perkiraan total}, help: {id: 'Dari harga barang. Total akhir mengikuti transaksinya'}, compute: "lines.map(l, l.amount).sum()", in_list: true}
+  # "Rp 66.000" for the work screen's card (a card prints numbers raw); the same cut as whatsapp_message.amount_text
+  - name: total_text
+    type: data
+    label: {id: Perkiraan total (teks)}
+    hidden: true
+    compute: >-
+      'Rp ' + (int(total) < 1000 ? string(int(total)) :
+      int(total) < 1000000 ? string(int(total) / 1000) + '.' + ('x' + string(1000 + int(total) - (int(total) / 1000) * 1000)).replace('x1', '') :
+      int(total) < 1000000000 ? string(int(total) / 1000000) + '.' + ('x' + string(1000 + int(total) / 1000 - (int(total) / 1000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(total) - (int(total) / 1000) * 1000)).replace('x1', '') :
+      string(int(total) / 1000000000) + '.' + ('x' + string(1000 + int(total) / 1000000 - (int(total) / 1000000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(total) / 1000 - (int(total) / 1000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(total) - (int(total) / 1000) * 1000)).replace('x1', ''))
+  - {name: messages, type: int, label: {id: Jumlah pesan}, read_only: true, default: '0'}
+  - {name: first_message_at, type: datetime, label: {id: Pesan pertama}, read_only: true}
+  - {name: last_message_at, type: datetime, label: {id: Pesan terakhir}, read_only: true}
+  # Unix seconds of the last message: the 30-minute window of flow whatsapp_order_intake
+  - {name: last_epoch, type: int, label: {id: Pesan terakhir (detik)}, read_only: true, hidden: true, default: '0'}
+  - {name: confirmed_by, type: data, label: {id: Dikonfirmasi oleh}, read_only: true}
+  - {name: confirmed_at, type: datetime, label: {id: Dikonfirmasi}, read_only: true}
+  # the site's date of the confirm (today() is the site timezone; confirmed_at is UTC), for lists and reports
+  - {name: confirmed_date, type: date, label: {id: Tanggal dikonfirmasi}, read_only: true, hidden: true}
+  - {name: sale, type: link, to: pos_sale, label: {id: Transaksi kasir}, read_only: true, depends_on: app_installed('pos')}
+  # the total the reply told the customer (the sale's)
+  - {name: reply_total, type: currency, label: {id: Total di balasan}, read_only: true, default: '0'}
+  - {name: reply, type: link, to: whatsapp_message, label: {id: Balasan WhatsApp}, read_only: true}
+rules:
+  - name: confirm_has_items
+    on: save
+    check: "state != 'confirmed' || item_lines > 0"
+    message: {id: 'Belum ada barang di pesanan ini. Pilih barangnya di baris pesanan dulu'}
+  - name: confirm_choices_made
+    on: save
+    check: "state != 'confirmed' || open_choices == 0"
+    message: {id: 'Ada baris yang perlu dipilih barangnya (misalnya ukuran). Pilih dulu, lalu konfirmasi'}
+  - name: qty_positive
+    on: save
+    check: "lines.map(l, l.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: qty_sane
+    on: save
+    check: "state != 'confirmed' || big_qty_lines == 0"
+    message: {id: 'Ada baris dengan jumlah lebih dari 999. Cek lagi jumlahnya sebelum konfirmasi'}
+  - name: lines_limit
+    on: save
+    check: "line_count <= 60"
+    message: {id: 'Satu pesanan paling banyak 60 baris'}
+  - name: name_given
+    on: save
+    check: "customer_name.trim() != ''"
+    message: {id: Isi nama pelanggan}
+views:
+  list:
+    columns: [name, customer_name, state, summary, total]
+    sort: -first_message_at
+  form:
+    layout:
+      - section: {id: Pesanan}
+        columns:
+          - [state, customer_name, customer, phone]
+          - [outlet, check_note, total]
+      - section: {id: Isi pesanan}
+        fields: [lines]
+      - section: {id: Catatan pelanggan}
+        fields: [notes]
+      - section: {id: Setelah dikonfirmasi}
+        columns:
+          - [sale, reply_total]
+          - [confirmed_by, confirmed_at, reply]
+      - section: {id: Pesan masuk}
+        columns:
+          - [messages, first_message_at, last_message_at]

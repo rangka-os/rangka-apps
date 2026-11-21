@@ -3209,8 +3209,13 @@ _CHECKED = ("read", "create", "write", "delete", "submit", "cancel", "amend", "e
 APPEND_ONLY = {"project_ledger", "stock_adjustment_value"}
 
 
+# Member grants (rangka-os contract 0074): every member holds them next to their own role, read-only own records here.
+MEMBER = {"payslip": _RP, "attendance_summary": _R, "staff_attendance": _R, "cash_advance": _R, "cash_advance_balance": _R,
+          "expense_claim": _R, "claim_settlement": _R, "shift_assignment": _R, "shift_swap": _R}
+
+
 def granted(role, model):
-    g = MATRIX.get(model, {}).get(role, set())
+    g = MATRIX.get(model, {}).get(role, set()) | (MEMBER.get(model, set()) if role != "owner" else set())
     return g - {"create", "write", "delete", "import"} if model in APPEND_ONLY else g
 
 
@@ -5925,6 +5930,7 @@ import day_one_doku  # noqa: E402
 import day_one_midtrans  # noqa: E402
 import day_one_pos_export  # noqa: E402
 import day_one_whatsapp  # noqa: E402
+import day_one_whatsapp_order  # noqa: E402
 import day_one_kitchen  # noqa: E402
 import day_one_attendance  # noqa: E402
 import day_one_staff  # noqa: E402
@@ -5955,6 +5961,7 @@ day_one_doku.bind(sys.modules[__name__])
 day_one_midtrans.bind(sys.modules[__name__])
 day_one_pos_export.bind(sys.modules[__name__])
 day_one_whatsapp.bind(sys.modules[__name__])   # also registers demo-whatsapp (orgs, kernel env, setup)
+day_one_whatsapp_order.bind(sys.modules[__name__])
 day_one_kitchen.bind(sys.modules[__name__])
 day_one_attendance.bind(sys.modules[__name__])
 day_one_staff.bind(sys.modules[__name__])
@@ -5988,7 +5995,7 @@ SCENARIOS = {
     "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + day_one_promotions.SCENARIOS + day_one_loyalty.SCENARIOS + day_one_offline.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-kepingan-keuangan": day_one_keuangan.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
-SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS
+SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS + day_one_whatsapp_order.SCENARIOS   # orders need its shift and key
 SCENARIOS["demo-karyawan"] = day_one_karyawan.SCENARIOS + [scenario_permissions]
 SCENARIOS["demo-salon"] = day_one_appointments.SCENARIOS + [scenario_permissions]
 # module promotions on demo-jasa: the invoice promo as a new line's default discount, before the permission matrix

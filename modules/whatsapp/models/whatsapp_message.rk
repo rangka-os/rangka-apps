@@ -40,6 +40,8 @@ fields:
       - {value: reminder, label: {id: Pengingat tagihan}}
       - {value: order_ready, label: {id: Kabar pesanan siap}}
       - {value: appointment, label: {id: Pengingat janji}}
+      # module whatsapp_order: the reply after staff confirm an order the customer wrote on WhatsApp
+      - {value: order_reply, label: {id: Balasan pesanan WA}}
   - {name: template, type: data, label: {id: Template}, read_only: true}
   - {name: document, type: data, label: {id: Dokumen}, read_only: true, in_list: true}
   - {name: customer, type: link, to: customer, label: {id: Pelanggan}, read_only: true, in_list: true}
