@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
 # One line of a WhatsApp order: what the customer wrote, and the item it was matched to (flow whatsapp_order_intake).
 # The price is the item's own rate, computed here, never a number from the text. A line without an item is a note:
-# kept and flagged (match unknown), or a choice the staff make (match ambiguous: the candidates in choices). Staff may
+# kept and flagged (match tak_dikenal), or a choice the staff make (match pilih: the candidates in choices). Staff may
 # pick or change the item on any line before confirming; a line still without an item is left out of the order.
 name: whatsapp_order_line
 is_child: true
@@ -25,11 +25,12 @@ fields:
   - {name: amount, type: currency, label: {id: Jumlah}, compute: round(qty * rate)}
   - {name: rate, type: currency, label: {id: Harga}, compute: "item != '' ? item.rate : 0"}
   # a price the message itself carried (a catalogue cart does): kept only to compare, never charged
-  - {name: quoted_rate, type: currency, label: {id: Harga di pesan}, read_only: true, default: '0'}
+  - {name: quoted_rate, type: currency, label: {id: Harga di pesan}, read_only: true, hidden: true, default: '0'}
   - name: match
     type: select
     label: {id: Cara dibaca}
     read_only: true
+    hidden: true
     default: "'staf'"
     options:
       - {value: sama, label: {id: Nama sama}}
@@ -39,6 +40,6 @@ fields:
       - {value: tak_dikenal, label: {id: Tidak dikenali}}
       - {value: staf, label: {id: Diisi staf}}
   # the candidates of an ambiguous line, "Es Kopi Susu Regular / Es Kopi Susu Large"
-  - {name: choices, type: data, label: {id: Pilihan}, read_only: true}
+  - {name: choices, type: data, label: {id: Pilihan}, read_only: true, hidden: true}
   - {name: unit, type: data, label: {id: Satuan ditulis}, read_only: true, hidden: true}
   - {name: item_name, type: data, label: {id: Nama barang}, hidden: true, compute: "item != '' ? item.item_name : ''"}

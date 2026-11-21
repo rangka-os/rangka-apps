@@ -13,8 +13,8 @@
 #      the longest names the customer's words hold (rl: "kopi susu gula aren" holds "kopi susu", the rest becomes
 #      the note); the same spelling skeleton (t: no spaces and vowels, c/q as k, v as f, z as j, a doubled letter as
 #      one; only names of six or more letters, with the same first letter and word count);
-#    - one candidate fills the item; several make the line a choice (ambiguous, candidates in choices); none leaves
-#      it unknown. The price is never set here: the line reads the item's rate.
+#    - one candidate fills the item; several make the line a choice (match pilih, candidates in choices); none leaves
+#      it tak_dikenal. The price is never set here: the line reads the item's rate.
 #    Only active items for sale with a price are candidates (kind not material, rate above 0).
 # 2. A draft order: the customer's open one (state new) when its last message is at most 30 minutes from this one,
 #    else a new one, but only when Rangka Cloud read an order in the text (order_signal) or, for the open one, at least
