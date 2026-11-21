@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+name: pesanan_lapangan
+type: counter
+label: {id: Jual dari mobil, en: Van sale}
+description: {id: 'Pilih barang dari mobil, atur jumlahnya, lalu simpan penjualan. Harga tier dihitung saat simpan.'}
+icon: truck-line
+# The salesman's counter on the road (contract 0030 §2 counter): the kernel web app renders it from these slots. Stock,
+# credit approvals, the invoice and the cash payment stay in canvas_sale (stock: block, approvals, flows
+# canvas_sale_drafts); the screen only fills the sale. The counter shows the item's base rate: the customer's tier
+# price is set by the flow canvas_sale_tier_pricing when the sale is saved (a counter price is a field, not a computed
+# expression). A sale over the customer's credit limit is held for the sales manager after this submit.
+roles: [field_sales]
+device: phone
+offline: queue
+counter:
+  catalogue:
+    model: item
+    filter: "kind != 'material' && active != false"
+    title: item_name
+    search: [item_name, sku, barcode]
+    group_by: category
+    price: rate
+    barcode: barcode
+  document:
+    model: canvas_sale
+    lines: items
+    line: {item: item, qty: qty, price: rate, amount: amount}
+    total: grand_total
+    summary: [subtotal, cash_received, credit_amount]
+    checkout: [{field: outlet, filter: "location_type == 'vehicle'"}, cash_received]
+    set: {customer: "stop.name", sale_date: "today()"}
+  customer: {field: customer, required: true}

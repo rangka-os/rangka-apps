@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Fills the draft settlement from the van's day: sales_total and credit_total of the submitted canvas sales of the
+# salesman, van and date, and cash_expected = their cash_received. Runs on create and on every save of the draft
+# (and staff save again to read a sale made since); canvas_settlement_on_submit checks the figures once more.
+name: canvas_settlement_expected_created
+label: {id: Hitung tunai yang seharusnya disetor}
+on: canvas_settlement.created
+if: "event.docstatus == 0"
+steps:
+  - {find_all: canvas_sale, where: "docstatus == 1 && salesman == event.salesman && outlet == event.outlet && sale_date == event.settle_date", as: sales}
+  - {find: canvas_settlement, where: name == event.name, as: st}
+  - update: st
+    set:
+      sales_total: "sales.map(s, s.grand_total).sum()"
+      credit_total: "sales.map(s, s.credit_amount).sum()"
+      cash_expected: "sales.map(s, s.cash_received).sum()"

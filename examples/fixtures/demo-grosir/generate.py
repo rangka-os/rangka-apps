@@ -50,6 +50,11 @@ PRODUCTS = [
 ]
 
 SALESMEN = [("USR-011", "Asep Contoh", "mon_thu"), ("USR-012", "Ujang Contoh", "tue_fri"), ("USR-013", "Wawan Contoh", "wed_sat")]
+# Synthetic centre of each area (lat, lng): a customer's shop point is a deterministic offset from it, so the demo route
+# has real distances. The shop radius is 100 m (customer.visit_radius_m).
+CENTRES = {"Cimahi": (-6.8722, 107.5420), "Padalarang": (-6.8431, 107.4894), "Batujajar": (-6.9100, 107.4880),
+           "Soreang": (-7.0250, 107.5190), "Banjaran": (-7.0460, 107.5890), "Katapang": (-6.9830, 107.5680),
+           "Ujungberung": (-6.9170, 107.7000), "Cibiru": (-6.9270, 107.7200), "Rancaekek": (-6.9650, 107.7560)}
 AREAS = {"USR-011": ["Cimahi", "Padalarang", "Batujajar"], "USR-012": ["Soreang", "Banjaran", "Katapang"],
          "USR-013": ["Ujungberung", "Cibiru", "Rancaekek"]}
 KINDS = ["Toko", "Warung", "Toko Grosir", "Minimarket", "Kios", "Agen"]
@@ -72,9 +77,9 @@ def build():
     out = {"uom": [{"name": n, "uom_name": u, "coretax_unit": CORETAX_UNIT[u]} for n, u in UOMS],
            "item_category": [{"name": f"KTG-{i + 1:03d}", "category_name": c} for i, c in enumerate(CATEGORIES)],
            "outlet": [
-               {"name": GUDANG, "outlet_name": "Gudang Utama", "code": "GDG", "city": "Bandung", "address": "Jl. Contoh Industri No. 8", "is_head_office": True, "active": True},
-               {"name": KANVAS, "outlet_name": "Mobil Kanvas 1", "code": "KNV", "city": "Bandung", "address": "Kendaraan D 0000 CN", "active": True},
-               {"name": RUSAK, "outlet_name": "Ruang Barang Rusak", "code": "RSK", "city": "Bandung", "address": "Jl. Contoh Industri No. 8 (belakang)", "active": True}],
+               {"name": GUDANG, "outlet_name": "Gudang Utama", "code": "GDG", "location_type": "warehouse", "city": "Bandung", "address": "Jl. Contoh Industri No. 8", "is_head_office": True, "active": True},
+               {"name": KANVAS, "outlet_name": "Mobil Kanvas 1", "code": "KNV", "location_type": "vehicle", "parent_location": GUDANG, "city": "Bandung", "address": "Kendaraan D 0000 CN", "active": True},
+               {"name": RUSAK, "outlet_name": "Ruang Barang Rusak", "code": "RSK", "location_type": "quarantine", "parent_location": GUDANG, "city": "Bandung", "address": "Jl. Contoh Industri No. 8 (belakang)", "active": True}],
            "user": [{"name": "USR-001", "full_name": "Rudi Contoh", "role": "Manajer penjualan"},
                     {"name": "USR-002", "full_name": "Lina Contoh", "role": "Keuangan"},
                     {"name": "USR-003", "full_name": "Hendra Contoh", "role": "Kepala gudang"}] +
@@ -108,6 +113,8 @@ def build():
     route = {n: r for n, _, r in SALESMEN}
     out["customer"] = [{"name": f"CUST-{i + 1:04d}", "customer_name": n, "salesman": sm, "price_tier": tier, "city": city,
                         "address": f"Jl. Contoh {city} No. {(i * 7) % 90 + 1}", "route_day": route[sm],
+                        "location": {"lat": round(CENTRES[city][0] + ((i * 37) % 21 - 10) * 0.0004, 6), "lng": round(CENTRES[city][1] + ((i * 53) % 21 - 10) * 0.0004, 6)},
+                        "visit_radius_m": 100,
                         "credit_limit": limit, "payment_days": days, "phone": f"+62 812 0000 {i + 1:04d}",
                         # the owner's NIK for e-Faktur (made up: no province starts with 9), so a PKP distributor can
                         # issue faktur pajak to these shops (buyer document National ID)
@@ -129,6 +136,10 @@ def to_rk(data):
             return "true" if v else "false"
         if isinstance(v, int):
             return str(v)
+        if isinstance(v, float):
+            return repr(v)
+        if isinstance(v, dict):
+            return "{" + ", ".join(f"{k}: {val(x)}" for k, x in v.items()) + "}"
         s = str(v)
         # flow mappings: a comma (1,5 liter) or bracket would split or end the value
         if s.isdigit() or s.startswith("+") or ":" in s or any(c in s for c in ",[]{}#'\"") or s in ("yes", "no", "on", "off"):

@@ -7,7 +7,7 @@ and may do everything. A model without `permissions:` would be open to every mem
 All roles live in the `users` module, which every module requires, so a permission never names a role the site lacks.
 An app lists the roles it uses in `roles:` (`crm`: sales_rep, sales_manager; `jasa_proyek`: sales_manager,
 finance_manager, purchasing_manager, project_admin; `fnb_cabang`, `ritel_cabang` and `produksi_pabrik`: head_office, outlet_staff;
-`grosir_distribusi`: sales_manager, finance_manager, head_office, field_sales; `kelas_kursus`: course_admin, instructor
+`grosir_distribusi`: sales_manager, finance_manager, head_office, field_sales, outlet_supervisor; `kelas_kursus`: course_admin, instructor
 (its role file is in the `courses` module), finance_manager; `kasir`: cashier, head_office; `langganan_jasa`:
 finance_manager, collector (its role file is in the `subscriptions` module); `jasa_proyek` also field_worker and
 site_supervisor, whose role files are in the `projects` module).
@@ -86,7 +86,8 @@ outlet_supervisor): their flows create guard records only those roles are grante
 
 `field_sales` (Salesman) has a row scope `salesman` from `[user.name]` (its own user record): it sees only the customers,
 orders, invoices, payments, giro and delivery notes whose `salesman` is itself. On models without that field it reads
-masters (`item`, `item_category`, `uom`, `outlet`, `user`: r).
+masters (`item`, `item_category`, `uom`, `outlet`, `user`: r). `field_sales` has `desk: false` (rangka-apps#112): it opens the work shell
+on the `kunjungan` route screen (the van sale `pesanan_lapangan` is one tap away), with its lists under "Lainnya".
 
 | Model | sales_manager | finance_manager | head_office | outlet_staff | field_sales |
 | --- | --- | --- | --- | --- | --- |
@@ -96,6 +97,10 @@ masters (`item`, `item_category`, `uom`, `outlet`, `user`: r).
 | bank_account | r | r c w d e | r c w e | | r |
 | giro (lines made by the flow `giro_from_payment`; bounced only by cancelling the payment) | r c w e p | r c w e p | | | r |
 | delivery_note, sales_return | all | r p | all | | r p |
+| sales_visit (GPS check-in, rangka-apps#112; outside the shop radius waits for head office or `outlet_supervisor`; one per customer, salesman and day) | r w x e | r e | r w x e | | r c w s p (own customers; rule `own_customer`) |
+| canvas_sale (van sale: stock out of the `vehicle` outlet; draft invoice and cash payment by the scheduled flow `canvas_sale_drafts` (it runs as the system: a salesman cannot create invoices); held over the credit limit; cancel is for the sales and finance managers) | r c w s x a e p | r x e p | r c w s e p | | r c w s p (own customers) |
+| canvas_settlement (cash handed in against the van's day; a difference is recorded, never refused; closes the day) | r c w s x a e p | r c w s x a e p | r c w s e p | | r |
+| canvas_guard (never stored; a flow's refusal) | c | c | c | | c |
 | order_fulfilment (every field read_only; written by the delivery flows of whoever submits) | r c w e | r c w e | r c w e | | r c w |
 | return_credit (credited value of a sales return; opened by the return's flow, written by the payment flows) | r c w e | r c w e | r c w | | |
 | delivery_guard (never stored; a flow's refusal of a cancel or submit) | c | c | c | | |

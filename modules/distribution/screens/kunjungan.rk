@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+name: kunjungan
+type: route
+label: {id: Kunjungan, en: Visits}
+description: {id: 'Pelanggan yang dikunjungi hari ini; check in di tokonya, lalu ambil pesanan atau jual dari mobil.'}
+icon: map
+# The salesman's day (contract 0030 §2 route): customers of their route today (row scope: their own), with the
+# distance from the phone. Check-in makes a sales_visit with position and photo and submits it; a visit far from the
+# shop waits for head office or the outlet supervisor (approval outside_radius). The screen writes nothing else:
+# orders and canvas sales are their own documents, opened from the stop.
+roles: [field_sales]
+device: phone
+needs: [location, photo]
+route:
+  stops:
+    model: customer
+    filter: "route_today && active != false"
+    sort: customer_name
+    title: customer_name
+    subtitle: outstanding
+    address: address
+    location: location
+  visit: {model: sales_visit, link: customer, set: {salesman: user.name}, location: pos, photo: photo, submit: true}
+  actions:
+    - {label: {id: Jual dari mobil, en: Sell from the van}, screen: pesanan_lapangan}

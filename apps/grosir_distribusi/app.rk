@@ -4,7 +4,7 @@
 # delivers with a delivery note (stock out), invoices go out with PPN, giro is followed to the bank, a bounced giro
 # opens the invoices again, and AR is read per salesman.
 name: grosir_distribusi
-version: 1.0.0
+version: 1.1.0
 title: {id: Grosir dan distribusi, en: Wholesale distribution}
 label: {id: Rangka Grosir Distribusi, en: Rangka Wholesale Distribution}
 summary:
@@ -24,12 +24,15 @@ modules:
   coretax: ^1.0
   payments: ^1.0
   procurement: ^1.0
-  distribution: ^1.0
+  distribution: ^1.1
   delivery: ^1.0
   bank_statement: ^1.0
 dashboards: [grosir_overview, grosir_ar, gudang_harian, salesman_harian]
-roles: [sales_manager, finance_manager, head_office, field_sales, warehouse_staff]
+roles: [sales_manager, finance_manager, head_office, field_sales, warehouse_staff, outlet_supervisor]
 home: {dashboard: grosir_overview}
+# The salesman works from the phone (contract 0030 §3): the route is home, the van sale is one tap away.
+work:
+  - {screen: kunjungan, roles: [field_sales], home: true}
 # recipe is installed with stock but has no menu entry: a distributor sells goods as they are.
 menu:
   - group: {id: Penjualan}

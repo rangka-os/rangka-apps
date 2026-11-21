@@ -102,6 +102,28 @@ fields:
       - {value: tue_fri, label: {id: Selasa dan Jumat}}
       - {value: wed_sat, label: {id: Rabu dan Sabtu}}
       - {value: daily, label: {id: Setiap hari}}
+  # Where the customer's shop stands, for the salesman's visit check-in (module distribution, rangka-apps#112): a
+  # visit is "inside" when the phone is within visit_radius_m of this point (distance_m); no point counts as far.
+  - name: location
+    type: geo
+    label: {id: Titik lokasi toko}
+    depends_on: app_installed('distribution')
+    read_only_for: [purchasing_manager, project_admin, sales_rep, course_admin, cashier]
+  - name: visit_radius_m
+    type: int
+    label: {id: Radius kunjungan (m)}
+    help: {id: 'Check-in salesman di dalam jarak ini dari titik toko dihitung sah. Lebih jauh butuh persetujuan'}
+    default: '100'
+    depends_on: app_installed('distribution')
+    read_only_for: [purchasing_manager, project_admin, sales_rep, course_admin, cashier]
+  # Monday = 0 (1970-01-05 was a Monday). Computed on read, so it follows the day.
+  - name: route_today
+    type: check
+    label: {id: Dikunjungi hari ini}
+    read_only: true
+    in_filter: true
+    depends_on: app_installed('distribution')
+    compute: "route_day == 'daily' || (route_day == 'mon_thu' && (days_between('1970-01-05', today()) % 7) in [0, 3]) || (route_day == 'tue_fri' && (days_between('1970-01-05', today()) % 7) in [1, 4]) || (route_day == 'wed_sat' && (days_between('1970-01-05', today()) % 7) in [2, 5])"
   - name: price_tier
     type: select
     label: {id: Tier harga}
@@ -232,7 +254,11 @@ views:
           - [credit_limit, outstanding]
       - section: {id: Kredit dan salesman}
         columns:
-          - [salesman, route_day, credit_hold, credit_hold_reason]
+          - [salesman, route_day, route_today, credit_hold, credit_hold_reason]
           - [open_orders, uninvoiced_deliveries, oldest_open_due]
+      - section: {id: Lokasi toko (kunjungan salesman)}
+        columns:
+          - [location]
+          - [visit_radius_m]
       - section: {id: Kontak person}
         fields: [contacts]

@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Runs in the settlement's submit, under the flow read lock of canvas_sale (contract 0025): refused when a canvas sale
+# of that salesman, van and day was made or cancelled since the draft was saved (the cash it expects changed), so the
+# difference written on the document is the one staff counted against. The difference itself is never refused.
+name: canvas_settlement_on_submit
+label: {id: "Setoran kanvas diajukan: periksa angka tunai"}
+on: canvas_settlement.submitted
+steps:
+  - {find_all: canvas_sale, where: "docstatus == 1 && salesman == event.salesman && outlet == event.outlet && sale_date == event.settle_date", as: sales}
+  - if: "sales.map(s, s.cash_received).sum() != event.cash_expected || sales.map(s, s.grand_total).sum() != event.sales_total"
+    create: canvas_guard
+    set: {reason: "'settle_stale'", document: event.name}

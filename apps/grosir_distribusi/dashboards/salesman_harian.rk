@@ -49,3 +49,16 @@ widgets:
     limit: 20
     columns: [name, customer, due_date, outstanding]
     span: 12
+  # the route and the van (module distribution, rangka-apps#112)
+  - name: route_today
+    type: list
+    label: {id: Pelanggan yang dikunjungi hari ini}
+    model: customer
+    filter: route_today && active != false
+    sort: customer_name
+    limit: 20
+    columns: [customer_name, city, outstanding]
+    span: 12
+  - {name: my_visits, type: number, label: {id: Kunjungan saya}, description: {id: 'Check-in yang sudah sah pada periode ini'}, model: sales_visit, aggregate: count, filter: docstatus == 1, period: visited_at, span: 4}
+  - {name: my_canvas, type: number, label: {id: Penjualan mobil saya}, description: {id: 'Nilai dengan PPN, penjualan dari mobil pada periode ini'}, model: canvas_sale, aggregate: sum, field: grand_total, filter: docstatus == 1, period: sale_date, compact: true, span: 4}
+  - {name: my_shortage, type: number, label: {id: Kurang setor saya}, model: canvas_settlement, aggregate: sum, field: shortage, filter: docstatus == 1, period: settle_date, compact: true, good_when: down, span: 4}

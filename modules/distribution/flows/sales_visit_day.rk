@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Writes the day of a new visit as text (visit_day), which sales_visit.visit_key is built from. It is today in the
+# org's time zone (the day the server took the check-in), so a phone with a wrong clock cannot open a second visit
+# for the same day. The unique key then refuses a second visit of the same customer by the same salesman that day:
+# the update below fails and the check-in is rolled back.
+name: sales_visit_day
+label: {id: Catat hari kunjungan}
+on: sales_visit.created
+steps:
+  - {find: sales_visit, where: name == event.name, as: v}
+  - update: v
+    set:
+      visit_day: today()

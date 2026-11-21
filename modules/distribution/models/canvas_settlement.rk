@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: canvas_settlement
+label: {id: Setoran kanvas, en: Canvas settlement}
+icon: cash
+is_submittable: true
+naming: STK-{YYYY}-{#####}
+title_field: salesman
+# End of the van's day: the cash the salesman hands in, counted by staff, against the cash their canvas sales of that
+# day took (cash_received of the submitted canvas_sale of the salesman and van on settle_date; the flow
+# canvas_settlement_expected keeps it current on the draft and canvas_settlement_on_submit checks it again under its
+# lock). The difference is recorded, never refused: a shortage or an overage is written on the document and needs an
+# explanation in the notes. One settlement per salesman, van and day (settle_key); once it is submitted the day is
+# closed: no canvas sale of that day can be made or cancelled any more (flows canvas_sale_day_closed and
+# canvas_sale_on_cancel). Booking a shortage against the salesman is accounting's decision and not done here.
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  - {role: sales_manager, read: true, create: true, write: true, submit: true, export: true, print: true}
+  - {role: head_office, read: true, create: true, write: true, submit: true, export: true, print: true}
+  # row scope salesman: a salesman reads their own settlements (and the day-closed check reads them as the actor)
+  - {role: field_sales, read: true}
+fields:
+  - {name: salesman, type: link, to: user, label: {id: Salesman}, required: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Mobil kanvas}, required: true, in_list: true}
+  - {name: settle_date, type: date, label: {id: Tanggal}, default: today(), required: true, in_list: true}
+  - {name: sales_total, type: currency, label: {id: Penjualan hari itu (dengan PPN)}, read_only: true}
+  - {name: credit_total, type: currency, label: {id: Di antaranya piutang}, read_only: true}
+  - {name: cash_expected, type: currency, label: {id: Tunai yang seharusnya disetor}, read_only: true, in_list: true}
+  - {name: cash_counted, type: currency, label: {id: Tunai yang dihitung}, required: true, in_list: true}
+  - {name: difference, type: currency, label: {id: Selisih (hitung dikurangi seharusnya)}, compute: "cash_counted - cash_expected", in_list: true}
+  - {name: shortage, type: currency, label: {id: Kurang setor}, compute: "difference < 0 ? -difference : 0"}
+  - {name: overage, type: currency, label: {id: Lebih setor}, compute: "difference > 0 ? difference : 0"}
+  - {name: settle_key, type: data, label: {id: Kunci setoran}, hidden: true, unique: true, compute: "salesman + '|' + outlet + '|' + settle_date + (amended_from == '' ? '' : '|' + amended_from)"}
+  - {name: notes, type: text, label: {id: Catatan}}
+rules:
+  - name: sells_from_van
+    on: save
+    check: outlet.location_type == 'vehicle'
+    message: {id: 'Setoran kanvas hanya untuk mobil kanvas'}
+  - name: cash_not_negative
+    on: save
+    check: cash_counted >= 0
+    message: {id: 'Tunai yang dihitung tidak boleh minus'}
+  - name: not_future
+    on: save
+    check: settle_date <= today()
+    message: {id: 'Tanggal setoran tidak boleh sesudah hari ini'}
+  - name: difference_explained
+    on: submit
+    check: difference == 0 || notes != ''
+    message: {id: 'Ada selisih tunai: tulis penjelasannya di catatan'}
+views:
+  list:
+    columns: [name, settle_date, salesman, outlet, cash_expected, cash_counted, difference, status]
+    filters: [salesman, outlet]
+    sort: -settle_date
+  form:
+    layout:
+      - section: {id: Setoran}
+        columns:
+          - [salesman, outlet, settle_date]
+          - [sales_total, credit_total, cash_expected]
+      - section: {id: Hitung tunai}
+        columns:
+          - [cash_counted, difference]
+          - [shortage, overage]
+      - section: {id: Catatan}
+        fields: [notes]

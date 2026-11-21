@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Never stored: a flow of the canvas sale creates one when the write it runs in must be refused (the pattern of
+# pos_guard); the matching rule fails with the reason's message, which rolls the whole write back (the flow runs
+# inside it). Create is granted to the roles whose writes run those flows.
+name: canvas_guard
+label: {id: Penjaga penjualan kanvas, en: Canvas sale guard}
+icon: check
+naming: KVG-{######}
+title_field: reason
+permissions:
+  - {role: field_sales, create: true}
+  - {role: sales_manager, create: true}
+  - {role: head_office, create: true}
+  - {role: finance_manager, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: invoice_paid, label: {id: Faktur sudah dibayar}}
+      - {value: invoice_submitted, label: {id: Faktur sudah diajukan}}
+      - {value: payment_submitted, label: {id: Pembayaran sudah diajukan}}
+      - {value: day_settled, label: {id: Hari mobil sudah disetor}}
+      - {value: settle_stale, label: {id: Angka setoran sudah berubah}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: invoice_paid
+    on: save
+    check: reason != 'invoice_paid'
+    message: {id: 'Faktur penjualan ini sudah dibayar sebagian atau penuh; batalkan pembayarannya dan fakturnya dulu'}
+  - name: invoice_submitted
+    on: save
+    check: reason != 'invoice_submitted'
+    message: {id: 'Faktur penjualan ini sudah diajukan keuangan; batalkan fakturnya dulu'}
+  - name: payment_submitted
+    on: save
+    check: reason != 'payment_submitted'
+    message: {id: 'Pembayaran tunai penjualan ini sudah diajukan keuangan; batalkan pembayarannya dulu'}
+  - name: day_settled
+    on: save
+    check: reason != 'day_settled'
+    message: {id: 'Mobil ini sudah disetor untuk hari itu; penjualan kanvas hari itu tidak bisa dibuat atau dibatalkan lagi'}
+  - name: settle_stale
+    on: save
+    check: reason != 'settle_stale'
+    message: {id: 'Ada penjualan kanvas baru atau yang dibatalkan sejak setoran ini disimpan; simpan lagi untuk membaca angka terbaru, lalu ajukan'}

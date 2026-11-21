@@ -4,11 +4,12 @@
 # this module switches on live in their own models (customer, item, customer_order, sales_invoice, payment) behind
 # app_installed('distribution'); the flows here keep them current.
 name: distribution
-version: 1.0.1
+version: 1.1.0
 title: {id: Distribusi, en: Distribution}
 summary:
   id: Catat giro masuk dari pelanggan grosir sampai cair.
   en: Track post-dated cheques from wholesale customers until they clear.
 category: finance
 icon: file-paper-2-line
-requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, orders: ^1.0, invoicing: ^1.0, payments: ^1.0, procurement: ^1.0}
+requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.0, catalogue: ^1.0, orders: ^1.0, invoicing: ^1.0, payments: ^1.0, procurement: ^1.0, outlets: ^1.0, stock: ^1.6}
+hooks: [stock.reverse_moves]

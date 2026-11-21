@@ -1,7 +1,9 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/role.json
 name: field_sales
 label: {id: Salesman}
-description: {id: Mengambil pesanan dan melihat piutang pelanggan yang dia pegang}
+description: {id: 'Mengunjungi pelanggan, mengambil pesanan, menjual dari mobil kanvas, dan melihat piutang pelanggan yang dia pegang'}
 # Contract 0010 §5: records whose salesman is the member's own user record (customers, orders, invoices, payments,
 # giro, delivery notes). user.name is the member's user record (rangka user add --record).
 scope: {field: salesman, from: '[user.name]'}
+# Works from the phone (contract 0030 §3, rangka-apps#112): the route screen is home, no sidebar; lists are under "Lainnya".
+desk: false

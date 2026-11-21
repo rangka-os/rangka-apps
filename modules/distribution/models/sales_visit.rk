@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: sales_visit
+label: {id: Kunjungan salesman, en: Sales visit}
+icon: map
+is_submittable: true
+naming: KNJ-{YYYY}-{#####}
+title_field: customer_name
+# A salesman checked in at one of their own customers (screen kunjungan, contract 0030 §2 route): when, where the phone
+# stood (geo) and a photo of the shop. It moves no stock and no money; the order or canvas sale is its own document.
+# The kernel measures the distance to the customer's point (distance_m, as module attendance does for a clock-in), so a
+# visit made far from the shop, or from a customer with no point yet, is "outside": its submit waits for head office
+# or the outlet supervisor (approvals, contract 0007). One visit per customer, salesman and day: visit_key is
+# unique and is built from visit_day, a text copy of the day that the flow sales_visit_day writes (a date cannot be
+# turned into text in a unique key); a cancelled or rejected visit is redone by amending it (the key carries
+# amended_from). Position, photo, customer, salesman and time are set_once: a check-in cannot be moved afterwards.
+permissions:
+  - {role: field_sales, read: true, create: true, write: true, submit: true, print: true}
+  - {role: sales_manager, read: true, write: true, cancel: true, export: true}
+  - {role: head_office, read: true, write: true, cancel: true, export: true}
+  # row scope is the outlet field: the supervisor reads and decides the visits of their own outlets
+  - {role: finance_manager, read: true, export: true}
+  - {role: outlet_supervisor, read: true}
+fields:
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, required: true, set_once: true, in_list: true, peek: [address, route_day]}
+  - {name: customer_name, type: data, label: {id: Nama pelanggan}, compute: customer.customer_name, in_list: true}
+  # Row scope of the field_sales role (roles/field_sales.rk): the member's own user record.
+  - {name: salesman, type: link, to: user, label: {id: Salesman}, default: user.name, required: true, set_once: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, default: "user.outlets.size() > 0 ? user.outlets[0] : ''", help: {id: 'Dipakai kepala outlet untuk melihat dan menyetujui kunjungan'}}
+  - {name: visited_at, type: datetime, label: {id: Waktu kunjungan}, default: now(), required: true, set_once: true, in_list: true}
+  - {name: visit_day, type: data, label: {id: Hari kunjungan}, hidden: true, read_only: true}
+  - {name: visit_key, type: data, label: {id: Kunci kunjungan}, hidden: true, unique: true, compute: "customer + '|' + salesman + '|' + visit_day + (amended_from == '' ? '' : '|' + amended_from)"}
+  - {name: pos, type: geo, label: {id: Posisi saat kunjungan}, set_once: true}
+  - {name: photo, type: image, label: {id: Foto toko}, set_once: true}
+  - {name: radius_m, type: int, label: {id: Radius kunjungan (m)}, read_only: true, compute: customer.visit_radius_m}
+  - {name: away_m, type: float, label: {id: Jarak dari titik toko}, hidden: true, read_only: true, compute: "distance_m(pos, customer.location)"}
+  # distance_m is 1e9 without a position or without the customer's point: "unknown" counts as far.
+  - name: distance_m
+    type: int
+    label: {id: Jarak dari titik toko (m)}
+    read_only: true
+    in_list: true
+    compute: "away_m < 100000000.0 ? round(away_m) : 0"
+  - name: outside_radius
+    type: check
+    label: {id: Di luar radius}
+    read_only: true
+    in_list: true
+    in_filter: true
+    compute: "!(away_m < 100000000.0) || away_m > radius_m"
+  - {name: notes, type: text, label: {id: Catatan}}
+approvals:
+  - name: outside_radius
+    on: submit
+    when: outside_radius
+    approvers: [head_office, outlet_supervisor]
+    label: {id: Kunjungan di luar radius toko, en: Visit outside the shop radius}
+rules:
+  - name: own_customer
+    on: save
+    check: customer.salesman == salesman
+    message: {id: 'Pelanggan ini bukan pelanggan salesman ini'}
+  - name: not_future
+    on: save
+    check: visited_at <= now()
+    message: {id: 'Waktu kunjungan tidak boleh sesudah sekarang'}
+views:
+  list:
+    columns: [name, visited_at, customer_name, salesman, distance_m, outside_radius, status]
+    filters: [salesman, customer, outside_radius]
+    sort: -visited_at
+  form:
+    layout:
+      - section: {id: Kunjungan}
+        columns:
+          - [customer, salesman, visited_at]
+          - [distance_m, radius_m, outside_radius]
+      - section: {id: Posisi dan foto}
+        columns:
+          - [pos, photo]
+      - section: {id: Catatan}
+        fields: [notes]

@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Prices the lines of a draft canvas sale at the customer's tier (the same two steps as order_tier_pricing_created): the
+# sale's price_tier is copied onto the lines, then rate is set to the list price once per tier (tier_applied), so a
+# price typed by hand afterwards stays. The counter screen shows the base rate; the tier price is set here on save.
+name: canvas_sale_tier_pricing_created
+label: {id: Harga penjualan kanvas sesuai tier pelanggan}
+on: canvas_sale.created
+if: "event.docstatus == 0 && event.items.map(i, i.price_tier != event.price_tier || i.tier_applied != event.price_tier ? 1 : 0).sum() > 0"
+steps:
+  - {find: canvas_sale, where: name == event.name, as: cs}
+  - update: cs
+    set:
+      items: "event.items.map(i, {'name': i.name, 'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'lot': i.lot, 'rate': i.rate, 'tier_applied': i.tier_applied, 'price_tier': event.price_tier})"
+  - update: cs
+    set:
+      items: "cs.items.map(i, {'name': i.name, 'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'lot': i.lot, 'rate': i.tier_applied == i.price_tier ? i.rate : i.list_rate, 'tier_applied': i.price_tier, 'price_tier': i.price_tier})"

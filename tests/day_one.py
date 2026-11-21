@@ -3120,6 +3120,14 @@ MATRIX = {
     "project_expense": {"project_admin": _ALL, "finance_manager": _ALL - {"delete"}, "sales_manager": _R, "purchasing_manager": _R},
     "project_guard": {"purchasing_manager": {"create"}, "finance_manager": {"create"}},
     "credit_guard": {"finance_manager": {"create"}, "sales_manager": {"create"}, "project_admin": {"create"}, "head_office": {"create"}},   # never stored
+    # rangka-apps#112 field_sales: GPS visit, van sale (stock out of the vehicle location), the van's cash settlement
+    "sales_visit": {"field_sales": {"read", "create", "write", "submit", "print"}, "sales_manager": {"read", "write", "cancel", "export"},
+                    "head_office": {"read", "write", "cancel", "export"}, "finance_manager": {"read", "export"}, "outlet_supervisor": _R},
+    "canvas_sale": {"field_sales": {"read", "create", "write", "submit", "print"}, "sales_manager": _ALL - {"delete"},
+                    "head_office": {"read", "create", "write", "submit", "export", "print"}, "finance_manager": {"read", "cancel", "export", "print"}},
+    "canvas_settlement": {"field_sales": _R, "finance_manager": _ALL - {"delete"}, "sales_manager": {"read", "create", "write", "submit", "export", "print"},
+                          "head_office": {"read", "create", "write", "submit", "export", "print"}},
+    "canvas_guard": {r: {"create"} for r in ("field_sales", "sales_manager", "head_office", "finance_manager")},   # never stored
     "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R, "field_sales": _RP, "head_office": {"read", "print", "export"}},
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},
                           "finance_manager": {"read", "write", "export"}, "sales_manager": {"read", "write"}},
@@ -5916,6 +5924,7 @@ def setup_demo_fnb(api, k):
 # Scenarios of the newer sites live in their own files (tests/day_one_<app>.py) and take this file's helpers.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import day_one_grosir  # noqa: E402
+import day_one_field_sales  # noqa: E402
 import day_one_produksi  # noqa: E402
 import day_one_accounting  # noqa: E402
 import day_one_keuangan  # noqa: E402
@@ -5946,6 +5955,7 @@ import day_one_shifts  # noqa: E402
 import day_one_appointments  # noqa: E402
 import day_one_lots  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
+day_one_field_sales.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
 day_one_keuangan.bind(sys.modules[__name__])
@@ -5984,7 +5994,7 @@ SCENARIOS = {
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
                    scenario_permissions, scenario_payment_methods] + day_one_returns.SCENARIOS_RITEL + [scenario_bank_takings],
-    "demo-grosir": day_one_grosir.SCENARIOS + [scenario_payment_instruction, scenario_permissions, scenario_payment_methods],
+    "demo-grosir": day_one_grosir.SCENARIOS + day_one_field_sales.SCENARIOS + [scenario_payment_instruction, scenario_permissions, scenario_payment_methods],
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
     "demo-manpower": day_one_payroll.SCENARIOS + day_one_attendance.SCENARIOS + [scenario_permissions],
     "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],

@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Runs inside a canvas sale's cancel, as the sales or finance manager (the only roles that cancel, and that can write the drafts) (the stock comes back to the van in the same transaction). The kernel runs no
+# `on: cancel` rule, so the checks are here, under the flow read locks of contract 0025:
+# 0. Refused once the van's day for this salesman is settled.
+# 1. Refused when the sale's invoice (found by this sale's number in [] in its notes) was paid, or was submitted at all:
+#    finance cancels the invoice (and its payment) first. Refused when the cash payment was submitted.
+# 2. Otherwise the drafts finance may still hold are marked as replaced, so nobody submits them by mistake (a flow
+#    cannot delete a draft; finance deletes it).
+name: canvas_sale_on_cancel
+label: {id: "Penjualan kanvas dibatalkan: periksa faktur dan pembayaran"}
+on: canvas_sale.cancelled
+steps:
+  - {find: canvas_settlement, where: "docstatus == 1 && salesman == event.salesman && outlet == event.outlet && settle_date == event.sale_date", as: closed}
+  - {find_all: sales_invoice, where: "notes.contains('[' + event.name + ']')", as: invs}
+  - {find_all: payment, where: "notes.contains('[' + event.name + ']')", as: pays}
+  - if: closed != null
+    create: canvas_guard
+    set: {reason: "'day_settled'", document: event.name}
+  - if: "invs.map(i, i.docstatus == 1 && i.paid_amount > 0 ? 1 : 0).sum() > 0"
+    create: canvas_guard
+    set: {reason: "'invoice_paid'", document: event.name}
+  - if: "invs.map(i, i.docstatus == 1 ? 1 : 0).sum() > 0"
+    create: canvas_guard
+    set: {reason: "'invoice_submitted'", document: event.name}
+  - if: "pays.map(p, p.docstatus == 1 ? 1 : 0).sum() > 0"
+    create: canvas_guard
+    set: {reason: "'payment_submitted'", document: event.name}
+  - for_each: "invs.filter(i, i.docstatus == 0)"
+    as: i
+    do:
+      - update: i
+        set: {notes: "i.notes + ' (penjualan dibatalkan, hapus draf ini)'"}
+  - for_each: "pays.filter(p, p.docstatus == 0)"
+    as: p
+    do:
+      - update: p
+        set: {notes: "p.notes + ' (penjualan dibatalkan, hapus draf ini)'"}

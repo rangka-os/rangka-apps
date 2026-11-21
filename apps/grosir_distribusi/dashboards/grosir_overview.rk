@@ -89,3 +89,9 @@ widgets:
     field: outstanding
     filter: docstatus == 1 && outstanding > 0
     span: 6
+  # field sales (module distribution, rangka-apps#112): visits of the salesmen, visits made far from the shop that wait
+  # for approval, van sales and the cash a van handed in short
+  - {name: visits_period, type: number, label: {id: Kunjungan salesman}, description: {id: 'Check-in yang sudah sah pada periode ini'}, model: sales_visit, aggregate: count, filter: docstatus == 1, period: visited_at, span: 3}
+  - {name: visits_waiting, type: number, label: {id: Kunjungan di luar radius menunggu}, description: {id: 'Check-in jauh dari toko yang menunggu persetujuan kantor pusat atau kepala outlet'}, model: sales_visit, aggregate: count, filter: docstatus == 0 && outside_radius, good_when: down, span: 3}
+  - {name: canvas_sales, type: number, label: {id: Penjualan mobil kanvas}, description: {id: 'Nilai dengan PPN, penjualan dari mobil pada periode ini'}, model: canvas_sale, aggregate: sum, field: grand_total, filter: docstatus == 1, period: sale_date, compact: true, span: 3}
+  - {name: canvas_shortage, type: number, label: {id: Kurang setor kanvas}, description: {id: 'Tunai yang disetor salesman kurang dari penjualan tunainya, periode ini'}, model: canvas_settlement, aggregate: sum, field: shortage, filter: docstatus == 1, period: settle_date, compact: true, good_when: down, span: 3}

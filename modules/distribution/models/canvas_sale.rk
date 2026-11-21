@@ -1,0 +1,115 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+name: canvas_sale
+label: {id: Penjualan kanvas, en: Canvas sale}
+icon: truck-line
+is_submittable: true
+naming: KVS-{YYYY}-{#####}
+title_field: customer
+on_submit: [stock.post_moves]
+on_cancel: [stock.reverse_moves]
+# Goods sold straight from the salesman's van (rangka-apps#112). Submitting takes the stock out of the van, a location
+# of type vehicle (contract 0021, K-o, reason sale), at its moving average. The scheduled flow canvas_sale_drafts then
+# (a salesman cannot create invoices, so it runs as the system) drafts the sales invoice (never moves stock: the stock left with this sale) and, for the cash taken at the door, a
+# draft cash payment; finance checks and submits both. What the customer does not pay now is credit: over the
+# customer's limit, on hold or overdue it waits for the sales manager or finance (approvals below, as on a delivery
+# note). POS models are never used: pos_shift and pos_sale stay store-only. Cancel is for managers and only while
+# finance has not submitted the invoice or the payment, and before the van's day is settled (flow canvas_sale_on_cancel).
+permissions:
+  - {role: field_sales, read: true, create: true, write: true, submit: true, print: true}
+  - {role: sales_manager, read: true, create: true, write: true, submit: true, cancel: true, amend: true, export: true, print: true}
+  # cancel is for the two roles that can also write the draft invoice and payment the cancel flow marks
+  - {role: head_office, read: true, create: true, write: true, submit: true, export: true, print: true}
+  - {role: finance_manager, read: true, cancel: true, export: true, print: true}
+fields:
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, required: true, in_list: true, peek: [outstanding, credit_limit, price_tier]}
+  # Row scope of the field_sales role (roles/field_sales.rk): the member's own user record.
+  - {name: salesman, type: link, to: user, label: {id: Salesman}, default: user.name, required: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Mobil kanvas}, help: {id: 'Lokasi stok jenis mobil kanvas tempat barang diambil'}, required: true, in_list: true}
+  - {name: sale_date, type: date, label: {id: Tanggal}, default: today(), required: true, in_list: true}
+  - {name: visit, type: link, to: sales_visit, label: {id: Kunjungan}, help: {id: 'Kunjungan hari ini ke pelanggan ini, kalau ada'}}
+  - name: price_tier
+    type: select
+    label: {id: Tier harga}
+    compute: "customer.price_tier != '' ? customer.price_tier : 'retail'"
+    options:
+      - {value: retail, label: {id: Eceran}}
+      - {value: wholesale, label: {id: Grosir}}
+      - {value: agent, label: {id: Agen}}
+  - {name: items, type: table, of: canvas_sale_item, label: {id: Barang}, min_rows: 1}
+  - {name: subtotal, type: currency, label: {id: Subtotal}, compute: "items.map(i, i.amount).sum()"}
+  - {name: grand_total, type: currency, label: {id: Total (dengan PPN)}, compute: "tax.pkp ? round(subtotal * (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num) / (100 * tax.dpp_den)) : subtotal", in_list: true}
+  - {name: cash_received, type: currency, label: {id: Tunai diterima}, help: {id: 'Uang yang diterima dari pelanggan sekarang. Sisanya jadi piutang'}, default: '0'}
+  - {name: credit_amount, type: currency, label: {id: Jadi piutang}, compute: "grand_total - cash_received"}
+  # Set by the flow canvas_sale_drafts: the draft invoice and the draft payment finance checks and submits.
+  - {name: invoice, type: link, to: sales_invoice, label: {id: Faktur}, read_only: true, peek: [status, grand_total]}
+  - {name: payment, type: link, to: payment, label: {id: Pembayaran tunai}, read_only: true, peek: [status, amount]}
+  - {name: cogs_total, type: currency, label: {id: Harga pokok barang terjual}, read_only: true, hidden_for: [field_sales]}
+  - {name: total_qty, type: float, label: {id: Total qty}, compute: "items.map(i, i.qty).sum()"}
+  - {name: notes, type: text, label: {id: Catatan}}
+stock:
+  date: sale_date
+  moves:
+    - {lines: items, out: outlet, reason: sale, cogs: cogs, lot: {pick: lot}}
+  cogs_total: cogs_total
+# Credit control on what is left unpaid (credit_amount): the same three checks as a delivery note (module distribution).
+# A cash sale is never held.
+approvals:
+  - name: credit_hold
+    on: submit
+    when: "credit_amount > 0 && customer.credit_hold"
+    approvers: [sales_manager, finance_manager]
+    label: {id: Pelanggan ditahan kreditnya, en: Customer on credit hold}
+  - name: overdue
+    on: submit
+    when: "credit_amount > 0 && customer.oldest_open_due != '' && customer.oldest_open_due < today()"
+    approvers: [sales_manager, finance_manager]
+    label: {id: Pelanggan punya tagihan lewat jatuh tempo, en: Customer has overdue invoices}
+  - name: over_credit_limit
+    on: submit
+    when: "credit_amount > 0 && customer.credit_limit > 0 && customer.outstanding + customer.uninvoiced_deliveries + customer.open_orders + credit_amount > customer.credit_limit"
+    approvers: [sales_manager, finance_manager]
+    label: {id: Melewati batas kredit, en: Over the credit limit}
+rules:
+  - name: sells_from_van
+    on: save
+    check: outlet.location_type == 'vehicle'
+    message: {id: 'Penjualan kanvas hanya dari mobil kanvas; pilih lokasi berjenis Mobil kanvas'}
+  - name: own_customer
+    on: save
+    check: customer.salesman == salesman
+    message: {id: 'Pelanggan ini bukan pelanggan salesman ini'}
+  - name: qty_positive
+    on: save
+    check: "items.map(i, i.qty <= 0 ? 1 : 0).sum() == 0"
+    message: {id: Jumlah barang harus lebih dari 0}
+  - name: rate_not_negative
+    on: save
+    check: "items.map(i, i.rate < 0 ? 1 : 0).sum() == 0"
+    message: {id: Harga tidak boleh minus}
+  - name: cash_within_total
+    on: save
+    check: cash_received >= 0 && cash_received <= grand_total
+    message: {id: 'Tunai diterima tidak boleh minus atau lebih dari total'}
+  - name: not_future
+    on: save
+    check: sale_date <= today()
+    message: {id: 'Tanggal penjualan tidak boleh sesudah hari ini'}
+views:
+  list:
+    columns: [name, sale_date, customer, salesman, outlet, grand_total, credit_amount, status]
+    filters: [salesman, customer, outlet]
+    sort: -sale_date
+  form:
+    layout:
+      - section: {id: Penjualan}
+        columns:
+          - [customer, salesman, outlet]
+          - [sale_date, visit, price_tier]
+      - section: {id: Barang}
+        fields: [items]
+      - section: {id: Pembayaran}
+        columns:
+          - [subtotal, grand_total, cash_received, credit_amount]
+          - [invoice, payment, cogs_total, total_qty]
+      - section: {id: Catatan}
+        fields: [notes]
