@@ -3127,6 +3127,7 @@ MATRIX = {
                     "head_office": {"read", "create", "write", "submit", "export", "print"}, "finance_manager": {"read", "cancel", "export", "print"}},
     "canvas_settlement": {"field_sales": _R, "finance_manager": _ALL - {"delete"}, "sales_manager": {"read", "create", "write", "submit", "export", "print"},
                           "head_office": {"read", "create", "write", "submit", "export", "print"}},
+    "canvas_sale_job": {"field_sales": {"create"}, "sales_manager": {"read", "create"}, "head_office": {"read", "create"}, "finance_manager": _R},
     "canvas_guard": {r: {"create"} for r in ("field_sales", "sales_manager", "head_office", "finance_manager")},   # never stored
     "sales_invoice": {"finance_manager": _ALL, "sales_manager": _ALL, "sales_rep": _R, "project_admin": _R, "field_sales": _RP, "head_office": {"read", "print", "export"}},
     "billing_milestone": {"project_admin": {"read", "create", "write", "export", "import"},

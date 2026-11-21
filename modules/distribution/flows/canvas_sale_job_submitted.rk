@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# Copies a submitted canvas sale into a work order (canvas_sale_job) for the scheduled flow canvas_sale_drafts. It runs
+# as the person submitting, who may create the work order but not an invoice or a payment.
+name: canvas_sale_job_submitted
+label: {id: Penjualan kanvas diajukan jadi tugas draf faktur}
+on: canvas_sale.submitted
+steps:
+  - create: canvas_sale_job
+    set:
+      sale: event.name
+      customer: event.customer
+      salesman: event.salesman
+      sale_date: event.sale_date
+      cash_received: event.cash_received
+      items: "event.items.map(i, {'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'rate': i.rate})"

@@ -155,21 +155,24 @@ def scenario_field_sales_canvas_sale_moves_stock_out_of_van_only(api):
     eq("van stock of MI down by 2", round(van0[G.MI] - _van_qty(api, G.MI), 3), 2)
     eq("van stock of TEH down by 1", round(van0[G.TEH] - _van_qty(api, G.TEH), 3), 1)
     eq("warehouse stock is untouched", {i: _van_qty(api, i, G.GUDANG) for i in (G.MI, G.TEH)}, wh0)
-    moves = api.find("stock_move", f"voucher_no == '{cs['name']}'")
+    moves = api.find("stock_move", f"voucher == '{cs['name']}'")
     eq("the sale wrote one stock move per line, all out of the van", sorted((m["outlet"], m["item"]) for m in moves), sorted([(G.KANVAS, G.MI), (G.KANVAS, G.TEH)]))
     check("the sale records its cost of goods for staff", api.get("canvas_sale", cs["name"]).get("cogs_total", 0) > 0)
-    eq("no invoice exists before the drafts flow has run", cs.get("invoice"), "")
+    eq("no invoice exists before the drafts flow has run", api.find("sales_invoice", f"notes.contains('[{cs['name']}]')"), [])
     _drafts(api)
     cs = api.get("canvas_sale", cs["name"])
-    inv = api.get("sales_invoice", cs.get("invoice") or "x") or {}
+    invs = api.find("sales_invoice", f"notes.contains('[{cs['name']}]')")
+    inv = api.get("sales_invoice", invs[0]["name"]) if invs else {}
     check("a draft invoice was made for the customer with the sale's lines", inv.get("docstatus") == 0 and inv.get("customer") == S["c1"]
           and sorted((r["item"], r["qty"], r["rate"]) for r in inv.get("items", [])) == sorted((r["item"], r["qty"], r["rate"]) for r in cs["items"]), inv)
     eq("the invoice total equals the sale total", inv.get("grand_total"), cs["grand_total"])
-    pay = api.get("payment", cs.get("payment") or "x") or {}
+    pays = api.find("payment", f"notes.contains('[{cs['name']}]')")
+    pay = api.get("payment", pays[0]["name"]) if pays else {}
     check("a draft cash payment of the cash taken was made", pay.get("docstatus") == 0 and pay.get("amount") == 20_000 and pay.get("method") == "cash", pay)
     # finance submits the invoice and the payment: the stock stays as it was (an invoice never moves stock)
     st, resp = fm.verb("sales_invoice", inv["name"], "submit")
     check("finance submits the invoice -> 200", st == 200, (st, resp))
+    inv = dict(inv, name=(resp or {}).get("name", inv["name"]))
     eq("submitting the invoice moves no stock", (_van_qty(api, G.MI), _van_qty(api, G.TEH)), (van0[G.MI] - 2, van0[G.TEH] - 1))
     eq("only the sale's moves exist (invoice added none)", len(api.find("stock_move", "true")) - moves0, 2)
     S["sale1"], S["inv1"], S["pay1"] = cs["name"], inv["name"], pay["name"]
@@ -261,8 +264,9 @@ def scenario_field_sales_cancel_after_invoice_paid_refused(api):
     st, resp = sm.verb("canvas_sale", cs["name"], "cancel")
     check("a sale with only draft invoice and payment cancels -> 200", st == 200, (st, resp))
     eq("the van's stock returns", round(_van_qty(api, G.MI) - van, 3), 1)
-    check("the draft invoice is marked to delete", "hapus draf" in (api.get("sales_invoice", cs["invoice"]).get("notes") or ""))
-    check("the draft payment is marked to delete", "hapus draf" in (api.get("payment", cs["payment"]).get("notes") or ""))
+    tag = f"notes.contains('[{cs['name']}]')"
+    check("the draft invoice is marked to delete", all("hapus draf" in (r.get("notes") or "") for r in api.find("sales_invoice", tag)) and api.find("sales_invoice", tag))
+    check("the draft payment is marked to delete", all("hapus draf" in (r.get("notes") or "") for r in api.find("payment", tag)) and api.find("payment", tag))
 
 
 def scenario_field_sales_settlement_shortage_recorded(api):
@@ -287,7 +291,7 @@ def scenario_field_sales_settlement_shortage_recorded(api):
     fm.patch("canvas_settlement", stl["name"], {"notes": "Kurang 5.000: uang kembalian pelanggan belum dicatat"})
     st, resp = fm.verb("canvas_settlement", stl["name"], "submit")
     check("with the note the settlement submits -> 200 (a shortage is recorded, not refused)", st == 200 and resp.get("docstatus") == 1, (st, resp))
-    stl = api.get("canvas_settlement", stl["name"])
+    stl = api.get("canvas_settlement", (resp or {}).get("name", stl["name"]))
     eq("the submitted settlement keeps the shortage", (stl.get("cash_expected"), stl.get("cash_counted"), stl.get("shortage")), (expected, expected - 5_000, 5_000))
     st, dup = fm.create("canvas_settlement", {"salesman": G.ASEP, "outlet": G.KANVAS, "settle_date": today, "cash_counted": expected})
     check("a second settlement of the same van, salesman and day is refused", st in (409, 422), (st, dup))

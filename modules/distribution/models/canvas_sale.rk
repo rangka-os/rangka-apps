@@ -40,9 +40,6 @@ fields:
   - {name: grand_total, type: currency, label: {id: Total (dengan PPN)}, compute: "tax.pkp ? round(subtotal * (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num) / (100 * tax.dpp_den)) : subtotal", in_list: true}
   - {name: cash_received, type: currency, label: {id: Tunai diterima}, help: {id: 'Uang yang diterima dari pelanggan sekarang. Sisanya jadi piutang'}, default: '0'}
   - {name: credit_amount, type: currency, label: {id: Jadi piutang}, compute: "grand_total - cash_received"}
-  # Set by the flow canvas_sale_drafts: the draft invoice and the draft payment finance checks and submits.
-  - {name: invoice, type: link, to: sales_invoice, label: {id: Faktur}, read_only: true, peek: [status, grand_total]}
-  - {name: payment, type: link, to: payment, label: {id: Pembayaran tunai}, read_only: true, peek: [status, amount]}
   - {name: cogs_total, type: currency, label: {id: Harga pokok barang terjual}, read_only: true, hidden_for: [field_sales]}
   - {name: total_qty, type: float, label: {id: Total qty}, compute: "items.map(i, i.qty).sum()"}
   - {name: notes, type: text, label: {id: Catatan}}
@@ -110,6 +107,6 @@ views:
       - section: {id: Pembayaran}
         columns:
           - [subtotal, grand_total, cash_received, credit_amount]
-          - [invoice, payment, cogs_total, total_qty]
+          - [cogs_total, total_qty]
       - section: {id: Catatan}
         fields: [notes]

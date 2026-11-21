@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# The work order the scheduled flow canvas_sale_drafts reads: one per submitted canvas sale, made by the flow
+# canvas_sale_job_submitted in the salesman's own submit. A submitted sale is immutable and a find returns it without
+# its table rows, so the lines are copied here, on a record the system flow may update (done) once the draft invoice
+# and the draft cash payment exist.
+name: canvas_sale_job
+label: {id: Tugas draf faktur penjualan kanvas, en: Canvas sale draft job}
+icon: file-list-line
+naming: KVJ-{######}
+title_field: sale
+permissions:
+  - {role: field_sales, create: true}
+  - {role: sales_manager, read: true, create: true}
+  - {role: head_office, read: true, create: true}
+  - {role: finance_manager, read: true}
+fields:
+  - {name: sale, type: link, to: canvas_sale, label: {id: Penjualan kanvas}, required: true, in_list: true}
+  - {name: customer, type: link, to: customer, label: {id: Pelanggan}, required: true, in_list: true}
+  - {name: salesman, type: link, to: user, label: {id: Salesman}}
+  - {name: sale_date, type: date, label: {id: Tanggal}, required: true}
+  - {name: cash_received, type: currency, label: {id: Tunai diterima}, default: '0'}
+  - {name: items, type: table, of: canvas_sale_item, label: {id: Barang}}
+  - {name: done, type: check, label: {id: Draf sudah dibuat}, in_list: true}
