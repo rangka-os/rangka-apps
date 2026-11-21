@@ -6,3 +6,6 @@ fields:
   - {name: qty, type: float, label: {id: Qty terpakai}}
   - {name: uom, type: link, to: uom, label: {id: Satuan}, default: item.stock_uom}
   - {name: cogs, type: currency, label: {id: Biaya bahan}, read_only: true, hidden_for: [outlet_staff]}
+  # rangka-os contract 0070: the lot used (empty = earliest expiry first) and, for a serial item, the units consumed
+  - {name: lot, type: link, to: stock_lot, label: {id: Lot bahan}, depends_on: "item.tracking in ['lot', 'lot_expiry']", help: {id: 'Kosongkan: lot yang paling dulu kedaluwarsa dipakai'}}
+  - {name: serial_nos, type: text, label: {id: Nomor seri}, depends_on: "item.tracking == 'serial'", help: {id: 'Satu nomor seri per baris'}}

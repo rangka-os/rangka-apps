@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
 name: absen_karyawan
-version: 1.0.0
+version: 1.1.0
 title: {id: Absen karyawan, en: Staff attendance}
 label: {id: Rangka Absen Karyawan, en: Rangka Staff Attendance}
 summary:

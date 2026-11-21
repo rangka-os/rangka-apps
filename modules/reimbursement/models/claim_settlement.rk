@@ -16,6 +16,7 @@ permissions:
   - {role: employee, read: true, create: true, if: "employee == user.name"}
   - {role: cashier, read: true, create: true, if: "employee == user.name"}
   - {role: outlet_staff, read: true, create: true, if: "employee == user.name"}
+  - {role: member, read: true, if: "employee == user.name"}
   # the outlet supervisor reads the claims of their outlets (row scope on outlet) and creates their own
   - {role: outlet_supervisor, read: true}
   - {role: outlet_supervisor, create: true, if: "employee == user.name"}

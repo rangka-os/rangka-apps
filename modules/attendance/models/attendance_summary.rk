@@ -15,10 +15,8 @@ permissions:
   # Finance reads every summary: payroll_run_fill runs as the person ticking "Isi slip dari absen" and fills the payslips
   # from them (rangka-apps#101 slice b). Read only: days, lateness and overtime, no position or selfie (staff_attendance).
   - {role: finance_manager, read: true}
-  # Staff read their own.
-  - {role: cashier, read: true, if: "employee == user.name"}
-  - {role: outlet_staff, read: true, if: "employee == user.name"}
-  - {role: employee, read: true, if: "employee == user.name"}
+  # Staff read their own: every employee whatever their role (member grant, rangka-os contract 0074).
+  - {role: member, read: true, if: "employee == user.name"}
 fields:
   - {name: attendance_period, type: link, to: attendance_period, label: {id: Rekap absen}, read_only: true, in_list: true}
   - {name: employee, type: link, to: user, label: {id: Karyawan}, read_only: true}

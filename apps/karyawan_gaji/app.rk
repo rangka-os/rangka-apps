@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
 name: karyawan_gaji
-version: 1.1.0
+version: 1.2.0
 title: {id: Karyawan dan gaji, en: Staff and payroll}
 label: {id: Rangka Karyawan dan Gaji, en: Rangka Staff and Payroll}
 summary:
@@ -23,7 +23,11 @@ modules:
   attendance: ^1.0
   payroll: ^2.2
   reimbursement: ^1.0
-dashboards: [gaji_ringkas, transfer_gaji, klaim_kasbon_saya]
+# shifts (rangka-apps#120) comes with absen_karyawan; the saya dashboard shows the coming shifts where it is installed
+optional:
+  shifts: ^1.0
+# saya: the employee app's page (rangka-os#261, contract 0074), open to every employee whatever their role
+dashboards: [gaji_ringkas, transfer_gaji, klaim_kasbon_saya, saya]
 roles: [finance_manager, head_office, outlet_supervisor, cashier, outlet_staff, employee]
 home: {dashboard: gaji_ringkas}
 # rangka-apps#117: staff claim expenses and ask for a kasbon from their phone (Kerja group); the clock stays their home

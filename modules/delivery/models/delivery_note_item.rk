@@ -9,3 +9,7 @@ fields:
   # the unit's name for the printed surat jalan (a print reads only top-level links)
   - {name: uom_name, type: data, label: {id: Nama satuan}, hidden: true, compute: "uom != '' ? uom.uom_name : ''"}
   - {name: cogs, type: currency, label: {id: Harga pokok}, read_only: true, hidden_for: [field_sales]}
+  # rangka-os contract 0070: the lot to send (empty = the lot that expires first, expired lots skipped) and, for a serial
+  # item, the serials that leave, one per line. The lots taken are on the stock moves of this note.
+  - {name: lot, type: link, to: stock_lot, label: {id: Lot}, depends_on: "item.tracking in ['lot', 'lot_expiry']", help: {id: 'Kosongkan: lot yang paling dulu kedaluwarsa dikirim'}}
+  - {name: serial_nos, type: text, label: {id: Nomor seri}, depends_on: "item.tracking == 'serial'", help: {id: 'Satu nomor seri per baris'}}
