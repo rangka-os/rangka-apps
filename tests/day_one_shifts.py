@@ -263,6 +263,25 @@ def scenario_shifts_attendance(api):
     eq("nobody writes the outcome by hand", (hq.get("shift_assignment", got[y]["name"]) or {}).get("outcome"), "absent")
 
 
+def scenario_shifts_clock_screen(api):
+    """The clock screen shows the employee's own shift of today (clock.shift): the slot reads shift_assignment with the
+    published own-day filter, so Eko gets exactly his Malam shift and a cashier without a shift gets none (then the
+    log falls back to the outlet's hours, as the attendance scenarios check)."""
+    got = members("hq", "sh_eko")
+    if not got or not CTX.get("sh_roster_now"):
+        return
+    hq, eko = got
+    st, m = eko.call("GET", "/api/v1/meta")
+    sh = ((((m or {}).get("screens") or {}).get("absen_outlet") or {}).get("clock") or {}).get("shift") or {}
+    if not check("absen_outlet carries the clock.shift slot over shift_assignment", sh.get("model") == "shift_assignment" and sh.get("link") == "work_shift", sh):
+        return
+    mine = eko.list("shift_assignment", filter=sh["filter"])
+    eq("the shift slot gives Eko only his own shift of today", [(r.get("shift_name"), r.get("employee")) for r in mine], [("Malam", CTX["sh_eko_rec"])])
+    check("the shift carries its start and end for the screen", bool(mine and mine[0].get(sh["start"]) and mine[0].get(sh["end"])), mine)
+    none = [r for r in hq.list("shift_assignment", filter=sh["filter"].replace("user.name", "'nobody@x.test'"))]
+    eq("an employee without a shift today gets no shift", none, [])
+
+
 def scenario_shifts_swap(api):
     """Eko asks to swap next Monday (Pagi) with Dimas (Malam). He cannot pick Dimas's shift or submit; the Braga
     supervisor cannot see it; the Dago supervisor picks Dimas's Monday and submits: Eko works Malam, Dimas Pagi.
@@ -349,5 +368,5 @@ def scenario_shifts_pos_link(api):
     check("Joko without a shift still opens a session, marked Tanpa jadwal", st == 201 and rec(s).get("no_schedule") is True and not rec(s).get("work_shift"), (st, s))
 
 
-SCENARIOS = {"demo-fnb": [scenario_shifts_templates, scenario_shifts_roster, scenario_shifts_attendance, scenario_shifts_swap, scenario_shifts_dashboards],
+SCENARIOS = {"demo-fnb": [scenario_shifts_templates, scenario_shifts_roster, scenario_shifts_attendance, scenario_shifts_clock_screen, scenario_shifts_swap, scenario_shifts_dashboards],
              "demo-kasir": [scenario_shifts_pos_link]}
