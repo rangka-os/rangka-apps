@@ -20,6 +20,6 @@ clock:
   site: {model: outlet, link: outlet, filter: "active && (name in user.outlets || (user.outlets.size() == 0 && ('head_office' in user.roles || 'owner' in user.roles)))", title: outlet_name, location: point, radius_m: radius_m}
   # The published shift of today: shown above the buttons and linked to the log at clock-in. Lateness is the record's
   # compute (shift first, then the outlet's hours); a failed or empty shift read never blocks a clock-in.
-  shift: {model: shift_assignment, filter: "employee == user.name && published && !day_off && work_date == today()", start: start_at, end: end_at, title: shift_label, outlet: outlet, link: work_shift}
+  shift: {model: shift_assignment, filter: "employee == user.name && published && !day_off && work_date == today()", start: start_at, end: end_at, title: shift_name, outlet: outlet, link: work_shift}
   reason: reason
   submit: true
