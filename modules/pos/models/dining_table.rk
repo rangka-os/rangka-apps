@@ -18,6 +18,8 @@ fields:
   - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, in_list: true}
   - {name: active, type: check, label: {id: Aktif}, default: 'true', in_list: true}
   - {name: time_limit_min, type: int, label: {id: Batas waktu duduk (menit)}, help: {id: '0 berarti tanpa batas. Denah memberi tanda kuning 10 menit sebelum batas dan merah setelahnya'}, default: '0'}
+  # the area's name, for the table map's sections (a link shows its record name, not its title)
+  - {name: area_title, type: data, label: {id: Nama area}, hidden: true, compute: "area.area_name"}
   # one table of a name per outlet
   - {name: table_key, type: data, label: {id: Kunci meja}, hidden: true, unique: true, compute: "outlet + '/' + table_name"}
 rules:

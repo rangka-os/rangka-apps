@@ -951,8 +951,9 @@ def scenario_pos_tables(api):
     check("a hand-made third bill on A6 is still refused", st != 201 and "table_busy" in str(r), (st, r))
     # two devices on one draft: the second PATCH built on the old value gets a conflict
     seen = sari.get("pos_sale", b6["name"])["guests"]
-    st, _ = hq.patch("pos_sale", b6["name"], {"guests": seen + 1})
-    st2, r2 = sari.patch("pos_sale", b6["name"], {"guests": seen + 5, "_if": {"guests": seen}})
+    rev0 = sari.get("pos_sale", b6["name"]).get("rev") or 0
+    st, _ = hq.patch("pos_sale", b6["name"], {"guests": seen + 1, "rev": rev0 + 1, "_if": {"rev": rev0}})
+    st2, r2 = sari.patch("pos_sale", b6["name"], {"guests": seen + 5, "rev": rev0 + 1, "_if": {"rev": rev0}})
     check("two devices on one bill: the later PATCH gets a conflict, the first change stays",
           st == 200 and st2 in (409, 412) and sari.get("pos_sale", b6["name"])["guests"] == seen + 1, (st, st2, r2))
     # pay both bills: stock moves once per line, at payment only

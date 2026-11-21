@@ -55,6 +55,9 @@ fields:
   # until that lands it follows the table.
   - {name: table, type: link, to: dining_table, label: {id: Meja}, in_list: true}
   - {name: guests, type: int, label: {id: Jumlah tamu}, default: '0'}
+  # a version counter the counter bumps on every write of an open bill: the conditional PATCH (_if: {rev}) turns two
+  # devices on one bill into a conflict, not a lost update
+  - {name: rev, type: int, label: {id: Versi tagihan}, default: '0', hidden: true}
   - {name: bill_asked, type: check, label: {id: Minta tagihan}}
   - name: order_type
     type: select

@@ -23,5 +23,6 @@ steps:
           items: "tgt.items.map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key}) + event.items.map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': event.name + ':' + l.line_key})"
           sent_to_kitchen: "(tgt.sent_to_kitchen == null ? [] : tgt.sent_to_kitchen) + (event.sent_to_kitchen == null ? [] : event.sent_to_kitchen).map(s, {'key': event.name + ':' + s.key, 'item': s.item, 'description': s.description, 'qty': s.qty, 'uom': s.uom, 'note': s.note, 'category': s.category})"
           guests: tgt.guests + event.guests
+          rev: tgt.rev + 1
       - update: src
         set: {merged: "true", table: "''", bill_asked: "false", send_kitchen: "false"}
