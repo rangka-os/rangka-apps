@@ -106,6 +106,32 @@ fields:
     hidden: true
     depends_on: app_installed('whatsapp_receipt')
     compute: "(wa_phone.trim().startsWith('+') ? ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')).matches('^[1-9][0-9]{7,14}$') ? (wa_phone.trim().startsWith('+') ? ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')) : ''"
+  # Restaurant charges (rangka-apps#121). Service charge is for dine-in only; rates and rounding are copied from the
+  # outlet when the sale is created, so a receipt keeps them when head office changes the outlet.
+  - name: order_type
+    type: select
+    label: {id: Jenis pesanan}
+    default: "'takeaway'"
+    in_list: true
+    options:
+      - {value: dine_in, label: {id: Makan di sini}}
+      - {value: takeaway, label: {id: Bawa pulang}}
+      - {value: online, label: {id: Online}}
+  - {name: service_pct, type: float, label: {id: Service charge (%)}, default: outlet.service_pct, hidden: true}
+  - {name: pbjt_pct, type: float, label: {id: PBJT (%)}, default: outlet.pbjt_pct, hidden: true}
+  - {name: rounding_unit, type: int, label: {id: Satuan pembulatan}, default: int(outlet.rounding_unit), hidden: true}
+  - {name: rounding_mode, type: data, label: {id: Arah pembulatan}, default: outlet.rounding_mode, hidden: true}
+  # Split bill between people (rangka-apps#121): the bill is paid in `parties` parts, one receipt, one submit. `equal`
+  # gives every part grand_total (less deposit) / parties with the remainder on part 1; `amount` leaves the amounts free.
+  - {name: parties, type: int, label: {id: Dibagi untuk}, help: {id: 'Jumlah orang yang membayar terpisah; 1 kalau tidak dibagi'}, default: '1'}
+  - name: split_mode
+    type: select
+    label: {id: Cara bagi}
+    default: "'equal'"
+    depends_on: parties > 1
+    options:
+      - {value: equal, label: {id: Sama rata}}
+      - {value: amount, label: {id: Jumlah bebas}}
   - name: items
     type: table
     of: pos_sale_item
@@ -202,10 +228,32 @@ fields:
     label: {id: Diskon kasir}
     help: {id: 'Diskon yang diberi kasir, di luar promo'}
     compute: discount_total - promo_total - member_discount - points_discount
+  # Charges after every discount: service on the net, PBJT on net plus service (Perda practice), then the rounding of the
+  # total to the outlet's unit. PBJT is a regional tax outside the price, so a PBJT sale carries no PPN (ppn_in_sales).
+  - name: net_before_charges
+    type: currency
+    label: {id: Subtotal setelah diskon}
+    compute: subtotal - bill_promo - member_discount - points_discount - discount_amount
+  - name: service_charge
+    type: currency
+    label: {id: Service charge}
+    compute: "order_type == 'dine_in' ? round(net_before_charges * service_pct / 100) : 0"
+  - name: pbjt
+    type: currency
+    label: {id: Pajak restoran (PBJT)}
+    compute: round((net_before_charges + service_charge) * pbjt_pct / 100)
+  - name: raw_total
+    type: currency
+    label: {id: Total sebelum pembulatan}
+    compute: net_before_charges + service_charge + pbjt
+  - name: rounding
+    type: currency
+    label: {id: Pembulatan}
+    compute: "rounding_unit <= 0 ? 0 : (rounding_mode == 'down' ? int(raw_total / rounding_unit) * rounding_unit : round(raw_total * 1.0 / rounding_unit) * rounding_unit) - raw_total"
   - name: grand_total
     type: currency
     label: {id: Total}
-    compute: subtotal - bill_promo - member_discount - points_discount - discount_amount
+    compute: raw_total + rounding
     in_list: true
   # the part of the total the deposit does not pay: what the counter takes in cash or QRIS (its total slot)
   - name: amount_due
@@ -234,6 +282,17 @@ fields:
     type: currency
     label: {id: Kembalian}
     compute: cash_received + qris_amount - amount_due
+  - name: party_share
+    type: currency
+    label: {id: Bagian per orang}
+    help: {id: 'Total bayar dibagi sama rata, dibulatkan ke bawah; sisanya masuk bagian 1'}
+    depends_on: parties > 1
+    compute: "parties <= 1 ? amount_due : int(amount_due / parties)"
+  - name: party_first_share
+    type: currency
+    label: {id: Bagian 1}
+    depends_on: parties > 1
+    compute: "parties <= 1 ? amount_due : amount_due - (parties - 1) * party_share"
   - name: method
     type: select
     label: {id: Cara bayar}
@@ -260,11 +319,11 @@ fields:
   - name: ppn_in_sales
     type: currency
     label: {id: PPN dalam penjualan}
-    compute: "tax.pkp ? round(grand_total * tax.ppn_rate * tax.dpp_num / (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num)) : 0"
+    compute: "tax.pkp && pbjt_pct <= 0 ? round(grand_total * tax.ppn_rate * tax.dpp_num / (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num)) : 0"
   - name: pph_final
     type: currency
     label: {id: 'PPh final 0,5%'}
-    compute: round((grand_total - ppn_in_sales) * 5 / 1000)
+    compute: round((grand_total - pbjt - ppn_in_sales) * 5 / 1000)
 # Cashier controls (audit kasir M5): a receipt whose manual discounts exceed 20% of its price after promos waits for head office
 # (contract 0007; the owner may always approve). A void is not held: an approved verb runs again as a requester
 # without their outlets, so the flow's own-shift check cannot run (kernel card t_7782ebb1 follow-up); voids stay
@@ -396,6 +455,19 @@ rules:
     on: save
     check: "payments.map(p, p.amount <= 0 ? 1 : 0).sum() == 0"
     message: {id: Jumlah pembayaran harus lebih dari 0}
+  - name: parties_range
+    on: save
+    check: parties >= 1 && parties <= 20
+    message: {id: 'Tagihan bisa dibagi untuk 1 sampai 20 orang'}
+  - name: payment_party_range
+    on: save
+    check: "payments.map(p, p.party < 1 || p.party > parties ? 1 : 0).sum() == 0"
+    message: {id: 'Bagian pembayaran harus antara 1 dan jumlah orang yang membagi tagihan'}
+  # an equal split: every part pays at least its share (cash may be more, the change comes back to that part)
+  - name: party_pays_share
+    on: save
+    check: "parties <= 1 || split_mode != 'equal' || payments.size() == 0 || [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map(k, k > parties ? 0 : (payments.map(p, p.party == k ? p.amount : 0).sum() < (k == 1 ? party_first_share : party_share) ? 1 : 0)).sum() == 0"
+    message: {id: 'Ada bagian yang bayarnya kurang dari bagiannya'}
   - name: qris_not_over
     on: save
     check: qris_amount <= amount_due
@@ -466,6 +538,10 @@ views:
           - [deposit_used, points_earned, points_left, deposit_left]
       - section: {id: Barang}
         fields: [items]
+      - section: {id: Jenis pesanan dan biaya}
+        columns:
+          - [order_type, parties, split_mode]
+          - [service_charge, pbjt, rounding, party_share, party_first_share]
       - section: {id: Bayar}
         columns:
           - [subtotal, discount_amount, grand_total, amount_due]

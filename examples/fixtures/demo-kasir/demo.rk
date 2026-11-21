@@ -12,6 +12,9 @@ outlet:
   - {name: OUT-02, outlet_name: Toko Contoh Dago, code: DGO, location_type: store, supply_from: OUT-01, city: Bandung, address: Jl. Contoh Dago No. 9, sales_source: kasir, active: true}
   - {name: OUT-03, outlet_name: Kedai Contoh Riau, code: RIU, location_type: store, supply_from: OUT-01, city: Bandung, address: Jl. Contoh Riau No. 3, sales_source: kasir, active: true}
   - {name: OUT-04, outlet_name: Toko Contoh Cimahi, code: CMH, location_type: store, supply_from: OUT-01, city: Cimahi, address: Jl. Contoh Cimahi No. 4, sales_source: form, active: true}
+  # restaurant charges (rangka-apps#121): dine-in service 5%, PBJT 10%, total rounded to the nearest Rp 100; a cafe with none
+  - {name: OUT-05, outlet_name: Restoran Contoh Braga, code: BRG, location_type: store, supply_from: OUT-01, city: Bandung, address: Jl. Contoh Braga No. 5, sales_source: kasir, service_pct: 5, pbjt_pct: 10, rounding_unit: '100', rounding_mode: nearest, active: true}
+  - {name: OUT-06, outlet_name: Kafe Contoh Setiabudi, code: STB, location_type: store, supply_from: OUT-01, city: Bandung, address: Jl. Contoh Setiabudi No. 6, sales_source: kasir, service_pct: 0, pbjt_pct: 0, rounding_unit: '0', rounding_mode: nearest, active: true}
 item_category:
   - {name: KTG-001, category_name: Minuman kopi}
   - {name: KTG-002, category_name: Makanan}
@@ -23,6 +26,10 @@ item:
   - {name: BRG-0003, category: KTG-003, item_name: Gula pasir 1 kg, kind: good, stock_uom: UOM-001, sku: GULA-1K, rate: 18000, standard_cost: 15000}
   - {name: BRG-0004, item_name: Pulsa listrik (jasa bayar), kind: service, stock_uom: UOM-001, rate: 3000}
   # coffee kiosk: materials and menu items with a recipe
+  # services at round prices for the charge scenarios (no stock moves)
+  - {name: BRG-0031, item_name: Paket makan malam, kind: service, stock_uom: UOM-005, rate: 100000}
+  - {name: BRG-0032, item_name: Paket makan ganjil, kind: service, stock_uom: UOM-005, rate: 100001}
+  - {name: BRG-0033, item_name: Paket makan pembulatan, kind: service, stock_uom: UOM-005, rate: 100060}
   - {name: BRG-0011, item_name: Kopi bubuk, kind: material, stock_uom: UOM-003, sku: MAT-KOPI, standard_cost: 120000}
   - {name: BRG-0012, item_name: Susu segar, kind: material, stock_uom: UOM-004, sku: MAT-SUSU, standard_cost: 20000}
   - {name: BRG-0013, item_name: Gula aren cair, kind: material, stock_uom: UOM-004, sku: MAT-AREN, standard_cost: 40000}

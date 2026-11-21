@@ -22,11 +22,11 @@ steps:
       outlet: "event.outlet"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
   - create: gl_entry
-    if: "(0 - (event.grand_total - event.ppn_in_sales)) != 0"
+    if: "(0 - (event.net_before_charges - event.ppn_in_sales)) != 0"
     set:
       posting_date: "event.date"
       account: "'41100'"
-      amount: "0 - (event.grand_total - event.ppn_in_sales)"
+      amount: "0 - (event.net_before_charges - event.ppn_in_sales)"
       voucher_type: event.model
       voucher: event.name
       entry: "'post'"
@@ -105,4 +105,40 @@ steps:
       line: "'8'"
       outlet: "event.outlet"
       party: "event.member"
+      lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
+  - create: gl_entry
+    if: "(0 - event.service_charge) != 0"
+    set:
+      posting_date: "event.date"
+      account: "'41300'"
+      amount: "0 - event.service_charge"
+      voucher_type: event.model
+      voucher: event.name
+      entry: "'post'"
+      line: "'9'"
+      outlet: "event.outlet"
+      lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
+  - create: gl_entry
+    if: "(0 - event.pbjt) != 0"
+    set:
+      posting_date: "event.date"
+      account: "'21330'"
+      amount: "0 - event.pbjt"
+      voucher_type: event.model
+      voucher: event.name
+      entry: "'post'"
+      line: "'10'"
+      outlet: "event.outlet"
+      lock_date: "locks.size() > 0 ? locks[0].closed_until : null"
+  - create: gl_entry
+    if: "(0 - event.rounding) != 0"
+    set:
+      posting_date: "event.date"
+      account: "'49400'"
+      amount: "0 - event.rounding"
+      voucher_type: event.model
+      voucher: event.name
+      entry: "'post'"
+      line: "'11'"
+      outlet: "event.outlet"
       lock_date: "locks.size() > 0 ? locks[0].closed_until : null"

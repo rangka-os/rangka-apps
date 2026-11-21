@@ -126,6 +126,40 @@ fields:
     label: {id: Modal kas kasir}
     help: {id: 'Uang kembalian di laci tiap sesi kasir dibuka. Kosongkan kalau kasir yang mengisi'}
     depends_on: app_installed('pos') && (location_type == '' || location_type == 'store' || location_type == 'vehicle')
+  # module pos (rangka-apps#121): restaurant charges and the rounding of the bill total, set by head office. A sale copies
+  # them when it is created, so a receipt keeps its rates when the outlet changes later. The PBJT rate is set by the
+  # regional regulation (Perda), at most 10% by UU HKPD: the owner types it, Raka never picks it.
+  - name: service_pct
+    type: float
+    label: {id: Service charge (%)}
+    help: {id: 'Hanya untuk makan di sini. Isi 0 kalau tidak ada service charge'}
+    default: '0'
+    depends_on: app_installed('pos') && (location_type == '' || location_type == 'store' || location_type == 'vehicle')
+  - name: pbjt_pct
+    type: float
+    label: {id: 'Pajak restoran PBJT/PB1 (%)'}
+    help: {id: 'Tarif sesuai Perda daerahmu, paling tinggi 10. Dihitung di luar harga. Isi 0 kalau tidak ada'}
+    default: '0'
+    depends_on: app_installed('pos') && (location_type == '' || location_type == 'store' || location_type == 'vehicle')
+  - name: rounding_unit
+    type: select
+    label: {id: Pembulatan total}
+    help: {id: 'Total nota dibulatkan ke kelipatan ini'}
+    default: "'100'"
+    depends_on: app_installed('pos') && (location_type == '' || location_type == 'store' || location_type == 'vehicle')
+    options:
+      - {value: '0', label: {id: Tanpa pembulatan}}
+      - {value: '100', label: {id: Rp 100}}
+      - {value: '500', label: {id: Rp 500}}
+      - {value: '1000', label: {id: Rp 1.000}}
+  - name: rounding_mode
+    type: select
+    label: {id: Arah pembulatan}
+    default: "'nearest'"
+    depends_on: app_installed('pos') && (location_type == '' || location_type == 'store' || location_type == 'vehicle')
+    options:
+      - {value: down, label: {id: Ke bawah}}
+      - {value: nearest, label: {id: Terdekat}}
   # module whatsapp_order: the store that takes the orders customers write on WhatsApp (their drafts get this outlet,
   # so its cashiers see and confirm them). With none ticked, a business with one store uses it; with several and none
   # ticked, head office sets the outlet on each order.
@@ -186,6 +220,10 @@ fields:
     default: '10'
     depends_on: app_installed('attendance')
 rules:
+  - name: charge_rates_range
+    on: save
+    check: "service_pct >= 0 && service_pct <= 100 && pbjt_pct >= 0 && pbjt_pct <= 10"
+    message: {id: 'Service charge 0 sampai 100 persen, pajak restoran PBJT 0 sampai 10 persen'}
   # rangka-apps#104: the warehouse a store asks goods from is a warehouse; a location is not its own parent; a row
   # that is not a store has no sales source (Moka, daily form, POS file), so no daily sales are booked at a warehouse.
   - name: supply_is_warehouse

@@ -885,6 +885,65 @@ def scenario_pos_catalogue_hides_inactive(api):
           it["name"] not in names and AIR in names and MI in names, (flt, it["name"], names))
 
 
+def scenario_pos_charges(api):
+    """Service charge (dine-in only), PBJT outside the price (no PPN), rounding on every method, journal lines and the
+    split bill (rangka-apps#121). Head office opens the shifts at the two charge outlets."""
+    hq = CTX.get("hq")
+    if not hq:
+        return
+    BRG, STB = "OUT-05", "OUT-06"
+    SET, ODD, UP = "BRG-0031", "BRG-0032", "BRG-0033"
+    s5 = open_shift(hq, BRG, 0, "Rina at Restoran Braga")
+    s6 = open_shift(hq, STB, 0, "Rina at Kafe Setiabudi")
+    if not (s5 and s6):
+        return
+    nz = lambda d: {k: v for k, v in d.items() if v}
+    st, r = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", order_type="dine_in", payments=[{"method": "cash", "amount": 120_000}])
+    if check("dine-in Rp 100.000, service 5%, PBJT 10% -> paid", st == 200, (st, r)):
+        eq("dine-in: service 5.000, PBJT 10.500 on net plus service, total 115.500, no rounding",
+           (r["service_charge"], r["pbjt"], r["raw_total"], r["rounding"], r["grand_total"]), (5_000, 10_500, 115_500, 0, 115_500))
+        eq("PPN is 0 when PBJT applies; the final PPh base leaves PBJT out", (r["ppn_in_sales"], r["pph_final"]), (0, rnd((115_500 - 10_500) * 5 / 1000)))
+        eq("change from the rounded total", r["change_amount"], 4_500)
+        eq("journal balances with service 4-1300 and PBJT 2-1330", nz(gl(api, "pos_sale", r["name"])),
+           {"11150": 115_500, "41100": -100_000, "69100": r["pph_final"], "21310": -r["pph_final"], "41300": -5_000, "21330": -10_500})
+        eq("the voucher sums to 0", sum(gl(api, "pos_sale", r["name"]).values()), 0)
+        sh = shift_of(api, s5["name"])
+        eq("the shift counts service, PBJT and rounding", (sh["service_total"], sh["pbjt_total"], sh["rounding_total"]), (5_000, 10_500, 0))
+    st, t = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", order_type="takeaway", payments=[{"method": "qris", "amount": 110_000}])
+    if check("takeaway at the same outlet -> paid", st == 200, (st, t)):
+        eq("takeaway: no service charge, PBJT on the net, total 110.000", (t["service_charge"], t["pbjt"], t["grand_total"]), (0, 10_000, 110_000))
+    st, d = sale(hq, s5["name"], [{"item": ODD, "qty": 1}], "", order_type="dine_in", payments=[{"method": "cash", "amount": 116_000}])
+    if check("dine-in Rp 100.001 -> paid", st == 200, (st, d)):
+        eq("rounded down to the nearest Rp 100 (115.501 -> 115.500)", (d["raw_total"], d["rounding"], d["grand_total"]), (115_501, -1, 115_500))
+        eq("a negative rounding is a debit on 4-9400", nz(gl(api, "pos_sale", d["name"])).get("49400"), 1)
+    st, u = sale(hq, s5["name"], [{"item": UP, "qty": 1}], "", order_type="dine_in", payments=[{"method": "qris", "amount": 115_600}])
+    if check("dine-in Rp 100.060, paid by QRIS -> paid", st == 200, (st, u)):
+        eq("rounded up on a QRIS sale too (115.569 -> 115.600)", (u["raw_total"], u["rounding"], u["grand_total"]), (115_569, 31, 115_600))
+        eq("a positive rounding is a credit on 4-9400 and the voucher balances", (nz(gl(api, "pos_sale", u["name"])).get("49400"), sum(gl(api, "pos_sale", u["name"]).values())), (-31, 0))
+    st, v = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", order_type="dine_in", payments=[{"method": "qris", "amount": 115_500}], submit=True)
+    if st == 200:
+        st, c = void(hq, v["name"])
+        sh = shift_of(api, s5["name"])
+        eq("a void takes the receipt's service, PBJT and rounding back out of the shift", (sh["service_total"], sh["pbjt_total"]), (15_003, 41_506))
+    # split bill into 3 equal parts at the cafe (no rounding): Rp 100.001 = 33.335 + 33.333 + 33.333
+    st, p = sale(hq, s6["name"], [{"item": ODD, "qty": 1}], "", parties=3, split_mode="equal", submit=False,
+                 payments=[{"method": "cash", "amount": 40_000, "party": 1}, {"method": "qris", "amount": 33_333, "party": 2}, {"method": "cash", "amount": 33_333, "party": 3}])
+    if check("split bill draft saved", st == 201, (st, p)):
+        eq("equal split: part 1 carries the remainder", (p["party_first_share"], p["party_share"]), (33_335, 33_333))
+        st, r2 = hq.verb("pos_sale", p["name"], "submit")
+        check("split bill paid -> 200", st == 200, (st, r2))
+        r2 = rec(r2)
+        eq("the three parts add up to the total; cash change is the first part's", (r2.get("grand_total"), r2.get("change_amount")), (100_001, 6_665))
+    st, bad = sale(hq, s6["name"], [{"item": ODD, "qty": 1}], "", parties=3, submit=False,
+                   payments=[{"method": "cash", "amount": 20_000, "party": 1}, {"method": "cash", "amount": 80_001, "party": 2}])
+    check("a part that pays less than its share is refused", st == 422 and "party_pays_share" in rules(bad), (st, bad))
+    st, bad = sale(hq, s6["name"], [{"item": ODD, "qty": 1}], "", parties=2, submit=False, payments=[{"method": "cash", "amount": 100_001, "party": 3}])
+    check("a payment for a part beyond the number of parties is refused", st == 422 and "payment_party_range" in rules(bad), (st, bad))
+    st, plain = sale(hq, s6["name"], [{"item": SET, "qty": 1}], "", order_type="dine_in", payments=[{"method": "cash", "amount": 100_000}])
+    if check("no charges outlet: dine-in has no service, PBJT or rounding", st == 200, (st, plain)):
+        eq("plain total", (plain["service_charge"], plain["pbjt"], plain["rounding"], plain["grand_total"]), (0, 0, 0, 100_000))
+
+
 SCENARIOS = [scenario_pos_opening_stock, scenario_pos_shift, scenario_pos_retail_sale, scenario_pos_fnb_sale, scenario_pos_guards,
              scenario_pos_daily_form_next_door, scenario_pos_void_and_return, scenario_pos_race, scenario_pos_close, scenario_pos_close_race, scenario_pos_print,
-             scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive, scenario_pos_kasir_only_site, scenario_pos_day_source_kept_after_removal, scenario_pos_day_source_backfill]
+             scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive, scenario_pos_kasir_only_site, scenario_pos_day_source_kept_after_removal, scenario_pos_day_source_backfill, scenario_pos_charges]
