@@ -34,7 +34,7 @@ counter:
     # active members. Fields of modules promotions and loyalty are left out when not installed (their depends_on).
     checkout: [order_type, customer, {field: member, filter: "active"}, {field: promotion, filter: "is_bill && live"}, promo_code, points_redeemed, deposit_used]
     set: {date: "today()"}
-  payments: {table: payments, method: method, amount: amount, ref: ref, methods: [cash, qris]}
+  payments: {table: payments, method: method, amount: amount, ref: ref, party: party, parties: parties, methods: [cash, qris]}
   session:
     model: pos_shift
     link: shift
