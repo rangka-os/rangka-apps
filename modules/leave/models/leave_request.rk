@@ -79,17 +79,6 @@ fields:
   - {name: calendar, type: check, label: {id: Hitung semua hari}, read_only: true, hidden: true, compute: "leave_type != '' && leave_type.calendar_days"}
   - {name: rejected, type: check, label: {id: Ditolak}, default: 'false', chip: true}
   - {name: decision_note, type: text, label: {id: Catatan persetujuan}}
-  - name: status
-    type: select
-    label: {id: Status}
-    in_list: true
-    chip: true
-    compute: "docstatus == 2 ? 'cancelled' : (docstatus == 1 ? 'approved' : (rejected ? 'rejected' : 'requested'))"
-    options:
-      - {value: requested, label: {id: Menunggu persetujuan}}
-      - {value: approved, label: {id: Disetujui}}
-      - {value: rejected, label: {id: Ditolak}}
-      - {value: cancelled, label: {id: Dibatalkan}}
 rules:
   - name: employee_self
     on: save
@@ -125,8 +114,8 @@ rules:
     message: {id: 'Cuti sendiri disetujui kantor pusat, bukan oleh orangnya sendiri'}
 views:
   list:
-    columns: [name, employee_name, leave_type, date_from, date_to, days, status]
-    filters: [leave_type, status]
+    columns: [name, employee_name, leave_type, date_from, date_to, days, status, rejected]
+    filters: [leave_type]
     sort: -date_from
   form:
     layout:

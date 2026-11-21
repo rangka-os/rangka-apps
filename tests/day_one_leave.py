@@ -102,7 +102,7 @@ def scenario_leave_request_within_balance(api):
     st, r1 = request(ayu, "USR-003", S["annual"], mon, fri, reason="Pulang kampung")
     r1 = rec(r1)
     if not check("Ayu requests annual leave for one working week: a draft of 5 days waiting for approval",
-                 st == 201 and r1.get("days") == 5 and r1.get("status") == "requested" and r1.get("outlet") == "OUT-02", (st, r1)):
+                 st == 201 and r1.get("days") == 5 and r1.get("docstatus") == 0 and not r1.get("rejected") and r1.get("outlet") == "OUT-02", (st, r1)):
         return
     eq("the draft notes the balance left (12) and moves nothing", (r1.get("balance_left"), balance(hq, "USR-003", Y).get("used")), (12, 0))
     S["ayu_w1"] = r1["name"]

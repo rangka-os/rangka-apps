@@ -12,7 +12,7 @@ the annual balance moves by itself; unpaid leave reaches the payslip. Apps: `kar
 | `leave_profile` | Join date and outlet per employee (the join date is not on the employee record). Head office fills it once; `opening_used` carries days already taken when a business moves from paper. |
 | `leave_balance` | One per employee, tracked type and year: `granted`, `used`, `joint_used`, `remaining`. Written only by flows. |
 | `public_holiday` | National holidays and cuti bersama (`joint`). One row per date. |
-| `leave_request` | The request. Draft = requested (made by the employee, who never submits it); submit = approved; cancel = cancelled; `rejected` + `decision_note` = refused. `days`, `holiday_days`, `balance_left`, `status`. |
+| `leave_request` | The request. Draft = requested (made by the employee, who never submits it); submit = approved; cancel = cancelled; `rejected` + `decision_note` = refused. `days`, `holiday_days`, `balance_left`. The list shows the kernel's derived status (Draf, Disetujui, Dibatalkan) plus the `rejected` chip; there is no stored status field, which would go stale at submit. |
 | `leave_guard` | Never stored; the flows' refusals (`over_balance`, `no_balance`, `days_stale`, `overlap`, `period_closed`). |
 
 ## Rules
