@@ -476,14 +476,19 @@ def scenario_pos_variants(api):
                                    "rate": 1000, "variant_group": "KAOS-X"})
     check("a group without a variant name is refused", st in (400, 422), (st, bad))
     large, small = by["KAOS-POLOS-L"]["name"], by["KAOS-POLOS-S"]["name"]
-    st, r = sale(dika, shift, [{"item": large, "qty": 2}, {"item": small, "qty": 1}], "variants", payments=[{"method": "cash", "amount": 500_000}])
+    st, r = sale(dika, shift, [{"item": large, "qty": 2}, {"item": small, "qty": 1}, {"item": by["TOPI-HITAM"]["name"], "qty": 1}], "variants", payments=[{"method": "cash", "amount": 500_000}])
     if not check("Dika sells Large x2 and Small x1 -> submitted", st == 200 and r.get("docstatus") == 1, (st, r)):
         return
-    eq("picking Large adds the Large item at its own price", sorted((l["item"], l["rate"], l["qty"]) for l in r["items"]),
+    eq("picking Large adds the Large item at its own price", sorted((l["item"], l["rate"], l["qty"]) for l in r["items"] if l["item"] != by["TOPI-HITAM"]["name"]),
        sorted([(large, 60000, 2), (small, 50000, 1)]))
-    eq("sale lines carry the product group", {l["variant_group"] for l in rec(api.get("pos_sale", r["name"]))["items"]}, {"KAOS-POLOS"})
+    eq("sale lines carry the product group", {l["variant_group"] for l in rec(api.get("pos_sale", r["name"]))["items"]}, {"KAOS-POLOS", ""})
     rows = api.find("stock_balance", f"outlet == '{DGO}' && variant_group == 'KAOS-POLOS'")
     eq("stock per product rolls up the 3 variants (sum of the sizes)", round(sum(b["qty"] for b in rows), 4), -3)
+    topi = by["TOPI-HITAM"]["name"]
+    st, _r = api.patch("item", topi, {"variant_group": "TOPI", "variant_label": "Hitam"})
+    check("an item grouped after its balance exists -> 200", st == 200, (st, _r))
+    tb = api.find("stock_balance", f"outlet == '{DGO}' && item == '{topi}'")
+    eq("the balance follows the item's new group (roll-up never goes stale)", [b["variant_group"] for b in tb], ["TOPI"])
     moves = api.find("stock_move", f"outlet == '{DGO}' && variant_group == 'KAOS-POLOS'")
     check("stock moves carry the product group", len(moves) >= 2 and all(m["variant_group"] == "KAOS-POLOS" for m in moves), len(moves))
 

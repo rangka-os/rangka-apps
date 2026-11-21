@@ -110,7 +110,7 @@ widgets:
     sort: -value
     span: 6
   # Terlaris per produk: the sizes and flavours of one product count together (hidden variant_group of the stock move);
-  # an item without a group counts under its own code.
+  # an item without a group is not in this chart (see Terlaris per barang). Cancelled sales and returns net out.
   - name: best_sellers_by_product
     type: chart
     chart: bar
@@ -120,7 +120,7 @@ widgets:
     group_by: variant_group
     aggregate: sum
     field: sold_qty
-    filter: "sold_qty > 0 && variant_group != ''"
+    filter: "(voucher_type == 'outlet_sales' || voucher_type == 'outlet_return') && variant_group != ''"
     period: posting_date
     sort: -value
     limit: 10
