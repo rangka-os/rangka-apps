@@ -79,6 +79,11 @@ def scenario_discount_preset_jasa(api):
     st, resp = sm.verb("sales_invoice", plain, "submit")
     check("an invoice without a discount submits without a request", st == 200 and not approvals_of(api, "sales_invoice", plain), (st, resp))
 
+    # left pending on purpose: a --keep demo then shows one request waiting in the approvals list
+    left = draft("a 30% line discount, left waiting", line_discount=30)
+    st, resp = sm.verb("sales_invoice", left, "submit")
+    check("a 30% line discount waits for approval (left pending for the demo)", st == 202 and resp["approval"]["state"] == "pending", (st, resp))
+
 
 def scenario_spending_presets_fnb(api):
     hq = CTX.get("hq")
