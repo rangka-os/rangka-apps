@@ -15,9 +15,7 @@ related:
     sort: name
     limit: 1000
     require:
-      - check: "nik != '' || npwp != ''"
-        message: {id: 'Slip pekerja ini dibuat sebelum data pajak pekerja disalin ke slip: buat 1721-A1 langsung di Coretax'}
-      - check: "nik == '' && npwp == '' || (size(npwp.replace('.', '').replace('-', '').replace(' ', '')) in [15, 16] && npwp.replace('.', '').replace('-', '').replace(' ', '').matches('^[0-9]+$')) || (size(nik) == 16 && nik.matches('^[0-9]+$'))"
-        message: {id: 'Pekerja di rekap ini belum punya NIK atau NPWP 16 angka: lengkapi Data gaji pekerja'}
+      - check: "((size(npwp.replace('.', '').replace('-', '').replace(' ', '')) in [15, 16] && npwp.replace('.', '').replace('-', '').replace(' ', '').matches('^[0-9]+$')) || (size(nik) == 16 && nik.matches('^[0-9]+$')))"
+        message: {id: 'Pekerja di slip ini belum punya NIK 16 angka atau NPWP: lengkapi Data gaji pekerja (slip lama: buat bukti potongnya langsung di Coretax)'}
       - check: "ptkp_status != '' && year_gross >= 0"
         message: {id: 'Status PTKP atau penghasilan di rekap ini tidak valid'}

@@ -47,7 +47,7 @@ h2.sec { font-size: 1em; margin: 16px 0 4px; padding: 4px 8px; background: #f5f5
   <tbody>
     <tr><td>PPh 21 terutang setahun (tarif Pasal 17)</td><td class="num">{{rupiah .Doc.year_pph21}}</td></tr>
     <tr><td>Sudah dipotong di masa sebelumnya</td><td class="num">{{rupiah .Doc.withheld_before}}</td></tr>
-    <tr class="total"><td>{{if lt .Doc.last_withheld 0}}Kelebihan potong dikembalikan di masa terakhir{{else}}Dipotong di masa terakhir{{end}}</td><td class="num">{{rupiah .Doc.last_withheld}}</td></tr>
+    <tr class="total"><td>{{if eq (slice (print .Doc.last_withheld) 0 1) "-"}}Kelebihan potong dikembalikan di masa terakhir{{else}}Dipotong di masa terakhir{{end}}</td><td class="num">{{rupiah .Doc.last_withheld}}</td></tr>
   </tbody>
 </table>
 <p class="note">Rekap ini disalin dari slip gaji masa pajak terakhir dan slip bulan-bulan sebelumnya. Bukti potong resmi dibuat di Coretax DJP.</p>

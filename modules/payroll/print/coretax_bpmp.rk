@@ -15,10 +15,8 @@ related:
     sort: name
     limit: 1000
     require:
-      - check: "slip_nik != '' || slip_npwp != ''"
-        message: {id: 'Slip ini dibuat sebelum data pajak pekerja disalin ke slip: buat bukti potongnya langsung di Coretax'}
-      - check: "slip_nik == '' && slip_npwp == '' || ((size(slip_npwp.replace('.', '').replace('-', '').replace(' ', '')) in [15, 16] && slip_npwp.replace('.', '').replace('-', '').replace(' ', '').matches('^[0-9]+$')) || (size(slip_nik) == 16 && slip_nik.matches('^[0-9]+$')))"
-        message: {id: 'Pekerja di slip ini belum punya NIK atau NPWP 16 angka: lengkapi Data gaji pekerja'}
+      - check: "((size(slip_npwp.replace('.', '').replace('-', '').replace(' ', '')) in [15, 16] && slip_npwp.replace('.', '').replace('-', '').replace(' ', '').matches('^[0-9]+$')) || (size(slip_nik) == 16 && slip_nik.matches('^[0-9]+$')))"
+        message: {id: 'Pekerja di slip ini belum punya NIK 16 angka atau NPWP: lengkapi Data gaji pekerja (slip lama: buat bukti potongnya langsung di Coretax)'}
       - check: "ptkp_status != ''"
         message: {id: 'Status PTKP pekerja di slip ini kosong'}
       - check: "ter_bp >= 0 && gross_taxable >= 0"
