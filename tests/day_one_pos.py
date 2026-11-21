@@ -30,6 +30,8 @@ MATRIX = {
     "pos_shift": {"head_office": {"read", "create", "write", "export", "print"}, "cashier": {"read", "create", "write", "print"}},
     "pos_shift_close": {"head_office": _ALL - {"amend"}, "cashier": {"read", "create", "write", "delete", "submit", "print"}},
     "pos_sale": {"head_office": _ALL, "cashier": _ALL - {"export"}, "outlet_staff": _R},
+    "dining_area": {"head_office": {"read", "create", "write", "delete"}, "cashier": _R, "outlet_staff": _R},
+    "dining_table": {"head_office": {"read", "create", "write", "delete"}, "cashier": _R, "outlet_staff": _R},
     "pos_guard": {"head_office": {"create"}, "cashier": {"create"}, "outlet_staff": {"create"}},   # never stored (a flow's refusal)
 }
 # what the cashier reads besides its own models (role scope: its outlets only)
@@ -885,6 +887,82 @@ def scenario_pos_catalogue_hides_inactive(api):
           it["name"] not in names and AIR in names and MI in names, (flt, it["name"], names))
 
 
-SCENARIOS = [scenario_pos_opening_stock, scenario_pos_shift, scenario_pos_retail_sale, scenario_pos_fnb_sale, scenario_pos_guards,
+def scenario_pos_tables(api):
+    """Kedai Riau, tables (rangka-apps#122): an open bill per table, a busy table refused, move, merge, split, stock moving
+    once at payment, and two devices editing one bill getting a conflict, not a lost update."""
+    sari, shift, hq = CTX.get("sari"), CTX.get("shift_riu"), CTX.get("hq")
+    if not (sari and shift and hq):
+        return
+    T = {n: f"MJA-RIU-{i:03d}" for i, n in enumerate(["A1", "A2", "A3", "A4", "A5", "A6", "B1", "B2", "B3", "B4"], 1)}
+    eq("Kedai Riau has ten tables in two areas", (len(api.find("dining_table", f"outlet == '{RIU}'")), len(api.find("dining_area", f"outlet == '{RIU}'"))), (10, 2))
+    roti0 = bal(api, RIU, ROTI)
+
+    def L(key, item, qty, **x):
+        return dict({"item": item, "qty": qty, "line_key": key}, **x)
+
+    st, b3 = sale(sari, shift, [L("a1", KSA, 1), L("a2", ROTI, 1)], "", submit=False, table=T["A3"], guests=2)
+    if not check("open bill on A3 (2 lines, 2 guests) -> 201, dine in, a draft", st == 201 and b3.get("order_type") == "dine_in" and b3.get("docstatus") == 0, (st, b3)):
+        return
+    eq("the draft moves no stock", bal(api, RIU, ROTI), roti0)
+    st, r = sale(sari, shift, [L("x1", KHT, 1)], "", submit=False, table=T["A3"], guests=1)
+    check("a second bill on A3 is refused: table_busy", st != 201 and "table_busy" in str(r), (st, r))
+    st, r = sale(sari, shift, [L("x1", KHT, 1)], "", submit=False, table=T["A4"], guests=0)
+    check("a bill on a table needs guests >= 1", st != 201 and "table_guests" in str(r), (st, r))
+    st, r = sale(sari, shift, [L("x1", KHT, 1)], "", submit=False, table=T["A5"], guests=1, outlet=DGO)
+    check("a table of another outlet is refused", st != 201, (st, r))
+    # move A3 -> A5 as a conditional PATCH; a busy target is refused
+    st, r = sale(sari, shift, [L("y1", KHT, 1)], "", submit=False, table=T["A6"], guests=1)
+    st2, r2 = sari.patch("pos_sale", b3["name"], {"table": T["A6"], "_if": {"table": T["A3"]}})
+    check("move onto the busy A6 is refused", st2 != 200 and "table_busy" in str(r2), (st2, r2))
+    st, r = sari.patch("pos_sale", b3["name"], {"table": T["A5"], "_if": {"table": T["A3"]}})
+    check("move A3 -> A5 -> 200 and A3 is free again", st == 200 and rec(r).get("table") == T["A5"] and not api.find("pos_sale", f"table == '{T['A3']}' && docstatus == 0"), (st, r))
+    st, r = sari.patch("pos_sale", b3["name"], {"table": T["A4"], "_if": {"table": T["A3"]}})
+    check("a stale move (the bill is not on A3 any more) is refused", st in (409, 412), (st, r))
+    b6 = rec(api.find("pos_sale", f"table == '{T['A6']}' && docstatus == 0")[0]) if api.find("pos_sale", f"table == '{T['A6']}' && docstatus == 0") else None
+    if not b6:
+        return
+    total = lambda n: api.get("pos_sale", n).get("grand_total")
+    t5, t6 = total(b3["name"]), total(b6["name"])
+    # merge A5 into A6: every line and one total
+    st, r = sari.patch("pos_sale", b3["name"], {"merge_into": b6["name"]})
+    m6 = api.get("pos_sale", b6["name"], children=1) if False else sari.get("pos_sale", b6["name"])
+    src = sari.get("pos_sale", b3["name"])
+    check("merge A5 into A6 -> 200: A6 has all three lines and one total, A5 is merged and frees its table",
+          st == 200 and len(m6.get("items") or []) == 3 and m6.get("grand_total") == t5 + t6 and src.get("merged") and src.get("table") in ("", None)
+          and m6.get("guests") == 3, (st, r, m6, src))
+    check("the merged bill cannot be paid", sari.verb("pos_sale", b3["name"], "submit")[0] != 200, None)
+    st, r = sari.patch("pos_sale", b3["name"], {"merge_into": b3["name"]})
+    check("a bill cannot be merged into itself", st != 200, (st, r))
+    # split A6: the roti line goes to a new bill on the same table
+    keys = [l.get("line_key") for l in m6["items"]]
+    roti_key = [l["line_key"] for l in m6["items"] if l["item"] == ROTI][0]
+    st, r = sari.patch("pos_sale", b6["name"], {"split_lines": [roti_key]})
+    kids = api.find("pos_sale", f"split_of == '{b6['name']}'")
+    old = sari.get("pos_sale", b6["name"])
+    check("split A6 by line -> 200: a new bill on A6 with split_of, the old bill keeps the rest",
+          st == 200 and len(kids) == 1 and kids[0]["table"] == T["A6"] and len(old.get("items") or []) == 2 and not old.get("split_lines"), (st, r, kids, old))
+    if not kids:
+        return
+    eq("the two bills add up to the original total", old["grand_total"] + kids[0]["grand_total"], t5 + t6)
+    st, r = sari.patch("pos_sale", b6["name"], {"split_lines": [l["line_key"] for l in old["items"]]})
+    check("a split that would leave no line is refused", st != 200 and "split_invalid" in str(r), (st, r))
+    st, r = sale(sari, shift, [L("z1", KHT, 1)], "", submit=False, table=T["A6"], guests=1)
+    check("a hand-made third bill on A6 is still refused", st != 201 and "table_busy" in str(r), (st, r))
+    # two devices on one draft: the second PATCH built on the old value gets a conflict
+    seen = sari.get("pos_sale", b6["name"])["guests"]
+    st, _ = hq.patch("pos_sale", b6["name"], {"guests": seen + 1})
+    st2, r2 = sari.patch("pos_sale", b6["name"], {"guests": seen + 5, "_if": {"guests": seen}})
+    check("two devices on one bill: the later PATCH gets a conflict, the first change stays",
+          st == 200 and st2 in (409, 412) and sari.get("pos_sale", b6["name"])["guests"] == seen + 1, (st, st2, r2))
+    # pay both bills: stock moves once per line, at payment only
+    st1, p1 = sari.verb("pos_sale", b6["name"], "submit", {"payments": [{"method": "cash", "amount": 100_000}]})
+    st2, p2 = sari.verb("pos_sale", kids[0]["name"], "submit", {"payments": [{"method": "cash", "amount": 100_000}]})
+    check("both bills of A6 paid -> 200", st1 == 200 and st2 == 200, (st1, st2, p1, p2))
+    eq("the roti left the stock once (merged and split lines counted once)", bal(api, RIU, ROTI), roti0 - 2)
+    check("the tables are free after payment", not api.find("pos_sale", f"table != '' && docstatus == 0 && outlet == '{RIU}'"), None)
+    CTX["tables_ok"] = True
+
+
+SCENARIOS = [scenario_pos_opening_stock, scenario_pos_shift, scenario_pos_retail_sale, scenario_pos_fnb_sale, scenario_pos_guards, scenario_pos_tables,
              scenario_pos_daily_form_next_door, scenario_pos_void_and_return, scenario_pos_race, scenario_pos_close, scenario_pos_close_race, scenario_pos_print,
              scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive, scenario_pos_kasir_only_site, scenario_pos_day_source_kept_after_removal, scenario_pos_day_source_backfill]

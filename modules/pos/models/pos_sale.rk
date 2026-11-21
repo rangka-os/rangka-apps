@@ -50,6 +50,31 @@ fields:
     label: {id: Pembeli atau meja}
     help: {id: 'Boleh kosong. Nama pembeli, nomor meja atau nomor antrean'}
     in_list: true
+  # Tables (rangka-apps#122, contract 0048 section 2). An open bill is a draft that links its table; the table map derives
+  # Kosong, Terisi and Minta tagihan from the drafts. order_type is the one #121 defines (dine_in, takeaway, online);
+  # until that lands it follows the table.
+  - {name: table, type: link, to: dining_table, label: {id: Meja}, in_list: true}
+  - {name: guests, type: int, label: {id: Jumlah tamu}, default: '0'}
+  - {name: bill_asked, type: check, label: {id: Minta tagihan}}
+  - name: order_type
+    type: select
+    label: {id: Jenis pesanan}
+    compute: "table != '' ? 'dine_in' : 'takeaway'"
+    options:
+      - {value: dine_in, label: {id: Makan di tempat}}
+      - {value: takeaway, label: {id: Bawa pulang}}
+      - {value: online, label: {id: Online}}
+  # the counter's "Kirim ke dapur" sets send_kitchen; flow kitchen_ticket_on_draft makes the tickets, records the lines
+  # in sent_to_kitchen (key, item, description, qty, uom, note, category) and clears the check
+  - {name: send_kitchen, type: check, label: {id: Kirim ke dapur}}
+  - {name: sent_to_kitchen, type: json, label: {id: Baris terkirim ke dapur}, hidden: true, read_only: true, default: '[]'}
+  # merge: set on the bill to fold, naming the bill that takes its lines (flow pos_sale_merge); merged marks the bill that
+  # was folded: it frees its table, keeps its lines as a record and can never be paid
+  - {name: merge_into, type: link, to: pos_sale, label: {id: Gabung ke tagihan}, hidden: true}
+  - {name: merged, type: check, label: {id: Sudah digabung}, read_only: true, hidden: true}
+  # split: the line keys to move to a new bill on the same table (flow pos_sale_split); split_of is set on that new bill
+  - {name: split_lines, type: json, label: {id: Baris yang dipisah}, hidden: true, default: '[]'}
+  - {name: split_of, type: link, to: pos_sale, label: {id: Pisahan dari}, read_only: true, hidden: true}
   # the customer of record (contacts), picked or signed up at the counter's checkout; buyer stays for a name, table or
   # queue number. Shared with module loyalty (rangka-apps#102).
   - {name: customer, type: link, to: customer, label: {id: Pelanggan}, help: {id: 'Boleh kosong. Pilih pelanggan terdaftar'}}
@@ -281,6 +306,22 @@ stock:
     - {lines: items, out: outlet, explode: recipe, reason: sale, cogs: cogs}
   cogs_total: cogs_total
 rules:
+  - name: table_of_outlet
+    on: save
+    check: "table == '' || table.outlet == outlet"
+    message: {id: 'Meja ini milik outlet lain'}
+  - name: table_active
+    on: save
+    check: "table == '' || table.active"
+    message: {id: 'Meja ini sedang tidak dipakai'}
+  - name: table_guests
+    on: save
+    check: "table == '' || merged || guests >= 1"
+    message: {id: 'Isi jumlah tamu minimal 1 untuk meja'}
+  - name: merged_not_payable
+    on: submit
+    check: "!merged"
+    message: {id: 'Tagihan ini sudah digabung ke tagihan lain dan tidak bisa dibayar'}
   # Only a store sells (rangka-apps#104): a warehouse, vehicle, quarantine or production row takes no plan outlet seat
   # (outlets limit_scope is_store), so a shift or sale there would be a free seat. Van sales belong to field_sales (#112).
   - name: sale_at_store

@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# "Kirim ke dapur" on an open table bill (rangka-apps#122, contract 0048 Open 3). The counter sets send_kitchen on the draft;
+# this flow runs inside that write, as the cashier: one ticket per active station with the routed lines the kitchen was
+# not sent yet (line_key not in sent_to_kitchen), then it records them and clears send_kitchen. A line the cashier
+# removed after it was sent makes a ticket line "BATAL: <menu>" at its station, so the kitchen stops cooking it. Lines
+# without a line_key are never sent from here (the payment flow handles them). At payment flow kitchen_ticket_on_sale
+# skips every recorded line, so each line reaches the kitchen once. A change of quantity of a sent line is not tracked in v1:
+# remove the line and add it again.
+name: kitchen_ticket_on_draft
+label: {id: 'Kirim pesanan meja ke dapur sebelum dibayar'}
+description: {id: 'Barang baru di tagihan meja dikirim ke stasiun dapur; barang yang dihapus setelah terkirim dikirim sebagai BATAL'}
+on: pos_sale.updated
+if: "event.docstatus == 0 && event.table != '' && event.send_kitchen && !event.merged"
+steps:
+  - {find: pos_sale, where: "name == event.name", as: src}
+  - {find: dining_table, where: "name == event.table", as: tbl}
+  - {find_all: kitchen_station, where: outlet == event.outlet && active, as: stations}
+  - {find_all: kitchen_route, where: outlet == event.outlet, as: routes}
+  - for_each: stations
+    as: st
+    do:
+      - if: "event.items.filter(l, l.line_key != '' && !(l.line_key in event.sent_to_kitchen.map(s, s.key)) && routes.filter(r, r.station == st.name && r.category == l.category).size() > 0).size() > 0"
+        create: kitchen_ticket
+        set:
+          sale: event.name
+          outlet: event.outlet
+          station: st.name
+          date: event.date
+          buyer: tbl.table_name
+          items: "event.items.filter(l, l.line_key != '' && !(l.line_key in event.sent_to_kitchen.map(s, s.key)) && routes.filter(r, r.station == st.name && r.category == l.category).size() > 0).map(l, {'item': l.item, 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note})"
+      - if: "event.sent_to_kitchen.filter(s, !(s.key in event.items.map(l, l.line_key)) && routes.filter(r, r.station == st.name && r.category == s.category).size() > 0).size() > 0"
+        create: kitchen_ticket
+        set:
+          sale: event.name
+          outlet: event.outlet
+          station: st.name
+          date: event.date
+          buyer: tbl.table_name
+          items: "event.sent_to_kitchen.filter(s, !(s.key in event.items.map(l, l.line_key)) && routes.filter(r, r.station == st.name && r.category == s.category).size() > 0).map(s, {'item': s.item, 'description': 'BATAL: ' + s.description, 'qty': s.qty, 'uom': s.uom, 'note': s.note})"
+  - update: src
+    set:
+      sent_to_kitchen: "event.sent_to_kitchen.filter(s, s.key in event.items.map(l, l.line_key)) + event.items.filter(l, l.line_key != '' && !(l.line_key in event.sent_to_kitchen.map(s, s.key))).map(l, {'key': l.line_key, 'item': l.item, 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note, 'category': l.category})"
+      send_kitchen: "false"

@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A table of an outlet (A3, B1). Its state is never stored: the table map derives it from the open bills (draft
+# pos_sale rows that link the table), contract 0048 section 2.
+name: dining_table
+label: {id: Meja, en: Dining table}
+icon: stock
+naming: MJA-{outlet.code}-{###}
+title_field: table_name
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true}
+  # the cashier reads the tables to open a bill on one; a waiter uses the cashier role in v1
+  - {role: cashier, read: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - {name: table_name, type: data, label: {id: Nama meja}, help: {id: 'Misalnya A3, B1'}, required: true, in_list: true}
+  - {name: area, type: link, to: dining_area, label: {id: Area}, required: true, in_list: true}
+  - {name: seats, type: int, label: {id: Kursi}, default: '2', in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, in_list: true}
+  - {name: active, type: check, label: {id: Aktif}, default: 'true', in_list: true}
+  - {name: time_limit_min, type: int, label: {id: Batas waktu duduk (menit)}, help: {id: '0 berarti tanpa batas. Denah memberi tanda kuning 10 menit sebelum batas dan merah setelahnya'}, default: '0'}
+  # one table of a name per outlet
+  - {name: table_key, type: data, label: {id: Kunci meja}, hidden: true, unique: true, compute: "outlet + '/' + table_name"}
+rules:
+  - name: area_of_outlet
+    on: save
+    check: area.outlet == outlet
+    message: {id: 'Area meja harus milik outlet yang sama dengan mejanya'}
+  - name: seats_positive
+    on: save
+    check: seats >= 1
+    message: {id: 'Jumlah kursi minimal 1'}
+views:
+  list:
+    columns: [table_name, area, seats, outlet, active]
+    filters: [outlet, area, active]
+    sort: table_name
