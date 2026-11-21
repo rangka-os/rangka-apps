@@ -12,7 +12,7 @@ related:
   zero:
     model: payslip
     range: {tax_year: [year, year], tax_month: [month, month]}
-    filter: docstatus == 1 && ter_daily && daily_gross <= 450000
+    filter: docstatus == 1 && ter_daily && gross_taxable * 1.0 <= 450000.0 * (days + holiday_overtime_days)
     sort: name
     limit: 1000
     require:
@@ -23,7 +23,7 @@ related:
   low:
     model: payslip
     range: {tax_year: [year, year], tax_month: [month, month]}
-    filter: docstatus == 1 && ter_daily && daily_gross > 450000 && daily_gross <= 2500000
+    filter: docstatus == 1 && ter_daily && gross_taxable * 1.0 > 450000.0 * (days + holiday_overtime_days) && gross_taxable * 1.0 <= 2500000.0 * (days + holiday_overtime_days)
     sort: name
     limit: 1000
     require:
@@ -34,7 +34,7 @@ related:
   high:
     model: payslip
     range: {tax_year: [year, year], tax_month: [month, month]}
-    filter: docstatus == 1 && ter_daily && daily_gross > 2500000
+    filter: docstatus == 1 && ter_daily && gross_taxable * 1.0 > 2500000.0 * (days + holiday_overtime_days)
     sort: name
     limit: 1000
     require:

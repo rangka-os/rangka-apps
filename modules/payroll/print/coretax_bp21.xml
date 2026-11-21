@@ -23,7 +23,7 @@
 			<TaxObjectCode>{{if eq $k "high"}}21-100-30{{else}}21-100-24{{end}}</TaxObjectCode>
 			<Gross>{{dec .gross_taxable 0}}</Gross>
 			<Deemed>{{if eq $k "high"}}50{{else}}100{{end}}</Deemed>
-			<Rate>{{if eq $k "zero"}}0{{else if eq $k "low"}}{{dec (div (mul 5 $m) 1000) 2}}{{else}}{{dec (div (mul .daily_pph21 200) .gross_taxable) 2}}{{end}}</Rate>
+			<Rate>{{if eq $k "zero"}}0{{else if eq $k "low"}}{{dec (div (mul 5 $m) 1000) 2}}{{else}}{{dec (div (mul .daily_pph21 200) .gross_taxable) 4}}{{end}}</Rate>
 			<Document>Other</Document>
 			<DocumentNumber>{{.name}}</DocumentNumber>
 			<DocumentDate>{{isodate .run_period_to}}</DocumentDate>

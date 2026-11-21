@@ -31,6 +31,19 @@ steps:
   - find: pph21_annual
     where: last_slip == event.name
     as: old
+  # a mistaken last_month tick earlier in the same stretch leaves a live summary that this one now covers: void it so the
+  # worker's income is never in two A1 files
+  - find_all: pph21_annual
+    where: >-
+      worker == event.worker && tax_year == event.tax_year && !voided && last_slip != event.name && month_end < event.tax_month
+      && month_end >= (size(prev) > 0 ? prev[0].tax_month : event.tax_month)
+    as: covered
+  - for_each: covered
+    as: c
+    do:
+      - update: c
+        set:
+          voided: true
   - if: old == null
     create: pph21_annual
     set:

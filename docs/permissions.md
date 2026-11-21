@@ -144,7 +144,7 @@ Sales and purchasing have no access.
 | payroll_run (not submittable: payslips link to it; `closed`, locks and totals written by flows; no delete) | | r c w e p | | r |
 | payslip | | all | | r c (draft from the recap's flow) |
 | pph21_period (Masa PPh 21: the Coretax XML downloads; no submit) | | r c w d e p | | |
-| pph21_annual (Rekap PPh 21 setahun for the 1721-A1; made by flows, staff read and print their own once released) | | r c w e p | | |
+| pph21_annual (Rekap PPh 21 setahun for the 1721-A1; made by flows only: every field is read-only, so finance cannot hand-edit it; staff read and print their own once released) | | r c w e p | | |
 | payroll_close (Tutup periode gaji: freezes totals, margin row, client invoice) | | all | | r |
 | cash_advance (kasbon: Dr Piutang karyawan / Cr Kas or Bank; repaid through payslip other_deduction) | | all | | r |
 | payroll_guard (never stored; a flow's refusal, also inside a recap cancel and an invoice save) | c | c | | c |

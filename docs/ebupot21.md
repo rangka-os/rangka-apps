@@ -24,5 +24,6 @@ BPA1: TaxPeriodMonthStart/End, StatusOfWithholding (FullYear = January to Decemb
 Numbers are plain integers (rupiah), dates ISO, rates with a dot.
 
 ## Rules
+- Casual workers paid monthly are taxed by the slip like permanent ones, so they are in BPMP and A1. BP21 Rate of code 21-100-30 has 4 decimals, so Coretax's Gross x Deemed x Rate can differ from the slip's PPh 21 by a few rupiah on very large days.
 - Casual daily workers never get an A1 (monthly BP21 only). Joiners mid-year are `partial_year` with actual income and full PTKP.
 - Tests: `tests/day_one_ebupot21.py` (demo-manpower) against `tests/payroll_oracle.py` `slip` and `annual`: full year, June leaver, NIK-only worker, casual worker, a no-ID month refused, void on cancel.

@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
-# Monthly PPh 21 withholding slips of permanent employees (BPMP, form 1721-VIII) as Coretax imports them (MmPayrollBulk,
+# Every slip taxed with monthly TER is here, also a casual worker paid monthly (the slip taxes it like a permanent one). Monthly PPh 21 withholding slips of permanent employees (BPMP, form 1721-VIII) as Coretax imports them (MmPayrollBulk,
 # DJP template bpmp.xml and converter "BPMP Excel to XML v.3"). The last tax month (December or the month a worker
 # leaves) is a 1721-A1 instead: see coretax_bpa1. Field map and sources: docs/ebupot21.md.
 name: coretax_bpmp
@@ -11,7 +11,7 @@ related:
   slips:
     model: payslip
     range: {tax_year: [year, year], tax_month: [month, month]}
-    filter: docstatus == 1 && employment == 'permanent' && !last_month && !ter_daily
+    filter: docstatus == 1 && !last_month && !ter_daily
     sort: name
     limit: 1000
     require:
