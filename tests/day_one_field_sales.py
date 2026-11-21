@@ -332,6 +332,18 @@ def scenario_field_sales_forged_work_order_and_stale_date_refused(api):
     eq("the invoice is the real sale's total, not the forged one", inv.get("grand_total"), api.get("canvas_sale", name).get("grand_total"))
     eq("the invoice is dated the sale's day, not the forged date", inv.get("posting_date"), api.get("canvas_sale", name).get("sale_date"))
     check("the customer's uninvoiced canvas credit counts the draft invoice (the credit limit sees it)", (api.get("customer", S["c2"]).get("uninvoiced_canvas") or 0) >= inv.get("grand_total", 1), api.get("customer", S["c2"]).get("uninvoiced_canvas"))
+    # same totals, different lines: still ignored
+    st, cs3 = asep.create("canvas_sale", {"customer": S["c2"], "outlet": G.KANVAS, "items": [{"item": G.MI, "qty": 3}]})
+    st, r3 = asep.verb("canvas_sale", (cs3 or {}).get("name", "x"), "submit")
+    n3 = (r3 or {}).get("name", "x")
+    sale3 = api.get("canvas_sale", n3)
+    if sale3:
+        asep.create("canvas_sale_job", {"sale": n3, "customer": S["c2"], "salesman": G.ASEP, "sale_date": sale3["sale_date"], "cash_received": 0,
+                                        "items": [{"item": G.MI, "qty": 1, "rate": sale3["subtotal"]}, {"item": G.TEH, "qty": 2, "rate": 0}]})
+        _drafts(api)
+        i3 = api.find("sales_invoice", f"po_number == '{n3}'")
+        lines = sorted((r["item"], r["qty"]) for r in api.get("sales_invoice", i3[0]["name"]).get("items", [])) if i3 else []
+        eq("a forged work order with the same totals but other lines does not change the invoice lines", lines, [(G.MI, 3)])
     st, resp = asep.create("canvas_sale", {"customer": S["c2"], "outlet": G.KANVAS, "sale_date": "2020-01-01", "items": [{"item": G.MI, "qty": 1}]})
     check("a sale dated years ago is refused -> 422", st == 422, (st, resp))
 

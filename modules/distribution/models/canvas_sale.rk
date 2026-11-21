@@ -41,6 +41,9 @@ fields:
   - {name: cash_received, type: currency, label: {id: Tunai diterima}, help: {id: 'Uang yang diterima dari pelanggan sekarang. Sisanya jadi piutang'}, default: '0'}
   - {name: credit_amount, type: currency, label: {id: Jadi piutang}, compute: "grand_total - cash_received"}
   - {name: cogs_total, type: currency, label: {id: Harga pokok barang terjual}, read_only: true, hidden_for: [field_sales]}
+  # A fingerprint of the lines (item, qty, rate in order): the drafts flow compares it with the work order's lines, so a
+  # work order made by hand cannot change what the invoice bills.
+  - {name: lines_sig, type: text, label: {id: Sidik jari barang}, read_only: true, compute: "items.map(i, i.item + ':' + string(i.qty) + ':' + string(i.rate)).join('|')"}
   - {name: total_qty, type: float, label: {id: Total qty}, compute: "items.map(i, i.qty).sum()"}
   - {name: notes, type: text, label: {id: Catatan}}
 stock:

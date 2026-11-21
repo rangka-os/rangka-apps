@@ -11,7 +11,7 @@
 # payments (role field_sales reads and prints them), and a flow never does more than its actor could by hand. A sale
 # cancelled before the run is not submitted any more, so it gets no drafts. Reads lock canvas_sale (contract 0025).
 # A salesman may create a work order, so nothing on it is trusted: the sale is found by the work order's number AND must
-# match it (customer, salesman, date, cash, total qty, subtotal); a work order that does not match is only marked done.
+# match it (customer, salesman, date, cash, total qty, subtotal, lines fingerprint); a work order that does not match is only marked done.
 # The invoice carries the sale's number in po_number and in its notes (the cancel guard looks for either).
 # 4. the customer's uninvoiced_canvas (credit of canvas sales whose invoice is still a draft, so the credit limit sees
 #    them) is recomputed. Sales made in the five minutes before their drafts exist are not counted yet.
@@ -31,7 +31,7 @@ steps:
       - update: j
         set: {customer: j.customer}
       - find: canvas_sale
-        where: "name == j.sale && docstatus == 1 && customer == j.customer && salesman == j.salesman && sale_date == j.sale_date && cash_received == j.cash_received && total_qty == j.items.map(i, i.qty).sum() && subtotal == j.items.map(i, i.amount).sum()"
+        where: "name == j.sale && docstatus == 1 && customer == j.customer && salesman == j.salesman && sale_date == j.sale_date && cash_received == j.cash_received && total_qty == j.items.map(i, i.qty).sum() && subtotal == j.items.map(i, i.amount).sum() && lines_sig == j.items.map(i, i.item + ':' + string(i.qty) + ':' + string(i.rate)).join('|')"
         as: s
       - find: sales_invoice
         where: "po_number == j.sale || notes.contains('[' + j.sale + ']')"
