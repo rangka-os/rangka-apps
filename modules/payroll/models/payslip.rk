@@ -67,6 +67,10 @@ fields:
   - {name: slip_role_title, type: data, label: {id: Jabatan, en: Job title}, hidden: true, compute: profile.worker.role_title}
   - {name: slip_bank_name, type: data, label: {id: Bank, en: Bank}, hidden: true, compute: profile.bank_name}
   - {name: slip_bank_account, type: data, label: {id: Nomor rekening, en: Account number}, hidden: true, compute: profile.bank_account}
+  # Tax identity copied the same way for the PPh 21 exports (ebupot21, rangka-apps#128): raw NIK and NPWP of the profile.
+  # A slip submitted before payroll 2.4.0 has them empty, and the Coretax export refuses it with a message.
+  - {name: slip_nik, type: data, label: {id: NIK, en: National ID}, hidden: true, compute: profile.nik}
+  - {name: slip_npwp, type: data, label: {id: NPWP, en: Tax number}, hidden: true, compute: profile.npwp}
   - name: project
     type: link
     to: project

@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Monthly PPh 21 withholding slips of casual daily workers (BP21, pegawai tidak tetap paid per day) as Coretax imports
+# them (Bp21Bulk, DJP template bp21.xml and converter "BP21 Excel to XML v.4"). They never get a 1721-A1. Three lists
+# by the daily gross, the same bands as the slip's daily TER (PMK 168/2023 Pasal 16): up to 450.000 a day 0%, up to
+# 2.500.000 a day 0,5% (code 21-100-24), above that Pasal 17 on 50% (code 21-100-30). Field map: docs/ebupot21.md.
+name: coretax_bp21
+model: pph21_period
+label: {id: XML Bukti Potong PPh 21 Pegawai Tidak Tetap Harian (Coretax)}
+output: xml
+template: coretax_bp21.xml
+related:
+  zero:
+    model: payslip
+    range: {tax_year: [year, year], tax_month: [month, month]}
+    filter: docstatus == 1 && ter_daily && daily_gross <= 450000
+    sort: name
+    limit: 1000
+    require:
+      - check: "slip_nik != '' || slip_npwp != ''"
+        message: {id: 'Slip ini dibuat sebelum data pajak pekerja disalin ke slip: buat bukti potongnya langsung di Coretax'}
+      - check: "slip_nik == '' && slip_npwp == '' || ((size(slip_npwp.replace('.', '').replace('-', '').replace(' ', '')) in [15, 16] && slip_npwp.replace('.', '').replace('-', '').replace(' ', '').matches('^[0-9]+$')) || (size(slip_nik) == 16 && slip_nik.matches('^[0-9]+$')))"
+        message: {id: 'Pekerja di slip ini belum punya NIK atau NPWP 16 angka: lengkapi Data gaji pekerja'}
+      - check: "ptkp_status != '' && gross_taxable >= 0"
+        message: {id: 'Status PTKP atau penghasilan bruto di slip ini tidak valid'}
+  low:
+    model: payslip
+    range: {tax_year: [year, year], tax_month: [month, month]}
+    filter: docstatus == 1 && ter_daily && daily_gross > 450000 && daily_gross <= 2500000
+    sort: name
+    limit: 1000
+    require:
+      - check: "slip_nik != '' || slip_npwp != ''"
+        message: {id: 'Slip ini dibuat sebelum data pajak pekerja disalin ke slip: buat bukti potongnya langsung di Coretax'}
+      - check: "slip_nik == '' && slip_npwp == '' || ((size(slip_npwp.replace('.', '').replace('-', '').replace(' ', '')) in [15, 16] && slip_npwp.replace('.', '').replace('-', '').replace(' ', '').matches('^[0-9]+$')) || (size(slip_nik) == 16 && slip_nik.matches('^[0-9]+$')))"
+        message: {id: 'Pekerja di slip ini belum punya NIK atau NPWP 16 angka: lengkapi Data gaji pekerja'}
+      - check: "ptkp_status != '' && gross_taxable >= 0"
+        message: {id: 'Status PTKP atau penghasilan bruto di slip ini tidak valid'}
+  high:
+    model: payslip
+    range: {tax_year: [year, year], tax_month: [month, month]}
+    filter: docstatus == 1 && ter_daily && daily_gross > 2500000
+    sort: name
+    limit: 1000
+    require:
+      - check: "slip_nik != '' || slip_npwp != ''"
+        message: {id: 'Slip ini dibuat sebelum data pajak pekerja disalin ke slip: buat bukti potongnya langsung di Coretax'}
+      - check: "slip_nik == '' && slip_npwp == '' || ((size(slip_npwp.replace('.', '').replace('-', '').replace(' ', '')) in [15, 16] && slip_npwp.replace('.', '').replace('-', '').replace(' ', '').matches('^[0-9]+$')) || (size(slip_nik) == 16 && slip_nik.matches('^[0-9]+$')))"
+        message: {id: 'Pekerja di slip ini belum punya NIK atau NPWP 16 angka: lengkapi Data gaji pekerja'}
+      - check: "ptkp_status != '' && gross_taxable >= 0"
+        message: {id: 'Status PTKP atau penghasilan bruto di slip ini tidak valid'}

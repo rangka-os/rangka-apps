@@ -1,0 +1,53 @@
+{{define "style"}}
+.meta { width: 100%; margin: 6px 0 12px; border-collapse: collapse; font-size: 0.95em; }
+.meta td { padding: 3px 8px 3px 0; vertical-align: top; }
+.meta td.k { width: 30%; color: #57534e; }
+h2.sec { font-size: 1em; margin: 16px 0 4px; padding: 4px 8px; background: #f5f5f4; }
+.items { width: 100%; border-collapse: collapse; font-size: 0.95em; }
+.items th, .items td { padding: 4px 6px; text-align: left; border-bottom: 1px solid #e7e5e4; }
+.items th { font-weight: 600; }
+.items tr.total td { border-top: 2px solid #1c1917; border-bottom: 0; font-weight: 700; }
+.num { text-align: right !important; font-variant-numeric: tabular-nums; }
+.note { margin-top: 12px; font-size: 0.82em; color: #57534e; }
+{{end}}
+{{template "letterhead" .}}
+<h1>Bukti Pemotongan PPh Pasal 21 Tahunan (1721-A1)</h1>
+<p class="note">Masa pajak {{.Doc.month_start}} sampai {{.Doc.month_end}}, tahun pajak {{.Doc.tax_year}} ({{if eq .Doc.withholding_status "full_year"}}setahun penuh{{else}}kurang dari setahun{{end}})</p>
+
+<h2 class="sec">A. Identitas</h2>
+<table class="meta">
+  <tr><td class="k">Pemotong</td><td>{{.Doc.employer_name}}</td></tr>
+  <tr><td class="k">NPWP pemotong</td><td>{{.Doc.employer_tin}}</td></tr>
+  <tr><td class="k">Nama pegawai</td><td>{{.Doc.worker_name}}</td></tr>
+  <tr><td class="k">NIK / NPWP</td><td>{{or .Doc.npwp .Doc.nik}}</td></tr>
+  <tr><td class="k">Jabatan</td><td>{{.Doc.position}}</td></tr>
+  <tr><td class="k">Status PTKP</td><td>{{upper .Doc.ptkp_status}}</td></tr>
+  <tr><td class="k">Tanggal pemotongan</td><td>{{date .Doc.withholding_date}}</td></tr>
+</table>
+
+<h2 class="sec">B. Penghasilan dan pengurang</h2>
+<table class="items">
+  <thead><tr><th>Uraian</th><th class="num">Rp</th></tr></thead>
+  <tbody>
+    <tr><td>Gaji</td><td class="num">{{rupiah .Doc.gross_salary}}</td></tr>
+    <tr><td>Tunjangan lain dan lembur</td><td class="num">{{rupiah .Doc.other_benefit}}</td></tr>
+    <tr><td>Premi asuransi dibayar pemberi kerja</td><td class="num">{{rupiah .Doc.insurance_employer}}</td></tr>
+    <tr><td>Bonus, THR, tantiem</td><td class="num">{{rupiah .Doc.bonus_thr}}</td></tr>
+    <tr class="total"><td>Penghasilan bruto</td><td class="num">{{rupiah .Doc.year_gross}}</td></tr>
+    <tr><td>Biaya jabatan</td><td class="num">-{{rupiah .Doc.job_cost}}</td></tr>
+    <tr><td>Iuran pensiun dan JHT pegawai</td><td class="num">-{{rupiah .Doc.pension_contribution}}</td></tr>
+    <tr class="total"><td>Penghasilan neto</td><td class="num">{{rupiah .Doc.year_net}}</td></tr>
+    <tr><td>PTKP</td><td class="num">-{{rupiah .Doc.ptkp}}</td></tr>
+    <tr class="total"><td>Penghasilan kena pajak (PKP)</td><td class="num">{{rupiah .Doc.year_pkp}}</td></tr>
+  </tbody>
+</table>
+
+<h2 class="sec">C. PPh Pasal 21</h2>
+<table class="items">
+  <tbody>
+    <tr><td>PPh 21 terutang setahun (tarif Pasal 17)</td><td class="num">{{rupiah .Doc.year_pph21}}</td></tr>
+    <tr><td>Sudah dipotong di masa sebelumnya</td><td class="num">{{rupiah .Doc.withheld_before}}</td></tr>
+    <tr class="total"><td>{{if lt .Doc.last_withheld 0}}Kelebihan potong dikembalikan di masa terakhir{{else}}Dipotong di masa terakhir{{end}}</td><td class="num">{{rupiah .Doc.last_withheld}}</td></tr>
+  </tbody>
+</table>
+<p class="note">Rekap ini disalin dari slip gaji masa pajak terakhir dan slip bulan-bulan sebelumnya. Bukti potong resmi dibuat di Coretax DJP.</p>

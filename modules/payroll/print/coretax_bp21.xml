@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+{{- /* Element names and order follow the DJP template bp21.xml (pajak.go.id Coretax templates); column meanings from
+  "BP21 Excel to XML v.4.xlsx" sheet BP21. Gross is the slip's whole bruto; Rate x Deemed% x Gross is the slip's PPh 21:
+  21-100-24 is Deemed 100 and Rate 0 or 0,5 (x120% without a tax number); 21-100-30 is Deemed 50 and the Rate is the
+  slip's PPh 21 over half of its gross (the Pasal 17 layers as one percent, 2 decimals). The reference document is the
+  slip itself (Document Other). */}}
+<Bp21Bulk xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<TIN>{{.Doc.seller_tin}}</TIN>
+	<ListOfBp21>
+{{- $d := .Doc}}
+{{- range $k, $rows := .Related}}
+{{- range $rows}}
+{{- $tin := digits .slip_nik}}
+{{- if eq (len (digits .slip_npwp)) 16}}{{$tin = digits .slip_npwp}}{{else if eq (len (digits .slip_npwp)) 15}}{{$tin = print "0" (digits .slip_npwp)}}{{end}}
+{{- $m := 100}}{{if not .has_tax_id}}{{$m = 120}}{{end}}
+		<Bp21>
+			<TaxPeriodMonth>{{dec $d.month 0}}</TaxPeriodMonth>
+			<TaxPeriodYear>{{$d.year}}</TaxPeriodYear>
+			<CounterpartTin>{{$tin}}</CounterpartTin>
+			<IDPlaceOfBusinessActivityOfIncomeRecipient>{{$tin}}000000</IDPlaceOfBusinessActivityOfIncomeRecipient>
+			<StatusTaxExemption>{{if eq (slice .ptkp_status 0 1) "t"}}TK/{{slice .ptkp_status 2}}{{else}}K/{{slice .ptkp_status 1}}{{end}}</StatusTaxExemption>
+			<TaxCertificate>N/A</TaxCertificate>
+			<TaxObjectCode>{{if eq $k "high"}}21-100-30{{else}}21-100-24{{end}}</TaxObjectCode>
+			<Gross>{{dec .gross_taxable 0}}</Gross>
+			<Deemed>{{if eq $k "high"}}50{{else}}100{{end}}</Deemed>
+			<Rate>{{if eq $k "zero"}}0{{else if eq $k "low"}}{{dec (div (mul 5 $m) 1000) 2}}{{else}}{{dec (div (mul .daily_pph21 200) .gross_taxable) 2}}{{end}}</Rate>
+			<Document>Other</Document>
+			<DocumentNumber>{{.name}}</DocumentNumber>
+			<DocumentDate>{{isodate .run_period_to}}</DocumentDate>
+			<IDPlaceOfBusinessActivity>{{$d.seller_nitku}}</IDPlaceOfBusinessActivity>
+			<WithholdingDate>{{isodate $d.withholding_date}}</WithholdingDate>
+		</Bp21>
+{{- end}}
+{{- end}}
+	</ListOfBp21>
+</Bp21Bulk>
