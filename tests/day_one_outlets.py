@@ -115,7 +115,8 @@ def scenario_banding_kasir(api):
             eq(f"{outlet}: sales = sum of grand_total", row["values"]["sales"], sum(s["grand_total"] for s in ss))
             eq(f"{outlet}: receipts = number of paid receipts", row["values"]["receipts"], len(ss))
     eq("kasir heatmap counts every paid receipt once", sum(c for row in h["counts"] for c in row), len(sales))
-    check("kasir receipts carry hour and weekday", all(s.get("hour") is not None and s.get("weekday") for s in sales), sales[0])
+    bad = [(s["name"], s.get("sold_at"), s.get("hour"), s.get("weekday")) for s in sales if s.get("hour") is None or not s.get("weekday")]
+    check("kasir receipts carry hour and weekday", not bad, bad[:3])
 
 
 SCENARIOS_RITEL = [scenario_outlet_compare_numbers, scenario_peak_hours_heatmap]
