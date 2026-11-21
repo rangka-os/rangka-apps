@@ -159,6 +159,12 @@ fields:
     read_only: true
     depends_on: app_installed('distribution')
     hidden_for: [outlet_staff, cashier]
+  - name: uninvoiced_canvas
+    type: currency
+    label: {id: Penjualan kanvas belum diajukan faktur (kredit)}
+    read_only: true
+    depends_on: app_installed('distribution')
+    hidden_for: [outlet_staff, cashier]
   - name: uninvoiced_deliveries
     type: currency
     label: {id: Terkirim belum ditagih (dengan PPN)}
@@ -255,7 +261,7 @@ views:
       - section: {id: Kredit dan salesman}
         columns:
           - [salesman, route_day, route_today, credit_hold, credit_hold_reason]
-          - [open_orders, uninvoiced_deliveries, oldest_open_due]
+          - [open_orders, uninvoiced_deliveries, uninvoiced_canvas, oldest_open_due]
       - section: {id: Lokasi toko (kunjungan salesman)}
         columns:
           - [location]

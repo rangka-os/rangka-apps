@@ -309,7 +309,35 @@ def scenario_field_sales_settlement_shortage_recorded(api):
     check("a salesman cannot settle his own van -> 403", denied(st, resp), (st, resp))
 
 
+def scenario_field_sales_forged_work_order_and_stale_date_refused(api):
+    """A salesman can create a work order but it never decides the invoice; a sale cannot be dated far in the past."""
+    got = _need("asep", "sm")
+    if not got or not S.get("c2"):
+        return
+    asep, sm = got
+    st, cs = asep.create("canvas_sale", {"customer": S["c2"], "outlet": G.KANVAS, "items": [{"item": G.MI, "qty": 1}]})
+    if not check("salesman drafts a plain credit sale -> 201", st == 201, (st, cs)):
+        return
+    st, resp = asep.verb("canvas_sale", cs["name"], "submit")
+    if not check("it submits -> 200", st == 200, (st, resp)):
+        return
+    name = (resp or {}).get("name", cs["name"])
+    st, job = asep.create("canvas_sale_job", {"sale": name, "customer": S["c2"], "salesman": G.ASEP, "sale_date": "2020-01-01", "cash_received": 0,
+                                              "items": [{"item": G.MI, "qty": 1, "rate": 1}]})
+    check("the salesman can create a work order -> 201 (that is why it is verified)", st == 201, (st, job))
+    _drafts(api)
+    invs = api.find("sales_invoice", f"po_number == '{name}'")
+    eq("exactly one invoice for the sale", len(invs), 1)
+    inv = api.get("sales_invoice", invs[0]["name"]) if invs else {}
+    eq("the invoice is the real sale's total, not the forged one", inv.get("grand_total"), api.get("canvas_sale", name).get("grand_total"))
+    eq("the invoice is dated the sale's day, not the forged date", inv.get("posting_date"), api.get("canvas_sale", name).get("sale_date"))
+    check("the customer's uninvoiced canvas credit counts the draft invoice (the credit limit sees it)", (api.get("customer", S["c2"]).get("uninvoiced_canvas") or 0) >= inv.get("grand_total", 1), api.get("customer", S["c2"]).get("uninvoiced_canvas"))
+    st, resp = asep.create("canvas_sale", {"customer": S["c2"], "outlet": G.KANVAS, "sale_date": "2020-01-01", "items": [{"item": G.MI, "qty": 1}]})
+    check("a sale dated years ago is refused -> 422", st == 422, (st, resp))
+
+
 SCENARIOS = [scenario_field_sales_visit_inside_radius, scenario_field_sales_visit_outside_radius_needs_approval,
              scenario_field_sales_visit_duplicate_same_day_rejected, scenario_field_sales_canvas_sale_moves_stock_out_of_van_only,
-             scenario_field_sales_canvas_sale_over_credit_limit_waits, scenario_field_sales_cancel_after_invoice_paid_refused,
+             scenario_field_sales_canvas_sale_over_credit_limit_waits, scenario_field_sales_forged_work_order_and_stale_date_refused,
+             scenario_field_sales_cancel_after_invoice_paid_refused,
              scenario_field_sales_settlement_shortage_recorded]

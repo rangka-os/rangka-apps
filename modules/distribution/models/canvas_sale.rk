@@ -63,7 +63,7 @@ approvals:
     label: {id: Pelanggan punya tagihan lewat jatuh tempo, en: Customer has overdue invoices}
   - name: over_credit_limit
     on: submit
-    when: "credit_amount > 0 && customer.credit_limit > 0 && customer.outstanding + customer.uninvoiced_deliveries + customer.open_orders + credit_amount > customer.credit_limit"
+    when: "credit_amount > 0 && customer.credit_limit > 0 && customer.outstanding + customer.uninvoiced_deliveries + customer.open_orders + customer.uninvoiced_canvas + credit_amount > customer.credit_limit"
     approvers: [sales_manager, finance_manager]
     label: {id: Melewati batas kredit, en: Over the credit limit}
 rules:
@@ -87,6 +87,10 @@ rules:
     on: save
     check: cash_received >= 0 && cash_received <= grand_total
     message: {id: 'Tunai diterima tidak boleh minus atau lebih dari total'}
+  - name: not_stale
+    on: save
+    check: days_between(sale_date, today()) <= 7
+    message: {id: 'Tanggal penjualan tidak boleh lebih dari 7 hari lalu'}
   - name: not_future
     on: save
     check: sale_date <= today()

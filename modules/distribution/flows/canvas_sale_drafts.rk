@@ -10,6 +10,11 @@
 # It is a scheduled flow, so it runs as the system: the salesman who submits the sale cannot create invoices or
 # payments (role field_sales reads and prints them), and a flow never does more than its actor could by hand. A sale
 # cancelled before the run is not submitted any more, so it gets no drafts. Reads lock canvas_sale (contract 0025).
+# A salesman may create a work order, so nothing on it is trusted: the sale is found by the work order's number AND must
+# match it (customer, salesman, date, cash, total qty, subtotal); a work order that does not match is only marked done.
+# The invoice carries the sale's number in po_number and in its notes (the cancel guard looks for either).
+# 4. the customer's uninvoiced_canvas (credit of canvas sales whose invoice is still a draft, so the credit limit sees
+#    them) is recomputed. Sales made in the five minutes before their drafts exist are not counted yet.
 name: canvas_sale_drafts
 label: {id: Penjualan kanvas jadi draf faktur dan pembayaran}
 schedule: '*/5 * * * *'
@@ -26,29 +31,43 @@ steps:
       - update: j
         set: {customer: j.customer}
       - find: canvas_sale
-        where: "name == j.sale && docstatus == 1"
+        where: "name == j.sale && docstatus == 1 && customer == j.customer && salesman == j.salesman && sale_date == j.sale_date && cash_received == j.cash_received && total_qty == j.items.map(i, i.qty).sum() && subtotal == j.items.map(i, i.amount).sum()"
         as: s
       - find: sales_invoice
-        where: "notes.contains('[' + j.sale + ']')"
+        where: "po_number == j.sale || notes.contains('[' + j.sale + ']')"
         as: have
       - create: sales_invoice
         if: s != null && have == null
         set:
-          customer: j.customer
-          salesman: j.salesman
-          posting_date: j.sale_date
-          notes: "'Penjualan kanvas ' + j.sale + ' [' + j.sale + ']'"
+          customer: s.customer
+          salesman: s.salesman
+          posting_date: s.sale_date
+          po_number: s.name
+          notes: "'Penjualan kanvas ' + s.name + ' [' + s.name + ']'"
           items: "j.items.map(i, {'item': i.item, 'description': i.description, 'qty': i.qty, 'uom': i.uom, 'rate': i.rate})"
       - create: payment
-        if: s != null && have == null && j.cash_received > 0
+        if: s != null && have == null && s.cash_received > 0
         set:
           direction: "'receive'"
-          customer: j.customer
-          salesman: j.salesman
-          payment_date: j.sale_date
-          amount: j.cash_received
+          customer: s.customer
+          salesman: s.salesman
+          payment_date: s.sale_date
+          amount: s.cash_received
           method: "'cash'"
-          reference: j.sale
-          notes: "'Tunai penjualan kanvas ' + j.sale + ' [' + j.sale + ']'"
+          reference: s.name
+          notes: "'Tunai penjualan kanvas ' + s.name + ' [' + s.name + ']'"
       - update: j
         set: {done: true}
+      - find_all: sales_invoice
+        where: "docstatus == 0 && customer == j.customer && notes.startsWith('Penjualan kanvas ')"
+        as: draft_invs
+      - find_all: payment
+        where: "docstatus == 0 && customer == j.customer && notes.startsWith('Tunai penjualan kanvas ')"
+        as: draft_pays
+      - find: customer
+        where: "name == j.customer"
+        as: cust
+      - update: cust
+        if: cust != null
+        set:
+          uninvoiced_canvas: "draft_invs.map(x, x.grand_total).sum() - draft_pays.map(x, x.amount).sum() > 0 ? draft_invs.map(x, x.grand_total).sum() - draft_pays.map(x, x.amount).sum() : 0"

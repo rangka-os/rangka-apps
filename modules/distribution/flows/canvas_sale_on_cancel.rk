@@ -11,7 +11,7 @@ label: {id: "Penjualan kanvas dibatalkan: periksa faktur dan pembayaran"}
 on: canvas_sale.cancelled
 steps:
   - {find: canvas_settlement, where: "docstatus == 1 && salesman == event.salesman && outlet == event.outlet && settle_date == event.sale_date", as: closed}
-  - {find_all: sales_invoice, where: "notes.contains('[' + event.name + ']')", as: invs}
+  - {find_all: sales_invoice, where: "po_number == event.name || notes.contains('[' + event.name + ']')", as: invs}
   - {find_all: payment, where: "notes.contains('[' + event.name + ']')", as: pays}
   - if: closed != null
     create: canvas_guard
