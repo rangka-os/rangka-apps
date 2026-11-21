@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One receipt with the hour it was rung up, for the outlet comparison and the busy-hours heatmap (rangka-os contract 0075,
+# rangka-apps#115). Never typed by hand: written by the Moka item-details file import `moka_hours` (the file's Date and
+# Time columns, local time, one record per receipt with a line per item) and by flow moka_transaction_staged (the Moka
+# API, a UTC instant). A site with the cashier (module pos) reads pos_sale directly (it has its own hour and weekday), so
+# a receipt never lands here twice. hour and weekday follow the site timezone (hour_of, weekday_of).
+name: outlet_hour
+label: {id: Struk per jam, en: Receipts by hour}
+icon: time
+naming: JAM-{YYYY}-{#####}
+title_field: receipt_no
+permissions:
+  - {role: head_office, read: true, create: true, export: true}
+fields:
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, in_list: true}
+  - name: source
+    type: select
+    label: {id: Sumber}
+    default: "'moka_file'"
+    options:
+      - {value: moka_file, label: {id: Impor Moka}}
+      - {value: moka_api, label: {id: Moka API}}
+  - {name: receipt_no, type: data, label: {id: No. struk}, in_list: true}
+  - {name: date, type: date, label: {id: Tanggal}, required: true, index: true, in_list: true}
+  # the file's Time column ("12:05:00", local time) or, from the Moka API, the instant of the sale (UTC)
+  - {name: clock, type: data, label: {id: Jam di file}}
+  - {name: sold_at, type: datetime, label: {id: Waktu transaksi}}
+  - {name: hour, type: int, label: {id: Jam}, compute: "hour_of(string(sold_at) != '' ? sold_at : clock)", in_list: true}
+  - name: weekday
+    type: select
+    label: {id: Hari}
+    compute: "weekday_of(string(sold_at) != '' ? sold_at : date)"
+    options:
+      - {value: '1', label: {id: Senin}}
+      - {value: '2', label: {id: Selasa}}
+      - {value: '3', label: {id: Rabu}}
+      - {value: '4', label: {id: Kamis}}
+      - {value: '5', label: {id: Jumat}}
+      - {value: '6', label: {id: Sabtu}}
+      - {value: '7', label: {id: Minggu}}
+  - {name: direct_amount, type: currency, label: {id: Jumlah dari API}, default: '0'}
+  - {name: lines, type: table, of: outlet_hour_line, label: {id: Baris struk}}
+  - {name: amount, type: currency, label: {id: Penjualan}, compute: "direct_amount != 0 ? direct_amount : lines.map(l, l.net).sum()", in_list: true}
+views:
+  list:
+    columns: [date, hour, outlet, receipt_no, amount]
+    filters: [outlet, date, weekday]

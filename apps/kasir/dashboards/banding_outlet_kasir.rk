@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/dashboard.json
+name: banding_outlet_kasir
+label: {id: Banding outlet, en: Outlet comparison}
+description: {id: 'Penjualan, jumlah struk dan rata-rata per struk tiap outlet dibanding periode sebelumnya, dan jam yang paling ramai'}
+default_period: 30
+periods: [7, 30, 90]
+cache: 1m
+# Head office only: it compares outlets, so it needs every outlet's money. The data is the paid receipts of the cashier.
+roles: [head_office]
+widgets:
+  - name: compare
+    type: table
+    label: {id: Perbandingan outlet}
+    model: pos_sale
+    group_by: outlet
+    period: date
+    compare: previous_period
+    filter: docstatus == 1
+    sort: -sales
+    columns:
+      - {name: sales, label: {id: Penjualan}, fn: sum, field: grand_total}
+      - {name: receipts, label: {id: Struk}, fn: count}
+      - {name: average, label: {id: Rata-rata per struk}, expr: sales / receipts, format: currency}
+    span: 12
+  - name: busy_hours
+    type: heatmap
+    label: {id: Jam ramai (jumlah struk)}
+    model: pos_sale
+    group_by: weekday
+    series_by: hour
+    series_range: [0, 23]
+    aggregate: count
+    period: date
+    filter: docstatus == 1
+    span: 12

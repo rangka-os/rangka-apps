@@ -69,6 +69,17 @@ steps:
     if: known == null
     where: "tx.outlet != '' && name == tx.outlet && moka_api_from != '' && moka_api_from <= tx.date"
     as: api_open
+  # the hour of the sale for the busy-hours heatmap (contract 0075): only for an outlet whose API gate is open, so a day
+  # imported from a file (moka_hours) is never counted twice; a refund receipt is not a sale
+  - create: outlet_hour
+    if: known == null && api_open != null && !tx.refunded
+    set:
+      outlet: tx.outlet
+      source: "'moka_api'"
+      receipt_no: tx.receipt_no
+      date: tx.date
+      sold_at: tx.sold_at
+      direct_amount: tx.total_collected
   - for_each: event.checkouts
     if: known == null
     as: c

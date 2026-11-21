@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/import.json
+# The same Moka item-details file as moka_item_details, read again for its Time column: one outlet_hour per receipt,
+# a line per item with its net sales, so the busy-hours heatmap and the outlet comparison have the hour (rangka-os
+# contract 0075). It writes no sales and no stock: the daily sales come from moka_item_details.
+name: moka_hours
+label: {id: Jam ramai dari Moka (detail item), en: Busy hours from Moka (item details)}
+model: outlet_hour
+source: csv
+header_row: 1
+per: outlet
+key: [Date, Time, Receipt Number, Items, Variant, Modifier Applied]
+group: [Date, Time, Receipt Number]
+map:
+  date: Date
+  clock: Time
+  receipt_no: Receipt Number
+  source: "='moka_file'"
+lines:
+  field: lines
+  map:
+    net: Net Sales

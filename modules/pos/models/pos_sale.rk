@@ -45,6 +45,23 @@ fields:
     index: true # the outlet_day backfill reads one outlet and day at a time (card t_0dba5917)
     default: today()
     in_list: true
+  # when the receipt was rung up; hour and weekday (site timezone) feed the busy-hours heatmap of dashboard banding_outlet
+  # (rangka-os contract 0075, rangka-apps#115)
+  - {name: sold_at, type: datetime, label: {id: Waktu transaksi}, read_only: true, default: now()}
+  - {name: hour, type: int, label: {id: Jam}, read_only: true, compute: "hour_of(sold_at)"}
+  - name: weekday
+    type: select
+    label: {id: Hari}
+    read_only: true
+    compute: "weekday_of(sold_at)"
+    options:
+      - {value: '1', label: {id: Senin}}
+      - {value: '2', label: {id: Selasa}}
+      - {value: '3', label: {id: Rabu}}
+      - {value: '4', label: {id: Kamis}}
+      - {value: '5', label: {id: Jumat}}
+      - {value: '6', label: {id: Sabtu}}
+      - {value: '7', label: {id: Minggu}}
   - name: buyer
     type: data
     label: {id: Pembeli atau meja}

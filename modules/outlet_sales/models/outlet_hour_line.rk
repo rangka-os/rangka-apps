@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One item row of a receipt in outlet_hour (from the Moka item-details file). Only its net value is read.
+name: outlet_hour_line
+is_child: true
+fields:
+  - {name: net, type: currency, label: {id: Penjualan bersih}, required: true}
