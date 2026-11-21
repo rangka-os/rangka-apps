@@ -1,20 +1,52 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
-# Ticking "Batal" on a locked statement releases its lines, so the next statement takes them.
+# Ticking "Batal" on a locked statement releases its lines, so the next statement takes them. Two guards keep the money
+# straight: a statement whose tax month already has a submitted payslip of the employee cannot be released (the commission
+# was paid; the tick is turned back), and a line the statement held that was reversed by a later void is cancelled together
+# with its negative correction, so the voided sale leaves nothing (not the correction alone).
 name: commission_statement_on_cancel
 label: {id: 'Rekap komisi dibatalkan: lepas baris'}
 on: commission_statement.updated
 if: "event.cancelled && event.done"
 steps:
+  - if: "app_installed('payroll')"
+    then:
+      - find_all: payslip
+        where: employee == event.employee && tax_year == event.tax_year && tax_month == event.tax_month && docstatus == 1
+        limit: 1
+        as: paid
+    else:
+      - find_all: commission_line
+        where: "name == ''"
+        as: paid
+  - find: commission_statement
+    where: name == event.name
+    as: me
+  # paid already: the tick is turned back, nothing is released
+  - update: me
+    if: "size(paid) > 0"
+    set: {cancelled: 'false'}
   - find_all: commission_line
     where: statement == event.name
     as: lines
   - for_each: lines
     as: c
+    if: "size(paid) == 0"
     do:
       - update: c
+        if: "!c.reversed"
         set: {statement: "''"}
-  - find: commission_statement
-    where: name == event.name
-    as: me
+      - update: c
+        if: "c.reversed"
+        set: {statement: "''", reversed: 'false', cancelled: 'true'}
+  - find_all: commission_line
+    where: "correction && !cancelled && statement == '' && employee == event.employee && source_name in lines.filter(c, c.reversed).map(c, c.source_name)"
+    as: corr
+  - for_each: corr
+    as: x
+    if: "size(paid) == 0"
+    do:
+      - update: x
+        set: {cancelled: 'true'}
   - update: me
+    if: "size(paid) == 0"
     set: {total: '0', line_count: '0', done: 'false'}

@@ -17,7 +17,7 @@ _R = {"read"}
 MATRIX = {
     "commission_rule": {"head_office": {"read", "create", "write", "delete", "export"}, "finance_manager": _R, "cashier": _R, "outlet_staff": _R,
                         "sales_manager": _R},
-    "commission_line": {"head_office": {"read", "write", "export"}, "finance_manager": {"read", "write", "export"}, "cashier": {"read", "create", "write"},
+    "commission_line": {"head_office": {"read", "create", "write", "export"}, "finance_manager": {"read", "create", "write", "export"}, "cashier": {"read", "create", "write"},
                         "outlet_staff": {"read", "create", "write"}, "sales_manager": {"read", "create", "write"}},
     "commission_statement": {"head_office": {"read", "create", "write", "export", "print"},
                              "finance_manager": {"read", "create", "write", "export", "print"}, "cashier": _R,

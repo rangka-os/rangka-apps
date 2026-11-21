@@ -11,8 +11,8 @@ title_field: employee
 permissions:
   # every field is read_only: the write grants are for the flows, which run as the user (a statement's submit locks lines as
   # finance, a void cancels them as the seller)
-  - {role: head_office, read: true, write: true, export: true}
-  - {role: finance_manager, read: true, write: true, export: true}
+  - {role: head_office, read: true, create: true, write: true, export: true}
+  - {role: finance_manager, read: true, create: true, write: true, export: true}
   # the seller's flows read the sale's lines to cancel them, so these roles read the lines of their own outlets (role scope);
   # staff outside these roles read only their own (member grant)
   - {role: cashier, read: true, create: true, write: true}

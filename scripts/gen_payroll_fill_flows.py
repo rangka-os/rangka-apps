@@ -178,7 +178,7 @@ def fill(auto):
               where: "name == ''"
               as: claims
         # Commission (module commission, rangka-apps#110): the employee's submitted statements of the slip's tax month,
-        # a taxed income outside the BPJS wage. Net of corrections, never below 0 (a negative carries to the next statement).
+        # a taxed income outside the BPJS wage. Net of corrections, never below 0 (a negative total pays 0 and is not carried to a later slip).
         - if: "app_installed('commission') && {EMP} != ''"
           then:
             - find_all: commission_statement

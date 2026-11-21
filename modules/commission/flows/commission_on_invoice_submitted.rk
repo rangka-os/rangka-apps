@@ -6,8 +6,14 @@
 name: commission_on_invoice_submitted
 label: {id: Komisi dari faktur penjualan}
 on: sales_invoice.submitted
-if: "event.salesman != '' && event.kind == 'regular' && event.subtotal > 0"
+# a foreign-currency invoice is not commissioned in v1: its line amounts are not rupiah
+if: "event.salesman != '' && event.kind == 'regular' && event.subtotal > 0 && (!('currency' in event) || event.currency == '' || event.currency == 'IDR')"
 steps:
+  # a replayed event makes no second set of lines
+  - find_all: commission_line
+    where: source_name == event.name && !correction
+    limit: 1
+    as: done
   - for_each: event.items
     as: l
     do:
@@ -22,7 +28,7 @@ steps:
         limit: 1
         as: hit
       - create: commission_line
-        if: "size(hit) > 0 && l.amount > 0"
+        if: "size(done) == 0 && size(hit) > 0 && l.amount > 0"
         set:
           employee: event.salesman
           source: "'invoice'"

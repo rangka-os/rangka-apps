@@ -31,6 +31,10 @@ the flows. Every employee reads only their own lines and statements (member gran
 `Saya` page as "Komisi bulan ini".
 
 ## Not in v1
+A negative statement total (corrections of an already paid month) pays 0 on the slip and is not carried forward; returns and
+credit notes do not reverse commission (only a cancel of the receipt or invoice does); one live statement per employee and tax
+month and immutable statement fields after the lock are not enforced yet (finance ticks "Batal", which is refused once a
+submitted payslip of the tax month exists); foreign-currency invoices are not commissioned.
 Tiers by monthly target, team splits, commission on collected (paid) invoices, clawback after the slip is paid,
 production piece wages in `piece_income` (a flow cannot sum child rows; needs a top-level mirror in `production`), and the
 `payslip_from_recap` (client-run) path.

@@ -9,6 +9,11 @@ label: {id: Komisi dari transaksi kasir}
 on: pos_sale.submitted
 if: "event.subtotal > 0"
 steps:
+  # a replayed event makes no second set of lines
+  - find_all: commission_line
+    where: source_name == event.name && !correction
+    limit: 1
+    as: done
   - for_each: event.items
     as: l
     do:
@@ -20,7 +25,7 @@ steps:
         limit: 1
         as: hit
       - create: commission_line
-        if: "size(hit) > 0 && l.amount > 0"
+        if: "size(done) == 0 && size(hit) > 0 && l.amount > 0"
         set:
           employee: "l.staff != '' ? l.staff : event.staff"
           source: "'pos'"
@@ -36,7 +41,7 @@ steps:
           amount: "(l.staff != '' || event.staff != '') ? (hit[0].basis == 'percent' ? round(round(l.amount * (event.grand_total - event.ppn_in_sales) / event.subtotal) * hit[0].rate / 100) : round(l.qty * hit[0].amount_per_qty)) : 0"
           status: "(l.staff != '' || event.staff != '') ? 'ok' : 'no_staff'"
       - create: commission_line
-        if: "size(hit) == 0 && (l.staff != '' || event.staff != '') && l.amount > 0 && app_installed('commission')"
+        if: "size(done) == 0 && size(hit) == 0 && (l.staff != '' || event.staff != '') && l.amount > 0"
         set:
           employee: "l.staff != '' ? l.staff : event.staff"
           source: "'pos'"
