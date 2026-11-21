@@ -187,4 +187,36 @@ def scenario_ebupot21(api):
         check("ebupot21: a void summary is not in the BPA1 file", st == 200 and "<A1>" not in body, (st, body[:200]))
 
 
-SCENARIOS = [scenario_ebupot21]
+def scenario_ebupot21_overlap(api):
+    """Audit R1-F1 and R2-F1: a last_month tick in February and again in March. The March summary covers January to March and
+    voids the February one; cancelling March brings the February summary back."""
+    fm, pa = CTX.get("fm"), CTX.get("pa")
+    if not (fm and pa):
+        fail("ebupot21 overlap: members", "missing")
+        return
+    g = dp.gen()
+    st, prj = pa.create("project", {"project_name": "Alih daya ebupot dua", "customer": g.CLIENT, "state": "running", "billing_model": "time_material"})
+    st1, w = fm.create("worker", {"worker_name": "Pajak MP-931", "employee_no": "MP-931", "cost_day_rate": 400_000, "active": True})
+    st2, prof = fm.create("payroll_profile", {"worker": (w or {}).get("name", ""), "ptkp_status": "tk0", "pay_basis": "monthly", "monthly_salary": 8_000_000, "nik": "9999000000009931"})
+    if not check("ebupot21 overlap: contract, worker, profile", st == 201 and st1 == 201 and st2 == 201, (st, st1, st2)):
+        return
+    slips, closes = {}, {}
+    for m in (1, 2, 3):
+        f = f"2033-{m - 1:02d}-21" if m > 1 else "2032-12-21"
+        st, run = fm.create("payroll_run", dict(g.RUN, project=prj["name"], period_from=f, period_to=f"2033-{m:02d}-20", tax_month=m, tax_year=2033, billing_mode="none", pay_date=f"2033-{m:02d}-25"))
+        st, s_ = fm.create("payslip", {"payroll_run": run["name"], "profile": prof["name"], "days": 22, "last_month": m >= 2})
+        st, resp = fm.verb("payslip", s_["name"], "submit")
+        if not check(f"ebupot21 overlap: month {m} slip submitted", st == 200, (st, resp)):
+            return
+        slips[m] = ((resp or {}).get("record", resp) or {}).get("name", s_["name"])
+        st, resp, closes[m] = dp.close_run(fm, run["name"])
+    rows = {r["month_end"]: r for r in fm.find("pph21_annual", "worker == '%s' && tax_year == 2033" % w["name"])}
+    eq("both last-month slips made a summary, only the March one (January to March) is live", (sorted(rows), rows[2]["voided"], rows[3]["voided"], rows[3]["month_start"]), ([2, 3], True, False, 1))
+    fm.verb("payroll_close", closes[3], "cancel")
+    st, _ = fm.verb("payslip", slips[3], "cancel")
+    check("ebupot21 overlap: cancelling the March slip works", st == 200, (st, _))
+    rows = {r["month_end"]: r for r in fm.find("pph21_annual", "worker == '%s' && tax_year == 2033" % w["name"])}
+    eq("after the cancel the February summary is live again and the March one is void", (rows[2]["voided"], rows[3]["voided"]), (False, True))
+
+
+SCENARIOS = [scenario_ebupot21, scenario_ebupot21_overlap]
