@@ -92,6 +92,10 @@ submitted document keeps its rate when the config changes later. Sales side `tax
 ### The demo sites
 
 - `kopi-senja`: the CRM demo (one org).
+- `demo-kasir`: the cashier demo. Restaurant charges (rangka-apps#121): outlet `OUT-05` (Restoran Contoh Braga) charges 5% service
+  on dine-in orders and 10% PBJT (a regional tax outside the price, so PPN is 0) and rounds the bill to the nearest Rp 100,
+  so Rp 100.000 dine-in is Rp 115.500; `OUT-06` (Kafe Contoh Setiabudi) has none. Service books to 4-1300, PBJT to 2-1330,
+  rounding to 4-9400. A bill can be split between people (`parties`, one `party` per payment; "Bayar terpisah" on the counter).
 - `demo-jasa`: project services under one owner with **two fictional PTs** (`orgs:` in `config.rk`, contract 0010):
   `pt_contoh_inspeksi` (code `CIN`, PKP, numbers like `INV/CIN/26/0001`) and `cv_contoh_pelatihan` (code `CPL`, non-PKP,
   numbers like `KW-CPL-2611-001`). Each has its own `letterheads/<org>.rk`; `letterhead.rk` is the fallback. Seed each org
