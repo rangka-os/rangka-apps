@@ -5943,6 +5943,7 @@ import day_one_fixed_assets  # noqa: E402
 import day_one_portal  # noqa: E402
 import day_one_shifts  # noqa: E402
 import day_one_appointments  # noqa: E402
+import day_one_lots  # noqa: E402
 day_one_grosir.bind(sys.modules[__name__])
 day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
@@ -5971,6 +5972,7 @@ day_one_fixed_assets.bind(sys.modules[__name__])
 day_one_portal.bind(sys.modules[__name__])
 day_one_shifts.bind(sys.modules[__name__])   # after day_one_staff_attendance (its demo-fnb members)
 day_one_appointments.bind(sys.modules[__name__])   # also registers demo-salon (orgs, members, kernel env, setup)
+day_one_lots.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
@@ -6021,6 +6023,10 @@ for _site, _extra in day_one_shifts.SCENARIOS.items():
     SCENARIOS[_site][_i:_i] = _extra
 # warehouses apart from stores (rangka-apps#104): after the site's own scenarios, before the permission matrix
 for _site, _extra in day_one_warehouses.SCENARIOS.items():
+    _i = SCENARIOS[_site].index(scenario_permissions)
+    SCENARIOS[_site][_i:_i] = _extra
+# lots, expiry, FEFO and serials (rangka-os#260 slice b): after warehouses, before the permission matrix
+for _site, _extra in day_one_lots.SCENARIOS.items():
     _i = SCENARIOS[_site].index(scenario_permissions)
     SCENARIOS[_site][_i:_i] = _extra
 # fixed assets (module fixed_assets, rangka-apps#113): before the permission matrix and the books

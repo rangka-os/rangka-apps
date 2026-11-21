@@ -47,8 +47,12 @@ fields:
       - {value: return_in, label: {id: Retur penjualan masuk}}
       - {value: production_out, label: {id: Bahan ke produksi}}
       - {value: production_in, label: {id: Hasil produksi}}
+  # rangka-os contract 0070: the lot this move took or added (empty = the no-lot bucket) and the serials it moved, one
+  # per line. A lot item's line that spans lots writes one move per lot. Filter by lot to trace a lot.
+  - {name: lot, type: link, to: stock_lot, label: {id: Lot}, read_only: true, in_list: true}
+  - {name: serial_nos, type: text, label: {id: Nomor seri}, read_only: true}
 views:
   list:
-    columns: [name, posting_date, outlet, item, qty, value, balance_qty, negative, voucher_type, voucher, reason]
-    filters: [outlet, item, reason, negative]
+    columns: [name, posting_date, outlet, item, lot, qty, value, balance_qty, negative, voucher_type, voucher, reason]
+    filters: [outlet, item, lot, reason, negative]
     sort: -name

@@ -94,6 +94,26 @@ fields:
     type: int
     label: {id: Umur simpan (hari)}
     depends_on: app_installed('production')
+  # Lots and serials (module stock, rangka-os contract 0070): lot = quantity per batch number (FEFO on the way out),
+  # lot_expiry = lot plus an expiry date that goods receipts must give, serial = one serial number per unit. Empty or
+  # none moves stock as before. Switching it on for an item with stock puts that stock in the no-lot bucket.
+  - name: tracking
+    type: select
+    label: {id: Pelacakan stok, en: Stock tracking}
+    help: {id: 'Per lot untuk barang bernomor batch (obat, makanan, kosmetik). Per nomor seri untuk barang yang tiap unitnya bernomor (HP, mesin)'}
+    default: "'none'"
+    depends_on: app_installed('stock') && kind != 'service'
+    options:
+      - {value: none, label: {id: Tidak dilacak}}
+      - {value: lot, label: {id: Per lot}}
+      - {value: lot_expiry, label: {id: Per lot dengan tanggal kedaluwarsa}}
+      - {value: serial, label: {id: Per nomor seri}}
+  - name: expiry_warning_days
+    type: int
+    label: {id: Kabari sebelum kedaluwarsa (hari), en: Expiry warning (days)}
+    help: {id: 'Lot yang kedaluwarsa dalam jumlah hari ini masuk daftar Stok hampir kedaluwarsa. 0 = 30 hari'}
+    default: '30'
+    depends_on: app_installed('stock') && tracking == 'lot_expiry'
   - name: standard_cost
     type: currency
     label: {id: Harga pokok standar}
@@ -200,6 +220,10 @@ fields:
     in_list: true
     in_filter: true
 rules:
+  - name: expiry_warning_not_negative
+    on: save
+    check: expiry_warning_days >= 0
+    message: {id: Hari peringatan kedaluwarsa tidak boleh negatif}
   - name: reorder_not_negative
     on: save
     check: reorder_level >= 0 && reorder_qty >= 0

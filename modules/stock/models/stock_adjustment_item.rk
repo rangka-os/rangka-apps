@@ -30,3 +30,7 @@ fields:
     type: float
     label: {id: Qty stok}
     compute: "packing == '' ? qty : qty * packing.factor"
+  # rangka-os contract 0070 §7 (Go rule): the lot to take (empty = earliest expiry first; reason expired or waste takes
+  # expired lots first) and, for a serial item, the serials that leave, one per line.
+  - {name: lot, type: link, to: stock_lot, label: {id: Lot}, depends_on: "item.tracking in ['lot', 'lot_expiry']", help: {id: 'Kosongkan: lot yang paling dulu kedaluwarsa diambil'}}
+  - {name: serial_nos, type: text, label: {id: Nomor seri}, depends_on: "item.tracking == 'serial'", help: {id: 'Satu nomor seri per baris'}}

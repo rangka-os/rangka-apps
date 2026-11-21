@@ -42,7 +42,9 @@ fields:
 stock:
   date: delivery_date
   moves:
-    - {lines: items, out: outlet, reason: delivery, cogs: cogs}
+    # rangka-os contract 0070 §5: a lot item leaves from the lot picked on the line, else earliest expiry first
+    # (FEFO), skipping expired lots; a serial item names the units that leave
+    - {lines: items, out: outlet, reason: delivery, cogs: cogs, lot: {pick: lot}, serials: serial_nos}
   cogs_total: cogs_total
 # Credit control at the door (module distribution): goods do not leave for a customer on hold, overdue, or whose open
 # invoices + goods delivered and not yet invoiced + this delivery go over its limit, without the sales manager or

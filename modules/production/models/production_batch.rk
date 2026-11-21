@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
-# Hasil produksi per batch. The batch number is the production code printed on the pack; the expiry date follows the
-# product's shelf life. Submit takes the materials out of the production outlet at their moving average and puts
+# Hasil produksi per batch. The production code printed on the pack is the lot of the outputs (contract 0070); the
+# expiry date follows the product's shelf life. Submit takes the materials out of the production outlet at their moving average and puts
 # the outputs into the finished-goods outlet at the value of those materials, split by cost_share (contract 0021,
 # K-o). The actual cost (HPP) of the batch adds the piece-rate wages and the overhead rate to the material cost; the
 # stock value holds the material cost only until K-r. Cancel reverses the stock (stock.reverse_moves).
@@ -22,6 +22,9 @@ fields:
   - {name: outlet, type: link, to: outlet, label: {id: Tempat produksi (bahan keluar)}, default: work_order.outlet, required: true}
   - {name: output_outlet, type: link, to: outlet, label: {id: Gudang barang jadi}, required: true}
   - {name: production_date, type: date, label: {id: Tanggal produksi}, default: today(), required: true, in_list: true}
+  # rangka-os#260: the lot number of what this batch makes (contract 0070); empty = the production date, so batches of one
+  # item made on one day share a lot
+  - {name: production_code, type: data, label: {id: Kode produksi (lot)}, help: {id: 'Kode yang dicetak di kemasan. Kosongkan: tanggal produksi jadi nomor lotnya'}, in_list: true}
   - {name: shelf_life_days, type: int, label: {id: Umur simpan (hari)}, default: item.shelf_life_days}
   - name: expiry_date
     type: date
@@ -59,8 +62,10 @@ fields:
 stock:
   date: production_date
   moves:
-    - {lines: materials, out: outlet, reason: production_out, cogs: cogs}
-    - {lines: outputs, in: output_outlet, reason: production_in, cost: {consumed: true, split: cost_share}}
+    # rangka-os contract 0070: materials leave from the picked lot, else earliest expiry first (expired lots skipped);
+    # outputs come in as the lot of the batch's production code (else its production date), with the batch's expiry
+    - {lines: materials, out: outlet, reason: production_out, cogs: cogs, lot: {pick: lot}, serials: serial_nos}
+    - {lines: outputs, in: output_outlet, reason: production_in, cost: {consumed: true, split: cost_share}, lot: {no: lot_no, expiry: expiry_date, made: made_date}, serials: serial_nos}
   cogs_total: material_cost
 # Deviations from the plan wait for head office: materials that are not in the BOM, or more good output than 110% of
 # the planned qty (a batch puts stock in at the value of what it took out, so an inflated output dilutes the cost).
@@ -138,7 +143,7 @@ views:
       - section: {id: Batch}
         columns:
           - [work_order, item, bom, planned_qty]
-          - [production_date, shelf_life_days, expiry_date, outlet, output_outlet]
+          - [production_date, production_code, shelf_life_days, expiry_date, outlet, output_outlet]
       - section: {id: Bahan terpakai}
         fields: [materials]
       - section: {id: Hasil}
