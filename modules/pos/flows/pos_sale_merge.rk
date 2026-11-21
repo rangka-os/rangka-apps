@@ -13,10 +13,10 @@ if: "event.docstatus == 0 && event.merge_into != '' && !event.merged"
 steps:
   - {find: pos_sale, where: "name == event.merge_into", as: tgt}
   - {find: pos_sale, where: "name == event.name", as: src}
-  - if: tgt == null || tgt.docstatus != 0 || tgt.outlet != event.outlet || tgt.merged || tgt.merge_into != '' || tgt.name == event.name
+  - if: tgt == null || tgt.docstatus != 0 || tgt.outlet != event.outlet || tgt.merged || tgt.merge_into != '' || tgt.name == event.name || event.promotion != '' || event.member != '' || event.points_redeemed > 0 || event.deposit_used > 0
     create: pos_guard
     set: {reason: "'merge_invalid'", document: event.name}
-  - if: tgt != null && tgt.docstatus == 0 && tgt.outlet == event.outlet && !tgt.merged && tgt.merge_into == '' && tgt.name != event.name
+  - if: tgt != null && tgt.docstatus == 0 && tgt.outlet == event.outlet && !tgt.merged && tgt.merge_into == '' && tgt.name != event.name && event.promotion == '' && event.member == '' && event.points_redeemed == 0 && event.deposit_used == 0
     then:
       - update: tgt
         set:
