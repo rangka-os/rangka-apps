@@ -485,8 +485,11 @@ def scenario_pos_variants(api):
     rows = api.find("stock_balance", f"outlet == '{DGO}' && variant_group == 'KAOS-POLOS'")
     eq("stock per product rolls up the 3 variants (sum of the sizes)", round(sum(b["qty"] for b in rows), 4), -3)
     topi = by["TOPI-HITAM"]["name"]
-    st, _r = api.patch("item", topi, {"variant_group": "TOPI", "variant_label": "Hitam"})
-    check("an item grouped after its balance exists -> 200", st == 200, (st, _r))
+    hq = CTX.get("hq") or api
+    st, _r = hq.patch("item", topi, {"variant_group": "TOPI", "variant_label": "Hitam"})
+    check("head office groups an item after its balance exists -> 200 (no stock_balance write needed)", st == 200, (st, _r))
+    st, _r = api.call("POST", "/api/v1/flows/stock_balance_variant_group/run", {})
+    check("the scheduled refresh runs -> 200", st == 200, (st, _r))
     tb = api.find("stock_balance", f"outlet == '{DGO}' && item == '{topi}'")
     eq("the balance follows the item's new group (roll-up never goes stale)", [b["variant_group"] for b in tb], ["TOPI"])
     moves = api.find("stock_move", f"outlet == '{DGO}' && variant_group == 'KAOS-POLOS'")

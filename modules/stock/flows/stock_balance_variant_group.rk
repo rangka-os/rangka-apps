@@ -1,19 +1,25 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # stock_balance.variant_group is a compute through item, stored when the balance is written (rangka-os#267). An item
-# grouped (or regrouped) after its balances exist would keep the old value until its next move, so the "Stok per produk"
-# roll-up would miss it. When an item's variant_group changes, rewrite its balances (up to 200 outlets) with nothing
-# changed, which recomputes the field. Stock moves already posted keep the group they had when posted.
+# grouped or regrouped after its balances exist keeps the old value on them until its next move, so the "Stok per
+# produk" roll-up would miss it. A scheduled flow runs as the system (a flow on item.updated would run with the
+# permissions of the person saving the item, and no role but the owner may write stock_balance). Every run rewrites up
+# to 50 stale balances with nothing changed, which recomputes the field; a balance already right is not touched.
+# Items whose group was cleared are left until their next stock move. Stock moves already posted keep the group they
+# had when posted.
 name: stock_balance_variant_group
 label: {id: Perbarui grup varian di saldo stok}
-description: {id: 'Saat grup varian sebuah barang berubah, saldo stoknya ikut diperbarui supaya jumlah stok per produk benar.'}
-on: item.updated
-if: "event.before != null && event.before.variant_group != event.variant_group"
+description: {id: 'Tiap 10 menit, saldo stok yang grup variannya belum sama dengan data barang diperbarui, 50 baris sekali jalan.'}
+schedule: "*/10 * * * *"
 steps:
+  - find_all: item
+    where: "variant_group != ''"
+    limit: 2000
+    as: grouped
   - find_all: stock_balance
-    where: "item == event.name"
-    limit: 200
-    as: bals
-  - for_each: bals
+    where: "grouped.exists(i, i.name == item && i.variant_group != variant_group)"
+    limit: 50
+    as: stale
+  - for_each: stale
     as: b
     do:
       - update: b
