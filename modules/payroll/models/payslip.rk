@@ -15,14 +15,22 @@ permissions:
   - {role: finance_manager, read: true, create: true, write: true, delete: true, submit: true, cancel: true, amend: true, export: true, print: true}
   # Recaps are submitted by the project admin; their flow makes the draft slip as that person (no submit).
   - {role: project_admin, read: true, create: true}
+  # Every employee reads and prints their own slip from the phone, whatever their role (member grant, rangka-os contract
+  # 0074; rangka-os#261), once it is released: submitted, and its run closed or its pay date reached. A draft or a
+  # submitted slip before pay day stays with finance, so a figure still being checked is never shown. The run, profile
+  # and tax working fields are hidden_for every role but finance_manager and project_admin, so the employee sees
+  # period, pay, deductions, net pay and bank; the print reads only fields left visible.
+  - {role: member, read: true, print: true, if: "employee == user.name && docstatus == 1 && (payroll_run.closed || (payroll_run.pay_date != '' && payroll_run.pay_date <= today()))"}
 fields:
   - name: payroll_run
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: link
     to: payroll_run
     label: {id: Periode gaji}
     required: true
     in_list: true
   - name: profile
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: link
     to: payroll_profile
     label: {id: Data gaji pekerja}
@@ -49,12 +57,23 @@ fields:
     to: user
     label: {id: Karyawan, en: Employee}
     compute: profile.worker.employee
+  # Who the slip is for and where it is paid, copied from the worker and the profile so the printed slip (print payslip)
+  # needs no read of them: an employee reading their own slip (member grant) does not read the worker record, which
+  # holds the cost rates. A slip submitted before payroll 2.3.0 keeps these empty (the kernel does not backfill a
+  # computed link read on a submitted document): the print falls back to the linked worker and profile, which finance
+  # reads; the employee's own print of such an old slip shows no name or account line (audit 261a F1).
+  - {name: slip_worker_name, type: data, label: {id: Nama pekerja, en: Worker name}, hidden: true, compute: profile.worker.worker_name}
+  - {name: slip_employee_no, type: data, label: {id: No. pegawai, en: Employee number}, hidden: true, compute: profile.worker.employee_no}
+  - {name: slip_role_title, type: data, label: {id: Jabatan, en: Job title}, hidden: true, compute: profile.worker.role_title}
+  - {name: slip_bank_name, type: data, label: {id: Bank, en: Bank}, hidden: true, compute: profile.bank_name}
+  - {name: slip_bank_account, type: data, label: {id: Nomor rekening, en: Account number}, hidden: true, compute: profile.bank_account}
   - name: project
     type: link
     to: project
     label: {id: Proyek}
     compute: payroll_run.project
   - name: timesheet
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: link
     to: timesheet
     label: {id: Rekap absensi}
@@ -62,6 +81,7 @@ fields:
   # The staff attendance summary (module attendance) the slip was filled from by payroll_run_fill or
   # payslip_from_attendance: the last one of the run's period when there were several. Empty for a slip typed by hand.
   - name: attendance_summary
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: link
     to: attendance_summary
     label: {id: Rekap absen karyawan, en: Staff attendance summary}
@@ -76,10 +96,11 @@ fields:
   - {name: att_days, type: float, label: {id: Hari hadir menurut rekap}, default: '0', read_only: true, hidden: true}
   - {name: att_late, type: int, label: {id: Menit telat menurut rekap}, default: '0', read_only: true, hidden: true}
   - {name: att_ot, type: float, label: {id: Jam lembur menurut rekap}, default: '0', read_only: true, hidden: true}
-  - {name: tax_year, type: int, label: {id: Tahun pajak}, default: payroll_run.tax_year}
+  - {name: tax_year, type: int, grouping: false, label: {id: Tahun pajak}, default: payroll_run.tax_year}
   - {name: tax_month, type: int, label: {id: Bulan pajak}, default: payroll_run.tax_month}
   # December, or the month the worker leaves: PPh 21 is recomputed for the year (Pasal 17).
   - name: last_month
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: check
     label: {id: Masa pajak terakhir (Desember atau keluar)}
     default: payroll_run.tax_month == 12
@@ -92,6 +113,7 @@ fields:
       - {value: daily, label: {id: Harian}}
       - {value: monthly, label: {id: Bulanan}}
   - name: employment
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: select
     label: {id: Status pegawai (PPh 21)}
     default: profile.employment
@@ -134,7 +156,7 @@ fields:
   # A kasbon of this worker not yet repaid in full by the submitted slips linking it, found when the slip is made
   # (payslip_ytd_on_create, payslip_from_recap). A deduction without a link while one is open is warned at submit
   # (audit gelombang 3 r2 R1): linked, the kasbon cannot be cancelled after its repayment.
-  - {name: open_advance, type: link, to: cash_advance, label: {id: Kasbon belum lunas}, read_only: true}
+  - {name: open_advance, type: link, to: cash_advance, label: {id: Kasbon belum lunas}, read_only: true, hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]}
   # The slip-making flows (payslip_from_recap, payslip_from_attendance and the fills, payslip_ytd_on_create) put the
   # open kasbon's monthly installment here: cash_advance = that kasbon, other_deduction = min(installment, what is left
   # after the submitted slips), when the kasbon has an installment (rangka-apps#117). Editable while the slip is a draft.
@@ -146,6 +168,7 @@ fields:
   # which are then marked paid by this slip; a cancel releases them.
   - {name: reimbursement, type: currency, label: {id: Penggantian biaya (tidak kena pajak), en: Expense reimbursement (untaxed)}, default: '0'}
   - name: ptkp_status
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: select
     label: {id: Status PTKP}
     default: profile.ptkp_status
@@ -158,17 +181,17 @@ fields:
       - {value: k1, label: {id: K/1}}
       - {value: k2, label: {id: K/2}}
       - {value: k3, label: {id: K/3}}
-  - {name: has_tax_id, type: check, label: {id: Punya NIK/NPWP valid}, default: profile.has_tax_id}
-  - {name: bpjs_tk, type: check, label: {id: BPJS Ketenagakerjaan}, default: profile.bpjs_tk}
-  - {name: bpjs_jp, type: check, label: {id: Jaminan Pensiun}, default: profile.bpjs_jp}
-  - {name: bpjs_kes, type: check, label: {id: BPJS Kesehatan}, default: profile.bpjs_kes}
+  - {name: has_tax_id, type: check, label: {id: Punya NIK/NPWP valid}, default: profile.has_tax_id, hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]}
+  - {name: bpjs_tk, type: check, label: {id: BPJS Ketenagakerjaan}, default: profile.bpjs_tk, hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]}
+  - {name: bpjs_jp, type: check, label: {id: Jaminan Pensiun}, default: profile.bpjs_jp, hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]}
+  - {name: bpjs_kes, type: check, label: {id: BPJS Kesehatan}, default: profile.bpjs_kes, hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]}
   # The recap's own labour cost, already on the project ledger (project_labor_on_submit): the run books only the rest.
-  - {name: timesheet_cost, type: currency, label: {id: Biaya sudah dibukukan absensi}, compute: "timesheet != '' ? timesheet.cost_amount : 0"}
+  - {name: timesheet_cost, type: currency, label: {id: Biaya sudah dibukukan absensi}, compute: "timesheet != '' ? timesheet.cost_amount : 0", hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]}
   # Year to date (earlier submitted slips of this worker and tax year), filled by payslip_ytd_on_create.
-  - {name: ytd_gross, type: currency, label: {id: Bruto sebelumnya tahun ini}, default: '0', read_only: true}
-  - {name: ytd_pph21, type: currency, label: {id: PPh 21 sebelumnya tahun ini}, default: '0', read_only: true}
-  - {name: ytd_pension, type: currency, label: {id: JHT + JP pekerja sebelumnya}, default: '0', read_only: true}
-  - {name: ytd_months, type: int, label: {id: Bulan sebelumnya tahun ini}, default: '0', read_only: true}
+  - {name: ytd_gross, type: currency, label: {id: Bruto sebelumnya tahun ini}, default: '0', read_only: true, hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]}
+  - {name: ytd_pph21, type: currency, label: {id: PPh 21 sebelumnya tahun ini}, default: '0', read_only: true, hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]}
+  - {name: ytd_pension, type: currency, label: {id: JHT + JP pekerja sebelumnya}, default: '0', read_only: true, hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]}
+  - {name: ytd_months, type: int, label: {id: Bulan sebelumnya tahun ini}, default: '0', read_only: true, hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]}
   # Pay.
   - name: unpaid_deduction
     type: currency
@@ -218,6 +241,7 @@ fields:
     label: {id: Dasar upah BPJS}
     compute: "(pay_basis == 'monthly' ? monthly_salary : base_pay) + fixed_allowance > payroll_run.umk ? (pay_basis == 'monthly' ? monthly_salary : base_pay) + fixed_allowance : payroll_run.umk"
   - name: below_umk
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: check
     label: {id: Upah di bawah UMK}
     compute: "(pay_basis == 'monthly' ? monthly_salary : day_rate * (payroll_run.workdays_per_week == 5 ? 21 : 25)) < payroll_run.umk"
@@ -241,6 +265,7 @@ fields:
   # TER in basis points of a percent (25 = 0,25%): the PP 58/2023 tables as [upper bound, step to the next rate], summed
   # over the bounds the gross is above. Replace the three lists when the table changes.
   - name: ter_bp
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: int
     label: {id: TER (per sepuluh ribu)}
     compute: >-
@@ -282,27 +307,32 @@ fields:
       + (gross_taxable * 0.5 > 5000000000 ? gross_taxable * 0.5 - 5000000000 : 0) * 35) * (has_tax_id ? 100 : 120) / 10000.0 - 0.5))
   # Annual recomputation (last_month).
   - name: ptkp
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: currency
     label: {id: PTKP setahun}
     compute: "54000000 + (ptkp_status.startsWith('k') ? 4500000 : 0) + (ptkp_status.endsWith('1') ? 4500000 : (ptkp_status.endsWith('2') ? 9000000 : (ptkp_status.endsWith('3') ? 13500000 : 0)))"
-  - {name: year_gross, type: currency, label: {id: Bruto setahun}, compute: ytd_gross + gross_taxable}
+  - {name: year_gross, type: currency, label: {id: Bruto setahun}, compute: ytd_gross + gross_taxable, hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]}
   # Biaya jabatan 5%, at most 500.000 per month worked (6.000.000 a year).
   - name: job_cost
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: currency
     label: {id: Biaya jabatan setahun}
     compute: "round(year_gross * 5 / 100.0 - 0.5) < 500000 * (ytd_months + 1) ? round(year_gross * 5 / 100.0 - 0.5) : 500000 * (ytd_months + 1)"
   - name: year_net
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: currency
     label: {id: Neto setahun}
     compute: year_gross - job_cost - ytd_pension - jht_employee - jp_employee
   # Rounded down to thousands.
   - name: year_pkp
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: currency
     label: {id: PKP setahun}
     compute: "year_net > ptkp ? round((year_net - ptkp) / 1000.0 - 0.5) * 1000 : 0"
   # Pasal 17 layers 5/15/25/30/35% on PKP (a multiple of 1.000, so every layer is whole rupiah), x 120% without a tax
   # number, truncated to the rupiah.
   - name: year_pph21
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: currency
     label: {id: PPh 21 setahun (Pasal 17)}
     compute: >-
@@ -338,6 +368,7 @@ fields:
     compute: cash_gross - employee_bpjs - pph21 - other_deduction + reimbursement
     in_list: true
   - name: employer_cost
+    hidden_for: [cashier, collector, course_admin, employee, field_sales, field_worker, head_office, instructor, kitchen, outlet_staff, outlet_supervisor, purchasing_manager, rental_staff, sales_manager, sales_rep, service_staff, site_supervisor, warehouse_staff]
     type: currency
     label: {id: Biaya perusahaan}
     compute: cash_gross + employer_bpjs

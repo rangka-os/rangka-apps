@@ -16,6 +16,22 @@ Letters: r read, c create, w write, s submit, x cancel, a amend, d delete, e exp
 **all** = r c w d s x a e p (no import unless written). `outlet_staff` has a row scope
 (`[outlet, from_outlet, to_outlet]` from `user.outlets`, contract 0010 §5): its grants apply to its own outlets only.
 
+**Member grants (rangka-os contract 0074).** Next to their one role, every member with an employee record holds the
+pseudo-role `member`. A model grant to `member` must read `user.name` (the person's own records) and gives at most
+r c w d s p. The tables below list role grants; these member grants come on top of them, for every role:
+
+| Model | member (own records only) |
+| --- | --- |
+| payslip | r p, once released: submitted and its run closed or its pay date reached (`employee == user.name`) |
+| staff_attendance, attendance_summary | r (`employee == user.name`) |
+| cash_advance | r (`requested_by == user.name \|\| employee == user.name`) |
+| cash_advance_balance, expense_claim, claim_settlement | r (`employee == user.name`) |
+| shift_assignment | r, published days only (`employee == user.name && published`) |
+| shift_swap | r (`requested_by == user.name`) |
+
+Clocking in, claiming and asking for a kasbon stay with the roles that have them (cashier, outlet_staff, employee,
+outlet_supervisor): their flows create guard records only those roles are granted.
+
 | Model | sales_manager | finance_manager | purchasing_manager | project_admin | head_office | outlet_staff | sales_rep |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | customer (with contact_person) | r c w p | r c w p | r c w p | r c w p | r c w p | r | r c w (`crm.convert_lead` makes customers) |

@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: shifts
-version: 1.0.0
+version: 1.1.0
 title: {id: Jadwal shift, en: Work shifts}
 summary:
   id: Pola shift per outlet, jadwal mingguan yang diterbitkan, jadwal tiap karyawan, tukar shift, dan absen dibandingkan dengan jadwal.

@@ -15,10 +15,8 @@ permissions:
   - {role: head_office, read: true, export: true}
   # the recap flow of a client run reads it when it drafts a slip (payslip_from_recap runs as the project admin)
   - {role: project_admin, read: true}
-  - {role: employee, read: true, if: "employee == user.name"}
-  - {role: cashier, read: true, if: "employee == user.name"}
-  - {role: outlet_staff, read: true, if: "employee == user.name"}
-  - {role: outlet_supervisor, read: true, if: "employee == user.name"}
+  # what is left of their own kasbon: every employee whatever their role (member grant, rangka-os contract 0074)
+  - {role: member, read: true, if: "employee == user.name"}
 fields:
   - name: cash_advance
     type: link

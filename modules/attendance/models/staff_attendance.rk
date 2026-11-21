@@ -30,6 +30,9 @@ permissions:
   - {role: cashier, read: true, create: true, write: true, submit: true, if: "employee == user.name"}
   - {role: outlet_staff, read: true, create: true, write: true, submit: true, if: "employee == user.name"}
   - {role: employee, read: true, create: true, write: true, submit: true, if: "employee == user.name"}
+  # Every employee whatever their role reads their own logs (member grant, rangka-os contract 0074). Clocking in stays
+  # with the roles above: its flows create guard records those roles are granted.
+  - {role: member, read: true, if: "employee == user.name"}
   # The outlet supervisor reads and prints the logs of their outlets and decides the held submits; they clock in too.
   - {role: outlet_supervisor, read: true, print: true}
   - {role: outlet_supervisor, create: true, write: true, submit: true, if: "employee == user.name"}

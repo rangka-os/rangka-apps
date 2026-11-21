@@ -3209,8 +3209,13 @@ _CHECKED = ("read", "create", "write", "delete", "submit", "cancel", "amend", "e
 APPEND_ONLY = {"project_ledger", "stock_adjustment_value"}
 
 
+# Member grants (rangka-os contract 0074): every member holds them next to their own role, read-only own records here.
+MEMBER = {"payslip": _RP, "attendance_summary": _R, "staff_attendance": _R, "cash_advance": _R, "cash_advance_balance": _R,
+          "expense_claim": _R, "claim_settlement": _R, "shift_assignment": _R, "shift_swap": _R}
+
+
 def granted(role, model):
-    g = MATRIX.get(model, {}).get(role, set())
+    g = MATRIX.get(model, {}).get(role, set()) | (MEMBER.get(model, set()) if role != "owner" else set())
     return g - {"create", "write", "delete", "import"} if model in APPEND_ONLY else g
 
 
