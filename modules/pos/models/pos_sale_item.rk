@@ -10,6 +10,7 @@ fields:
   # the item's category when the line was saved: the kitchen routes a paid line by it (module kitchen) without reading
   # the whole catalogue during the payment
   - {name: category, type: link, to: item_category, label: {id: Kategori}, hidden: true, compute: item.category}
+  - {name: variant_group, type: data, label: {id: Grup varian}, hidden: true, compute: item.variant_group}
   - {name: description, type: text, label: {id: Uraian}, default: item.item_name}
   - name: packing
     type: link
