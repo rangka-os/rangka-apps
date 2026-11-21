@@ -909,6 +909,10 @@ def scenario_pos_charges(api):
         eq("the voucher sums to 0", sum(gl(api, "pos_sale", r["name"]).values()), 0)
         sh = shift_of(api, s5["name"])
         eq("the shift counts service, PBJT and rounding", (sh["service_total"], sh["pbjt_total"], sh["rounding_total"]), (5_000, 10_500, 0))
+    # a client cannot send its own rates or rounding unit: the outlet's values stand (audit F1, F2)
+    st, f = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", order_type="dine_in", pbjt_pct=0, service_pct=0, rounding_unit=1_000_000,
+                 rounding_mode="down", payments=[{"method": "cash", "amount": 120_000}])
+    check("rates sent by the client are refused or ignored", st in (422, 403) or (st == 200 and f.get("grand_total") == 115_500), (st, f))
     st, t = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", order_type="takeaway", payments=[{"method": "qris", "amount": 110_000}])
     if check("takeaway at the same outlet -> paid", st == 200, (st, t)):
         eq("takeaway: no service charge, PBJT on the net, total 110.000", (t["service_charge"], t["pbjt"], t["grand_total"]), (0, 10_000, 110_000))
@@ -924,7 +928,7 @@ def scenario_pos_charges(api):
     if st == 200:
         st, c = void(hq, v["name"])
         sh = shift_of(api, s5["name"])
-        eq("a void takes the receipt's service, PBJT and rounding back out of the shift", (sh["service_total"], sh["pbjt_total"]), (15_003, 41_506))
+        eq("a void takes the receipt's service, PBJT and rounding back out of the shift", (sh["service_total"], sh["pbjt_total"]), (20_003, 52_006))
     # split bill into 3 equal parts at the cafe (no rounding): Rp 100.001 = 33.335 + 33.333 + 33.333
     st, p = sale(hq, s6["name"], [{"item": ODD, "qty": 1}], "", parties=3, split_mode="equal", submit=False,
                  payments=[{"method": "cash", "amount": 40_000, "party": 1}, {"method": "qris", "amount": 33_333, "party": 2}, {"method": "cash", "amount": 33_333, "party": 3}])
