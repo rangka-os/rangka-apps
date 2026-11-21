@@ -21,16 +21,22 @@ steps:
   - find: commission_statement
     where: name == event.name
     as: me
-  # paid already: the tick is turned back, nothing is released
-  - update: me
-    if: "size(paid) > 0"
-    set: {cancelled: 'false'}
   - find_all: commission_line
     where: statement == event.name
     as: lines
+  # a correction of a line this statement holds that a later statement already holds: releasing would leave that
+  # statement deducting a voided sale, so the tick is turned back too
+  - find_all: commission_line
+    where: "correction && statement != '' && statement != event.name && employee == event.employee && source_name in lines.filter(c, c.reversed).map(c, c.source_name)"
+    limit: 1
+    as: later
+  # paid already, or corrected in a later statement: the tick is turned back, nothing is released
+  - update: me
+    if: "size(paid) + size(later) > 0"
+    set: {cancelled: 'false'}
   - for_each: lines
     as: c
-    if: "size(paid) == 0"
+    if: "size(paid) + size(later) == 0"
     do:
       - update: c
         if: "!c.reversed"
@@ -43,10 +49,10 @@ steps:
     as: corr
   - for_each: corr
     as: x
-    if: "size(paid) == 0"
+    if: "size(paid) + size(later) == 0"
     do:
       - update: x
         set: {cancelled: 'true'}
   - update: me
-    if: "size(paid) == 0"
+    if: "size(paid) + size(later) == 0"
     set: {total: '0', line_count: '0', done: 'false'}
