@@ -106,8 +106,9 @@ fields:
     hidden: true
     depends_on: app_installed('whatsapp_receipt')
     compute: "(wa_phone.trim().startsWith('+') ? ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')).matches('^[1-9][0-9]{7,14}$') ? (wa_phone.trim().startsWith('+') ? ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')) : ''"
-  # Restaurant charges (rangka-apps#121). Service charge is for dine-in only; rates and rounding are copied from the
-  # outlet when the sale is created, so a receipt keeps them when head office changes the outlet.
+  # Restaurant charges (rangka-apps#121). Service charge is for dine-in only. Rates and rounding are computed from the
+  # sale's outlet while the sale is a draft (a draft moved to another outlet's shift, or an amended receipt, takes that
+  # outlet's current values: re-audit N1, N2); a paid receipt keeps them when head office changes the outlet later.
   - name: order_type
     type: select
     label: {id: Jenis pesanan}
@@ -117,10 +118,10 @@ fields:
       - {value: dine_in, label: {id: Makan di sini}}
       - {value: takeaway, label: {id: Bawa pulang}}
       - {value: online, label: {id: Online}}
-  - {name: service_pct, type: float, label: {id: Service charge (%)}, default: outlet.service_pct, hidden: true, read_only: true}
-  - {name: pbjt_pct, type: float, label: {id: PBJT (%)}, default: outlet.pbjt_pct, hidden: true, read_only: true}
-  - {name: rounding_unit, type: int, label: {id: Satuan pembulatan}, default: int(outlet.rounding_unit), hidden: true, read_only: true}
-  - {name: rounding_mode, type: data, label: {id: Arah pembulatan}, default: outlet.rounding_mode, hidden: true, read_only: true}
+  - {name: service_pct, type: float, label: {id: Service charge (%)}, compute: outlet.service_pct, hidden: true}
+  - {name: pbjt_pct, type: float, label: {id: PBJT (%)}, compute: outlet.pbjt_pct, hidden: true}
+  - {name: rounding_unit, type: int, label: {id: Satuan pembulatan}, compute: int(outlet.rounding_unit), hidden: true}
+  - {name: rounding_mode, type: data, label: {id: Arah pembulatan}, compute: outlet.rounding_mode, hidden: true}
   # Split bill between people (rangka-apps#121): the bill is paid in `parties` parts, one receipt, one submit. `equal`
   # gives every part grand_total (less deposit) / parties with the remainder on part 1; `amount` leaves the amounts free.
   - {name: parties, type: int, label: {id: Dibagi untuk}, help: {id: 'Jumlah orang yang membayar terpisah; 1 kalau tidak dibagi'}, default: '1'}
