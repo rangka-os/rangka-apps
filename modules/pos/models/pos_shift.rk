@@ -9,7 +9,10 @@
 name: pos_shift
 label: {id: Sesi kasir, en: Cashier shift}
 icon: wallet
-naming: SESI-{outlet.code}-{YY}{MM}-{####}
+# A shift opened on a paired device carries the device's number (SESI-BTR-K1-2611-0003, contract 0058 §3), so the
+# sales queued offline link it by that name; head office keeps SESI-<outlet code>-<YYMM>-<n>.
+naming: SESI-{outlet.code}-{device.code}-{YY}{MM}-{####}
+naming_on: device
 title_field: outlet
 permissions:
   - {role: head_office, read: true, create: true, write: true, export: true, print: true}
