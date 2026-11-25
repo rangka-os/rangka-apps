@@ -132,6 +132,11 @@ def void(cl, name, approve=True):
     return H["decide"](CTX["hq"], r["approval"]["id"])
 
 
+def drop(cl, name):
+    """Delete a draft pos_sale (an open bill the scenario no longer needs)."""
+    return cl.call("DELETE", f"/api/v1/r/pos_sale/{cl.q(name)}")
+
+
 def shift_of(api, name):
     return api.get("pos_shift", name) or {}
 
@@ -964,15 +969,25 @@ def scenario_pos_tables(api):
     if not b6:
         return
     total = lambda n: api.get("pos_sale", n).get("grand_total")
+    # a bill discount on the source and "Minta tagihan" on the target before the merge
+    st, r = sari.patch("pos_sale", b3["name"], {"discount_amount": 2_000})
+    st2, r2 = sari.patch("pos_sale", b6["name"], {"bill_asked": True})
+    check("A5 gets a Rp 2.000 bill discount and A6 asks for its bill -> 200", st == 200 and st2 == 200, (st, r, st2, r2))
     t5, t6 = total(b3["name"]), total(b6["name"])
-    # merge A5 into A6: every line and one total
+    # merge A5 into A6: every line, one total, the discount carried over
     st, r = sari.patch("pos_sale", b3["name"], {"merge_into": b6["name"]})
-    m6 = api.get("pos_sale", b6["name"], children=1) if False else sari.get("pos_sale", b6["name"])
+    m6 = sari.get("pos_sale", b6["name"])
     src = sari.get("pos_sale", b3["name"])
     check("merge A5 into A6 -> 200: A6 has all three lines and one total, A5 is merged and frees its table",
           st == 200 and len(m6.get("items") or []) == 3 and m6.get("grand_total") == t5 + t6 and src.get("merged") and src.get("table") in ("", None)
           and m6.get("guests") == 3, (st, r, m6, src))
+    eq("the merged total is the sum of both totals: A5's bill discount is carried over", (m6.get("discount_amount"), m6.get("grand_total")), (2_000, t5 + t6))
+    check("the merge clears A6's Minta tagihan (the bill changed)", not m6.get("bill_asked"), m6)
     check("the merged bill cannot be paid", sari.verb("pos_sale", b3["name"], "submit")[0] != 200, None)
+    st, r = sari.patch("pos_sale", b3["name"], {"table": T["A6"]})
+    check("the merged bill cannot be put back on a busy table", st != 200 and ("merged_no_table" in str(r) or "table_busy" in str(r)), (st, r))
+    st, r = sari.patch("pos_sale", b3["name"], {"table": T["A1"]})
+    check("nor on a free one (merged_no_table)", st != 200 and "merged_no_table" in str(r), (st, r))
     st, r = sari.patch("pos_sale", b6["name"], {"merge_into": b6["name"]})
     check("a bill cannot be merged into itself", st != 200 and "merge_invalid" in str(r), (st, r))
     # split A6: the roti line goes to a new bill on the same table
@@ -990,6 +1005,21 @@ def scenario_pos_tables(api):
     check("a split that would leave no line is refused", st != 200 and "split_invalid" in str(r), (st, r))
     st, r = sale(sari, shift, [L("z1", KHT, 1)], "", submit=False, table=T["A6"], guests=1)
     check("a hand-made third bill on A6 is still refused", st != 201 and "table_busy" in str(r), (st, r))
+    # the split child is guarded like any bill once it changes table; it still edits fine on its own table
+    st, a1 = sale(sari, shift, [L("w1", KHT, 1)], "", submit=False, table=T["A1"], guests=1)
+    check("an open bill on A1 -> 201", st == 201, (st, a1))
+    st, r = sari.patch("pos_sale", kids[0]["name"], {"table": T["A1"]})
+    check("the split child moved onto the busy A1 is refused: table_busy", st != 200 and "table_busy" in str(r), (st, r))
+    st, r = sari.patch("pos_sale", kids[0]["name"], {"guests": 2})
+    check("the split child still saves on its own table (A6 shared with its parent)", st == 200, (st, r))
+    st, r = sari.patch("pos_sale", b6["name"], {"table": T["A2"]})
+    check("the parent moves to the free A2 -> 200", st == 200, (st, r))
+    st, r = sale(sari, shift, [L("z2", KHT, 1)], "", submit=False, table=T["A6"], guests=1)
+    check("a new bill on A6, whose only bill is the split child, is refused: table_busy", st != 201 and "table_busy" in str(r), (st, r))
+    if st == 201:
+        drop(sari, rec(r)["name"])
+    st, r = drop(sari, rec(a1)["name"]) if a1 else (0, None)
+    check("the A1 bill is deleted", st in (200, 204), (st, r))
     # two devices on one draft: the second PATCH built on the old value gets a conflict
     seen = sari.get("pos_sale", b6["name"])["guests"]
     rev0 = sari.get("pos_sale", b6["name"]).get("rev") or 0
@@ -1002,6 +1032,22 @@ def scenario_pos_tables(api):
     st2, p2 = sari.verb("pos_sale", kids[0]["name"], "submit", {"payments": [{"method": "cash", "amount": 100_000}]})
     check("both bills of A6 paid -> 200", st1 == 200 and st2 == 200, (st1, st2, p1, p2))
     eq("the roti left the stock once (merged and split lines counted once)", bal(api, RIU, ROTI), roti0 - 1)
+    # a paid table bill voided and amended (a return): the copy is not an open bill and loses its table on its first write
+    paid_kid = rec(p2).get("name") or kids[0]["name"]
+    st, r = void(sari, paid_kid)
+    st2, am = sari.verb("pos_sale", paid_kid, "amend")
+    am = rec(am)
+    check("the split bill of A6 voided and amended -> a draft", st == 200 and st2 in (200, 201) and am.get("docstatus") == 0, (st, r, st2, am))
+    st, nb = sale(sari, shift, [L("v1", KHT, 1)], "", submit=False, table=T["A6"], guests=1)
+    check("A6 takes a new open bill while the amended copy exists -> 201", st == 201, (st, nb))
+    if am.get("name"):
+        st, r = sari.patch("pos_sale", am["name"], {"items": [{"item": l["item"], "qty": l["qty"], "line_key": l.get("line_key") or ""} for l in am.get("items") or []]})
+        cp = sari.get("pos_sale", am["name"])
+        check("the amended copy's first write clears its table: one open bill on A6", st == 200 and cp.get("table") in ("", None)
+              and len(api.find("pos_sale", f"table == '{T['A6']}' && docstatus == 0")) == 1, (st, r, cp))
+        drop(sari, am["name"])
+    if rec(nb).get("name"):
+        drop(sari, rec(nb)["name"])
     check("the tables are free after payment", not api.find("pos_sale", f"table != '' && docstatus == 0 && outlet == '{RIU}'"), None)
     CTX["tables_ok"] = True
 

@@ -368,6 +368,14 @@ def scenario_kitchen_on_draft(api):
     ts = tickets(api, name)
     batal = [l for t in ts for l in t["items"] if str(l.get("description") or "").startswith("BATAL")]
     check("a sent line removed: a BATAL line for the roti at the Dapur station", st == 200 and len(ts) == 4 and len(batal) == 1 and batal[0]["item"] == ROTI, (st, r, ts))
+    # the kitchen knows a sent line by its key: a reused key, a raised quantity or a doubled key would hide a dish from it
+    st, r = sari.patch("pos_sale", name, {"items": [L("k1", ROTI, 1), L("k3", KHT, 1)], "send_kitchen": True})
+    check("a sent line's key reused for another item is refused (sent_line_kept)", st != 200 and "sent_line_kept" in str(r), (st, r))
+    st, r = sari.patch("pos_sale", name, {"items": [L("k1", KSA, 2), L("k3", KHT, 1)], "send_kitchen": True})
+    check("a sent line's quantity raised is refused (sent_line_kept)", st != 200 and "sent_line_kept" in str(r), (st, r))
+    st, r = sari.patch("pos_sale", name, {"items": [L("k1", KSA, 1), L("k3", KHT, 1), L("k3", ROTI, 1)], "send_kitchen": True})
+    check("two lines with one key are refused (line_key_unique)", st != 200 and "line_key_unique" in str(r), (st, r))
+    eq("no ticket came from the refused writes", len(tickets(api, name)), 4)
     st, r = sari.patch("pos_sale", name, {"items": [L("k1", KSA, 1), L("k3", KHT, 1), L("k4", ROTI, 1)]})
     st, p = sari.verb("pos_sale", name, "submit", {"payments": [{"method": "cash", "amount": 100_000}]})
     paid = rec(p).get("name") if st == 200 else name
