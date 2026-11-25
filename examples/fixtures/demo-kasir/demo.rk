@@ -87,6 +87,26 @@ kitchen_station:
 kitchen_route:
   - {name: RTD-0001, station: STD-001, category: KTG-001}
   - {name: RTD-0002, station: STD-002, category: KTG-002}
+# tables of Kedai Riau (rangka-apps#122): two areas, ten tables, and three at Restoran Braga; the table scenarios of tests/day_one_pos.py open bills on them
+dining_area:
+  - {name: ARM-001, area_name: Dalam, outlet: OUT-03, sort: 1}
+  - {name: ARM-002, area_name: Teras, outlet: OUT-03, sort: 2}
+  # Restoran Braga (service charge, PBJT, rounding): the charges on table bills (rangka-apps#121, #122)
+  - {name: ARM-003, area_name: Ruang makan, outlet: OUT-05, sort: 1}
+dining_table:
+  - {name: MJA-RIU-001, table_name: A1, area: ARM-001, seats: 2, outlet: OUT-03, active: true, time_limit_min: 90}
+  - {name: MJA-RIU-002, table_name: A2, area: ARM-001, seats: 4, outlet: OUT-03, active: true}
+  - {name: MJA-RIU-003, table_name: A3, area: ARM-001, seats: 2, outlet: OUT-03, active: true}
+  - {name: MJA-RIU-004, table_name: A4, area: ARM-001, seats: 4, outlet: OUT-03, active: true}
+  - {name: MJA-RIU-005, table_name: A5, area: ARM-001, seats: 2, outlet: OUT-03, active: true}
+  - {name: MJA-RIU-006, table_name: A6, area: ARM-001, seats: 4, outlet: OUT-03, active: true}
+  - {name: MJA-RIU-007, table_name: B1, area: ARM-002, seats: 2, outlet: OUT-03, active: true}
+  - {name: MJA-RIU-008, table_name: B2, area: ARM-002, seats: 4, outlet: OUT-03, active: true}
+  - {name: MJA-RIU-009, table_name: B3, area: ARM-002, seats: 2, outlet: OUT-03, active: true}
+  - {name: MJA-RIU-010, table_name: B4, area: ARM-002, seats: 4, outlet: OUT-03, active: true}
+  - {name: MJA-BRG-001, table_name: '1', area: ARM-003, seats: 4, outlet: OUT-05, active: true}
+  - {name: MJA-BRG-002, table_name: '2', area: ARM-003, seats: 4, outlet: OUT-05, active: true}
+  - {name: MJA-BRG-003, table_name: '3', area: ARM-003, seats: 6, outlet: OUT-05, active: true}
 user:
   - {name: USR-001, full_name: Rina Contoh, role: head_office, email: rina@contohwarung.test}
   - {name: USR-002, full_name: Dika Contoh, role: cashier, email: dika.dago@contohwarung.test}
