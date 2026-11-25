@@ -1,14 +1,23 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
-# The update half of pos_table_guard: moving an open bill onto a table that already has an open bill is refused. A bill made
-# by the split flow (split_of set) shares its table on purpose and is not guarded; a bill that stays on its table finds
-# no other bill there.
+# The update half of pos_table_guard: moving an open bill onto a table that already has an open bill is refused. It runs
+# only when the table changes (event.before), so a bill and its split child sharing a table on purpose can still be
+# edited, while any bill moved onto a busy table is refused, a split child included. A merged bill never sits on a
+# table (rule merged_no_table). An amended copy of a paid bill (amended_from set; amend copies the table) is a return,
+# not an open bill: its first write clears the table, and it is never counted as the table's open bill.
 name: pos_table_guard_on_update
 label: {id: 'Satu tagihan terbuka per meja (pindah meja)'}
 description: {id: 'Pindah ke meja yang sudah punya tagihan terbuka ditolak'}
 on: pos_sale.updated
-if: "event.docstatus == 0 && event.table != '' && event.split_of == '' && !event.merged"
+if: "event.docstatus == 0 && event.table != ''"
 steps:
-  - {find_all: pos_sale, where: "table == event.table && docstatus == 0 && !merged && split_of == '' && name != event.name", limit: 1, as: others}
-  - if: others.size() > 0
-    create: pos_guard
-    set: {reason: "'table_busy'", document: event.name}
+  - if: "has(event.amended_from) && event.amended_from != ''"
+    then:
+      - {find: pos_sale, where: "name == event.name", as: self}
+      - update: self
+        set: {table: "''", bill_asked: "false", send_kitchen: "false"}
+  - if: "(!has(event.amended_from) || event.amended_from == '') && (event.before == null || event.before.table != event.table)"
+    then:
+      - {find_all: pos_sale, where: "table == event.table && docstatus == 0 && !merged && amended_from == '' && name != event.name", limit: 1, as: others}
+      - if: others.size() > 0
+        create: pos_guard
+        set: {reason: "'table_busy'", document: event.name}
