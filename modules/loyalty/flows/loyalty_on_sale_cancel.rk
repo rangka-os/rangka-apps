@@ -25,7 +25,7 @@ steps:
         set:
           account: a.name
           sale: event.name
-          amount: 0 - event.grand_total
+          amount: 0 - (event.grand_total - event.service_charge - event.pbjt - event.rounding)
           date: today()
           outlet: event.outlet
           entry: "'reverse'"
@@ -59,4 +59,4 @@ steps:
         set:
           points_balance: a.points_balance - pe.map(e, e.points).sum()
           deposit_balance: a.deposit_balance - de.map(e, e.amount).sum()
-          spend_this_year: a.spend_this_year - event.grand_total
+          spend_this_year: a.spend_this_year - (event.grand_total - event.service_charge - event.pbjt - event.rounding)

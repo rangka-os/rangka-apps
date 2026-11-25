@@ -20,7 +20,7 @@ steps:
     set:
       computed_at: now()
       line_count: pl.size()
-      revenue: "0 - pl.map(r, r.account.startsWith('411') ? r.amount : 0).sum()"
+      revenue: "0 - pl.map(r, r.account.startsWith('411') || r.account.startsWith('413') ? r.amount : 0).sum()"
       sales_returns: "pl.map(r, r.account.startsWith('412') ? r.amount : 0).sum()"
       other_income: "0 - pl.map(r, r.account.startsWith('49') ? r.amount : 0).sum()"
       cogs: "pl.map(r, r.account.startsWith('511') ? r.amount : 0).sum()"

@@ -15,3 +15,5 @@ fields:
       - {value: qris, label: {id: QRIS}}
   - {name: amount, type: currency, label: {id: Jumlah}, required: true}
   - {name: ref, type: data, label: {id: Ref QRIS}, help: {id: 'Nomor referensi di notifikasi QRIS, kalau ada'}}
+  # split bill by people (rangka-apps#121): which part of the bill this row pays; 1 when the bill is not split
+  - {name: party, type: int, label: {id: Bagian}, default: '1'}
