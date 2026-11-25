@@ -32,7 +32,7 @@ specific to the cashier.
 
 ## In the studio interview: when the cashier goes on the map
 
-For Raka's consultant interview (`rangka-consult`, contract 0042). The deciding fact is the tools the owner uses
+For Zafdoz's consultant interview (`rangka-consult`, contract 0042). The deciding fact is the tools the owner uses
 today and whether Juragan replaces them:
 
 - A business that serves buyers at a counter (kedai, kafe, restoran, toko) and has **no cashier app yet**, or chose
