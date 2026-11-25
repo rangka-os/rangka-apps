@@ -195,11 +195,12 @@ fields:
     hidden: true
     depends_on: app_installed('loyalty')
     compute: "!app_installed('loyalty') || member == '' ? 0 : round((subtotal - bill_promo - member_discount) * member.max_redeem_pct / 100)"
+  # points on the sale before service charge, PBJT and rounding (audit F6), the same base as the member's spend
   - name: points_earned
     type: int
     label: {id: Poin didapat}
     depends_on: app_installed('loyalty') && points_earned > 0
-    compute: "!app_installed('loyalty') || member == '' || member.earn_spend <= 0 || grand_total <= 0 ? 0 : int(grand_total * member.earn_multiplier_pct / (member.earn_spend * 100))"
+    compute: "!app_installed('loyalty') || member == '' || member.earn_spend <= 0 || grand_total - service_charge - pbjt - rounding <= 0 ? 0 : int((grand_total - service_charge - pbjt - rounding) * member.earn_multiplier_pct / (member.earn_spend * 100))"
   - name: points_left
     type: int
     label: {id: Sisa poin}
@@ -374,6 +375,13 @@ rules:
     on: save
     check: "!app_installed('outlet_sales') || (outlet.moka_name == '' && outlet.sales_source == 'kasir')"
     message: {id: 'Outlet ini mencatat penjualan lewat Moka, file POS atau formulir harian. Ubah Sumber penjualan outlet ke Kasir Juragan dulu'}
+  # The rounding of the bill stays within one step of the outlet's unit (audit F1, F2): the unit is one the outlet form
+  # offers, "nearest" moves at most half a unit and "down" takes off less than one unit, so a rounding can never close a
+  # bill for less than it costs.
+  - name: rounding_within_unit
+    on: save
+    check: "(rounding_unit == 0 || rounding_unit == 100 || rounding_unit == 500 || rounding_unit == 1000) && (rounding_unit == 0 ? rounding == 0 : (rounding_mode == 'down' ? (rounding <= 0 && -rounding < rounding_unit) : (rounding * 2 <= rounding_unit && -rounding * 2 <= rounding_unit)))"
+    message: {id: 'Pembulatan total tidak sesuai pengaturan outlet; muat ulang transaksi ini'}
   - name: qty_positive
     on: save
     check: "items.map(l, l.qty <= 0 ? 1 : 0).sum() == 0"

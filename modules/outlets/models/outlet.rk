@@ -145,7 +145,8 @@ fields:
     type: select
     label: {id: Pembulatan total}
     help: {id: 'Total nota dibulatkan ke kelipatan ini'}
-    default: "'100'"
+    # opt-in (audit F5): a new outlet does not round until head office picks a unit
+    default: "'0'"
     depends_on: app_installed('pos') && (location_type == '' || location_type == 'store' || location_type == 'vehicle')
     options:
       - {value: '0', label: {id: Tanpa pembulatan}}

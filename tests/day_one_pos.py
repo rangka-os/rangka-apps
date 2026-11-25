@@ -954,6 +954,13 @@ def scenario_pos_charges(api):
     st, f = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", order_type="dine_in", pbjt_pct=0, service_pct=0, rounding_unit=1_000_000,
                  rounding_mode="down", payments=[{"method": "cash", "amount": 120_000}])
     check("rates sent by the client are refused or ignored", st in (422, 403) or (st == 200 and f.get("grand_total") == 115_500), (st, f))
+    st, dr = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", submit=False, order_type="dine_in", payments=[{"method": "cash", "amount": 120_000}])
+    if check("a draft at the outlet's rates -> 201", st == 201, (st, dr)):
+        st, pr = hq.patch("pos_sale", dr["name"], {"pbjt_pct": 0, "service_pct": 0, "rounding_unit": 7, "rounding_mode": "down"})
+        after = api.get("pos_sale", dr["name"]) or {}
+        check("a PATCH of the rates or rounding unit on a draft leaves the outlet's values",
+              st in (200, 403, 422) and (after.get("pbjt_pct"), after.get("service_pct"), after.get("rounding_unit"), after.get("pbjt"), after.get("grand_total"))
+              == (10, 5, 100, 10_500, 115_500), (st, pr, after))
     st, t = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", order_type="takeaway", payments=[{"method": "qris", "amount": 110_000}])
     if check("takeaway at the same outlet -> paid", st == 200, (st, t)):
         eq("takeaway: no service charge, PBJT on the net, total 110.000", (t["service_charge"], t["pbjt"], t["grand_total"]), (0, 10_000, 110_000))

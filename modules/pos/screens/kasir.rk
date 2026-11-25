@@ -29,7 +29,8 @@ counter:
     # amount_due: the total less what the member's deposit pays (module loyalty); without it, the total
     total: amount_due
     change: change_amount
-    # at most 8 lines (0034 §2): the discounts show as one total here, the receipt and the sale keep the breakdown
+    # at most 12 lines (0034 §2, raised for rangka-apps#121; checkout takes at most 8 fields): the discounts show as one
+    # total here, the receipt and the sale keep the breakdown
     summary: [gross_total, promo_total, member_discount, points_discount, manual_discount_total, promo_shortfall, service_charge, pbjt, rounding, deposit_used, amount_due]
     # rangka-os contract 0069: filled before paying; the promo picker lists live bill promos only, the member picker
     # active members. Fields of modules promotions and loyalty are left out when not installed (their depends_on).
