@@ -1040,8 +1040,24 @@ def scenario_pos_tables(api):
     check("the split bill of A6 voided and amended -> a draft", st == 200 and st2 in (200, 201) and am.get("docstatus") == 0, (st, r, st2, am))
     st, nb = sale(sari, shift, [L("v1", KHT, 1)], "", submit=False, table=T["A6"], guests=1)
     check("A6 takes a new open bill while the amended copy exists -> 201", st == 201, (st, nb))
+    if am.get("name") and rec(nb).get("name"):
+        akeys = [l.get("line_key") for l in am.get("items") or [] if l.get("line_key")]
+        st, r = sari.patch("pos_sale", am["name"], {"split_lines": akeys[:1]})
+        check("the amended copy cannot be split (split_invalid)", st != 200 and "split_invalid" in str(r), (st, r))
+        st, r = sari.patch("pos_sale", am["name"], {"merge_into": rec(nb)["name"]})
+        st2, r2 = sari.patch("pos_sale", rec(nb)["name"], {"merge_into": am["name"]})
+        check("the amended copy is never merged, as source or as target (merge_invalid)",
+              st != 200 and "merge_invalid" in str(r) and st2 != 200 and "merge_invalid" in str(r2), (st, r, st2, r2))
+        # two lines without a key (a bill from the plain form) merge fine: empty keys stay empty
+        st, kb = sari.create("pos_sale", {"shift": shift, "table": T["A1"], "guests": 1, "items": [{"item": KHT, "qty": 1}, {"item": ROTI, "qty": 1}]})
+        st2, r2 = sari.patch("pos_sale", rec(kb).get("name") or "-", {"merge_into": rec(nb)["name"]})
+        check("a bill with two keyless lines merges -> 200, the target has three lines",
+              st == 201 and st2 == 200 and len(sari.get("pos_sale", rec(nb)["name"]).get("items") or []) == 3, (st, kb, st2, r2))
+        if rec(kb).get("name"):
+            drop(sari, rec(kb)["name"])
     if am.get("name"):
-        st, r = sari.patch("pos_sale", am["name"], {"items": [{"item": l["item"], "qty": l["qty"], "line_key": l.get("line_key") or ""} for l in am.get("items") or []]})
+        st, r = sari.patch("pos_sale", am["name"], {"items": [{"item": l["item"], "qty": l["qty"], "line_key": l.get("line_key") or ""} for l in am.get("items") or []], "send_kitchen": True})
+        check("Kirim ke dapur on the amended copy sends nothing (its tickets come at payment)", st == 200 and not api.find("kitchen_ticket", f"sale == '{am['name']}'"), (st, r))
         cp = sari.get("pos_sale", am["name"])
         check("the amended copy's first write clears its table: one open bill on A6", st == 200 and cp.get("table") in ("", None)
               and len(api.find("pos_sale", f"table == '{T['A6']}' && docstatus == 0")) == 1, (st, r, cp))

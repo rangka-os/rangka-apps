@@ -5,12 +5,13 @@
 # removed after it was sent makes a ticket line "BATAL: <menu>" at its station, so the kitchen stops cooking it. Lines
 # without a line_key are never sent from here (the payment flow handles them). At payment flow kitchen_ticket_on_sale
 # skips every recorded line, so each line reaches the kitchen once. A change of quantity of a sent line is not tracked in v1:
-# remove the line and add it again.
+# remove the line and add it again. An amended copy (a receipt paid again) never sends from here: its tickets come
+# from kitchen_ticket_on_sale, which knows what the voided receipt's kitchen already served.
 name: kitchen_ticket_on_draft
 label: {id: 'Kirim pesanan meja ke dapur sebelum dibayar'}
 description: {id: 'Barang baru di tagihan meja dikirim ke stasiun dapur; barang yang dihapus setelah terkirim dikirim sebagai BATAL'}
 on: pos_sale.updated
-if: "event.docstatus == 0 && event.table != '' && event.send_kitchen && !event.merged"
+if: "event.docstatus == 0 && event.table != '' && event.send_kitchen && !event.merged && (!has(event.amended_from) || event.amended_from == '')"
 steps:
   - {find: pos_sale, where: "name == event.name", as: src}
   - {find: dining_table, where: "name == event.table", as: tbl}
@@ -39,5 +40,5 @@ steps:
           items: "event.sent_to_kitchen.filter(s, !(s.key in event.items.map(l, l.line_key)) && routes.filter(r, r.station == st.name && r.category == s.category).size() > 0).map(s, {'item': s.item, 'description': 'BATAL: ' + s.description, 'qty': s.qty, 'uom': s.uom, 'note': s.note})"
   - update: src
     set:
-      sent_to_kitchen: "event.sent_to_kitchen.filter(s, s.key in event.items.map(l, l.line_key)) + event.items.filter(l, l.line_key != '' && !(l.line_key in event.sent_to_kitchen.map(s, s.key))).map(l, {'key': l.line_key, 'item': l.item, 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note, 'category': l.category})"
+      sent_to_kitchen: "event.sent_to_kitchen.filter(s, s.key in event.items.map(l, l.line_key)) + event.items.filter(l, l.line_key != '' && !(l.line_key in event.sent_to_kitchen.map(s, s.key))).map(l, {'key': l.line_key, 'item': l.item, 'packing': l.packing, 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note, 'category': l.category})"
       send_kitchen: "false"

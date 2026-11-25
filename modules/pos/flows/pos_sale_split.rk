@@ -4,7 +4,7 @@
 # split_lines is cleared so the flow cannot run twice. The two bills add up to the original: lines move whole, with their
 # own discounts, and the lines the kitchen already got stay recorded under their keys on the bill they moved to. At
 # least one line must stay, and a bill with a promo, a member or a deposit picked is not split (those amounts belong to
-# the whole bill). Stock moves only at payment, once per paid bill.
+# the whole bill). An amended copy (a return) is not split. Stock moves only at payment, once per paid bill.
 name: pos_sale_split
 label: {id: 'Pisah tagihan meja per barang'}
 description: {id: 'Barang yang dipilih pindah ke tagihan baru di meja yang sama; sisanya tetap di tagihan lama'}
@@ -12,10 +12,10 @@ on: pos_sale.updated
 if: "event.docstatus == 0 && event.split_lines.size() > 0"
 steps:
   - {find: pos_sale, where: "name == event.name", as: src}
-  - if: "event.table == '' || event.merged || event.items.filter(l, !(l.line_key in event.split_lines)).size() == 0 || event.items.filter(l, l.line_key in event.split_lines).size() == 0 || event.promotion != '' || event.member != '' || event.points_redeemed > 0 || event.deposit_used > 0"
+  - if: "event.table == '' || (has(event.amended_from) && event.amended_from != '') || event.merged || event.items.filter(l, !(l.line_key in event.split_lines)).size() == 0 || event.items.filter(l, l.line_key in event.split_lines).size() == 0 || event.promotion != '' || event.member != '' || event.points_redeemed > 0 || event.deposit_used > 0"
     create: pos_guard
     set: {reason: "'split_invalid'", document: event.name}
-  - if: "event.table != '' && !event.merged && event.items.filter(l, !(l.line_key in event.split_lines)).size() > 0 && event.items.filter(l, l.line_key in event.split_lines).size() > 0 && event.promotion == '' && event.member == '' && event.points_redeemed == 0 && event.deposit_used == 0"
+  - if: "event.table != '' && (!has(event.amended_from) || event.amended_from == '') && !event.merged && event.items.filter(l, !(l.line_key in event.split_lines)).size() > 0 && event.items.filter(l, l.line_key in event.split_lines).size() > 0 && event.promotion == '' && event.member == '' && event.points_redeemed == 0 && event.deposit_used == 0"
     then:
       - create: pos_sale
         set:

@@ -68,7 +68,7 @@ fields:
       - {value: takeaway, label: {id: Bawa pulang}}
       - {value: online, label: {id: Online}}
   # the counter's "Kirim ke dapur" sets send_kitchen; flow kitchen_ticket_on_draft makes the tickets, records the lines
-  # in sent_to_kitchen (key, item, description, qty, uom, note, category) and clears the check
+  # in sent_to_kitchen (key, item, packing, description, qty, uom, note, category) and clears the check
   - {name: send_kitchen, type: check, label: {id: Kirim ke dapur}}
   - {name: sent_to_kitchen, type: json, label: {id: Baris terkirim ke dapur}, hidden: true, read_only: true, default: '[]'}
   # merge: set on the bill to fold, naming the bill that takes its lines (flow pos_sale_merge); merged marks the bill that
@@ -326,7 +326,7 @@ rules:
     check: "!merged || table == ''"
     message: {id: 'Tagihan yang sudah digabung tidak bisa dipindah ke meja'}
   # line keys (rangka-apps#122): the kitchen remembers the lines it got by key, so a key is used once per bill, and a line
-  # the kitchen already got keeps its item and never grows (a tap on a sent line adds a new line); lowering it is a v1
+  # the kitchen already got keeps its item and unit and never grows (a tap on a sent line adds a new line); lowering it is a v1
   # limit that sends no cancel
   - name: line_key_unique
     on: save
@@ -334,7 +334,7 @@ rules:
     message: {id: 'Ada baris pesanan ganda; muat ulang tagihan lalu coba lagi'}
   - name: sent_line_kept
     on: save
-    check: "sent_to_kitchen == null || items.all(l, l.line_key == '' || sent_to_kitchen.filter(s, s.key == l.line_key).all(s, s.item == l.item && l.qty <= s.qty))"
+    check: "sent_to_kitchen == null || items.all(l, l.line_key == '' || sent_to_kitchen.filter(s, s.key == l.line_key).all(s, s.item == l.item && (!('packing' in s) || s.packing == l.packing) && l.uom == s.uom && l.qty <= s.qty))"
     message: {id: 'Barang yang sudah dikirim ke dapur tidak bisa diganti atau ditambah; tambahkan sebagai baris baru'}
   - name: merged_not_payable
     on: submit

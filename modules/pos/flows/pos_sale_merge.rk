@@ -7,7 +7,8 @@
 # kitchen already got are carried over under the same prefixed keys, so none is sent twice. The source's bill discount
 # (discount_amount, rupiah) is added to the target's, so the merged total is the sum of both totals; a discount is
 # rupiah off the net, so the sum leaves every later percentage (service, tax) on the same base. The target's
-# "Minta tagihan" is cleared: the bill it asked for has changed.
+# "Minta tagihan" is cleared: the bill it asked for has changed. An amended copy (a return) is never merged, as source or
+# target, and a line without a key keeps an empty key.
 name: pos_sale_merge
 label: {id: 'Gabung dua tagihan meja'}
 description: {id: 'Semua barang tagihan yang digabung pindah ke tagihan tujuan, lalu tagihan asal tidak bisa dibayar lagi'}
@@ -16,15 +17,15 @@ if: "event.docstatus == 0 && event.merge_into != '' && !event.merged"
 steps:
   - {find: pos_sale, where: "name == event.merge_into", as: tgt}
   - {find: pos_sale, where: "name == event.name", as: src}
-  - if: tgt == null || tgt.docstatus != 0 || tgt.outlet != event.outlet || tgt.merged || tgt.merge_into != '' || tgt.name == event.name || event.promotion != '' || event.member != '' || event.points_redeemed > 0 || event.deposit_used > 0
+  - if: tgt == null || (has(tgt.amended_from) && tgt.amended_from != '') || (has(event.amended_from) && event.amended_from != '') || tgt.docstatus != 0 || tgt.outlet != event.outlet || tgt.merged || tgt.merge_into != '' || tgt.name == event.name || event.promotion != '' || event.member != '' || event.points_redeemed > 0 || event.deposit_used > 0
     create: pos_guard
     set: {reason: "'merge_invalid'", document: event.name}
-  - if: tgt != null && tgt.docstatus == 0 && tgt.outlet == event.outlet && !tgt.merged && tgt.merge_into == '' && tgt.name != event.name && event.promotion == '' && event.member == '' && event.points_redeemed == 0 && event.deposit_used == 0
+  - if: tgt != null && (!has(tgt.amended_from) || tgt.amended_from == '') && (!has(event.amended_from) || event.amended_from == '') && tgt.docstatus == 0 && tgt.outlet == event.outlet && !tgt.merged && tgt.merge_into == '' && tgt.name != event.name && event.promotion == '' && event.member == '' && event.points_redeemed == 0 && event.deposit_used == 0
     then:
       - update: tgt
         set:
-          items: "tgt.items.map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key}) + event.items.map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': event.name + ':' + l.line_key})"
-          sent_to_kitchen: "(tgt.sent_to_kitchen == null ? [] : tgt.sent_to_kitchen) + (event.sent_to_kitchen == null ? [] : event.sent_to_kitchen).map(s, {'key': event.name + ':' + s.key, 'item': s.item, 'description': s.description, 'qty': s.qty, 'uom': s.uom, 'note': s.note, 'category': s.category})"
+          items: "tgt.items.map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key}) + event.items.map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key == '' ? '' : event.name + ':' + l.line_key})"
+          sent_to_kitchen: "(tgt.sent_to_kitchen == null ? [] : tgt.sent_to_kitchen) + (event.sent_to_kitchen == null ? [] : event.sent_to_kitchen).map(s, {'key': event.name + ':' + s.key, 'item': s.item, 'packing': has(s.packing) ? s.packing : '', 'description': s.description, 'qty': s.qty, 'uom': s.uom, 'note': s.note, 'category': s.category})"
           guests: tgt.guests + event.guests
           discount_amount: tgt.discount_amount + event.discount_amount
           bill_asked: "false"
