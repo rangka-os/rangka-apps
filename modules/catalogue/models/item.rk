@@ -48,6 +48,10 @@ fields:
     type: data
     label: {id: Varian}
     help: {id: 'Misalnya "M / Hitam" atau "600 ml"'}
+  - name: variant_title
+    type: data
+    label: {id: Nama produk di kasir}
+    help: {id: 'Opsional. Nama yang tampil di kotak produk kasir; kalau kosong dipakai awalan nama barang yang sama'}
   - name: kind
     type: select
     label: {id: Jenis}
@@ -220,6 +224,14 @@ fields:
     in_list: true
     in_filter: true
 rules:
+  - name: variant_label_needs_group
+    on: save
+    check: "variant_group == '' || variant_label != ''"
+    message: {id: Isi nama varian (misalnya M / Hitam) untuk barang yang punya grup varian}
+  - name: variant_title_needs_group
+    on: save
+    check: "variant_title == '' || variant_group != ''"
+    message: {id: Nama produk di kasir hanya dipakai bersama grup varian}
   - name: expiry_warning_not_negative
     on: save
     check: expiry_warning_days >= 0

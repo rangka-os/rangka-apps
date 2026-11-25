@@ -13,6 +13,7 @@ Members: Dika (cashier, Toko Dago), Sari (cashier, Kedai Riau), Bayu (cashier, T
 (head_office). The owner (seeded) can do everything.
 """
 import math
+import os
 import threading
 
 H = {}
@@ -42,7 +43,7 @@ MEMBERS = [("dika", "cashier", "dika.dago@contohwarung.test", "Dika Contoh", DGO
 
 def bind(m):
     for k in ("ok", "fail", "check", "eq", "CTX", "Api", "denied", "dashboard", "num", "chart_map", "secrets", "messages",
-              "kernel_today", "page_text", "decide", "approvals_of"):
+              "kernel_today", "page_text", "decide", "approvals_of", "import_commit", "rows_all"):
         H[k] = getattr(m, k)
     globals().update(H)
     H["day_one"] = m    # Kernel, Api and SITE_ORGS for the kasir-only site (scenario_pos_kasir_only_site)
@@ -453,6 +454,46 @@ def scenario_pos_retail_sale(api):
         eq("a service moves no stock", api.find("stock_move", f"voucher == '{sv['name']}'"), [])
     s = shift_of(api, shift)
     eq("shift after five receipts", (s["sales_count"], s["cash_total"], s["qris_total"]), (5, total + 20_000 + 9_000 + 3_000, 12_000 + 16_000))
+
+
+def scenario_pos_variants(api):
+    """Variants (#267): an import makes one group of three sizes, a cashier sells the Large one at its own price, and the
+    stock and the sale lines roll up per product through the hidden variant_group."""
+    dika, shift = CTX.get("dika"), CTX.get("shift_dgo")
+    if not (dika and shift):
+        return
+    csv = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "examples", "fixtures", "imports", "item_master_varian.csv"), "rb").read()
+    pv, c = import_commit(api, "item_master", "varian.csv", csv, label="variants import")
+    if not c:
+        return
+    eq("variants import: 4 items created", len(c["records"]), 4)
+    by = {i["sku"]: i for i in rows_all(api, "item", "sku.startsWith('KAOS-POLOS') || sku == 'TOPI-HITAM'")}
+    eq("a group of 3 sizes shares one variant_group (the tile title falls back to the shared name prefix)",
+       sorted((by[k]["variant_group"], by[k]["variant_label"], by[k]["item_name"]) for k in ("KAOS-POLOS-S", "KAOS-POLOS-M", "KAOS-POLOS-L")),
+       [("KAOS-POLOS", "L", "Kaos Polos L"), ("KAOS-POLOS", "M", "Kaos Polos M"), ("KAOS-POLOS", "S", "Kaos Polos S")])
+    eq("an item without variants has no group", by["TOPI-HITAM"].get("variant_group") or "", "")
+    st, bad = api.create("item", {"item_name": "Kaos tanpa varian", "sku": "KAOS-X", "kind": "good", "stock_uom": by["TOPI-HITAM"]["stock_uom"],
+                                   "rate": 1000, "variant_group": "KAOS-X"})
+    check("a group without a variant name is refused", st in (400, 422), (st, bad))
+    large, small = by["KAOS-POLOS-L"]["name"], by["KAOS-POLOS-S"]["name"]
+    st, r = sale(dika, shift, [{"item": large, "qty": 2}, {"item": small, "qty": 1}, {"item": by["TOPI-HITAM"]["name"], "qty": 1}], "variants", payments=[{"method": "cash", "amount": 500_000}])
+    if not check("Dika sells Large x2 and Small x1 -> submitted", st == 200 and r.get("docstatus") == 1, (st, r)):
+        return
+    eq("picking Large adds the Large item at its own price", sorted((l["item"], l["rate"], l["qty"]) for l in r["items"] if l["item"] != by["TOPI-HITAM"]["name"]),
+       sorted([(large, 60000, 2), (small, 50000, 1)]))
+    eq("sale lines carry the product group", {l["variant_group"] for l in rec(api.get("pos_sale", r["name"]))["items"]}, {"KAOS-POLOS", ""})
+    rows = api.find("stock_balance", f"outlet == '{DGO}' && variant_group == 'KAOS-POLOS'")
+    eq("stock per product rolls up the 3 variants (sum of the sizes)", round(sum(b["qty"] for b in rows), 4), -3)
+    topi = by["TOPI-HITAM"]["name"]
+    hq = CTX.get("hq") or api
+    st, _r = hq.patch("item", topi, {"variant_group": "TOPI", "variant_label": "Hitam"})
+    check("head office groups an item after its balance exists -> 200 (no stock_balance write needed)", st == 200, (st, _r))
+    st, _r = api.call("POST", "/api/v1/flows/stock_balance_variant_group/run", {})
+    check("the scheduled refresh runs -> 200", st == 200, (st, _r))
+    tb = api.find("stock_balance", f"outlet == '{DGO}' && item == '{topi}'")
+    eq("the balance follows the item's new group (roll-up never goes stale)", [b["variant_group"] for b in tb], ["TOPI"])
+    moves = api.find("stock_move", f"outlet == '{DGO}' && variant_group == 'KAOS-POLOS'")
+    check("stock moves carry the product group", len(moves) >= 2 and all(m["variant_group"] == "KAOS-POLOS" for m in moves), len(moves))
 
 
 def scenario_pos_fnb_sale(api):
@@ -885,6 +926,6 @@ def scenario_pos_catalogue_hides_inactive(api):
           it["name"] not in names and AIR in names and MI in names, (flt, it["name"], names))
 
 
-SCENARIOS = [scenario_pos_opening_stock, scenario_pos_shift, scenario_pos_retail_sale, scenario_pos_fnb_sale, scenario_pos_guards,
+SCENARIOS = [scenario_pos_opening_stock, scenario_pos_shift, scenario_pos_retail_sale, scenario_pos_variants, scenario_pos_fnb_sale, scenario_pos_guards,
              scenario_pos_daily_form_next_door, scenario_pos_void_and_return, scenario_pos_race, scenario_pos_close, scenario_pos_close_race, scenario_pos_print,
              scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive, scenario_pos_kasir_only_site, scenario_pos_day_source_kept_after_removal, scenario_pos_day_source_backfill]
