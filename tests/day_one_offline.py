@@ -14,6 +14,10 @@ cookie) and sends what the counter sends: screen.write events to POST /api/v1/ed
   - device_second_shift: a shift a device opened offline is accepted though the cashier has another open one
   - device_not_a_store: a device paired at the warehouse cannot open a shift nor sell on a store's shift
     (rangka-apps#104, guard not_a_store)
+  - audit_cross_outlet: a device at Toko Dago cannot sell on a shift open at Kedai Riau (guard shift_other_outlet),
+    whether the sale names its own outlet or the shift's; the Riau shift's totals stay unchanged
+  - audit_other_cashier_shift: a device cannot sell on a head-office shift another cashier opened at its own outlet
+    (guard shift_not_own); that shift's totals stay unchanged, while the cashier's own browser shift still takes it
   - browser numbering unchanged: a sale made in the browser keeps STRK-DGO-YYMM-n without a device code
 """
 import datetime
@@ -22,7 +26,8 @@ import json
 import urllib.request
 
 H = {}
-DGO, HQ_OUT = "OUT-02", "OUT-01"
+DGO, HQ_OUT, RIU = "OUT-02", "OUT-01", "OUT-03"
+TOTALS = ("sales_count", "gross_total", "net_total", "cash_total", "qris_total", "cogs_total")
 AIR, MI = "BRG-0001", "BRG-0002"
 PIN = "2468"
 GUDANG = ("gudang", "cashier", "kasir.gudang@contohwarung.test", "Kasir Gudang Contoh", HQ_OUT)
@@ -276,5 +281,75 @@ def scenario_device_not_a_store(api):
     check("a device at the warehouse cannot sell on a store's shift", r.get("status") == "rejected" and "Toko" in str(r.get("message")), r)
 
 
+def totals(api, shift):
+    sh = api.get("pos_shift", shift) or {}
+    return {k: sh.get(k) for k in TOTALS}
+
+
+def open_shift(api, outlet, cashier_not=None):
+    """An open shift head office opened at outlet without a device (its name has no device code)."""
+    ym = yymm()
+    code = (api.get("outlet", outlet) or {}).get("code", "")
+    for x in api.find("pos_shift", f"outlet == '{outlet}' && state == 'open'"):
+        if x.get("name", "").startswith(f"SESI-{code}-{ym}-") and x.get("cashier") != cashier_not:
+            return x.get("name")
+    flt = (api.get("outlet", outlet) or {}).get("cash_float") or 300000
+    st, h = api.create("pos_shift", {"outlet": outlet, "opening_cash": flt})
+    check(f"head office opens a shift at {outlet} -> 201", st == 201, (st, h))
+    return ((h or {}).get("record", h) or {}).get("name", "")
+
+
+def scenario_audit_cross_outlet(api):
+    """Audit 21 Nov (High, money): a device sale must not add to another outlet's drawer, which would book a false
+    shortage when that shift closes."""
+    dev, actor = CTX.get("dev"), CTX.get("dev_actor")
+    if not dev:
+        fail("audit_cross_outlet", "no paired device")
+        return
+    k, dcode, ym = CTX["kernel"], dev.info.get("code", ""), yymm()
+    riu = open_shift(api, RIU)
+    before = totals(api, riu)
+    cashier = Api.login(k.base, DEWI[2], CTX["device_pw"], CTX["org"])
+    for n, outlet in (("00008", DGO), ("00009", RIU)):
+        # head office computes the money: Dewi is no member of Kedai Riau (the device sends what it computed)
+        body = money_of(api if outlet == RIU else cashier, {"shift": riu, "outlet": outlet, "items": [{"item": AIR, "qty": 2}], "payments": [{"method": "cash", "amount": 50000}]})
+        name = f"STRK-DGO-{dcode}-{ym}-{n}"
+        r = dev.send({"screen": "kasir", "model": "pos_sale", "op": "create", "submit": True, "name": name, "body": body}, actor)
+        check(f"a Dago device sale (outlet {outlet}) on Riau's shift is refused", r.get("status") == "rejected", r)
+        print(f"      refusal: {r.get('code')} {r.get('message')}")
+        if outlet == DGO:
+            check("by guard shift_other_outlet", "outlet lain" in str(r.get("message")), r)
+        check("no paid receipt is stored", (api.get("pos_sale", name) or {}).get("docstatus") != 1, name)
+    eq("Riau's shift totals are unchanged", totals(api, riu), before)
+
+
+def scenario_audit_other_cashier_shift(api):
+    """Audit 21 Nov (High, money): a device sale must not land on another cashier's head-office shift at its outlet."""
+    dev, actor = CTX.get("dev"), CTX.get("dev_actor")
+    if not dev:
+        fail("audit_other_cashier_shift", "no paired device")
+        return
+    k, dcode, ym = CTX["kernel"], dev.info.get("code", ""), yymm()
+    other = open_shift(api, DGO, cashier_not=DEWI[2])
+    check("the head-office shift is not Dewi's", (api.get("pos_shift", other) or {}).get("cashier") != DEWI[2], other)
+    before = totals(api, other)
+    cashier = Api.login(k.base, DEWI[2], CTX["device_pw"], CTX["org"])
+    body = money_of(cashier, {"shift": other, "outlet": DGO, "items": [{"item": MI, "qty": 1}], "payments": [{"method": "cash", "amount": 20000}]})
+    name = f"STRK-DGO-{dcode}-{ym}-00010"
+    r = dev.send({"screen": "kasir", "model": "pos_sale", "op": "create", "submit": True, "name": name, "body": body}, actor)
+    check("a device sale on another cashier's shift is refused", r.get("status") == "rejected" and "kasir lain" in str(r.get("message")), r)
+    eq("that shift's totals are unchanged", totals(api, other), before)
+    # Dewi's own browser shift (device_second_shift opened it, no device code) still takes her device's sale
+    own = [x.get("name") for x in api.find("pos_shift", f"outlet == '{DGO}' && state == 'open'")
+           if x.get("cashier") == DEWI[2] and x.get("name", "").startswith(f"SESI-DGO-{ym}-")]
+    if not own:
+        fail("audit_other_cashier_shift", "Dewi has no open browser shift (device_second_shift failed)")
+        return
+    body = money_of(cashier, {"shift": own[0], "outlet": DGO, "items": [{"item": MI, "qty": 1}]})
+    r = dev.send({"screen": "kasir", "model": "pos_sale", "op": "create", "submit": True, "name": f"STRK-DGO-{dcode}-{ym}-00011", "body": body}, actor)
+    check("her device sale on her own browser shift is accepted", r.get("status") == "accepted", r)
+
+
 SCENARIOS = [scenario_device_sale_named, scenario_device_price_drift, scenario_device_number_gap, scenario_device_offline_after_close,
-             scenario_device_second_shift, scenario_device_not_a_store]
+             scenario_device_second_shift, scenario_device_not_a_store, scenario_audit_cross_outlet,
+             scenario_audit_other_cashier_shift]

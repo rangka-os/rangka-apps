@@ -14,6 +14,21 @@ steps:
   - if: device.event && so != null && so.location_type != '' && so.location_type != 'store'
     create: pos_guard
     set: {reason: "'not_a_store'", document: event.name}
+  # A device event also turns rules outlet_of_shift (outlet == shift.outlet) and own_shift into exceptions, so a sale
+  # could add to another outlet's or another cashier's head-office drawer and book a false shortage at its close. The
+  # shift is read whatever its state (a closed one is still not this device's to link). The kernel already refuses a
+  # shift made on another device (deviceLinks, shift_other_device); what is left is a shift made without a device.
+  - {find: pos_shift, if: device.event, where: name == event.shift, as: ds}
+  - if: device.event && ds != null && (ds.outlet != event.outlet || (device.outlet != '' && ds.outlet != device.outlet))
+    create: pos_guard
+    set: {reason: "'shift_other_outlet'", document: ds.name}
+  # Own shift on a device: one this device opened (its name carries the device code, contract 0058 §3; a cashier switch
+  # keeps selling on it) or one the same cashier opened.
+  - if: >-
+      device.event && ds != null && ds.cashier != user.email
+      && !(so != null && ds.name.startsWith('SESI-' + so.code + '-' + device.code + '-'))
+    create: pos_guard
+    set: {reason: "'shift_not_own'", document: ds.name}
   # Jalur A and B never on the same outlet and day: a daily sales record (form, Moka, POS file) of this outlet and day
   # refuses the receipt (and flow pos_daily_form_guard refuses the record after a receipt), whatever sales_source says
   - find_all: outlet_sales
