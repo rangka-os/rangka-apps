@@ -16,7 +16,11 @@ icon: receipt
 is_submittable: true
 # No title_field: a receipt's title is its number (STRK-...), so a link to it (a kitchen ticket, a daily sales check)
 # shows the number and never the total to a role that may not read the receipt.
-naming: STRK-{outlet.code}-{YY}{MM}-{#####}
+# A receipt paid on a paired device (rangka-os contract 0058 §3) carries the number the device made, with the device's
+# code (STRK-BTR-K1-2611-00042, a counter per device and month), so the printed receipt is final online or offline;
+# head office in the browser keeps the outlet's own series without the device code (STRK-BTR-2611-00007).
+naming: STRK-{outlet.code}-{device.code}-{YY}{MM}-{#####}
+naming_on: device
 on_submit: [stock.post_moves]
 on_cancel: [stock.reverse_moves]
 permissions:
@@ -45,6 +49,10 @@ fields:
     index: true # the outlet_day backfill reads one outlet and day at a time (card t_0dba5917)
     default: today()
     in_list: true
+  # When the receipt was paid: the moment of the press at the counter (a paired device's occurred_at, contract 0058
+  # §10, so a sale synced after an outage keeps its own hour), else when it was created. Read by hourly sales
+  # (rangka-apps#115). An amended receipt (a partial return) is a new receipt and takes its own time.
+  - {name: sold_at, type: datetime, label: {id: Waktu transaksi}, default: now(), read_only: true}
   - name: buyer
     type: data
     label: {id: Pembeli atau meja}
@@ -528,14 +536,14 @@ rules:
     message: {id: 'Draf ini dari hari lain; buat transaksi baru untuk hari ini'}
 views:
   list:
-    columns: [name, date, outlet, grand_total, method, status, buyer]
+    columns: [name, date, sold_at, outlet, grand_total, method, status, buyer]
     filters: [outlet, method, shift]
     sort: -name
   form:
     layout:
       - section: {id: Transaksi}
         columns:
-          - [shift, outlet, date, customer, member]
+          - [shift, outlet, date, sold_at, customer, member]
           - [buyer, wa_phone, wa_receipt]
       - section: {id: Promo}
         columns:

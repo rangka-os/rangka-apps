@@ -67,6 +67,19 @@ jobs:
             echo "this rangka-os has no rangka skills command yet; skipped"
           fi
 
+      # A paired cashier device computes pos_sale with rangka-os web/app/engine.js and its totals are binding (rangka-os
+      # contract 0058 §10): the models of rangka-os's parity fixture must be these. A change to pos_sale's computes lands
+      # in rangka-os first (tools/pos_parity_models.py, then its kernel test with -update), then here. Skipped by a
+      # rangka-os that has no fixture yet.
+      - name: POS parity fixture in step
+        working-directory: rangka-apps
+        run: |
+          if [ -f ../rangka-os/tools/pos_parity_models.py ]; then
+            python ../rangka-os/tools/pos_parity_models.py --apps . --check --strict
+          else
+            echo "this rangka-os has no pos parity fixture yet; skipped"
+          fi
+
       # The converter of POS exports to Juragan's sales template (scripts/pos_export_to_template.py), without a kernel.
       - name: POS export converter
         working-directory: rangka-apps
