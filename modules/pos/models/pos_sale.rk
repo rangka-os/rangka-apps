@@ -64,7 +64,7 @@ fields:
     label: {id: Jenis pesanan}
     compute: "table != '' ? 'dine_in' : 'takeaway'"
     options:
-      - {value: dine_in, label: {id: Makan di tempat}}
+      - {value: dine_in, label: {id: Makan di sini}}
       - {value: takeaway, label: {id: Bawa pulang}}
       - {value: online, label: {id: Online}}
   # the counter's "Kirim ke dapur" sets send_kitchen; flow kitchen_ticket_on_draft makes the tickets, records the lines
@@ -321,6 +321,21 @@ rules:
     on: save
     check: "table == '' || merged || guests >= 1"
     message: {id: 'Isi jumlah tamu minimal 1 untuk meja'}
+  - name: merged_no_table
+    on: save
+    check: "!merged || table == ''"
+    message: {id: 'Tagihan yang sudah digabung tidak bisa dipindah ke meja'}
+  # line keys (rangka-apps#122): the kitchen remembers the lines it got by key, so a key is used once per bill, and a line
+  # the kitchen already got keeps its item and never grows (a tap on a sent line adds a new line); lowering it is a v1
+  # limit that sends no cancel
+  - name: line_key_unique
+    on: save
+    check: "items.all(l, l.line_key == '' || items.filter(m, m.line_key == l.line_key).size() == 1)"
+    message: {id: 'Ada baris pesanan ganda; muat ulang tagihan lalu coba lagi'}
+  - name: sent_line_kept
+    on: save
+    check: "sent_to_kitchen == null || items.all(l, l.line_key == '' || sent_to_kitchen.filter(s, s.key == l.line_key).all(s, s.item == l.item && l.qty <= s.qty))"
+    message: {id: 'Barang yang sudah dikirim ke dapur tidak bisa diganti atau ditambah; tambahkan sebagai baris baru'}
   - name: merged_not_payable
     on: submit
     check: "!merged"
