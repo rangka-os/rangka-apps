@@ -21,6 +21,7 @@ counter:
     group_by: category
     price: rate
     barcode: barcode
+    variants: {group: variant_group, label: variant_label, title: variant_title}
     available: {model: stock_balance, item: item, qty: qty, match: {outlet: outlet}}
   document:
     model: pos_sale
@@ -30,12 +31,13 @@ counter:
     # amount_due: the total less what the member's deposit pays (module loyalty); without it, the total
     total: amount_due
     change: change_amount
-    summary: [gross_total, promo_total, member_discount, points_discount, manual_discount_total, promo_shortfall, deposit_used, amount_due]
+    # the same rows as kasir, with #121's service charge, PBJT and rounding: a bill on a table is dine-in
+    summary: [gross_total, promo_total, member_discount, points_discount, manual_discount_total, promo_shortfall, service_charge, pbjt, rounding, deposit_used, amount_due]
     # rangka-os contract 0069: filled before paying; the promo picker lists live bill promos only, the member picker
     # active members. Fields of modules promotions and loyalty are left out when not installed (their depends_on).
-    checkout: [customer, {field: member, filter: "active"}, {field: promotion, filter: "is_bill && live"}, promo_code, points_redeemed, deposit_used]
+    checkout: [order_type, customer, {field: member, filter: "active"}, {field: promotion, filter: "is_bill && live"}, promo_code, points_redeemed, deposit_used]
     set: {date: "today()"}
-  payments: {table: payments, method: method, amount: amount, ref: ref, methods: [cash, qris]}
+  payments: {table: payments, method: method, amount: amount, ref: ref, party: party, parties: parties, methods: [cash, qris]}
   session:
     model: pos_shift
     link: shift
