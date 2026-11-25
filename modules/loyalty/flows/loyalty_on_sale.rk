@@ -7,8 +7,9 @@
 # up a tier as soon as its spend this year (or last year) reaches a higher active tier, never down here (loyalty_yearly).
 # A device's replay pins the sale's computed fields and turns its rules into exceptions (contract 0058 §10), so the
 # flow checks again from the member's own figures: points and deposit only with a member, the deposit never above the
-# total, the points' value and cap recomputed (audit #102 F4). Every run writes a member_spend row first, so a run
-# started by hand (no ledger rows, contract 0026) is refused as a whole (audit #102 F1).
+# total, the points' value and cap recomputed (audit #102 F4). Spend counts the sale before service charge, PBJT and
+# rounding (rangka-apps#121 audit F6): PBJT is the region's money, not the member's spend. Every run writes a
+# member_spend row first, so a run started by hand (no ledger rows, contract 0026) is refused as a whole (audit #102 F1).
 name: loyalty_on_sale
 label: {id: 'Transaksi kasir dibayar: poin dan deposit member'}
 on: pos_sale.submitted
@@ -43,7 +44,7 @@ steps:
         set:
           account: a.name
           sale: event.name
-          amount: event.grand_total
+          amount: (event.grand_total - event.service_charge - event.pbjt - event.rounding)
           date: event.date
           outlet: event.outlet
           entry: "'post'"
@@ -92,7 +93,7 @@ steps:
       - find: member_tier
         where: name == a.tier
         as: cur
-      - for_each: "tiers.filter(t, t.min_spend <= max(a.spend_this_year + event.grand_total, a.spend_last_year)).size() > 0 && (cur == null || tiers.filter(t, t.min_spend <= max(a.spend_this_year + event.grand_total, a.spend_last_year))[0].min_spend > cur.min_spend) ? [tiers.filter(t, t.min_spend <= max(a.spend_this_year + event.grand_total, a.spend_last_year))[0]] : []"
+      - for_each: "tiers.filter(t, t.min_spend <= max(a.spend_this_year + (event.grand_total - event.service_charge - event.pbjt - event.rounding), a.spend_last_year)).size() > 0 && (cur == null || tiers.filter(t, t.min_spend <= max(a.spend_this_year + (event.grand_total - event.service_charge - event.pbjt - event.rounding), a.spend_last_year))[0].min_spend > cur.min_spend) ? [tiers.filter(t, t.min_spend <= max(a.spend_this_year + (event.grand_total - event.service_charge - event.pbjt - event.rounding), a.spend_last_year))[0]] : []"
         as: up
         do:
           - update: a
@@ -109,5 +110,5 @@ steps:
         set:
           points_balance: a.points_balance - event.points_redeemed + event.points_earned
           deposit_balance: a.deposit_balance - event.deposit_used
-          spend_this_year: a.spend_this_year + event.grand_total
+          spend_this_year: a.spend_this_year + (event.grand_total - event.service_charge - event.pbjt - event.rounding)
           last_activity: event.date

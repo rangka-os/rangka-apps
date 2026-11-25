@@ -1,0 +1,30 @@
+{{define "style"}}
+/* Arah E untuk thermal, sama dengan nota faktur: hitam putih, nama usaha tebal, angka rata kanan. */
+body { font-size: 8.5pt; }
+.c { text-align: center; }
+.brand { font-size: 1.25em; font-weight: 700; }
+.rule { border-top: 1px dashed #1C1917; margin: 2mm 0; }
+.row { display: flex; justify-content: space-between; gap: 2mm; }
+.row .num { white-space: nowrap; }
+.line { margin: 1mm 0; }
+.line .sub { color: #57534E; }
+.big { font-size: 1.35em; font-weight: 700; }
+.status { font-weight: 700; }
+.muted { color: #57534E; }
+{{end}}
+{{define "letterhead"}}{{with .Letterhead}}<div class="c">
+<div class="brand">{{.legal_name}}</div>
+</div>{{end}}{{end}}
+{{template "letterhead" .}}
+<div class="c">{{.Links.outlet.outlet_name}}</div>
+<div class="rule"></div>
+<div class="row"><span>Struk</span><span>{{.Doc.name}}</span></div>
+<div class="row"><span>Tanggal</span><span>{{date .Doc.date}}</span></div>
+<div class="row"><span>Total tagihan</span><span class="num">{{rupiah .Doc.grand_total}}</span></div>
+{{range $p := .Doc.payments}}
+<div class="rule"></div>
+<div class="c big">Bagian {{$p.party}} dari {{$.Doc.parties}}</div>
+<div class="row"><span>{{if eq (printf "%v" $p.method) "qris"}}QRIS{{with $p.ref}} {{.}}{{end}}{{else}}Tunai{{end}}</span><span class="num">{{rupiah $p.amount}}</span></div>
+{{end}}
+<div class="rule"></div>
+<div class="c muted">Terima kasih</div>

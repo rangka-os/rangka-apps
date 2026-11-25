@@ -1068,6 +1068,174 @@ def scenario_pos_tables(api):
     CTX["tables_ok"] = True
 
 
+
+def scenario_pos_charges(api):
+    """Service charge (dine-in only), PBJT outside the price (no PPN), rounding on every method, journal lines and the
+    split bill (rangka-apps#121). Head office opens the shifts at the two charge outlets."""
+    hq = CTX.get("hq")
+    if not hq:
+        return
+    BRG, STB = "OUT-05", "OUT-06"
+    SET, ODD, UP = "BRG-0031", "BRG-0032", "BRG-0033"
+    s5 = open_shift(hq, BRG, 0, "Rina at Restoran Braga")
+    s6 = open_shift(hq, STB, 0, "Rina at Kafe Setiabudi")
+    if not (s5 and s6):
+        return
+    CTX["shift_brg"] = s5["name"]
+    nz = lambda d: {k: v for k, v in d.items() if v}
+    st, r = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", order_type="dine_in", payments=[{"method": "cash", "amount": 120_000}])
+    if check("dine-in Rp 100.000, service 5%, PBJT 10% -> paid", st == 200, (st, r)):
+        eq("dine-in: service 5.000, PBJT 10.500 on net plus service, total 115.500, no rounding",
+           (r["service_charge"], r["pbjt"], r["raw_total"], r["rounding"], r["grand_total"]), (5_000, 10_500, 115_500, 0, 115_500))
+        eq("PPN is 0 when PBJT applies; the final PPh base leaves PBJT out", (r["ppn_in_sales"], r["pph_final"]), (0, rnd((115_500 - 10_500) * 5 / 1000)))
+        eq("change from the rounded total", r["change_amount"], 4_500)
+        eq("journal balances with service 4-1300 and PBJT 2-1330", nz(gl(api, "pos_sale", r["name"])),
+           {"11150": 115_500, "41100": -100_000, "69100": r["pph_final"], "21310": -r["pph_final"], "41300": -5_000, "21330": -10_500})
+        eq("the voucher sums to 0", sum(gl(api, "pos_sale", r["name"]).values()), 0)
+        sh = shift_of(api, s5["name"])
+        eq("the shift counts service, PBJT and rounding", (sh["service_total"], sh["pbjt_total"], sh["rounding_total"]), (5_000, 10_500, 0))
+    # a client cannot send its own rates or rounding unit: the outlet's values stand (audit F1, F2)
+    st, f = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", order_type="dine_in", pbjt_pct=0, service_pct=0, rounding_unit=1_000_000,
+                 rounding_mode="down", payments=[{"method": "cash", "amount": 120_000}])
+    check("rates sent by the client are refused or ignored", st in (422, 403) or (st == 200 and f.get("grand_total") == 115_500), (st, f))
+    st, dr = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", submit=False, order_type="dine_in", payments=[{"method": "cash", "amount": 120_000}])
+    if check("a draft at the outlet's rates -> 201", st == 201, (st, dr)):
+        st, pr = hq.patch("pos_sale", dr["name"], {"pbjt_pct": 0, "service_pct": 0, "rounding_unit": 7, "rounding_mode": "down"})
+        after = api.get("pos_sale", dr["name"]) or {}
+        check("a PATCH of the rates or rounding unit on a draft leaves the outlet's values",
+              st in (200, 403, 422) and (after.get("pbjt_pct"), after.get("service_pct"), after.get("rounding_unit"), after.get("pbjt"), after.get("grand_total"))
+              == (10, 5, 100, 10_500, 115_500), (st, pr, after))
+    # a draft moved from the cafe's shift to the restaurant's takes the restaurant's rates (re-audit N2)
+    st, mv = sale(hq, s6["name"], [{"item": SET, "qty": 1}], "", submit=False, order_type="dine_in", payments=[{"method": "cash", "amount": 120_000}])
+    if check("a dine-in draft at the cafe (no charges) -> 201", st == 201 and mv.get("pbjt") == 0, (st, mv)):
+        st, pr = hq.patch("pos_sale", mv["name"], {"shift": s5["name"], "outlet": BRG})
+        after = api.get("pos_sale", mv["name"]) or {}
+        check("moved to the restaurant's shift: its service 5.000, PBJT 10.500, total 115.500",
+              st == 200 and (after.get("outlet"), after.get("service_charge"), after.get("pbjt"), after.get("grand_total")) == (BRG, 5_000, 10_500, 115_500), (st, pr, after))
+        hq.call("DELETE", f"/api/v1/r/pos_sale/{mv['name']}")
+    st, t = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", order_type="takeaway", payments=[{"method": "qris", "amount": 110_000}])
+    if check("takeaway at the same outlet -> paid", st == 200, (st, t)):
+        eq("takeaway: no service charge, PBJT on the net, total 110.000", (t["service_charge"], t["pbjt"], t["grand_total"]), (0, 10_000, 110_000))
+    st, d = sale(hq, s5["name"], [{"item": ODD, "qty": 1}], "", order_type="dine_in", payments=[{"method": "cash", "amount": 116_000}])
+    if check("dine-in Rp 100.001 -> paid", st == 200, (st, d)):
+        eq("rounded down to the nearest Rp 100 (115.501 -> 115.500)", (d["raw_total"], d["rounding"], d["grand_total"]), (115_501, -1, 115_500))
+        eq("a negative rounding is a debit on 4-9400", nz(gl(api, "pos_sale", d["name"])).get("49400"), 1)
+    st, u = sale(hq, s5["name"], [{"item": UP, "qty": 1}], "", order_type="dine_in", payments=[{"method": "qris", "amount": 115_600}])
+    if check("dine-in Rp 100.060, paid by QRIS -> paid", st == 200, (st, u)):
+        eq("rounded up on a QRIS sale too (115.569 -> 115.600)", (u["raw_total"], u["rounding"], u["grand_total"]), (115_569, 31, 115_600))
+        eq("a positive rounding is a credit on 4-9400 and the voucher balances", (nz(gl(api, "pos_sale", u["name"])).get("49400"), sum(gl(api, "pos_sale", u["name"]).values())), (-31, 0))
+    st, v = sale(hq, s5["name"], [{"item": SET, "qty": 1}], "", order_type="dine_in", payments=[{"method": "qris", "amount": 115_500}], submit=True)
+    if st == 200:
+        st, c = void(hq, v["name"])
+        sh = shift_of(api, s5["name"])
+        eq("a void takes the receipt's service, PBJT and rounding back out of the shift", (sh["service_total"], sh["pbjt_total"]), (20_003, 52_006))
+    # a partial return at a charges outlet (void, then amend) keeps service and PBJT on the new receipt (re-audit N1)
+    st, a0 = sale(hq, s5["name"], [{"item": SET, "qty": 1}, {"item": SET, "qty": 1}], "", order_type="dine_in", payments=[{"method": "cash", "amount": 231_000}])
+    if check("dine-in 2 x Rp 100.000 -> paid", st == 200 and a0.get("grand_total") == 231_000, (st, a0)):
+        st, c0 = void(hq, a0["name"])
+        st, am = hq.verb("pos_sale", a0["name"], "amend")
+        am = rec(am)
+        if check("voided and amended -> a new draft", st in (200, 201) and am.get("docstatus") == 0, (st, am)):
+            st, _ = hq.patch("pos_sale", am["name"], {"items": [{"item": SET, "qty": 1}], "payments": [{"method": "cash", "amount": 120_000}]})
+            st, a1 = hq.verb("pos_sale", am["name"], "submit")
+            a1 = rec(a1)
+            if check("the amended receipt is paid -> 200", st == 200, (st, a1)):
+                eq("the amended receipt keeps the outlet's service and PBJT, no PPN",
+                   (a1.get("service_pct"), a1.get("pbjt_pct"), a1.get("service_charge"), a1.get("pbjt"), a1.get("grand_total"), a1.get("ppn_in_sales")),
+                   (5, 10, 5_000, 10_500, 115_500, 0))
+                eq("its journal has service 4-1300 and PBJT 2-1330", (nz(gl(api, "pos_sale", a1["name"])).get("41300"), nz(gl(api, "pos_sale", a1["name"])).get("21330")), (-5_000, -10_500))
+    # split bill into 3 equal parts at the cafe (no rounding): Rp 100.001 = 33.335 + 33.333 + 33.333
+    st, p = sale(hq, s6["name"], [{"item": ODD, "qty": 1}], "", parties=3, split_mode="equal", submit=False,
+                 payments=[{"method": "cash", "amount": 40_000, "party": 1}, {"method": "qris", "amount": 33_333, "party": 2}, {"method": "cash", "amount": 33_333, "party": 3}])
+    if check("split bill draft saved", st == 201, (st, p)):
+        eq("equal split: part 1 carries the remainder", (p["party_first_share"], p["party_share"]), (33_335, 33_333))
+        st, r2 = hq.verb("pos_sale", p["name"], "submit")
+        check("split bill paid -> 200", st == 200, (st, r2))
+        r2 = rec(r2)
+        eq("the three parts add up to the total; cash change is the first part's", (r2.get("grand_total"), r2.get("change_amount")), (100_001, 6_665))
+    st, bad = sale(hq, s6["name"], [{"item": ODD, "qty": 1}], "", parties=3, submit=False,
+                   payments=[{"method": "cash", "amount": 20_000, "party": 1}, {"method": "cash", "amount": 80_001, "party": 2}])
+    check("a part that pays less than its share is refused", st == 422 and "party_pays_share" in rules(bad), (st, bad))
+    st, bad = sale(hq, s6["name"], [{"item": ODD, "qty": 1}], "", parties=2, submit=False, payments=[{"method": "cash", "amount": 100_001, "party": 3}])
+    check("a payment for a part beyond the number of parties is refused", st == 422 and "payment_party_range" in rules(bad), (st, bad))
+    st, plain = sale(hq, s6["name"], [{"item": SET, "qty": 1}], "", order_type="dine_in", payments=[{"method": "cash", "amount": 100_000}])
+    if check("no charges outlet: dine-in has no service, PBJT or rounding", st == 200, (st, plain)):
+        eq("plain total", (plain["service_charge"], plain["pbjt"], plain["rounding"], plain["grand_total"]), (0, 0, 0, 100_000))
+
+
+def scenario_pos_table_charges(api):
+    """Restoran Braga (service 5%, PBJT 10%, rounding to Rp 100), tables with #121's charges (rangka-apps#122): a bill
+    opened on a table is dine-in and takes service and PBJT; a merged bill recomputes the charges on all its lines and
+    totals the sum of both bills; a bill split by line gives each bill its own service, PBJT and rounding, and the two
+    add up to the original; an amended dine-in receipt stays dine-in after its table is cleared."""
+    hq, s5 = CTX.get("hq"), CTX.get("shift_brg")
+    if not (hq and s5):
+        return
+    BRG, SET, ODD, UP = "OUT-05", "BRG-0031", "BRG-0032", "BRG-0033"
+    T1, T2, T3 = "MJA-BRG-001", "MJA-BRG-002", "MJA-BRG-003"
+    charges = lambda r: (r.get("order_type"), r.get("service_charge"), r.get("pbjt"), r.get("rounding"), r.get("grand_total"))
+
+    def L(key, item):
+        return {"item": item, "qty": 1, "line_key": key}
+
+    # (a) two dine-in bills, then merged
+    st, b1 = sale(hq, s5, [L("s1", SET)], "", submit=False, table=T1, guests=2)
+    st2, b2 = sale(hq, s5, [L("o1", ODD)], "", submit=False, table=T2, guests=1)
+    if not check("two table bills at Braga -> 201, no order type sent", st == 201 and st2 == 201, (st, b1, st2, b2)):
+        return
+    eq("a bill opened on a table is dine-in: service 5.000, PBJT 10.500, total 115.500", charges(b1), ("dine_in", 5_000, 10_500, 0, 115_500))
+    eq("the other: Rp 100.001 -> service 5.000, PBJT 10.500, rounded 115.501 -> 115.500", charges(b2), ("dine_in", 5_000, 10_500, -1, 115_500))
+    st, r = hq.create("pos_sale", {"shift": s5, "items": [L("t1", SET)]})
+    check("a counter sale without a table still defaults to takeaway (no service)", st == 201 and charges(rec(r))[:2] == ("takeaway", 0), (st, r))
+    if st == 201:
+        drop(hq, rec(r)["name"])
+    st, r = hq.create("pos_sale", {"shift": s5, "items": [L("t1", SET)], "table": T3, "guests": 1, "order_type": "takeaway"})
+    check("an order type the cashier picks on a table bill is kept", st == 201 and rec(r).get("order_type") == "takeaway", (st, r))
+    if st == 201:
+        drop(hq, rec(r)["name"])
+    st, r = hq.patch("pos_sale", b2["name"], {"merge_into": b1["name"]})
+    m = api.get("pos_sale", b1["name"]) or {}
+    check("merge T2 into T1 -> 200, both lines on T1", st == 200 and len(m.get("items") or []) == 2, (st, r, m))
+    eq("the merged bill recomputes the charges on both lines: service 10.000, PBJT 21.000, total 231.000",
+       charges(m), ("dine_in", 10_000, 21_000, -1, 231_000))
+    eq("the merged total is the sum of both bills' totals with charges", m.get("grand_total"), b1["grand_total"] + b2["grand_total"])
+    drop(hq, b2["name"])
+    st, p = hq.verb("pos_sale", b1["name"], "submit", {"payments": [{"method": "cash", "amount": 231_000}]})
+    check("the merged bill is paid -> 200", st == 200 and rec(p).get("grand_total") == 231_000, (st, p))
+
+    # (b) a three-line bill split by line
+    st, b3 = sale(hq, s5, [L("s1", SET), L("o1", ODD), L("u1", UP)], "", submit=False, table=T3, guests=3)
+    if not check("a three-line bill on T3 -> 201", st == 201, (st, b3)):
+        return
+    eq("Rp 300.061 dine-in: service 15.003, PBJT 31.506, 346.570 rounded to 346.600", charges(b3), ("dine_in", 15_003, 31_506, 30, 346_600))
+    st, r = hq.patch("pos_sale", b3["name"], {"split_lines": ["u1"]})
+    kids = api.find("pos_sale", f"split_of == '{b3['name']}'")
+    old = api.get("pos_sale", b3["name"]) or {}
+    if not check("split the Rp 100.060 line off -> 200, one new bill on T3", st == 200 and len(kids) == 1, (st, r, kids)):
+        return
+    kid = api.get("pos_sale", kids[0]["name"]) or {}
+    eq("the old bill computes its own charges: service 10.000, PBJT 21.000, total 231.000", charges(old), ("dine_in", 10_000, 21_000, -1, 231_000))
+    eq("the new bill too: service 5.003, PBJT 10.506, 115.569 rounded to 115.600", charges(kid), ("dine_in", 5_003, 10_506, 31, 115_600))
+    check("the two bills add up to the original within the rounding unit (Rp 100)",
+          abs(old["grand_total"] + kid["grand_total"] - b3["grand_total"]) <= kid.get("rounding_unit", 100), (old["grand_total"], kid["grand_total"], b3["grand_total"]))
+    eq("here they add up exactly", old["grand_total"] + kid["grand_total"], b3["grand_total"])
+    st1, p1 = hq.verb("pos_sale", b3["name"], "submit", {"payments": [{"method": "cash", "amount": 231_000}]})
+    st2, p2 = hq.verb("pos_sale", kid["name"], "submit", {"payments": [{"method": "qris", "amount": 115_600}]})
+    check("both bills of T3 paid -> 200", st1 == 200 and st2 == 200, (st1, p1, st2, p2))
+    # an amended dine-in receipt loses its table on its first write but stays dine-in, with its service charge
+    st, c = void(hq, kid["name"])
+    st2, am = hq.verb("pos_sale", kid["name"], "amend")
+    am = rec(am)
+    if check("the split bill voided and amended -> a draft", st == 200 and st2 in (200, 201) and am.get("docstatus") == 0, (st, c, st2, am)):
+        st, r = hq.patch("pos_sale", am["name"], {"items": [{"item": UP, "qty": 1}]})
+        cp = api.get("pos_sale", am["name"]) or {}
+        check("the amended copy's table is cleared, it stays dine-in with service 5.003 and total 115.600",
+              st == 200 and cp.get("table") in ("", None) and charges(cp) == ("dine_in", 5_003, 10_506, 31, 115_600), (st, r, cp))
+        drop(hq, am["name"])
+    check("Braga's tables are free", not api.find("pos_sale", f"table != '' && docstatus == 0 && outlet == '{BRG}'"), None)
+
+
 SCENARIOS = [scenario_pos_opening_stock, scenario_pos_shift, scenario_pos_retail_sale, scenario_pos_variants, scenario_pos_fnb_sale, scenario_pos_guards, scenario_pos_tables,
              scenario_pos_daily_form_next_door, scenario_pos_void_and_return, scenario_pos_race, scenario_pos_close, scenario_pos_close_race, scenario_pos_print,
-             scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive, scenario_pos_kasir_only_site, scenario_pos_day_source_kept_after_removal, scenario_pos_day_source_backfill]
+             scenario_pos_dashboard, scenario_pos_head_office, scenario_pos_catalogue_hides_inactive, scenario_pos_kasir_only_site, scenario_pos_day_source_kept_after_removal, scenario_pos_day_source_backfill, scenario_pos_charges,
+             scenario_pos_table_charges]

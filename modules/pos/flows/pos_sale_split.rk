@@ -4,7 +4,8 @@
 # split_lines is cleared so the flow cannot run twice. The two bills add up to the original: lines move whole, with their
 # own discounts, and the lines the kitchen already got stay recorded under their keys on the bill they moved to. At
 # least one line must stay, and a bill with a promo, a member or a deposit picked is not split (those amounts belong to
-# the whole bill). An amended copy (a return) is not split. Stock moves only at payment, once per paid bill.
+# the whole bill). An amended copy (a return) is not split. Stock moves only at payment, once per paid bill. The new bill
+# takes the old bill's order_type, so each bill computes its own service charge, PBJT and rounding (rangka-apps#121).
 name: pos_sale_split
 label: {id: 'Pisah tagihan meja per barang'}
 description: {id: 'Barang yang dipilih pindah ke tagihan baru di meja yang sama; sisanya tetap di tagihan lama'}
@@ -23,6 +24,7 @@ steps:
           outlet: event.outlet
           date: event.date
           table: event.table
+          order_type: event.order_type
           guests: "1"
           split_of: event.name
           items: "event.items.filter(l, l.line_key in event.split_lines).map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key})"
