@@ -1223,8 +1223,9 @@ def scenario_pos_table_charges(api):
     st2, p2 = hq.verb("pos_sale", kid["name"], "submit", {"payments": [{"method": "qris", "amount": 115_600}]})
     check("both bills of T3 paid -> 200", st1 == 200 and st2 == 200, (st1, p1, st2, p2))
     # an amended dine-in receipt loses its table on its first write but stays dine-in, with its service charge
-    st, c = void(hq, kid["name"])
-    st2, am = hq.verb("pos_sale", kid["name"], "amend")
+    paid = rec(p2).get("name") or kid["name"]  # a paid receipt takes its number at submit
+    st, c = void(hq, paid)
+    st2, am = hq.verb("pos_sale", paid, "amend")
     am = rec(am)
     if check("the split bill voided and amended -> a draft", st == 200 and st2 in (200, 201) and am.get("docstatus") == 0, (st, c, st2, am)):
         st, r = hq.patch("pos_sale", am["name"], {"items": [{"item": UP, "qty": 1}]})
