@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
+# Preset "Persetujuan PO di atas batas" (purchase order over a limit). Opt-in: onboarding asks the owner first, then
+# copies this file to custom/purchase_order.rk. Rp 5.000.000 is an example: the limit is the owner's call (edit the number).
+# A purchase order above the limit waits for approval before it can be submitted; a smaller one goes through.
+# Approver: finance (or the owner). Roles only: no per-person limits. The approver must not be the role that normally submits the
+# document, because an approver who submits approves their own request and the policy would never hold.
+# A foreign-currency document always waits: its kurs is typed by the maker, so the rupiah value alone can be made small.
+model: purchase_order
+approvals:
+  - name: po_approval
+    on: submit
+    when: "grand_total > 5000000 || (currency != '' && currency != 'IDR')"
+    approvers: [finance_manager]
+    label: {id: Persetujuan pembelian, en: Purchasing approval}

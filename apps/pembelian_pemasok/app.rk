@@ -21,3 +21,11 @@ menu:
     items: [purchase_request, purchase_order, goods_receipt, vendor_bill]
   - group: {id: Pemasok}
     items: [vendor]
+onboarding:
+# Approval presets are opt-in (docs/presets/approvals/README.md): the answer 'ya' makes Raka copy the preset to custom/.
+  - ask: {id: 'Mau pasang Persetujuan PO di atas batas? Pesanan pembelian di atas Rp 5.000.000 menunggu persetujuan dulu.'}
+    options: ['ya', 'tidak']
+    sets: approvals.po_threshold
+  - ask: {id: 'Mau pasang Persetujuan pengeluaran? Pembayaran keluar dan tagihan pemasok di atas Rp 5.000.000 menunggu persetujuan dulu.'}
+    options: ['ya', 'tidak']
+    sets: approvals.spending
