@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Rekap PPh 21 setahun: one row per worker per period of work (rangka-apps#128). Made by flow pph21_annual_on_slip_submit
+# when the last tax-month slip (December, or the month the worker leaves) is submitted, and marked void by
+# pph21_annual_on_slip_cancel. Every number is a copy of the slips' own computes: nothing is recomputed here. It feeds
+# the Coretax BPA1 XML (print coretax_bpa1 on pph21_period) and the 1721-A1 PDF (print bukti_potong_a1).
+# Every field is read_only: only the flows write a summary, so finance cannot change an amount, the employee or the void mark by hand.
+name: pph21_annual
+label: {id: Rekap PPh 21 setahun, en: Annual PPh 21 summary}
+icon: file-list-3
+naming: A1-{YYYY}-{####}
+title_field: worker_name
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, print: true, export: true}
+  # The employee reads and prints their own 1721-A1 from the phone (member grant, rangka-os contract 0074, like the
+  # payslip) once the last slip is released: on or after its pay date. A voided row (slip cancelled) is never shown.
+  - {role: member, read: true, print: true, if: "employee == user.name && !voided && release_date != '' && release_date <= today()"}
+fields:
+  - {name: tax_year, type: int, grouping: false, label: {id: Tahun pajak}, required: true, in_list: true, read_only: true}
+  - {name: worker, type: link, to: worker, label: {id: Tenaga kerja}, required: true, read_only: true}
+  - {name: employee, type: link, to: user, label: {id: Karyawan, en: Employee}, read_only: true}
+  - {name: last_slip, type: link, to: payslip, label: {id: Slip masa pajak terakhir}, required: true, unique: true, read_only: true}
+  - {name: worker_name, type: data, label: {id: Nama}, in_list: true, read_only: true}
+  - {name: employee_no, type: data, label: {id: No. pegawai}, read_only: true}
+  - {name: position, type: data, label: {id: Jabatan}, read_only: true}
+  - {name: nik, type: data, label: {id: NIK}, read_only: true}
+  - {name: npwp, type: data, label: {id: NPWP}, read_only: true}
+  - {name: ptkp_status, type: data, label: {id: Status PTKP}, read_only: true}
+  - {name: has_tax_id, type: check, label: {id: Punya NIK/NPWP valid}, default: 'true', read_only: true}
+  - {name: month_start, type: int, label: {id: Masa pajak awal}, in_list: true, read_only: true}
+  - {name: month_end, type: int, label: {id: Masa pajak akhir}, in_list: true, read_only: true}
+  - {name: months, type: int, label: {id: Jumlah bulan}, read_only: true}
+  # full_year: January to December. partial_year: a leaver (or a joiner) with fewer months; the slip's year recompute
+  # takes the actual income and the full PTKP, so Annualized (joiner, income scaled to 12 months) is never used.
+  - name: withholding_status
+    type: select
+    read_only: true
+    label: {id: Status bukti potong}
+    options:
+      - {value: full_year, label: {id: Setahun penuh}}
+      - {value: partial_year, label: {id: Kurang dari setahun}}
+  - {name: gross_salary, type: currency, label: {id: Gaji}, read_only: true}
+  - {name: other_benefit, type: currency, label: {id: Tunjangan lain dan lembur}, read_only: true}
+  - {name: insurance_employer, type: currency, label: {id: 'Premi asuransi dibayar pemberi kerja (JKK, JKM, BPJS Kesehatan)'}, read_only: true}
+  - {name: bonus_thr, type: currency, label: {id: 'Bonus, THR, tantiem'}, read_only: true}
+  - {name: year_gross, type: currency, label: {id: Penghasilan bruto}, read_only: true}
+  - {name: job_cost, type: currency, label: {id: Biaya jabatan}, read_only: true}
+  - {name: pension_contribution, type: currency, label: {id: Iuran pensiun dan JHT pekerja}, read_only: true}
+  - {name: year_net, type: currency, label: {id: Penghasilan neto}, read_only: true}
+  - {name: ptkp, type: currency, label: {id: PTKP}, read_only: true}
+  - {name: year_pkp, type: currency, label: {id: PKP}, read_only: true}
+  - {name: year_pph21, type: currency, label: {id: PPh 21 terutang setahun}, read_only: true}
+  - {name: withheld_before, type: currency, label: {id: PPh 21 dipotong masa sebelumnya}, read_only: true}
+  # Positive: withheld on the last slip. Negative: over-withheld, paid back to the worker on that slip.
+  - {name: last_withheld, type: currency, label: {id: PPh 21 dipotong atau dikembalikan di masa terakhir}, read_only: true}
+  - {name: withholding_date, type: data, label: {id: Tanggal pemotongan}, read_only: true}
+  - {name: release_date, type: date, label: {id: Tanggal tersedia untuk pegawai}, read_only: true}
+  - {name: employer_name, type: data, label: {id: Nama pemotong}, default: "org.name", read_only: true}
+  - {name: employer_tin, type: data, label: {id: NPWP pemotong}, default: "org.npwp.replace('.', '').replace('-', '')", read_only: true}
+  - {name: voided, type: check, label: {id: Dibatalkan}, default: 'false', in_list: true, read_only: true}
+rules:
+  - name: gross_parts_tie
+    on: save
+    check: gross_salary + other_benefit + insurance_employer + bonus_thr == year_gross
+    message: {id: Rincian penghasilan tidak sama dengan penghasilan bruto}
+views:
+  list:
+    columns: [name, tax_year, worker_name, month_start, month_end, year_gross, year_pph21, voided]
+    sort: -tax_year
+  form:
+    layout:
+      - section: {id: Pegawai}
+        columns:
+          - [tax_year, worker, worker_name, employee_no, position]
+          - [nik, npwp, ptkp_status, has_tax_id]
+      - section: {id: Masa kerja}
+        columns:
+          - [month_start, month_end, months, withholding_status, last_slip, voided]
+      - section: {id: Penghasilan}
+        columns:
+          - [gross_salary, other_benefit, insurance_employer, bonus_thr, year_gross]
+          - [job_cost, pension_contribution, year_net, ptkp, year_pkp]
+      - section: {id: PPh 21}
+        columns:
+          - [year_pph21, withheld_before, last_withheld, withholding_date, release_date]

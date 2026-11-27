@@ -1,0 +1,77 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One PPh 21 withholding month (masa pajak) of the employer, with its Coretax downloads (print formats coretax_bpmp,
+# coretax_bp21 and coretax_bpa1). Kept in payroll, not coretax, so the employee bundle needs no invoicing (rangka-apps#128,
+# docs/ebupot21.md). The employer TIN and NITKU default from the org's NPWP the way coretax tax_period does.
+name: pph21_period
+label: {id: Masa PPh 21, en: PPh 21 period}
+icon: file-download
+naming: PPH21-{####}
+title_field: period_key
+permissions:
+  - {role: finance_manager, read: true, create: true, write: true, delete: true, print: true, export: true}
+fields:
+  - {name: year, type: int, grouping: false, label: {id: Tahun}, required: true, in_list: true}
+  - name: month
+    type: int
+    label: {id: Bulan (1 sampai 12)}
+    required: true
+    in_list: true
+    help: {id: 'Unggah bukti potong ke Coretax paling lambat tanggal 20 bulan berikutnya'}
+  - name: period_key
+    type: data
+    label: {id: Masa}
+    unique: true
+    in_list: true
+    compute: "truncate(year, 4) + '-' + (month < 10 ? '0' : '') + truncate(month, 2)"
+  - name: seller_tin
+    type: data
+    label: {id: NPWP pemotong (16 angka)}
+    required: true
+    default: "org.npwp.replace('.', '').replace('-', '')"
+  - name: seller_nitku
+    type: data
+    label: {id: NITKU pemotong (22 angka)}
+    help: {id: 'ID TKU dari Coretax; kantor pusat = NPWP + 000000'}
+    required: true
+    default: "org.npwp == '' ? '' : org.npwp.replace('.', '').replace('-', '') + '000000'"
+  # Text YYYY-MM-DD, so the rule below can compare it with the month in text order.
+  - name: withholding_date
+    type: data
+    label: {id: Tanggal pemotongan (TTTT-BB-HH)}
+    required: true
+    help: {id: 'Contoh 2026-11-30. Tidak boleh sebelum bulan masa pajak; biasanya akhir bulan masa pajak atau tanggal bayar gaji'}
+  - name: notes
+    type: text
+    label: {id: Catatan}
+rules:
+  - name: month_range
+    on: save
+    check: month >= 1 && month <= 12 && year >= 2024 && year <= 2100
+    message: {id: 'Bulan 1 sampai 12 dan tahun 4 angka, misalnya 2026'}
+  - name: seller_tin_16
+    on: save
+    check: "size(seller_tin) == 16 && seller_tin.matches('^[0-9]+$')"
+    message: {id: 'NPWP pemotong harus 16 angka, isi NPWP usaha di Pengaturan'}
+  - name: seller_nitku_22
+    on: save
+    check: "size(seller_nitku) == 22 && seller_nitku.matches('^[0-9]+$') && seller_nitku.startsWith(seller_tin)"
+    message: {id: NITKU pemotong harus 22 angka dan diawali NPWP pemotong}
+  - name: withholding_not_before_period
+    on: save
+    check: "withholding_date.matches('^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$') && withholding_date >= truncate(year, 4) + '-' + (month < 10 ? '0' : '') + truncate(month, 2) + '-01'"
+    message: {id: 'Tanggal pemotongan harus berbentuk 2026-11-30 dan tidak boleh sebelum bulan masa pajak'}
+views:
+  list:
+    columns: [name, period_key, year, month, withholding_date]
+    sort: -period_key
+  form:
+    layout:
+      - section: {id: Masa pajak}
+        columns:
+          - [year, month, withholding_date]
+      - section: {id: Identitas pemotong}
+        columns:
+          - [seller_tin, seller_nitku]
+      - section: {id: Catatan}
+        columns:
+          - [notes]

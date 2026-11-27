@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+{{- /* Element names and order follow the DJP template bpmp.xml (pajak.go.id Coretax templates); column meanings from
+  "BPMP Excel to XML v.3.xlsx" sheet BPMP. Gross is the slip's bruto PPh 21 (pay + employer JKK, JKM, health), Rate the
+  TER percent the slip withheld with (x120% when the profile says no tax number), so Coretax's Gross x Rate is the
+  slip's PPh 21. Code 21-100-01: permanent employee. */}}
+<MmPayrollBulk xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<TIN>{{.Doc.seller_tin}}</TIN>
+	<ListOfMmPayroll>
+{{- $d := .Doc}}
+{{- range .Related.slips}}
+{{- $tin := digits .slip_nik}}
+{{- if eq (len (digits .slip_npwp)) 16}}{{$tin = digits .slip_npwp}}{{else if eq (len (digits .slip_npwp)) 15}}{{$tin = print "0" (digits .slip_npwp)}}{{end}}
+{{- $m := 100}}{{if not .has_tax_id}}{{$m = 120}}{{end}}
+		<MmPayroll>
+			<TaxPeriodMonth>{{dec $d.month 0}}</TaxPeriodMonth>
+			<TaxPeriodYear>{{$d.year}}</TaxPeriodYear>
+			<CounterpartOpt>Resident</CounterpartOpt>
+			<CounterpartPassport xsi:nil="true"/>
+			<CounterpartTin>{{$tin}}</CounterpartTin>
+			<StatusTaxExemption>{{if eq (slice .ptkp_status 0 1) "t"}}TK/{{slice .ptkp_status 2}}{{else}}K/{{slice .ptkp_status 1}}{{end}}</StatusTaxExemption>
+			<Position>{{or .slip_role_title "Staff"}}</Position>
+			<TaxCertificate>N/A</TaxCertificate>
+			<TaxObjectCode>21-100-01</TaxObjectCode>
+			<Gross>{{dec .gross_taxable 0}}</Gross>
+			<Rate>{{dec (div (mul .ter_bp $m) 10000) 4}}</Rate>
+			<IDPlaceOfBusinessActivity>{{$d.seller_nitku}}</IDPlaceOfBusinessActivity>
+			<WithholdingDate>{{isodate $d.withholding_date}}</WithholdingDate>
+		</MmPayroll>
+{{- end}}
+	</ListOfMmPayroll>
+</MmPayrollBulk>
