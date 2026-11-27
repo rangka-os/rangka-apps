@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+{{- /* Element names and order follow the DJP template bpa1.xml (pajak.go.id Coretax templates); column meanings from
+  "BPA1 Excel to XML.xlsx" sheet BPA1. SalaryPensionJhtTht is the salary after unpaid days and lateness; OtherBenefit
+  allowances, overtime and other income; InsurancePaidByEmployer the employer JKK, JKM and BPJS Kesehatan counted in
+  the bruto; TantiemBonusThr the THR; PensionContributionJhtThtFee the employee JHT and JP. The rows are those whose last
+  tax month is the period's month. Status FullYear (full_year) is January to December, else PartialYear (partial_year); NumberOfMonths is 0 for both
+  (the DJP sheet: 0 unless Annualized). */}}
+<A1Bulk xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<TIN>{{.Doc.seller_tin}}</TIN>
+	<ListOfA1>
+{{- $d := .Doc}}
+{{- range .Related.a1}}
+{{- $tin := digits .nik}}
+{{- if eq (len (digits .npwp)) 16}}{{$tin = digits .npwp}}{{else if eq (len (digits .npwp)) 15}}{{$tin = print "0" (digits .npwp)}}{{end}}
+		<A1>
+			<WorkForSecondEmployer>No</WorkForSecondEmployer>
+			<TaxPeriodMonthStart>{{dec .month_start 0}}</TaxPeriodMonthStart>
+			<TaxPeriodMonthEnd>{{dec .month_end 0}}</TaxPeriodMonthEnd>
+			<TaxPeriodYear>{{.tax_year}}</TaxPeriodYear>
+			<CounterpartOpt>Resident</CounterpartOpt>
+			<CounterpartPassport xsi:nil="true"/>
+			<CounterpartTin>{{$tin}}</CounterpartTin>
+			<TaxExemptOpt>{{if eq (slice .ptkp_status 0 1) "t"}}TK/{{slice .ptkp_status 2}}{{else}}K/{{slice .ptkp_status 1}}{{end}}</TaxExemptOpt>
+			<StatusOfWithholding>{{if eq .withholding_status "full_year"}}FullYear{{else}}PartialYear{{end}}</StatusOfWithholding>
+			<CounterpartPosition>{{or .position "Staff"}}</CounterpartPosition>
+			<TaxObjectCode>21-100-01</TaxObjectCode>
+			<NumberOfMonths>0</NumberOfMonths>
+			<SalaryPensionJhtTht>{{dec .gross_salary 0}}</SalaryPensionJhtTht>
+			<GrossUpOpt>No</GrossUpOpt>
+			<IncomeTaxBenefit>0</IncomeTaxBenefit>
+			<OtherBenefit>{{dec .other_benefit 0}}</OtherBenefit>
+			<Honorarium>0</Honorarium>
+			<InsurancePaidByEmployer>{{dec .insurance_employer 0}}</InsurancePaidByEmployer>
+			<Natura>0</Natura>
+			<TantiemBonusThr>{{dec .bonus_thr 0}}</TantiemBonusThr>
+			<PensionContributionJhtThtFee>{{dec .pension_contribution 0}}</PensionContributionJhtThtFee>
+			<Zakat>0</Zakat>
+			<PrevWhTaxSlip xsi:nil="true"/>
+			<TaxCertificate>N/A</TaxCertificate>
+			<Article21IncomeTax>0</Article21IncomeTax>
+			<IDPlaceOfBusinessActivity>{{$d.seller_nitku}}</IDPlaceOfBusinessActivity>
+			<WithholdingDate>{{isodate $d.withholding_date}}</WithholdingDate>
+		</A1>
+{{- end}}
+	</ListOfA1>
+</A1Bulk>

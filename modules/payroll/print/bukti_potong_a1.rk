@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Bukti pemotongan PPh 21 tahunan 1721-A1 for one employee: sections A (identitas), B (penghasilan dan pengurang) and
+# C (PPh 21) of the DJP form, from the worker's pph21_annual row (rangka-apps#128). The employee prints their own.
+name: bukti_potong_a1
+model: pph21_annual
+label: {id: Bukti potong 1721-A1, en: Form 1721-A1}
+paper: A4
+template: bukti_potong_a1.html
+default: true

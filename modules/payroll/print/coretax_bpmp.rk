@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Every slip taxed with monthly TER is here, also a casual worker paid monthly (the slip taxes it like a permanent one). Monthly PPh 21 withholding slips of permanent employees (BPMP, form 1721-VIII) as Coretax imports them (MmPayrollBulk,
+# DJP template bpmp.xml and converter "BPMP Excel to XML v.3"). The last tax month (December or the month a worker
+# leaves) is a 1721-A1 instead: see coretax_bpa1. Field map and sources: docs/ebupot21.md.
+name: coretax_bpmp
+model: pph21_period
+label: {id: XML Bukti Potong PPh 21 Bulanan Pegawai Tetap (Coretax)}
+output: xml
+template: coretax_bpmp.xml
+related:
+  slips:
+    model: payslip
+    range: {tax_year: [year, year], tax_month: [month, month]}
+    filter: docstatus == 1 && !last_month && !ter_daily
+    sort: name
+    limit: 1000
+    require:
+      - check: "((size(slip_npwp.replace('.', '').replace('-', '').replace(' ', '')) in [15, 16] && slip_npwp.replace('.', '').replace('-', '').replace(' ', '').matches('^[0-9]+$')) || (size(slip_nik) == 16 && slip_nik.matches('^[0-9]+$')))"
+        message: {id: 'Pekerja di slip ini belum punya NIK 16 angka atau NPWP: lengkapi Data gaji pekerja (slip lama: buat bukti potongnya langsung di Coretax)'}
+      - check: "ptkp_status != ''"
+        message: {id: 'Status PTKP pekerja di slip ini kosong'}
+      - check: "ter_bp >= 0 && gross_taxable >= 0"
+        message: {id: 'Penghasilan bruto atau tarif TER di slip ini tidak valid'}

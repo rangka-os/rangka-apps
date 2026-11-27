@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: pph21_annual_on_slip_submit
+label: {id: Rekap PPh 21 setahun dibuat dari slip masa pajak terakhir}
+description: {id: 'Saat slip masa pajak terakhir (Desember atau bulan keluar) diajukan, dibuat Rekap PPh 21 setahun pekerja itu untuk 1721-A1: jumlah slip tahun pajak yang sama, dari awal masa kerja.'}
+# On the submit of a last_month slip that is not a daily-TER slip, copy the slips' own numbers into one pph21_annual row
+# (rangka-apps#128). The slips counted are the same as payslip_ytd_on_create counts: the worker's submitted slips of the
+# tax year after the end of an earlier period of work, daily-TER months left out. Nothing is recomputed: year_net,
+# ptkp, year_pkp and year_pph21 are the last slip's own computes.
+on: payslip.submitted
+if: "event.last_month && !event.ter_daily"
+steps:
+  - find_all: payslip
+    where: worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && employment == 'casual' && pay_basis == 'daily'
+    sort: -tax_month
+    limit: 1
+    as: lastcas
+  - find_all: payslip
+    where: >-
+      worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && last_month && !(employment == 'casual' && pay_basis == 'daily')
+      && tax_month < (size(lastcas) > 0 ? lastcas[0].tax_month : 0)
+    sort: -tax_month
+    limit: 1
+    as: ended
+  - find_all: payslip
+    where: >-
+      worker == event.worker && tax_year == event.tax_year && tax_month < event.tax_month && docstatus == 1 && !(employment == 'casual' && pay_basis == 'daily')
+      && tax_month > (size(ended) > 0 ? ended[0].tax_month : 0)
+    sort: tax_month
+    as: prev
+  # a re-submit after a cancel (amend) finds its old row and brings it back instead of making a second one
+  - find: pph21_annual
+    where: last_slip == event.name
+    as: old
+  # a mistaken last_month tick earlier in the same stretch leaves a live summary that this one now covers: void it so the
+  # worker's income is never in two A1 files
+  - find_all: pph21_annual
+    where: >-
+      worker == event.worker && tax_year == event.tax_year && !voided && last_slip != event.name && month_end < event.tax_month
+      && month_end >= (size(prev) > 0 ? prev[0].tax_month : event.tax_month)
+    as: covered
+  - for_each: covered
+    as: c
+    do:
+      - update: c
+        set:
+          voided: true
+  - if: old == null
+    create: pph21_annual
+    set:
+      tax_year: event.tax_year
+      worker: event.worker
+      employee: event.employee
+      last_slip: event.name
+      worker_name: event.slip_worker_name
+      employee_no: event.slip_employee_no
+      position: "event.slip_role_title != '' ? event.slip_role_title : 'Staff'"
+      nik: event.slip_nik
+      npwp: event.slip_npwp
+      ptkp_status: event.ptkp_status
+      has_tax_id: event.has_tax_id
+      month_start: "size(prev) > 0 ? prev[0].tax_month : event.tax_month"
+      month_end: event.tax_month
+      months: "size(prev) + 1"
+      withholding_status: "(size(prev) > 0 ? prev[0].tax_month : event.tax_month) == 1 && event.tax_month == 12 ? 'full_year' : 'partial_year'"
+      gross_salary: "prev.map(p, p.base_pay - p.late_deduction).sum() + event.base_pay - event.late_deduction"
+      other_benefit: "prev.map(p, p.allowance_pay + p.overtime_pay + p.holiday_overtime_pay + p.other_income).sum() + event.allowance_pay + event.overtime_pay + event.holiday_overtime_pay + event.other_income"
+      insurance_employer: "prev.map(p, p.jkk + p.jkm + p.kes_employer).sum() + event.jkk + event.jkm + event.kes_employer"
+      bonus_thr: "prev.map(p, p.thr_pay).sum() + event.thr_pay"
+      year_gross: event.year_gross
+      job_cost: event.job_cost
+      pension_contribution: "prev.map(p, p.jht_employee + p.jp_employee).sum() + event.jht_employee + event.jp_employee"
+      year_net: event.year_net
+      ptkp: event.ptkp
+      year_pkp: event.year_pkp
+      year_pph21: event.year_pph21
+      withheld_before: "prev.map(p, p.pph21).sum()"
+      last_withheld: event.pph21
+      withholding_date: "event.pay_date != '' ? string(event.pay_date) : string(event.run_period_to)"
+      release_date: "event.pay_date != '' ? event.pay_date : event.run_period_to"
+      voided: false
+  - if: old != null
+    update: old
+    set:
+      voided: false
