@@ -16,7 +16,11 @@ icon: receipt
 is_submittable: true
 # No title_field: a receipt's title is its number (STRK-...), so a link to it (a kitchen ticket, a daily sales check)
 # shows the number and never the total to a role that may not read the receipt.
-naming: STRK-{outlet.code}-{YY}{MM}-{#####}
+# A receipt paid on a paired device (rangka-os contract 0058 §3) carries the number the device made, with the device's
+# code (STRK-BTR-K1-2611-00042, a counter per device and month), so the printed receipt is final online or offline;
+# head office in the browser keeps the outlet's own series without the device code (STRK-BTR-2611-00007).
+naming: STRK-{outlet.code}-{device.code}-{YY}{MM}-{#####}
+naming_on: device
 on_submit: [stock.post_moves]
 on_cancel: [stock.reverse_moves]
 permissions:
@@ -45,11 +49,35 @@ fields:
     index: true # the outlet_day backfill reads one outlet and day at a time (card t_0dba5917)
     default: today()
     in_list: true
+  # When the receipt was paid: the moment of the press at the counter (a paired device's occurred_at, contract 0058
+  # §10, so a sale synced after an outage keeps its own hour), else when it was created. Read by hourly sales
+  # (rangka-apps#115). An amended receipt (a partial return) is a new receipt and takes its own time.
+  - {name: sold_at, type: datetime, label: {id: Waktu transaksi}, default: now(), read_only: true}
   - name: buyer
     type: data
     label: {id: Pembeli atau meja}
     help: {id: 'Boleh kosong. Nama pembeli, nomor meja atau nomor antrean'}
     in_list: true
+  # Tables (rangka-apps#122, contract 0048 section 2). An open bill is a draft that links its table; the table map derives
+  # Kosong, Terisi and Minta tagihan from the drafts. order_type is the stored field #121 defines below; a new bill made
+  # on a table defaults to dine_in.
+  - {name: table, type: link, to: dining_table, label: {id: Meja}, in_list: true}
+  - {name: guests, type: int, label: {id: Jumlah tamu}, default: '0'}
+  # a version counter the counter bumps on every write of an open bill: the conditional PATCH (_if: {rev}) turns two
+  # devices on one bill into a conflict, not a lost update
+  - {name: rev, type: int, label: {id: Versi tagihan}, default: '0', hidden: true}
+  - {name: bill_asked, type: check, label: {id: Minta tagihan}}
+  # the counter's "Kirim ke dapur" sets send_kitchen; flow kitchen_ticket_on_draft makes the tickets, records the lines
+  # in sent_to_kitchen (key, item, packing, description, qty, uom, note, category) and clears the check
+  - {name: send_kitchen, type: check, label: {id: Kirim ke dapur}}
+  - {name: sent_to_kitchen, type: json, label: {id: Baris terkirim ke dapur}, hidden: true, read_only: true, default: '[]'}
+  # merge: set on the bill to fold, naming the bill that takes its lines (flow pos_sale_merge); merged marks the bill that
+  # was folded: it frees its table, keeps its lines as a record and can never be paid
+  - {name: merge_into, type: link, to: pos_sale, label: {id: Gabung ke tagihan}, hidden: true}
+  - {name: merged, type: check, label: {id: Sudah digabung}, read_only: true, hidden: true}
+  # split: the line keys to move to a new bill on the same table (flow pos_sale_split); split_of is set on that new bill
+  - {name: split_lines, type: json, label: {id: Baris yang dipisah}, hidden: true, default: '[]'}
+  - {name: split_of, type: link, to: pos_sale, label: {id: Pisahan dari}, read_only: true, hidden: true}
   # the customer of record (contacts), picked or signed up at the counter's checkout; buyer stays for a name, table or
   # queue number. Shared with module loyalty (rangka-apps#102).
   - {name: customer, type: link, to: customer, label: {id: Pelanggan}, help: {id: 'Boleh kosong. Pilih pelanggan terdaftar'}}
@@ -106,6 +134,35 @@ fields:
     hidden: true
     depends_on: app_installed('whatsapp_receipt')
     compute: "(wa_phone.trim().startsWith('+') ? ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')).matches('^[1-9][0-9]{7,14}$') ? (wa_phone.trim().startsWith('+') ? ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x620', 'x62').replace('x', '') : ('x' + wa_phone.replace(' ', '').replace('-', '').replace('.', '').replace('(', '').replace(')', '').replace('+', '')).replace('x8', 'x628').replace('x00', 'x').replace('x0', 'x62').replace('x620', 'x62').replace('x', '')) : ''"
+  # Restaurant charges (rangka-apps#121). Service charge is for dine-in only. Rates and rounding are computed from the
+  # sale's outlet while the sale is a draft (a draft moved to another outlet's shift, or an amended receipt, takes that
+  # outlet's current values: re-audit N1, N2); a paid receipt keeps them when head office changes the outlet later.
+  - name: order_type
+    type: select
+    label: {id: Jenis pesanan}
+    # a default applies only at create when the client sent none: a bill opened on a table is dine_in (rangka-apps#122);
+    # a stored value is never overwritten, so an amended dine-in receipt whose table is cleared stays dine_in
+    default: "table != '' ? 'dine_in' : 'takeaway'"
+    in_list: true
+    options:
+      - {value: dine_in, label: {id: Makan di sini}}
+      - {value: takeaway, label: {id: Bawa pulang}}
+      - {value: online, label: {id: Online}}
+  - {name: service_pct, type: float, label: {id: Service charge (%)}, compute: outlet.service_pct, hidden: true}
+  - {name: pbjt_pct, type: float, label: {id: PBJT (%)}, compute: outlet.pbjt_pct, hidden: true}
+  - {name: rounding_unit, type: int, label: {id: Satuan pembulatan}, compute: int(outlet.rounding_unit), hidden: true}
+  - {name: rounding_mode, type: data, label: {id: Arah pembulatan}, compute: outlet.rounding_mode, hidden: true}
+  # Split bill between people (rangka-apps#121): the bill is paid in `parties` parts, one receipt, one submit. `equal`
+  # gives every part grand_total (less deposit) / parties with the remainder on part 1; `amount` leaves the amounts free.
+  - {name: parties, type: int, label: {id: Dibagi untuk}, help: {id: 'Jumlah orang yang membayar terpisah; 1 kalau tidak dibagi'}, default: '1'}
+  - name: split_mode
+    type: select
+    label: {id: Cara bagi}
+    default: "'equal'"
+    depends_on: parties > 1
+    options:
+      - {value: equal, label: {id: Sama rata}}
+      - {value: amount, label: {id: Jumlah bebas}}
   - name: items
     type: table
     of: pos_sale_item
@@ -169,11 +226,12 @@ fields:
     hidden: true
     depends_on: app_installed('loyalty')
     compute: "!app_installed('loyalty') || member == '' ? 0 : round((subtotal - bill_promo - member_discount) * member.max_redeem_pct / 100)"
+  # points on the sale before service charge, PBJT and rounding (audit F6), the same base as the member's spend
   - name: points_earned
     type: int
     label: {id: Poin didapat}
     depends_on: app_installed('loyalty') && points_earned > 0
-    compute: "!app_installed('loyalty') || member == '' || member.earn_spend <= 0 || grand_total <= 0 ? 0 : int(grand_total * member.earn_multiplier_pct / (member.earn_spend * 100))"
+    compute: "!app_installed('loyalty') || member == '' || member.earn_spend <= 0 || grand_total - service_charge - pbjt - rounding <= 0 ? 0 : int((grand_total - service_charge - pbjt - rounding) * member.earn_multiplier_pct / (member.earn_spend * 100))"
   - name: points_left
     type: int
     label: {id: Sisa poin}
@@ -202,10 +260,32 @@ fields:
     label: {id: Diskon kasir}
     help: {id: 'Diskon yang diberi kasir, di luar promo'}
     compute: discount_total - promo_total - member_discount - points_discount
+  # Charges after every discount: service on the net, PBJT on net plus service (Perda practice), then the rounding of the
+  # total to the outlet's unit. PBJT is a regional tax outside the price, so a PBJT sale carries no PPN (ppn_in_sales).
+  - name: net_before_charges
+    type: currency
+    label: {id: Subtotal setelah diskon}
+    compute: subtotal - bill_promo - member_discount - points_discount - discount_amount
+  - name: service_charge
+    type: currency
+    label: {id: Service charge}
+    compute: "order_type == 'dine_in' ? round(net_before_charges * service_pct / 100) : 0"
+  - name: pbjt
+    type: currency
+    label: {id: Pajak restoran (PBJT)}
+    compute: round((net_before_charges + service_charge) * pbjt_pct / 100)
+  - name: raw_total
+    type: currency
+    label: {id: Total sebelum pembulatan}
+    compute: net_before_charges + service_charge + pbjt
+  - name: rounding
+    type: currency
+    label: {id: Pembulatan}
+    compute: "rounding_unit <= 0 ? 0 : (rounding_mode == 'down' ? int(raw_total / rounding_unit) * rounding_unit : round(raw_total * 1.0 / rounding_unit) * rounding_unit) - raw_total"
   - name: grand_total
     type: currency
     label: {id: Total}
-    compute: subtotal - bill_promo - member_discount - points_discount - discount_amount
+    compute: raw_total + rounding
     in_list: true
   # the part of the total the deposit does not pay: what the counter takes in cash or QRIS (its total slot)
   - name: amount_due
@@ -234,6 +314,17 @@ fields:
     type: currency
     label: {id: Kembalian}
     compute: cash_received + qris_amount - amount_due
+  - name: party_share
+    type: currency
+    label: {id: Bagian per orang}
+    help: {id: 'Total bayar dibagi sama rata, dibulatkan ke bawah; sisanya masuk bagian 1'}
+    depends_on: parties > 1
+    compute: "parties <= 1 ? amount_due : int(amount_due / parties)"
+  - name: party_first_share
+    type: currency
+    label: {id: Bagian 1}
+    depends_on: parties > 1
+    compute: "parties <= 1 ? amount_due : amount_due - (parties - 1) * party_share"
   - name: method
     type: select
     label: {id: Cara bayar}
@@ -260,11 +351,11 @@ fields:
   - name: ppn_in_sales
     type: currency
     label: {id: PPN dalam penjualan}
-    compute: "tax.pkp ? round(grand_total * tax.ppn_rate * tax.dpp_num / (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num)) : 0"
+    compute: "tax.pkp && pbjt_pct <= 0 ? round(grand_total * tax.ppn_rate * tax.dpp_num / (100 * tax.dpp_den + tax.ppn_rate * tax.dpp_num)) : 0"
   - name: pph_final
     type: currency
     label: {id: 'PPh final 0,5%'}
-    compute: round((grand_total - ppn_in_sales) * 5 / 1000)
+    compute: round((grand_total - pbjt - ppn_in_sales) * 5 / 1000)
 # Cashier controls (audit kasir M5): a receipt whose manual discounts exceed 20% of its price after promos waits for head office
 # (contract 0007; the owner may always approve). A void is not held: an approved verb runs again as a requester
 # without their outlets, so the flow's own-shift check cannot run (kernel card t_7782ebb1 follow-up); voids stay
@@ -281,6 +372,37 @@ stock:
     - {lines: items, out: outlet, explode: recipe, reason: sale, cogs: cogs}
   cogs_total: cogs_total
 rules:
+  - name: table_of_outlet
+    on: save
+    check: "table == '' || table.outlet == outlet"
+    message: {id: 'Meja ini milik outlet lain'}
+  - name: table_active
+    on: save
+    check: "table == '' || table.active"
+    message: {id: 'Meja ini sedang tidak dipakai'}
+  - name: table_guests
+    on: save
+    check: "table == '' || merged || guests >= 1"
+    message: {id: 'Isi jumlah tamu minimal 1 untuk meja'}
+  - name: merged_no_table
+    on: save
+    check: "!merged || table == ''"
+    message: {id: 'Tagihan yang sudah digabung tidak bisa dipindah ke meja'}
+  # line keys (rangka-apps#122): the kitchen remembers the lines it got by key, so a key is used once per bill, and a line
+  # the kitchen already got keeps its item and unit and never grows (a tap on a sent line adds a new line); lowering it is a v1
+  # limit that sends no cancel
+  - name: line_key_unique
+    on: save
+    check: "items.all(l, l.line_key == '' || items.filter(m, m.line_key == l.line_key).size() == 1)"
+    message: {id: 'Ada baris pesanan ganda; muat ulang tagihan lalu coba lagi'}
+  - name: sent_line_kept
+    on: save
+    check: "sent_to_kitchen == null || items.all(l, l.line_key == '' || sent_to_kitchen.filter(s, s.key == l.line_key).all(s, s.item == l.item && (!('packing' in s) || s.packing == l.packing) && l.uom == s.uom && l.qty <= s.qty))"
+    message: {id: 'Barang yang sudah dikirim ke dapur tidak bisa diganti atau ditambah; tambahkan sebagai baris baru'}
+  - name: merged_not_payable
+    on: submit
+    check: "!merged"
+    message: {id: 'Tagihan ini sudah digabung ke tagihan lain dan tidak bisa dibayar'}
   # Only a store sells (rangka-apps#104): a warehouse, vehicle, quarantine or production row takes no plan outlet seat
   # (outlets limit_scope is_store), so a shift or sale there would be a free seat. Van sales belong to field_sales (#112).
   - name: sale_at_store
@@ -315,6 +437,13 @@ rules:
     on: save
     check: "!app_installed('outlet_sales') || (outlet.moka_name == '' && outlet.sales_source == 'kasir')"
     message: {id: 'Outlet ini mencatat penjualan lewat Moka, file POS atau formulir harian. Ubah Sumber penjualan outlet ke Kasir Juragan dulu'}
+  # The rounding of the bill stays within one step of the outlet's unit (audit F1, F2): the unit is one the outlet form
+  # offers, "nearest" moves at most half a unit and "down" takes off less than one unit, so a rounding can never close a
+  # bill for less than it costs.
+  - name: rounding_within_unit
+    on: save
+    check: "(rounding_unit == 0 || rounding_unit == 100 || rounding_unit == 500 || rounding_unit == 1000) && (rounding_unit == 0 ? rounding == 0 : (rounding_mode == 'down' ? (rounding <= 0 && -rounding < rounding_unit) : (rounding * 2 <= rounding_unit && -rounding * 2 <= rounding_unit)))"
+    message: {id: 'Pembulatan total tidak sesuai pengaturan outlet; muat ulang transaksi ini'}
   - name: qty_positive
     on: save
     check: "items.map(l, l.qty <= 0 ? 1 : 0).sum() == 0"
@@ -396,6 +525,19 @@ rules:
     on: save
     check: "payments.map(p, p.amount <= 0 ? 1 : 0).sum() == 0"
     message: {id: Jumlah pembayaran harus lebih dari 0}
+  - name: parties_range
+    on: save
+    check: parties >= 1 && parties <= 20
+    message: {id: 'Tagihan bisa dibagi untuk 1 sampai 20 orang'}
+  - name: payment_party_range
+    on: save
+    check: "payments.map(p, p.party < 1 || p.party > parties ? 1 : 0).sum() == 0"
+    message: {id: 'Bagian pembayaran harus antara 1 dan jumlah orang yang membagi tagihan'}
+  # an equal split: every part pays at least its share (cash may be more, the change comes back to that part)
+  - name: party_pays_share
+    on: save
+    check: "parties <= 1 || split_mode != 'equal' || payments.size() == 0 || [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map(k, k > parties ? 0 : (payments.map(p, p.party == k ? p.amount : 0).sum() < (k == 1 ? party_first_share : party_share) ? 1 : 0)).sum() == 0"
+    message: {id: 'Ada bagian yang bayarnya kurang dari bagiannya'}
   - name: qris_not_over
     on: save
     check: qris_amount <= amount_due
@@ -447,14 +589,14 @@ rules:
     message: {id: 'Draf ini dari hari lain; buat transaksi baru untuk hari ini'}
 views:
   list:
-    columns: [name, date, outlet, grand_total, method, status, buyer]
+    columns: [name, date, sold_at, outlet, grand_total, method, status, buyer]
     filters: [outlet, method, shift]
     sort: -name
   form:
     layout:
       - section: {id: Transaksi}
         columns:
-          - [shift, outlet, date, customer, member]
+          - [shift, outlet, date, sold_at, customer, member]
           - [buyer, wa_phone, wa_receipt]
       - section: {id: Promo}
         columns:
@@ -466,6 +608,10 @@ views:
           - [deposit_used, points_earned, points_left, deposit_left]
       - section: {id: Barang}
         fields: [items]
+      - section: {id: Jenis pesanan dan biaya}
+        columns:
+          - [order_type, parties, split_mode]
+          - [service_charge, pbjt, rounding, party_share, party_first_share]
       - section: {id: Bayar}
         columns:
           - [subtotal, discount_amount, grand_total, amount_due]

@@ -2,7 +2,8 @@
 # Runs inside a receipt's payment (pos_sale submitted), as the cashier: one ticket per active station of the outlet
 # with the receipt's lines whose item category (pos_sale_item.category, kept on the line) is routed to that station
 # (kitchen_route). An outlet without stations (a shop) and a receipt without kitchen lines make nothing. A failure here
-# rolls the payment back, so a paid receipt never misses its tickets.
+# rolls the payment back, so a paid receipt never misses its tickets. Lines the kitchen already got from the open bill
+# (sent_to_kitchen, flow kitchen_ticket_on_draft, rangka-apps#122) are skipped here, so no line is cooked twice.
 # A receipt paid again after a void (amend) is a revision: what the voided receipt's picked-up tickets of that station
 # already sent out is not cooked again. The served quantity of an item is spread over the revision's lines of that item
 # in their order (line idx), so two lines of one item never both count the same served portion. The rest goes to the kitchen as Baru, and the part already served is kept as a
@@ -23,7 +24,7 @@ steps:
       - for_each: stations
         as: st
         do:
-          - if: "event.items.filter(l, routes.filter(r, r.station == st.name && r.category == l.category).size() > 0 && l.qty - max(0, min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum() - event.items.filter(y, y.item == l.item && y.idx < l.idx).map(y, y.qty).sum())) > 0).size() > 0"
+          - if: "event.items.filter(l, !(l.line_key in event.sent_to_kitchen.map(s, s.key)) && routes.filter(r, r.station == st.name && r.category == l.category).size() > 0 && l.qty - max(0, min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum() - event.items.filter(y, y.item == l.item && y.idx < l.idx).map(y, y.qty).sum())) > 0).size() > 0"
             create: kitchen_ticket
             set:
               sale: event.name
@@ -32,8 +33,8 @@ steps:
               date: event.date
               buyer: event.buyer
               revision_of: event.amended_from
-              items: "event.items.filter(l, routes.filter(r, r.station == st.name && r.category == l.category).size() > 0 && l.qty - max(0, min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum() - event.items.filter(y, y.item == l.item && y.idx < l.idx).map(y, y.qty).sum())) > 0).map(l, {'item': l.item, 'description': l.description, 'qty': l.qty - max(0, min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum() - event.items.filter(y, y.item == l.item && y.idx < l.idx).map(y, y.qty).sum())), 'uom': l.uom, 'note': l.note})"
-          - if: "event.items.filter(l, routes.filter(r, r.station == st.name && r.category == l.category).size() > 0 && max(0, min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum() - event.items.filter(y, y.item == l.item && y.idx < l.idx).map(y, y.qty).sum())) > 0).size() > 0"
+              items: "event.items.filter(l, !(l.line_key in event.sent_to_kitchen.map(s, s.key)) && routes.filter(r, r.station == st.name && r.category == l.category).size() > 0 && l.qty - max(0, min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum() - event.items.filter(y, y.item == l.item && y.idx < l.idx).map(y, y.qty).sum())) > 0).map(l, {'item': l.item, 'description': l.description, 'qty': l.qty - max(0, min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum() - event.items.filter(y, y.item == l.item && y.idx < l.idx).map(y, y.qty).sum())), 'uom': l.uom, 'note': l.note})"
+          - if: "event.items.filter(l, !(l.line_key in event.sent_to_kitchen.map(s, s.key)) && routes.filter(r, r.station == st.name && r.category == l.category).size() > 0 && max(0, min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum() - event.items.filter(y, y.item == l.item && y.idx < l.idx).map(y, y.qty).sum())) > 0).size() > 0"
             create: kitchen_ticket
             set:
               sale: event.name
@@ -44,4 +45,4 @@ steps:
               revision_of: event.amended_from
               status: "'picked_up'"
               picked_up_at: now()
-              items: "event.items.filter(l, routes.filter(r, r.station == st.name && r.category == l.category).size() > 0 && max(0, min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum() - event.items.filter(y, y.item == l.item && y.idx < l.idx).map(y, y.qty).sum())) > 0).map(l, {'item': l.item, 'description': l.description, 'qty': max(0, min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum() - event.items.filter(y, y.item == l.item && y.idx < l.idx).map(y, y.qty).sum())), 'uom': l.uom, 'note': l.note})"
+              items: "event.items.filter(l, !(l.line_key in event.sent_to_kitchen.map(s, s.key)) && routes.filter(r, r.station == st.name && r.category == l.category).size() > 0 && max(0, min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum() - event.items.filter(y, y.item == l.item && y.idx < l.idx).map(y, y.qty).sum())) > 0).map(l, {'item': l.item, 'description': l.description, 'qty': max(0, min(l.qty, served.filter(t, t.station == st.name).map(t, t.served.map(x, x.item == l.item ? x.qty : 0).sum()).sum() - event.items.filter(y, y.item == l.item && y.idx < l.idx).map(y, y.qty).sum())), 'uom': l.uom, 'note': l.note})"

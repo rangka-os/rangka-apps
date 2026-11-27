@@ -28,6 +28,13 @@ fields:
       - {value: cashier_same_day, label: {id: Outlet sudah memakai kasir di tanggal itu}}
       - {value: cashier_takings, label: {id: Setoran hari kasir}}
       - {value: float_of_outlet, label: {id: Modal kas beda dengan outlet}}
+      - {value: table_busy, label: {id: Meja sudah punya tagihan terbuka}}
+      - {value: table_of_outlet, label: {id: Meja milik outlet lain}}
+      - {value: merge_invalid, label: {id: Gabung tagihan tidak bisa}}
+      - {value: split_invalid, label: {id: Pisah tagihan tidak bisa}}
+      - {value: not_a_store, label: {id: Lokasi bukan toko}}
+      - {value: shift_other_outlet, label: {id: Sesi kasir outlet lain}}
+      - {value: shift_not_own, label: {id: Sesi kasir orang lain}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: shift_already_open
@@ -74,3 +81,35 @@ rules:
     on: save
     check: reason != 'float_of_outlet'
     message: {id: 'Modal kas outlet ini sudah ditetapkan kantor pusat; isi sesuai Modal kas kasir di data outlet'}
+  - name: table_busy
+    on: save
+    check: reason != 'table_busy'
+    message: {id: 'Meja ini sudah punya tagihan terbuka'}
+  - name: table_of_outlet
+    on: save
+    check: reason != 'table_of_outlet'
+    message: {id: 'Meja ini milik outlet lain'}
+  - name: merge_invalid
+    on: save
+    check: reason != 'merge_invalid'
+    message: {id: 'Tagihan hanya bisa digabung ke tagihan terbuka lain di outlet yang sama'}
+  - name: split_invalid
+    on: save
+    check: reason != 'split_invalid'
+    message: {id: 'Pisah tagihan butuh minimal satu barang tersisa di tagihan lama, dan tidak bisa dipakai bersama promo, member atau deposit'}
+  # a paired device's shift open passes the shift's own save rules as exceptions (contract 0058 §10); this guard keeps
+  # rule shift_at_store (rangka-apps#104) a refusal there too: a guard is a record a flow writes, so it still refuses
+  - name: not_a_store
+    on: save
+    check: reason != 'not_a_store'
+    message: {id: 'Sesi kasir hanya bisa dibuka di lokasi berjenis Toko'}
+  # a paired device's sale passes rules outlet_of_shift and own_shift of pos_sale as exceptions (contract 0058 §10);
+  # flow pos_sale_on_submit keeps them refusals with these two guards
+  - name: shift_other_outlet
+    on: save
+    check: reason != 'shift_other_outlet'
+    message: {id: 'Sesi kasir ini milik outlet lain; buka sesi di outlet perangkat ini'}
+  - name: shift_not_own
+    on: save
+    check: reason != 'shift_not_own'
+    message: {id: 'Sesi kasir ini milik kasir lain; buka sesi kasirmu sendiri'}

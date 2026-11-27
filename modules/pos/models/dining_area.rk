@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A section of an outlet's floor (Dalam, Teras, Lantai 2): the table map groups its tables by area.
+name: dining_area
+label: {id: Area meja, en: Dining area}
+icon: stock
+naming: ARM-{###}
+title_field: area_name
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true}
+  # the cashier reads the areas to see the map
+  - {role: cashier, read: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - {name: area_name, type: data, label: {id: Nama area}, help: {id: 'Misalnya Dalam, Teras, Lantai 2'}, required: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, required: true, in_list: true}
+  - {name: sort, type: int, label: {id: Urutan}, default: '0'}
+  # one area of a name per outlet
+  - {name: area_key, type: data, label: {id: Kunci area}, hidden: true, unique: true, compute: "outlet + '/' + area_name"}
+views:
+  list:
+    columns: [area_name, outlet, sort]
+    filters: [outlet]
+    sort: sort

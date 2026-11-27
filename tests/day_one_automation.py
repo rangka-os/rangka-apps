@@ -356,7 +356,9 @@ def summary_oracle(api, start, end, as_of):
     low = every(api, "stock_reorder", "open")
     s = lambda rows, f: sum(r[f] for r in rows or [])
     return {
-        "sales_total": s(inv, "grand_total") + s(pos, "grand_total") + s(daily, "net_total"),
+        # a receipt counts as sales before service charge, PBJT and rounding (rangka-apps#121 audit F6); cash_in keeps it whole
+        "sales_total": s(inv, "grand_total") + sum(r["grand_total"] - (r.get("service_charge") or 0) - (r.get("pbjt") or 0) - (r.get("rounding") or 0)
+                                                   for r in pos or []) + s(daily, "net_total"),
         "sales_count": len(inv or []) + len(pos or []) + len(daily or []),
         "cash_in": s(paid, "amount") + s(pos, "grand_total") + s(takings, "received_total"),
         "due_count": len([r for r in owed if r["due_date"] >= as_of]),
