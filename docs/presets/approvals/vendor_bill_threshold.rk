@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
+# Preset "Persetujuan pengeluaran" (vendor bill over a limit). Opt-in, copied by onboarding to custom/vendor_bill.rk.
+# Pairs with purchase_order_threshold and payment_payout. Every bill above the limit waits for the owner, with or
+# without a PO: nothing caps the total billed against one approved PO, so a PO exemption would let the same approval
+# cover many bills. Rp 5.000.000 is an example (edit the number).
+# A bill in another currency than the base (IDR, contract 0013) always waits: its kurs is typed by the maker.
+# Approver: the owner only (approvers: [owner]). Finance can submit a vendor bill, and an approver who submits approves
+# their own request (contract 0007 §2.4), so a finance approver would never hold. Roles only: no per-person limits.
+model: vendor_bill
+approvals:
+  - name: bill_threshold_approval
+    on: submit
+    when: "grand_total > 5000000 || (currency != '' && currency != 'IDR')"
+    approvers: [owner]
+    label: {id: Persetujuan tagihan di atas batas, en: Approval of a bill over the limit}

@@ -2727,7 +2727,8 @@ def scenario_project_margin(api):
             check("once the expense is cancelled, its bill can be cancelled", st == 200, (st, resp))
     # a project invoice with DPP 0 (fully discounted) submits and cancels: its post and reverse rows have distinct keys
     st, z = fm.create("sales_invoice", {"customer": customer, "project": p, "discount_amount": 1_000_000, "items": [{"item": ndt, "qty": 1, "rate": 1_000_000}]})
-    zn = submit_doc(fm, "sales_invoice", z["name"], "finance submits a DPP 0 project invoice", force=True) if st == 201 else None
+    # the owner submits it: the big discount preset of demo-jasa (docs/presets/approvals) holds a 100% discount for the owner
+    zn = submit_doc(api, "sales_invoice", z["name"], "owner submits a DPP 0 project invoice", force=True) if st == 201 else None
     if zn:
         st, resp = fm.verb("sales_invoice", zn, "cancel")
         check("the DPP 0 project invoice can be cancelled (no entry_key clash)", st == 200, (st, resp))
@@ -5927,6 +5928,7 @@ import day_one_ebupot21  # noqa: E402
 import day_one_returns  # noqa: E402
 import day_one_rental  # noqa: E402
 import day_one_courses  # noqa: E402
+import day_one_approval_presets  # noqa: E402
 import day_one_subscriptions  # noqa: E402
 import day_one_pos  # noqa: E402
 import day_one_moka  # noqa: E402
@@ -5982,12 +5984,13 @@ day_one_shifts.bind(sys.modules[__name__])   # after day_one_staff_attendance (i
 day_one_appointments.bind(sys.modules[__name__])   # also registers demo-salon (orgs, members, kernel env, setup)
 day_one_offline.bind(sys.modules[__name__])   # after day_one_pos (CTX kernel and org)
 day_one_lots.bind(sys.modules[__name__])
+day_one_approval_presets.bind(sys.modules[__name__])
 
 SCENARIOS = {
     "kopi-senja": [scenario_invoicing, scenario_dashboards_crm, scenario_permissions, scenario_crm_roles, scenario_payment_methods],
     "demo-jasa": [scenario_masters_jasa, scenario_quotation, scenario_line_discount_chain, scenario_cross_links, scenario_fx_jasa, scenario_print_descriptions, scenario_orders, scenario_workforce, scenario_projects, scenario_payments, scenario_procurement,
-                  scenario_prints_jasa, scenario_coretax, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction, scenario_xendit_callbacks, scenario_bank_booked],
-    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods, scenario_bank_account_delete] + day_one_returns.SCENARIOS_FNB,
+                  scenario_prints_jasa, scenario_coretax, scenario_tax_jasa, scenario_roles_jasa, scenario_billing_milestones, scenario_project_costs, scenario_project_margin, scenario_manpower_recap, scenario_cost_visibility, scenario_milestone_money, scenario_permissions, scenario_dashboards_jasa, scenario_money_rail, scenario_payment_methods, scenario_credit_limit_warning, scenario_payment_instruction, scenario_xendit_callbacks, scenario_bank_booked] + day_one_approval_presets.SCENARIOS_JASA,
+    "demo-fnb": [scenario_fnb_fixtures, scenario_stock, scenario_stock_access, scenario_po_approval_fnb, scenario_outlet_sales, scenario_dashboards_fnb, scenario_prints_fnb, scenario_print_descriptions, scenario_permissions, scenario_payment_methods, scenario_bank_account_delete] + day_one_returns.SCENARIOS_FNB + day_one_approval_presets.SCENARIOS_FNB,
     "demo-ritel": [scenario_ritel_fixtures, scenario_ritel_item_master, scenario_ritel_opening_stock, scenario_ritel_consignment_in, scenario_ritel_sales, scenario_ritel_loyverse,
                    scenario_ritel_purchase, scenario_ritel_transfer_count, scenario_ritel_settlement, scenario_ritel_takings, scenario_dashboards_ritel, scenario_ritel_access,
                    scenario_permissions, scenario_payment_methods] + day_one_returns.SCENARIOS_RITEL + [scenario_bank_takings],

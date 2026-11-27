@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/overlay.json
+# Preset "Persetujuan diskon besar" (quotation with a big discount). Opt-in: onboarding asks the owner first, then
+# copies this file to custom/quotation.rk. A quotation waits for finance (or the owner) when a line discount is above
+# 20% or the whole discount is above 20% of the price before discount. A quotation has no header discount (the module
+# spreads a lump sum over the lines). The approver is finance_manager and not sales_manager, because the module's own
+# manager_approval already asks sales_manager and the discount needs a second pair of eyes. Roles only.
+model: quotation
+approvals:
+  - name: big_discount_approval
+    on: submit
+    when: "items.map(i, i.discount > 20 ? 1 : 0).sum() > 0 || ((currency == '' || currency == 'IDR') && items.map(i, round(i.qty * i.rate)).sum() > 0 && (items.map(i, round(i.qty * i.rate)).sum() - subtotal) * 100 > items.map(i, round(i.qty * i.rate)).sum() * 20)"
+    approvers: [finance_manager]
+    label: {id: Persetujuan diskon besar, en: Approval of a big discount}
