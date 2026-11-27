@@ -38,6 +38,8 @@ work:
 menu:
   - group: {id: Gaji}
     items: [payroll_run, payslip, payroll_close, cash_advance, cash_advance_balance]
+  - group: {id: Pajak PPh 21}
+    items: [pph21_period, pph21_annual]
   - group: {id: Klaim biaya}
     items: [expense_claim, claim_settlement, claim_payment, expense_category]
   - group: {id: Karyawan}

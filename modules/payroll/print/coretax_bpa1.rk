@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# Annual or last-month 1721-A1 of permanent employees as Coretax imports them (A1Bulk, DJP template bpa1.xml and converter
+# "BPA1 Excel to XML"): the pph21_annual rows whose last tax month is the period's month and year. Coretax computes the
+# annual tax itself from the income parts below, so Article21IncomeTax is 0 as the DJP sheet says. Field map: docs/ebupot21.md.
+name: coretax_bpa1
+model: pph21_period
+label: {id: XML Bukti Potong 1721-A1 (Coretax)}
+output: xml
+template: coretax_bpa1.xml
+related:
+  a1:
+    model: pph21_annual
+    range: {tax_year: [year, year], month_end: [month, month]}
+    filter: "!voided"
+    sort: name
+    limit: 1000
+    require:
+      - check: "((size(npwp.replace('.', '').replace('-', '').replace(' ', '')) in [15, 16] && npwp.replace('.', '').replace('-', '').replace(' ', '').matches('^[0-9]+$')) || (size(nik) == 16 && nik.matches('^[0-9]+$')))"
+        message: {id: 'Pekerja di slip ini belum punya NIK 16 angka atau NPWP: lengkapi Data gaji pekerja (slip lama: buat bukti potongnya langsung di Coretax)'}
+      - check: "ptkp_status != '' && year_gross >= 0"
+        message: {id: 'Status PTKP atau penghasilan di rekap ini tidak valid'}

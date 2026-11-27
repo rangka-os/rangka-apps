@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+name: pph21_annual_on_slip_cancel
+label: {id: Rekap PPh 21 setahun dibatalkan bersama slipnya}
+description: {id: 'Saat slip masa pajak terakhir dibatalkan, Rekap PPh 21 setahunnya ditandai batal: tidak lagi muncul di ekspor 1721-A1 dan tidak terlihat oleh pegawai.'}
+# A cancelled last slip leaves its summary as a voided row (the kernel flows cannot delete). The amended slip, when
+# submitted, brings the row back with fresh numbers through pph21_annual_on_slip_submit. When the cancelled slip had
+# voided an earlier summary of the same worker and year (a later last_month slip covering it), the nearest earlier
+# summary whose last slip is still submitted is live again (only when the cancelled slip was itself a last-month slip with a summary), so no submitted last-month slip is left without an A1.
+on: payslip.cancelled
+steps:
+  - find: pph21_annual
+    where: last_slip == event.name
+    as: row
+  - if: row != null
+    update: row
+    set:
+      voided: true
+  - find_all: pph21_annual
+    where: event.last_month && !event.ter_daily && worker == event.worker && tax_year == event.tax_year && voided && month_end < event.tax_month && last_slip.docstatus == 1
+    sort: -month_end
+    limit: 1
+    as: earlier
+  - for_each: earlier
+    as: e
+    do:
+      - update: e
+        set:
+          voided: false

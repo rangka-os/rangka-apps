@@ -3179,6 +3179,9 @@ MATRIX = {
     "payroll_profile": {"finance_manager": {"read", "create", "write", "export", "import", "print"}, "project_admin": _R},
     "payroll_run": {"finance_manager": {"read", "create", "write", "export", "print"}, "project_admin": _R},   # no delete: slips point at it
     "payroll_close": {"finance_manager": _ALL, "project_admin": _R},
+    # PPh 21 Coretax exports (rangka-apps#128): finance's; the annual summary is made by flows, staff read their own (MEMBER)
+    "pph21_period": {"finance_manager": _ALL - {"submit", "cancel", "amend"}},
+    "pph21_annual": {"finance_manager": {"read", "create", "write", "export", "print"}},
     # kasbon: finance gives it; staff draft their own request (rangka-apps#117, permission if: own rows), never submit
     "cash_advance": {"finance_manager": _ALL, "project_admin": _R, "employee": _OWN_REQ, "cashier": _OWN_REQ, "outlet_staff": _OWN_REQ,
                      "outlet_supervisor": _OWN_REQ},
@@ -3211,7 +3214,7 @@ APPEND_ONLY = {"project_ledger", "stock_adjustment_value"}
 
 
 # Member grants (rangka-os contract 0074): every member holds them next to their own role, read-only own records here.
-MEMBER = {"payslip": _RP, "attendance_summary": _R, "staff_attendance": _R, "cash_advance": _R, "cash_advance_balance": _R,
+MEMBER = {"payslip": _RP, "pph21_annual": _RP, "attendance_summary": _R, "staff_attendance": _R, "cash_advance": _R, "cash_advance_balance": _R,
           "expense_claim": _R, "claim_settlement": _R, "shift_assignment": _R, "shift_swap": _R}
 
 
@@ -5921,6 +5924,7 @@ import day_one_produksi  # noqa: E402
 import day_one_accounting  # noqa: E402
 import day_one_keuangan  # noqa: E402
 import day_one_payroll  # noqa: E402
+import day_one_ebupot21  # noqa: E402
 import day_one_returns  # noqa: E402
 import day_one_rental  # noqa: E402
 import day_one_courses  # noqa: E402
@@ -5953,6 +5957,7 @@ day_one_produksi.bind(sys.modules[__name__])
 day_one_accounting.bind(sys.modules[__name__])
 day_one_keuangan.bind(sys.modules[__name__])
 day_one_payroll.bind(sys.modules[__name__])
+day_one_ebupot21.bind(sys.modules[__name__])
 day_one_returns.bind(sys.modules[__name__])
 day_one_rental.bind(sys.modules[__name__])   # also registers demo-sewa (orgs, members, matrix rows)
 day_one_courses.bind(sys.modules[__name__])
@@ -5991,7 +5996,7 @@ SCENARIOS = {
                    scenario_permissions, scenario_payment_methods] + day_one_returns.SCENARIOS_RITEL + [scenario_bank_takings],
     "demo-grosir": day_one_grosir.SCENARIOS + [scenario_payment_instruction, scenario_permissions, scenario_payment_methods],
     "demo-produksi": day_one_produksi.SCENARIOS + [scenario_permissions, scenario_payment_methods],
-    "demo-manpower": day_one_payroll.SCENARIOS + day_one_attendance.SCENARIOS + [scenario_permissions],
+    "demo-manpower": day_one_payroll.SCENARIOS + day_one_ebupot21.SCENARIOS + day_one_attendance.SCENARIOS + [scenario_permissions],
     "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],
     "demo-kursus": day_one_courses.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-langganan": day_one_subscriptions.SCENARIOS + day_one_loyalty.SCENARIOS_LANGGANAN + [scenario_permissions, day_one_accounting.scenario_accounting],

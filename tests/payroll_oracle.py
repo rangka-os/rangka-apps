@@ -158,3 +158,29 @@ def invoice(slips, run, ppn_rate=12, dpp=(11, 12), pph23=2):
     base23 = sum(a for _, a, ex in lines if not ex)
     w = rnd(Decimal(base23) * pph23 / 100) if run.get("pph23", True) else 0
     return dict(lines=lines, subtotal=sub, ppn=ppn, grand_total=sub + ppn, pph23_base=base23, pph23=w, amount_due=sub + ppn - w, fee=fee, cost=cost)
+
+
+def annual(slips, status, has_tax_id=True):
+    """The expected 1721-A1 numbers (rangka-apps#128) of one worker from the oracle slips (dicts from slip()) of the months
+    of the period of work, the last one being the last tax month. Written from PMK 168/2023 Pasal 15 to 17 and the DJP BPA1
+    sheet, independent of the model: income parts by DJP column, job cost 5% capped at 500.000 a month, PKP truncated to
+    thousands, Pasal 17 layers, x120% without a tax number."""
+    months = len(slips)
+    gross = sum(s["gross_taxable"] for s in slips)
+    pension = sum(s["pension"] for s in slips)
+    job = min(floor(Decimal(gross) * 5 / 100), 500_000 * months)
+    net = gross - job - pension
+    pkp = max(0, (net - PTKP[status]) // 1000 * 1000)
+    surcharge = Decimal(1) if has_tax_id else Decimal("1.2")
+    tax = floor(pasal17(pkp) * surcharge)
+    return {
+        "months": months,
+        "gross_salary": sum(s["base"] - s["late"] for s in slips),
+        "other_benefit": sum(s["allowance"] + s["overtime"] + s["holiday_overtime"] for s in slips),
+        "insurance_employer": sum(s["jkk"] + s["jkm"] + s["kes_er"] for s in slips),
+        "bonus_thr": sum(s["thr"] for s in slips),
+        "year_gross": gross, "job_cost": job, "pension_contribution": pension, "year_net": net, "ptkp": PTKP[status],
+        "year_pkp": pkp, "year_pph21": tax,
+        "withheld_before": sum(s["pph21"] for s in slips[:-1]),
+        "last_withheld": tax - sum(s["pph21"] for s in slips[:-1]),
+    }
