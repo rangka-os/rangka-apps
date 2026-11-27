@@ -11,6 +11,6 @@ icon: calendar-line
 # (pos_shift, module pos) is something else: it links to the work shift when the cashier has one, never needs it.
 # With module attendance, a clock-in links to the employee's published shift of that day and lateness is measured
 # against the shift instead of the outlet's default hours; flow shift_attendance_sync marks each shift present, late or
-# absent. The kernel clock screen's own shift slot (clock.shift, rangka-os 0030 known gap) is a later task.
+# absent. The clock screen shows the shift of the day (clock.shift, rangka-os 0030) and links it at clock-in.
 requires: {rangka: '>=0.5', users: ^1.5, outlets: ^1.6}
 optional: {attendance: ^1.1, pos: ^1.6}
