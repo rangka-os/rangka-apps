@@ -33,6 +33,8 @@ home: {model: pos_sale}
 work:
   - {screen: kasir, roles: [cashier], home: true}
   - {screen: kasir, roles: [head_office]}
+  # tables (rangka-apps#122): a cafe or restaurant opens this one instead of kasir
+  - {screen: kasir_meja, roles: [cashier, head_office]}
 menu:
   - group: {id: Kasir}
     items: [pos_sale, pos_shift, pos_shift_close]

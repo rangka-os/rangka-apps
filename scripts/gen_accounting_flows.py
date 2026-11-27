@@ -27,15 +27,15 @@ ACCOUNTS = [
     ("1-1500", "PPN masukan"), ("1-1510", "PPh 23 dibayar dimuka"),
     ("1-2100", "Aset tetap"), ("1-2900", "Akumulasi penyusutan"),
     ("2-1100", "Utang usaha"), ("2-1150", "Utang belum ditagih"), ("2-1200", "PPN keluaran"),
-    ("2-1300", "Utang PPh 23"), ("2-1310", "Utang PPh final"), ("2-1320", "Utang PPh 21"), ("2-1400", "Uang muka pelanggan"),
+    ("2-1300", "Utang PPh 23"), ("2-1310", "Utang PPh final"), ("2-1320", "Utang PPh 21"), ("2-1330", "Utang pajak restoran (PBJT)"), ("2-1400", "Uang muka pelanggan"),
     ("2-1500", "Utang upah"),
     # expense claims of employees approved and not paid back yet (module reimbursement, rangka-apps#117)
     ("2-1510", "Utang reimburse karyawan"), ("2-1600", "Utang BPJS"), ("2-1900", "Utang lain-lain"), ("2-2100", "Utang bank"),
     ("3-1100", "Modal disetor"), ("3-1900", "Ekuitas saldo awal"),
-    ("4-1100", "Pendapatan usaha"), ("4-1200", "Retur penjualan"), ("4-9100", "Pendapatan lain-lain"),
+    ("4-1100", "Pendapatan usaha"), ("4-1200", "Retur penjualan"), ("4-1300", "Pendapatan service charge"), ("4-9100", "Pendapatan lain-lain"),
     ("4-9200", "Pendapatan denda dan ganti rugi sewa"),
     # signed: a gain on selling a fixed asset is a credit, a loss (or a write-off) a debit (module fixed_assets)
-    ("4-9300", "Laba (rugi) pelepasan aset tetap"),
+    ("4-9300", "Laba (rugi) pelepasan aset tetap"), ("4-9400", "Selisih pembulatan"),
     ("5-1100", "Harga pokok penjualan"), ("5-1200", "Selisih dan susut persediaan"), ("5-1300", "Upah langsung"),
     ("5-1400", "Biaya proyek"),
     ("6-1100", "Beban gaji kantor"), ("6-1200", "Biaya admin pembayaran"), ("6-1300", "Selisih kas"),
@@ -148,14 +148,21 @@ POSTINGS = {
         # disetor until the takings (outlet_takings) move them to Kas or Bank; revenue net of PPN, final PPh, HPP.
         # The part paid from a member's deposit (module loyalty) comes out of 2-1400 Uang muka pelanggan (line 8, last,
         # so the earlier lines keep their numbers); PPN is on the whole sale, also the deposit part.
+        # Restaurant charges (rangka-apps#121), lines 9 to 11 so the earlier lines keep their numbers: service charge is
+        # revenue (4-1300), PBJT is owed to the region (2-1330), the rounding is 4-9400 (4-9300 is taken by asset disposals) (a gain when positive, a loss
+        # when negative). Revenue 4-1100 is the net before charges, so the voucher still sums to 0:
+        # grand_total = net + service + pbjt + rounding.
         lines=[("'11150'", "event.grand_total - event.deposit_used"),
-               ("'41100'", "0 - (event.grand_total - event.ppn_in_sales)"),
+               ("'41100'", "0 - (event.net_before_charges - event.ppn_in_sales)"),
                ("'21200'", "0 - event.ppn_in_sales"),
                ("'69100'", "event.pph_final"),
                ("'21310'", "0 - event.pph_final"),
                ("'51100'", "event.cogs_total"),
                ("'11400'", "0 - event.cogs_total"),
-               ("'21400'", "event.deposit_used", {"party": "event.member"})]),
+               ("'21400'", "event.deposit_used", {"party": "event.member"}),
+               ("'41300'", "0 - event.service_charge"),
+               ("'21330'", "0 - event.pbjt"),
+               ("'49400'", "0 - event.rounding")]),
     "pos_shift_close": dict(
         label="Jurnal tutup sesi kasir", date="event.close_date", outlet="event.outlet",
         # Closing the shift settles what its receipts held in Kas outlet belum disetor: the cash counted (less the float,

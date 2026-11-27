@@ -9,7 +9,10 @@
 name: pos_shift
 label: {id: Sesi kasir, en: Cashier shift}
 icon: wallet
-naming: SESI-{outlet.code}-{YY}{MM}-{####}
+# A shift opened on a paired device carries the device's number (SESI-BTR-K1-2611-0003, contract 0058 §3), so the
+# sales queued offline link it by that name; head office keeps SESI-<outlet code>-<YYMM>-<n>.
+naming: SESI-{outlet.code}-{device.code}-{YY}{MM}-{####}
+naming_on: device
 title_field: outlet
 permissions:
   - {role: head_office, read: true, create: true, write: true, export: true, print: true}
@@ -64,6 +67,10 @@ fields:
   # blind count (contract 0027 hidden_for): the cashier counts the drawer without seeing what should be in it
   - {name: cash_total, type: currency, label: {id: Tunai masuk}, help: {id: 'Dibayar tunai setelah kembalian, dikurangi tunai transaksi yang dibatalkan'}, read_only: true, hidden_for: [cashier]}
   - {name: qris_total, type: currency, label: {id: QRIS masuk}, read_only: true, hidden_for: [cashier]}
+  # restaurant charges of the shift's receipts (rangka-apps#121), for the daily recap
+  - {name: service_total, type: currency, label: {id: Service charge}, read_only: true, hidden_for: [cashier]}
+  - {name: pbjt_total, type: currency, label: {id: Pajak restoran (PBJT)}, read_only: true, hidden_for: [cashier]}
+  - {name: rounding_total, type: currency, label: {id: Pembulatan}, read_only: true, hidden_for: [cashier]}
   - {name: void_count, type: int, label: {id: Transaksi dibatalkan}, read_only: true}
   # module loyalty: sales paid from a member's deposit (no money moves, 2-1400), and deposit top-ups taken on this
   # shift (cash into the drawer, QRIS into the outlet's QRIS; flow deposit_topup_on_submit)
@@ -115,6 +122,9 @@ views:
         columns:
           - [sales_count, gross_total, discount_total, net_total]
           - [cash_total, qris_total, void_count, void_total]
+      - section: {id: Biaya restoran}
+        columns:
+          - [service_total, pbjt_total, rounding_total]
       - section: {id: Deposit member}
         columns:
           - [deposit_total]

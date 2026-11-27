@@ -1,17 +1,19 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: pos
-version: 1.7.0
+version: 1.10.0
 title: {id: Kasir, en: Point of sale}
 summary:
   id: Kasir di browser dengan sesi kas, transaksi dan tutup sesi per outlet.
   en: A browser till with cash sessions, sales and session close per outlet.
 category: sales
 icon: shopping-basket-line
-# The cashier of a shop or an F&B outlet, online (Jalur B v0; devices and offline come with rangka-edge, contracts
-# 0003 and 0006). A cashier opens a shift (pos_shift) at an outlet with the float in the drawer, rings up sales
+# The cashier of a shop or an F&B outlet (Jalur B), online in any browser and offline on a paired device (rangka-os
+# contract 0058: the device numbers its receipts and shifts with its own code, computes the totals with the model's
+# computes and sends them when the connection is back; its totals are binding). A cashier opens a shift (pos_shift)
+# at an outlet with the float in the drawer, rings up sales
 # (pos_sale: items or menu, qty in any unit of the item, line and receipt discounts, paid in cash with change, QRIS,
 # or both), and closes the shift by counting the drawer: the difference is booked as selisih kas. Each sale is
-# numbered per outlet (STRK-<outlet code>-<YYMM>-<n>, kernel contract 0009 §2a), takes its goods out of the outlet's
+# numbered per outlet (STRK-<outlet code>-<YYMM>-<n>, kernel contract 0009 §2a; on a paired device with its code), takes its goods out of the outlet's
 # stock through the declared stock rule (contract 0021; a menu item through its active recipe, contract 0022) and is
 # journalled by the accounting module like a day of outlet_sales. A sale can be voided (cancel) or corrected
 # (cancel, then amend without the returned items) only on its own day while its shift is open.
@@ -20,6 +22,9 @@ icon: shopping-basket-line
 # A sale may name its customer (contacts), and with module promotions it takes item promos by itself and a bill promo,
 # voucher code or free gift picked at the counter's checkout (rangka-os contract 0069, rangka-apps#103). With module
 # loyalty the checkout also takes a member, points to redeem and a part paid from the member's deposit (rangka-apps#102).
+# A sale copies the outlet's service charge (dine-in only), PBJT rate and bill rounding while it is a draft, and a paid
+# receipt can be printed split into parts (rangka-apps#121, pos 1.9.0). Tables: an open bill per table, moved, merged
+# or split by line, sent to the kitchen while a draft; a bill opened on a table is dine-in (rangka-apps#122, pos 1.10.0).
 requires: {rangka: '>=0.5', users: ^1.2, contacts: ^1.4, catalogue: ^1.5, outlets: ^1.7, stock: ^1.2}
 hooks: [stock.reverse_moves]
 optional: {accounting: ^1.4, outlet_sales: ^1.1, promotions: ^1.0, loyalty: ^1.0, shifts: ^1.0}

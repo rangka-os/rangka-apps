@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/print.json
+# One slip per payment row of a split bill ("Bagian 2 dari 3"): what that part paid and its change (rangka-apps#121).
+# A part paid with two rows (cash and QRIS) gets two slips.
+name: pos_receipt_part
+model: pos_sale
+label: {id: Struk per bagian (bayar terpisah), en: Receipt per part (split bill)}
+paper: 80mm
+template: pos_receipt_part.html

@@ -64,7 +64,9 @@ steps:
       date_to: "('as_of' in event ? event.as_of : today()) - duration(1)"
       summary_key: "'monthly|' + string(('as_of' in event ? event.as_of : today()) - duration(1))"
       setting: cfg.name
-      sales_total: "(app_installed('invoicing') ? inv.map(i, i.grand_total).sum() : 0) + (app_installed('pos') ? receipts.map(i, i.grand_total).sum() : 0) + (app_installed('outlet_sales') ? daily.map(i, i.net_total).sum() : 0)"
+      # POS sales on the net before service charge, PBJT and rounding (audit F6): PBJT is owed to the region, service and
+      # rounding sit in their own accounts; cash_in below still counts the whole receipt
+      sales_total: "(app_installed('invoicing') ? inv.map(i, i.grand_total).sum() : 0) + (app_installed('pos') ? receipts.map(i, i.grand_total - i.service_charge - i.pbjt - i.rounding).sum() : 0) + (app_installed('outlet_sales') ? daily.map(i, i.net_total).sum() : 0)"
       sales_count: "(app_installed('invoicing') ? size(inv) : 0) + (app_installed('pos') ? size(receipts) : 0) + (app_installed('outlet_sales') ? size(daily) : 0)"
       cash_in: "(app_installed('payments') ? paid.map(i, i.amount).sum() : 0) + (app_installed('pos') ? receipts.map(i, i.grand_total).sum() : 0) + (app_installed('outlet_sales') ? takings.map(i, i.received_total).sum() : 0)"
       due_count: "app_installed('invoicing') ? owed.filter(i, i.due_date >= ('as_of' in event ? event.as_of : today())).size() : 0"

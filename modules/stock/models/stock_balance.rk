@@ -33,6 +33,7 @@ fields:
       - {value: vehicle, label: {id: Mobil kanvas}}
       - {value: quarantine, label: {id: Barang rusak / karantina}}
       - {value: production, label: {id: Ruang produksi}}
+  - {name: variant_group, type: data, label: {id: Grup varian}, hidden: true, compute: item.variant_group}
   - {name: last_sale_date, type: date, label: {id: Terakhir terjual}, read_only: true, in_list: true}
 views:
   list:

@@ -69,6 +69,7 @@ fields:
       - {value: '21300', label: {id: '2-1300 Utang PPh 23'}}
       - {value: '21310', label: {id: '2-1310 Utang PPh final'}}
       - {value: '21320', label: {id: '2-1320 Utang PPh 21'}}
+      - {value: '21330', label: {id: '2-1330 Utang pajak restoran (PBJT)'}}
       - {value: '21400', label: {id: '2-1400 Uang muka pelanggan'}}
       - {value: '21500', label: {id: '2-1500 Utang upah'}}
       - {value: '21510', label: {id: '2-1510 Utang reimburse karyawan'}}
@@ -79,9 +80,11 @@ fields:
       - {value: '31900', label: {id: '3-1900 Ekuitas saldo awal'}}
       - {value: '41100', label: {id: '4-1100 Pendapatan usaha'}}
       - {value: '41200', label: {id: '4-1200 Retur penjualan'}}
+      - {value: '41300', label: {id: '4-1300 Pendapatan service charge'}}
       - {value: '49100', label: {id: '4-9100 Pendapatan lain-lain'}}
       - {value: '49200', label: {id: '4-9200 Pendapatan denda dan ganti rugi sewa'}}
       - {value: '49300', label: {id: '4-9300 Laba (rugi) pelepasan aset tetap'}}
+      - {value: '49400', label: {id: '4-9400 Selisih pembulatan'}}
       - {value: '51100', label: {id: '5-1100 Harga pokok penjualan'}}
       - {value: '51200', label: {id: '5-1200 Selisih dan susut persediaan'}}
       - {value: '51300', label: {id: '5-1300 Upah langsung'}}
