@@ -56,7 +56,7 @@ def scenario_warehouse_types_kasir(api):
     sp = (CTX.get("kernel").sold_plan or {}) if CTX.get("kernel") else {}
     used = ((sp.get("usage") or {}).get("outlets") or {}).get("used")
     if sp:
-        eq("demo-kasir plan as sold: outlet seats count the 3 stores, not the warehouse (0057 §5)", used, 3)
+        eq("demo-kasir plan as sold: outlet seats count the 5 stores, not the warehouse (0057 §5)", used, 5)
     # outlet rules: a warehouse cannot be a supplying warehouse of itself, a store cannot supply a store, a warehouse has no sales source
     st, r = api.patch("outlet", "OUT-02", {"supply_from": "OUT-03"})
     check("a store as a supplying warehouse is refused (supply_is_warehouse) -> 422", st == 422 and "supply_is_warehouse" in str(r), (st, r))

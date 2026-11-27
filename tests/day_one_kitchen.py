@@ -338,6 +338,58 @@ def scenario_kitchen_dashboard_and_screen(api):
     check("Sari (cashier) gets the kitchen screen, not as home", {"screen": "dapur", "home": False} in ((m or {}).get("work") or []), (m or {}).get("work"))
 
 
+def scenario_kitchen_on_draft(api):
+    """Kirim ke dapur from an open table bill (rangka-apps#122): tickets go out when the bill is sent, again only for
+    new lines, a removed sent line makes a BATAL line, and payment skips what was already sent."""
+    sari = CTX.get("sari")
+    shift = CTX.get("shift_riu_kitchen") or (open_shift(sari, RIU, "tables") if sari else None)
+    if not (sari and shift):
+        return
+
+    def L(key, item, qty):
+        return {"item": item, "qty": qty, "line_key": key}
+
+    st, b = sari.create("pos_sale", {"shift": shift, "table": "MJA-RIU-007", "guests": 2, "items": [L("k1", KSA, 1), L("k2", ROTI, 1)]})
+    if not check("open bill on table B1 -> 201", st == 201, (st, b)):
+        return
+    name = rec(b)["name"]
+    st, r = sari.patch("pos_sale", name, {"send_kitchen": True})
+    ts = tickets(api, name)
+    now = sari.get("pos_sale", name)
+    check("Kirim ke dapur: a Bar ticket (kopi) and a Dapur ticket (roti) titled with the table; the check clears",
+          st == 200 and [t["station"] for t in ts] == [BAR, DAPUR] and all(t["heading"] == "B1" for t in ts) and not now.get("send_kitchen")
+          and len(now.get("sent_to_kitchen") or []) == 2, (st, r, ts, now))
+    st, r = sari.patch("pos_sale", name, {"send_kitchen": True})
+    eq("sending again with nothing new makes no ticket", len(tickets(api, name)), 2)
+    st, r = sari.patch("pos_sale", name, {"items": [L("k1", KSA, 1), L("k2", ROTI, 1), L("k3", KHT, 1)], "send_kitchen": True})
+    ts = tickets(api, name)
+    check("a new line sent: one more ticket, only the new line", st == 200 and len(ts) == 3 and len([t for t in ts if t["station"] == BAR and lines(t) == [(KHT, 1, "")]]) == 1, (st, r, ts))
+    st, r = sari.patch("pos_sale", name, {"items": [L("k1", KSA, 1), L("k3", KHT, 1)], "send_kitchen": True})
+    ts = tickets(api, name)
+    batal = [l for t in ts for l in t["items"] if str(l.get("description") or "").startswith("BATAL")]
+    check("a sent line removed: a BATAL line for the roti at the Dapur station", st == 200 and len(ts) == 4 and len(batal) == 1 and batal[0]["item"] == ROTI, (st, r, ts))
+    # the kitchen knows a sent line by its key: a reused key, a raised quantity or a doubled key would hide a dish from it
+    st, r = sari.patch("pos_sale", name, {"items": [L("k1", ROTI, 1), L("k3", KHT, 1)], "send_kitchen": True})
+    check("a sent line's key reused for another item is refused (sent_line_kept)", st != 200 and "sent_line_kept" in str(r), (st, r))
+    st, r = sari.patch("pos_sale", name, {"items": [L("k1", KSA, 2), L("k3", KHT, 1)], "send_kitchen": True})
+    check("a sent line's quantity raised is refused (sent_line_kept)", st != 200 and "sent_line_kept" in str(r), (st, r))
+    st, r = sari.patch("pos_sale", name, {"items": [L("k1", KSA, 1), L("k3", KHT, 1), L("k3", ROTI, 1)], "send_kitchen": True})
+    check("two lines with one key are refused (line_key_unique)", st != 200 and "line_key_unique" in str(r), (st, r))
+    st, kv = api.create("uom_conversion", {"item": KSA, "uom": "UOM-006", "factor": 4})
+    kv = rec(kv).get("name")
+    st2, r = sari.patch("pos_sale", name, {"items": [dict(L("k1", KSA, 1), packing=kv), L("k3", KHT, 1)], "send_kitchen": True})
+    check("a sent line switched to a pack of 4 is refused (sent_line_kept)", st == 201 and st2 != 200 and "sent_line_kept" in str(r), (st, kv, st2, r))
+    eq("no ticket came from the refused writes", len(tickets(api, name)), 4)
+    st, r = sari.patch("pos_sale", name, {"items": [L("k1", KSA, 1), L("k3", KHT, 1), L("k4", ROTI, 1)]})
+    st, p = sari.verb("pos_sale", name, "submit", {"payments": [{"method": "cash", "amount": 100_000}]})
+    paid = rec(p).get("name") if st == 200 else name
+    ts = tickets(api, paid)
+    dapur = [t for t in ts if t["station"] == DAPUR and not any(str(l.get("description") or "").startswith("BATAL") for l in t["items"])]
+    check("payment sends only the line never sent (roti k4): 5 tickets, none for the coffees again",
+          st == 200 and len(ts) == 5 and len([t for t in ts if t["station"] == BAR]) == 2 and len(dapur) == 2
+          and lines(sorted(dapur, key=lambda t: t["sent_at"])[-1]) == [(ROTI, 1, "")], (st, [(t["station"], lines(t)) for t in ts]))
+
+
 SCENARIOS = [scenario_kitchen_tickets, scenario_kitchen_steps, scenario_kitchen_void_and_revision, scenario_kitchen_served_revision,
-             scenario_kitchen_scope,
+             scenario_kitchen_scope, scenario_kitchen_on_draft,
              scenario_kitchen_dashboard_and_screen]

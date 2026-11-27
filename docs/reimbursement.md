@@ -54,5 +54,5 @@ cancel and a payment of one claim at the same moment run one after the other and
   its cash journal (module projects); follow-up of #117. The claim's journal already carries the project.
 - `jasa_proyek` does not install the module yet (follow-up): its kasbon requests work (payroll 2.2).
 - Per diem and mileage rules, corporate cards, multi-currency claims.
-- Receipt reading by Raka: may suggest category and amount into a draft for the staff member to confirm; it never
+- Receipt reading by Zafdoz: may suggest category and amount into a draft for the staff member to confirm; it never
   submits or approves (money is never decided by an LLM).

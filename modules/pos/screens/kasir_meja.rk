@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+# The cashier's work screen for a restaurant or cafe with tables (contract 0030 §2 counter, 0048 §2; rangka-apps#122). Same
+# sale as kasir, but the cashier opens on the table map. kasir stays for a counter without tables.
+# (contract 0030 §2 counter): the kernel web app renders it from these slots. Money, stock
+# and numbering stay in pos_sale (computes, rules, stock: block, journal flows); the screen only fills the sale.
+name: kasir_meja
+type: counter
+label: {id: Kasir meja, en: Table cashier}
+description: {id: 'Buka tagihan per meja, kirim ke dapur, pindah, gabung atau pisah tagihan, lalu bayar dan cetak struk.'}
+icon: wallet
+roles: [cashier, head_office]
+device: tablet
+needs: [print, scan]
+offline: queue
+counter:
+  catalogue:
+    model: item
+    filter: "kind != 'material' && active != false"
+    title: item_name
+    search: [item_name, sku, barcode]
+    group_by: category
+    price: rate
+    barcode: barcode
+    variants: {group: variant_group, label: variant_label, title: variant_title}
+    available: {model: stock_balance, item: item, qty: qty, match: {outlet: outlet}}
+  document:
+    model: pos_sale
+    lines: items
+    # amount: the model's line amount shows a promo (struck price) or a free gift; flag: the cashier marks the gift line
+    line: {item: item, qty: qty, price: rate, note: note, amount: amount, flag: is_gift}
+    # amount_due: the total less what the member's deposit pays (module loyalty); without it, the total
+    total: amount_due
+    change: change_amount
+    # the same rows as kasir, with #121's service charge, PBJT and rounding: a bill on a table is dine-in
+    summary: [gross_total, promo_total, member_discount, points_discount, manual_discount_total, promo_shortfall, service_charge, pbjt, rounding, deposit_used, amount_due]
+    # rangka-os contract 0069: filled before paying; the promo picker lists live bill promos only, the member picker
+    # active members. Fields of modules promotions and loyalty are left out when not installed (their depends_on).
+    checkout: [order_type, customer, {field: member, filter: "active"}, {field: promotion, filter: "is_bill && live"}, promo_code, points_redeemed, deposit_used]
+    set: {date: "today()"}
+  payments: {table: payments, method: method, amount: amount, ref: ref, party: party, parties: parties, methods: [cash, qris]}
+  session:
+    model: pos_shift
+    link: shift
+    filter: "cashier == user.email"
+    state: {field: state, open: open, closed: closed}
+    open: [outlet, opening_cash]
+    set: {outlet: "user.outlets.size() > 0 ? user.outlets[0] : ''"}
+    close: {model: pos_shift_close, link: shift, fields: [counted_cash, closing_note]}
+  # contract 0048 section 2: the counter opens on the table map; an open bill is a draft that links its table
+  customer:
+    field: buyer
+    table:
+      model: dining_table
+      link: table
+      title: table_name
+      area: area_title
+      seats: seats
+      filter: "active != false"
+      match: {outlet: outlet}
+      guests: guests
+      bill: bill_asked
+  print: pos_receipt

@@ -14,6 +14,7 @@ fields:
   - {name: posting_date, type: date, label: {id: Tanggal}, read_only: true, in_list: true}
   - {name: outlet, type: link, to: outlet, label: {id: Lokasi}, required: true, read_only: true, in_list: true}
   - {name: item, type: link, to: item, label: {id: Barang}, required: true, read_only: true, in_list: true}
+  - {name: variant_group, type: data, label: {id: Grup varian}, hidden: true, compute: item.variant_group}
   - {name: qty, type: float, label: {id: 'Qty (+ masuk, - keluar)'}, read_only: true, in_list: true}
   - {name: unit_cost, type: currency, label: {id: Biaya per satuan}, read_only: true, hidden_for: [outlet_staff, cashier, warehouse_staff]}
   - {name: value, type: currency, label: {id: Nilai}, read_only: true, in_list: true, hidden_for: [outlet_staff, cashier, warehouse_staff]}

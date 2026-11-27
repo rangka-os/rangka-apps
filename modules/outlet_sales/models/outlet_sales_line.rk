@@ -7,6 +7,7 @@ fields:
     to: item
     label: {id: Barang}
     required: true
+  - {name: variant_group, type: data, label: {id: Grup varian}, hidden: true, compute: item.variant_group}
   - name: description
     type: text
     label: {id: Uraian}

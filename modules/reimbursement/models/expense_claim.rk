@@ -15,7 +15,7 @@ title_field: description
 # Paying it back (pay_with): cash or bank by finance (claim_payment), or with the next salary (payslip.reimbursement,
 # untaxed). A submitted claim cannot change, so whether it was paid lives on its claim_settlement (made by
 # claim_settlement_on_submit). A claim already paid cannot be cancelled (claim_cancel_guard): cancel the payment or the
-# slip first. Raka may suggest category and amount from the receipt into a draft; a person submits, an approver
+# slip first. Zafdoz may suggest category and amount from the receipt into a draft; a person submits, an approver
 # approves: money is never decided by an LLM.
 permissions:
   # Staff: their own claims only (permission if:, which also filters lists and dashboards). No cancel, no amend.

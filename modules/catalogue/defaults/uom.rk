@@ -1,0 +1,19 @@
+# Default units (contract 0076): filled into a business's empty Satuan table when the catalogue module is installed,
+# so its first item can be saved. A business that already has a unit gets none of these. Coretax codes only where
+# the model's help names them; the rest stay empty (UM.0033 Lainnya).
+uom:
+  - {uom_name: Unit, coretax_unit: UM.0018}
+  - {uom_name: Pcs}
+  - {uom_name: Buah}
+  - {uom_name: Set}
+  - {uom_name: Pak}
+  - {uom_name: Dus}
+  - {uom_name: Lusin}
+  - {uom_name: Kg, coretax_unit: UM.0003}
+  - {uom_name: Gram}
+  - {uom_name: Liter}
+  - {uom_name: Meter}
+  - {uom_name: Porsi}
+  - {uom_name: Jam, coretax_unit: UM.0027}
+  - {uom_name: Hari, coretax_unit: UM.0026}
+  - {uom_name: Bulan, coretax_unit: UM.0024}

@@ -6,10 +6,14 @@
 name: pos_sale_item
 is_child: true
 fields:
+  # a stable key of the line (tables, rangka-apps#122): the kitchen remembers which lines it was sent, and a merge or a
+  # split moves lines between bills by it. The counter fills it; an empty key is a line the kitchen was never sent.
+  - {name: line_key, type: data, label: {id: Kunci baris}, hidden: true}
   - {name: item, type: link, to: item, label: {id: Barang atau menu}, required: true, peek: [rate, stock_uom]}
   # the item's category when the line was saved: the kitchen routes a paid line by it (module kitchen) without reading
   # the whole catalogue during the payment
   - {name: category, type: link, to: item_category, label: {id: Kategori}, hidden: true, compute: item.category}
+  - {name: variant_group, type: data, label: {id: Grup varian}, hidden: true, compute: item.variant_group}
   - {name: description, type: text, label: {id: Uraian}, default: item.item_name}
   - name: packing
     type: link

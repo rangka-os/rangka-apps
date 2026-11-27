@@ -8,6 +8,27 @@ label: {id: 'Transaksi kasir dibayar: tambah ke sesi kasir'}
 on: pos_sale.submitted
 steps:
   - {find: pos_shift, where: name == event.shift && state == 'open', as: s}
+  # only a store sells (rangka-apps#104): a device event turns the sale's own rules (sale_at_store) into exceptions,
+  # so the store check is repeated here, where a guard still refuses
+  - {find: outlet, if: device.event, where: name == event.outlet, as: so}
+  - if: device.event && so != null && so.location_type != '' && so.location_type != 'store'
+    create: pos_guard
+    set: {reason: "'not_a_store'", document: event.name}
+  # A device event also turns rules outlet_of_shift (outlet == shift.outlet) and own_shift into exceptions, so a sale
+  # could add to another outlet's or another cashier's head-office drawer and book a false shortage at its close. The
+  # shift is read whatever its state (a closed one is still not this device's to link). The kernel already refuses a
+  # shift made on another device (deviceLinks, shift_other_device); what is left is a shift made without a device.
+  - {find: pos_shift, if: device.event, where: name == event.shift, as: ds}
+  - if: device.event && ds != null && (ds.outlet != event.outlet || (device.outlet != '' && ds.outlet != device.outlet))
+    create: pos_guard
+    set: {reason: "'shift_other_outlet'", document: ds.name}
+  # Own shift on a device: one this device opened (its name carries the device code, contract 0058 §3; a cashier switch
+  # keeps selling on it) or one the same cashier opened.
+  - if: >-
+      device.event && ds != null && ds.cashier != user.email
+      && !(so != null && ds.name.startsWith('SESI-' + so.code + '-' + device.code + '-'))
+    create: pos_guard
+    set: {reason: "'shift_not_own'", document: ds.name}
   # Jalur A and B never on the same outlet and day: a daily sales record (form, Moka, POS file) of this outlet and day
   # refuses the receipt (and flow pos_daily_form_guard refuses the record after a receipt), whatever sales_source says
   - find_all: outlet_sales
@@ -45,7 +66,10 @@ steps:
   - if: day != null && day.source == ''
     update: day
     set: {source: "'kasir'", document: event.name}
-  - if: s == null
+  # A receipt a paired device sends from its queue (device.event) was already paid at the outlet (rangka-os contract
+  # 0058 §10): a shift head office closed meanwhile does not refuse it (rule shift_open becomes a rule_overridden exception for head office) and the
+  # closed shift's totals stay as counted.
+  - if: s == null && !device.event
     create: pos_guard
     set: {reason: "'shift_closed'", document: event.name}
   - update: s
@@ -58,4 +82,7 @@ steps:
       cash_total: s.cash_total + event.cash_amount
       qris_total: s.qris_total + event.qris_amount
       deposit_total: s.deposit_total + event.deposit_used
+      service_total: s.service_total + event.service_charge
+      pbjt_total: s.pbjt_total + event.pbjt
+      rounding_total: s.rounding_total + event.rounding
       cogs_total: s.cogs_total + event.cogs_total
