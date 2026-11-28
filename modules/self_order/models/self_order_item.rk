@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One line of a table order. The price is the item's rate, computed here: the page's request never carries a price.
+name: self_order_item
+is_child: true
+fields:
+  - {name: item, type: link, to: item, label: {id: Menu}, required: true}
+  - {name: description, type: data, label: {id: Uraian}, compute: item.item_name}
+  - {name: qty, type: int, label: {id: Qty}, default: '1'}
+  - {name: note, type: data, label: {id: Catatan}, help: {id: 'Misalnya kurang manis, tanpa es'}}
+  - {name: rate, type: currency, label: {id: Harga}, compute: item.rate}
+  - {name: amount, type: currency, label: {id: Jumlah}, compute: round(qty * rate)}
+  - {name: category, type: link, to: item_category, label: {id: Kategori}, hidden: true, compute: item.category}
+  - {name: uom, type: link, to: uom, label: {id: Satuan}, hidden: true, compute: item.stock_uom}

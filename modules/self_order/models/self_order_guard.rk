@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# Never stored: flow self_order_on_update creates one when the write it runs in must be refused (the pattern of
+# whatsapp_order_guard); the matching rule fails with the reason's message and rolls the whole write back, so a refused
+# Terima leaves no bill line and no kitchen ticket behind. Create is granted to every role that handles orders.
+name: self_order_guard
+label: {id: Penjaga pesanan meja, en: Table order guard}
+icon: check
+naming: SOG-{######}
+title_field: reason
+permissions:
+  - {role: head_office, create: true}
+  - {role: cashier, create: true}
+fields:
+  - name: reason
+    type: select
+    label: {id: Alasan}
+    required: true
+    options:
+      - {value: bad_step, label: {id: Langkah status tidak boleh}}
+      - {value: locked, label: {id: Isi pesanan tidak boleh diubah}}
+      - {value: no_shift, label: {id: Belum ada sesi kasir}}
+      - {value: item_off, label: {id: Menu sudah tidak dijual}}
+  - {name: document, type: data, label: {id: Dokumen}}
+rules:
+  - name: bad_step
+    on: save
+    check: reason != 'bad_step'
+    message: {id: 'Status pesanan meja hanya bisa diubah dari Menunggu kasir ke Diterima atau Ditolak'}
+  - name: locked
+    on: save
+    check: reason != 'locked'
+    message: {id: 'Isi pesanan dari tamu tidak bisa diubah. Tolak pesanannya, atau ubah di tagihan meja setelah diterima'}
+  - name: no_shift
+    on: save
+    check: reason != 'no_shift'
+    message: {id: 'Buka sesi kasir dulu di outlet meja ini, lalu terima lagi'}
+  - name: item_off
+    on: save
+    check: reason != 'item_off'
+    message: {id: 'Ada menu di pesanan ini yang sudah tidak dijual. Tolak pesanannya dan minta tamu pesan ulang'}

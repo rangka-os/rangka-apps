@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
+name: pesan_meja
+version: 1.0.0
+title: {id: Pesan dari meja, en: Table self order}
+label: {id: Rangka Pesan dari Meja, en: Rangka Table Self Order}
+summary:
+  id: Tamu scan QR di meja dan pesan dari HP; pesanan masuk ke kasir, sekali ketuk masuk tagihan meja dan dapur. Bayar tetap di kasir.
+category: sales
+icon: qr-code-line
+rangka: '>=0.5'
+# A piece on top of kasir with tables (module self_order, its doc has the rules): the work screen pesanan_masuk for the
+# cashier and head office, the orders in the menu, and the guest page pesan (portal, no account). Head office prints
+# the table QRs through POST /api/v1/portal/pesan/qr. Prices always come from the item records.
+modules:
+  users: ^1.2
+  catalogue: ^1.5
+  outlets: ^1.7
+  pos: ^1.10
+  self_order: ^1.0
+optional:
+  kitchen: ^1.0
+roles: [cashier, head_office]
+home: {model: self_order}
+work:
+  - {screen: pesanan_masuk, roles: [cashier, head_office]}
+menu:
+  - group: {id: Pesan dari meja}
+    items: [self_order, dining_table]

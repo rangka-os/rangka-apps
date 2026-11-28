@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+# Orders guests sent from the table QR (contract 0030 queue), oldest first. Terima puts the lines on the table's bill and
+# in the kitchen (flow self_order_on_update); Tolak turns it down (the guest's page says Ditolak kasir). A taken card
+# leaves the screen; the renderer's "Urungkan" after Terima is refused (bad_step): the lines are on the bill already.
+name: pesanan_masuk
+type: queue
+label: {id: Pesanan dari meja, en: Table orders}
+description: {id: 'Pesanan yang dikirim tamu dari QR meja. Tekan Terima: menunya masuk ke tagihan meja dan dapur. Pembayaran tetap di kasir.'}
+icon: qr-code-line
+roles: [cashier, head_office]
+device: any
+queue:
+  source: {model: self_order, filter: "status == 'new'", sort: ordered_at}
+  card: {title: heading, subtitle: note, lines: items, line: [qty, item, note], fields: [total], age_from: ordered_at}
+  columns: {by: status, values: [new]}
+  steps:
+    - {when: "status == 'new'", set: {status: accepted}, label: {id: Terima}}
+    - {when: "status == 'new'", set: {status: rejected}, label: {id: Tolak}}
+  refresh: 10

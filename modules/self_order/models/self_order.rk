@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# An order a guest sent from the table's QR page (portal page pesan, kernel contract 0073 §9). Only the kernel's portal
+# route creates one (as the link's actor portal:<link id>, a system actor): no role has create. Table, guest name,
+# note and lines come from the page; outlet and prices are computed here. The cashier changes only the status, on the
+# work screen pesanan_masuk (flow self_order_on_update holds every other change and every other move).
+name: self_order
+label: {id: Pesanan dari meja, en: Table order}
+icon: qr-code-line
+naming: SO-{outlet.code}-{YY}{MM}-{#####}
+title_field: heading
+permissions:
+  - {role: head_office, read: true, write: true, export: true}
+  - {role: cashier, read: true, write: true}
+  # the kitchen's progress (flow self_order_kitchen_progress) runs as the kitchen staff who move the ticket; the kitchen
+  # never takes, turns down or edits an order (flow self_order_on_update refuses its moves)
+  - {role: kitchen, read: true, write: true}
+fields:
+  - name: status
+    type: select
+    label: {id: Status}
+    required: true
+    default: "'new'"
+    in_list: true
+    in_filter: true
+    chip: true
+    options:
+      - {value: new, label: {id: Menunggu kasir}}
+      - {value: accepted, label: {id: Diterima kasir}}
+      - {value: cooking, label: {id: Sedang dimasak}}
+      - {value: ready, label: {id: Siap diantar}}
+      - {value: served, label: {id: Sudah diantar}}
+      - {value: rejected, label: {id: Ditolak kasir}}
+      - {value: cancelled, label: {id: Dibatalkan tamu}}
+  - {name: table, type: link, to: dining_table, label: {id: Meja}, required: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, compute: table.outlet, in_list: true, in_filter: true}
+  - {name: table_title, type: data, label: {id: Nama meja}, compute: table.table_name}
+  - {name: heading, type: data, label: {id: Pesanan}, compute: "'Meja ' + table_title + (guest_name != '' ? ' · ' + guest_name : '')"}
+  - {name: guest_name, type: data, label: {id: Nama tamu}, help: {id: 'Diisi tamu, boleh kosong'}}
+  - {name: note, type: data, label: {id: Catatan tamu}}
+  - {name: ordered_at, type: datetime, label: {id: Waktu pesan}, default: now(), read_only: true, in_list: true}
+  - {name: items, type: table, of: self_order_item, label: {id: Menu}, min_rows: 1}
+  - {name: item_count, type: int, label: {id: Jumlah porsi}, compute: "int(items.map(l, l.qty).sum())"}
+  - {name: total, type: currency, label: {id: Perkiraan total}, help: {id: 'Harga menu saat dipesan. Tagihan meja menghitung ulang promo, biaya layanan dan PBJT'}, compute: "items.map(l, l.amount).sum()", in_list: true}
+  - {name: reject_reason, type: data, label: {id: Alasan ditolak}, help: {id: 'Boleh kosong, misalnya menu habis'}}
+  # written by flow self_order_on_update when the cashier takes the order
+  - {name: sale, type: link, to: pos_sale, label: {id: Tagihan meja}, read_only: true}
+  - {name: handled_by, type: data, label: {id: Diproses oleh}, read_only: true}
+  - {name: handled_at, type: datetime, label: {id: Waktu diproses}, read_only: true}
+rules:
+  - name: qty_positive
+    on: save
+    check: "items.all(l, l.qty >= 1 && l.qty <= 50)"
+    message: {id: 'Jumlah per menu 1 sampai 50'}
+views:
+  list:
+    columns: [heading, status, total, ordered_at, outlet]
+    filters: [status, outlet, table]
+    sort: -ordered_at

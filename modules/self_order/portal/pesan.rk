@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/portal.json
+# "Pesan dari meja" (rangka-os contract 0073 §9, order_page): the QR on a table opens this page without an account. The
+# guest sees only the menu rows below (title, price, category) and sends a self_order on that table; the kernel takes
+# the table from the link and the module prices every line. share: head office makes and rotates the table QRs.
+type: order_page
+model: self_order
+label: {id: Pesan, en: Order}
+anchor: {model: dining_table, field: table, title: table_name}
+menu:
+  model: item
+  filter: "kind != 'material' && active != false"
+  title: item_name
+  price: rate
+  group_by: category
+lines: {field: items, item: item, qty: qty, note: note}
+guest: guest_name
+note: note
+status: {field: status, open: [new], cancel: cancelled}
+share: [head_office]

@@ -1,0 +1,138 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
+# The cashier takes or turns down a table order (one tap on the work screen pesanan_masuk), or the guest cancels it from
+# the QR page within 2 minutes (the kernel's portal route, contract 0073 §9). Runs inside that write, as the person or
+# the link's actor. Allowed moves: new -> accepted, new -> rejected, new -> cancelled; the kitchen's progress
+# (accepted -> cooking -> ready -> served) is written by flow self_order_kitchen_progress only (writes by flows start
+# no flow). What the guest sent (table, name, note, lines) never changes.
+# Terima:
+# 1. A shift: the accepting person's open shift at the table's outlet; head office or the owner without one use an open
+#    shift of that outlet (newest first). None: refused (no_shift), nothing kept.
+# 2. A line whose item stopped being sold since the guest loaded the menu (inactive, or a material) refuses the whole
+#    order (item_off): the cashier turns it down and the guest orders again.
+# 3. The bill: the table's open bill (a draft pos_sale on the table, not merged, not an amended copy) takes the lines
+#    after its own, with line keys <order>:<row>, and its rev goes up so a counter holding an older copy gets a
+#    conflict instead of dropping them; without one, a new dine-in bill is opened on the table for the shift. The bill
+#    prices the lines again from the item (promotions, service charge, PBJT, rounding).
+# 4. The kitchen (module kitchen installed): one ticket per active station of the outlet for the lines whose category is
+#    routed to it, the routing of kitchen_ticket_on_draft, with buyer "<table> · <order>" so the kitchen sees it is a
+#    guest's order; the lines go into the bill's sent_to_kitchen, so payment (kitchen_ticket_on_sale) and "Kirim ke
+#    dapur" never send them again.
+name: self_order_on_update
+label: {id: 'Pesanan meja diterima: masuk tagihan meja dan dapur'}
+description: {id: 'Saat kasir menerima pesanan dari QR meja, menunya masuk ke tagihan terbuka meja itu (atau tagihan baru) dan dikirim ke stasiun dapur; pesanan yang ditolak atau dibatalkan tamu tidak masuk ke mana pun.'}
+on: self_order.updated
+if: event.before != null
+steps:
+  - create: self_order_guard
+    if: >-
+      event.table != event.before.table || event.guest_name != event.before.guest_name || event.note != event.before.note
+      || event.items.map(l, l.item + '|' + string(l.qty) + '|' + l.note) != event.before.items.map(l, l.item + '|' + string(l.qty) + '|' + l.note)
+    set: {reason: "'locked'", document: event.name}
+  - create: self_order_guard
+    if: "event.before.status != event.status && !((event.before.status + '>' + event.status) in ['new>accepted', 'new>rejected', 'new>cancelled'])"
+    set: {reason: "'bad_step'", document: event.name}
+  # Terima and Tolak are the cashier's (or head office's, the owner's); the guest's cancel comes as the link's actor (portal:<link id>), the only one who cancels
+  - create: self_order_guard
+    if: >-
+      event.before.status != event.status && event.status in ['accepted', 'rejected']
+      && !('cashier' in user.roles || 'head_office' in user.roles || 'owner' in user.roles)
+    set: {reason: "'bad_step'", document: event.name}
+  - create: self_order_guard
+    if: "event.before.status != event.status && event.status == 'cancelled' && !user.email.startsWith('portal:')"
+    set: {reason: "'bad_step'", document: event.name}
+  - create: self_order_guard
+    if: "event.before.status == event.status && event.status != 'new' && event.reject_reason != event.before.reject_reason"
+    set: {reason: "'locked'", document: event.name}
+  # 1. the shift
+  - find: pos_shift
+    if: event.before.status == 'new' && event.status == 'accepted'
+    where: "cashier == user.email && state == 'open' && outlet == event.outlet"
+    as: own
+  - find_all: pos_shift
+    if: event.before.status == 'new' && event.status == 'accepted'
+    where: "state == 'open' && outlet == event.outlet"
+    sort: -opening_date
+    limit: 1
+    as: open_shifts
+  - create: self_order_guard
+    if: >-
+      event.before.status == 'new' && event.status == 'accepted' && own == null
+      && (open_shifts.size() == 0 || !('head_office' in user.roles || 'owner' in user.roles))
+    set: {reason: "'no_shift'", document: event.name}
+  # 2. every item still on sale
+  - find_all: item
+    if: event.before.status == 'new' && event.status == 'accepted'
+    where: "name in event.items.map(l, l.item) && (active == false || kind == 'material')"
+    limit: 1
+    as: stopped
+  - create: self_order_guard
+    if: event.before.status == 'new' && event.status == 'accepted' && stopped.size() > 0
+    set: {reason: "'item_off'", document: event.name}
+  # 3. the table's open bill, or a new one
+  - find: dining_table
+    if: event.before.status == 'new' && event.status == 'accepted'
+    where: name == event.table
+    as: tbl
+  - find: pos_sale
+    if: event.before.status == 'new' && event.status == 'accepted'
+    where: "table == event.table && docstatus == 0 && !merged && amended_from == ''"
+    as: open_bill
+  - update: open_bill
+    if: event.before.status == 'new' && event.status == 'accepted' && open_bill != null
+    set:
+      items: >-
+        open_bill.items.map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct,
+        'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key})
+        + event.items.map(l, {'item': l.item, 'packing': '', 'qty': l.qty, 'discount_pct': 0, 'description': l.description,
+        'note': l.note, 'is_gift': false, 'line_key': event.name + ':' + l.name})
+      bill_asked: "false"
+      rev: open_bill.rev + 1
+  - create: pos_sale
+    if: event.before.status == 'new' && event.status == 'accepted' && open_bill == null
+    set:
+      shift: "own != null ? own.name : open_shifts[0].name"
+      table: event.table
+      buyer: tbl.table_name
+      order_type: "'dine_in'"
+      guests: "1"
+      items: >-
+        event.items.map(l, {'item': l.item, 'packing': '', 'qty': l.qty, 'discount_pct': 0, 'description': l.description,
+        'note': l.note, 'is_gift': false, 'line_key': event.name + ':' + l.name})
+  - find: pos_sale
+    if: event.before.status == 'new' && event.status == 'accepted'
+    where: "table == event.table && docstatus == 0 && !merged && amended_from == ''"
+    as: bill
+  # 4. the kitchen
+  - find_all: kitchen_station
+    if: event.before.status == 'new' && event.status == 'accepted' && app_installed('kitchen')
+    where: outlet == event.outlet && active
+    as: stations
+  - find_all: kitchen_route
+    if: event.before.status == 'new' && event.status == 'accepted' && app_installed('kitchen')
+    where: outlet == event.outlet
+    as: routes
+  - for_each: "event.before.status == 'new' && event.status == 'accepted' && app_installed('kitchen') ? stations : []"
+    as: st
+    do:
+      - if: "event.items.filter(l, routes.filter(r, r.station == st.name && r.category == l.category).size() > 0).size() > 0"
+        create: kitchen_ticket
+        set:
+          sale: bill.name
+          outlet: event.outlet
+          station: st.name
+          date: bill.date
+          buyer: tbl.table_name + ' · ' + event.name
+          items: "event.items.filter(l, routes.filter(r, r.station == st.name && r.category == l.category).size() > 0).map(l, {'item': l.item, 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note})"
+  - update: bill
+    if: event.before.status == 'new' && event.status == 'accepted' && app_installed('kitchen') && stations.size() > 0
+    set:
+      sent_to_kitchen: >-
+        (bill.sent_to_kitchen == null ? [] : bill.sent_to_kitchen) + event.items.map(l, {'key': event.name + ':' + l.name,
+        'item': l.item, 'packing': '', 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note, 'category': l.category})
+  - {find: self_order, if: "event.before.status != event.status", where: name == event.name, as: me}
+  - update: me
+    if: event.before.status == 'new' && event.status == 'accepted'
+    set: {sale: bill.name, handled_by: user.name, handled_at: now()}
+  - update: me
+    if: event.before.status == 'new' && event.status == 'rejected'
+    set: {handled_by: user.name, handled_at: now()}

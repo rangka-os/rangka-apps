@@ -5938,6 +5938,7 @@ import day_one_pos_export  # noqa: E402
 import day_one_whatsapp  # noqa: E402
 import day_one_whatsapp_order  # noqa: E402
 import day_one_kitchen  # noqa: E402
+import day_one_self_order  # noqa: E402
 import day_one_attendance  # noqa: E402
 import day_one_staff  # noqa: E402
 import day_one_automation  # noqa: E402
@@ -5970,6 +5971,7 @@ day_one_pos_export.bind(sys.modules[__name__])
 day_one_whatsapp.bind(sys.modules[__name__])   # also registers demo-whatsapp (orgs, kernel env, setup)
 day_one_whatsapp_order.bind(sys.modules[__name__])
 day_one_kitchen.bind(sys.modules[__name__])
+day_one_self_order.bind(sys.modules[__name__])   # after day_one_pos and day_one_kitchen (their members)
 day_one_attendance.bind(sys.modules[__name__])
 day_one_staff.bind(sys.modules[__name__])
 day_one_automation.bind(sys.modules[__name__])
@@ -6000,7 +6002,7 @@ SCENARIOS = {
     "demo-sewa": day_one_rental.SCENARIOS + [scenario_permissions],
     "demo-kursus": day_one_courses.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-langganan": day_one_subscriptions.SCENARIOS + day_one_loyalty.SCENARIOS_LANGGANAN + [scenario_permissions, day_one_accounting.scenario_accounting],
-    "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + day_one_promotions.SCENARIOS + day_one_loyalty.SCENARIOS + day_one_offline.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
+    "demo-kasir": day_one_pos.SCENARIOS + day_one_kitchen.SCENARIOS + day_one_self_order.SCENARIOS + day_one_promotions.SCENARIOS + day_one_loyalty.SCENARIOS + day_one_offline.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
     "demo-kepingan-keuangan": day_one_keuangan.SCENARIOS + [scenario_permissions, day_one_accounting.scenario_accounting],
 }
 SCENARIOS["demo-whatsapp"] = day_one_whatsapp.SCENARIOS + day_one_whatsapp_order.SCENARIOS   # orders need its shift and key
