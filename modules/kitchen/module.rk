@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: kitchen
-version: 1.2.0
+version: 2.0.0
 title: {id: Tiket dapur, en: Kitchen tickets}
 summary:
-  id: Pesanan kasir jadi tiket per stasiun dapur, dengan status dimasak, siap dan diambil.
+  id: Pesanan kasir jadi tiket per stasiun dapur, diproses per item (tahan dan lepas, siap, diserahkan).
   en: Paid receipts become tickets per kitchen station, marked cooking, ready and picked up.
 category: sales
 icon: restaurant-line

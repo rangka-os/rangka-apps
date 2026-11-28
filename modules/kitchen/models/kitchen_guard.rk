@@ -23,6 +23,7 @@ fields:
       - {value: held_line, label: {id: Item ditahan}}
       - {value: notice_line, label: {id: Pemberitahuan kasir}}
       - {value: hold_started, label: {id: Item sudah diproses}}
+      - {value: line_removed, label: {id: Baris dihapus}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: ticket_void
@@ -53,3 +54,7 @@ rules:
     on: save
     check: reason != 'hold_started'
     message: {id: 'Item yang sudah diproses tidak bisa ditahan lagi'}
+  - name: line_removed
+    on: save
+    check: reason != 'line_removed'
+    message: {id: 'Baris tiket dapur tidak bisa dihapus dari layar; minta kasir mengubah pesanannya'}

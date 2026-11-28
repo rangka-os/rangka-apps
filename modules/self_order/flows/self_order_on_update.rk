@@ -87,7 +87,7 @@ steps:
     if: "event.kind == 'order' && event.before.status == 'new' && event.status == 'accepted' && open_bill != null"
     set:
       items: >-
-        open_bill.items.map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key})
+        open_bill.items.map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key, 'kitchen_hold': l.kitchen_hold})
         + event.items.map(l, {'item': l.item, 'packing': '', 'qty': l.qty, 'discount_pct': 0, 'description': l.description, 'note': l.note, 'is_gift': false, 'line_key': event.name + ':' + l.line_key})
       options: "open_bill.options.map(o, {'line': o.line, 'option': o.option}) + event.options.map(o, {'line': event.name + ':' + o.line, 'option': o.option})"
       bill_asked: "false"

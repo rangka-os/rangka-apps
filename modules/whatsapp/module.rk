@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: whatsapp
-version: 1.1.0
+version: 1.1.1
 title: {id: WhatsApp ke pelanggan, en: WhatsApp to customers}
 summary:
   id: Catatan pesan WhatsApp ke pelanggan (terkirim, dibaca, gagal) dan daftar pelanggan yang tidak mau dikirimi WA.
@@ -20,4 +20,4 @@ icon: send-plane-line
 # pos_sale.wa_number compute it the same way.
 requires: {rangka: '>=0.5', users: ^1.0, contacts: ^1.3}
 # the kitchen role writes whatsapp_message when it marks a ticket ready (module whatsapp_order_ready)
-optional: {kitchen: ^1.0}
+optional: {kitchen: ^2.0}

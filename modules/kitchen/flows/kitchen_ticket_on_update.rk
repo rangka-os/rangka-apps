@@ -1,7 +1,8 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # Kitchen 2.0 (rangka-apps#131): staff move a ticket's lines (status, held, seen, stamps); the ticket's status follows
 # its lines (kitchen_ticket.status compute). This flow runs inside every staff write, as the writer, and refuses through
-# kitchen_guard what a screen never does: changing a voided ticket, moving a held line (fire it first: "Lepas"), moving
+# kitchen_guard what a screen never does: changing a voided ticket, removing a line, moving a held line (fire it first:
+# "Lepas", then move it in a later write), moving
 # a notice line (Batal, Diubah), holding a line that is already being made, or un-reading a notice. Each change of the
 # ticket's status is stamped with its time; a step back clears the stamps after it. Writes by flows start no flow, so
 # the kitchen flows that make and void tickets are not checked here.
@@ -17,7 +18,12 @@ steps:
   - if: event.before.status == 'picked_up' && event.sale_void && event.status != 'picked_up'
     create: kitchen_guard
     set: {reason: "'sale_void'", document: event.name}
-  - if: "event.items.exists(l, event.before.items.exists(b, b.name == l.name && b.held && l.held && b.status != l.status))"
+  # a line left out of the write would be deleted: staff never remove lines (the cashier's notices do that)
+  - if: "event.before.items.exists(b, !event.items.exists(l, l.name == b.name))"
+    create: kitchen_guard
+    set: {reason: "'line_removed'", document: event.name}
+  # a held line does not move, not even in the write that fires it (Lepas sets held false and nothing else)
+  - if: "event.items.exists(l, event.before.items.exists(b, b.name == l.name && b.held && b.status != l.status))"
     create: kitchen_guard
     set: {reason: "'held_line'", document: event.name}
   - if: "event.items.exists(l, l.kind != 'normal' && event.before.items.exists(b, b.name == l.name && (b.status != l.status || b.held != l.held || (b.seen && !l.seen))))"

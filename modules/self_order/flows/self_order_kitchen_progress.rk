@@ -1,11 +1,11 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # The guest's page follows the kitchen: a ticket flow self_order_on_update made (buyer "<table> · <order>") moving to
-# Dimasak, Siap or Diambil moves its order to cooking, ready or served; one step back on the ticket ("Urungkan") moves
+# Diproses, Siap or Diambil moves its order to cooking, ready or served; one step back on the ticket ("Urungkan") moves
 # the order back. With two stations the order shows the step of the ticket that moved last. A voided ticket (the bill
 # was voided) leaves the order where it was. Runs as the kitchen staff who moved the ticket.
 name: self_order_kitchen_progress
 label: {id: 'Status dapur ke pesanan meja'}
-description: {id: 'Saat dapur memindahkan tiket pesanan dari QR meja, status di HP tamu ikut berubah: sedang dimasak, siap diantar, sudah diantar.'}
+description: {id: 'Saat dapur memindahkan tiket pesanan dari QR meja, status di HP tamu ikut berubah: sedang disiapkan, siap diantar, sudah diantar.'}
 on: kitchen_ticket.updated
 if: "event.before != null && event.before.status != event.status && event.status in ['new', 'cooking', 'ready', 'picked_up'] && event.buyer.contains(' · SO-')"
 steps:

@@ -4,8 +4,9 @@
 # (kitchen_route). An outlet without stations (a shop) and a receipt without kitchen lines make nothing. A failure here
 # rolls the payment back, so a paid receipt never misses its tickets. Lines the kitchen already got from the open bill
 # (sent_to_kitchen, flow kitchen_ticket_on_draft, rangka-apps#122) are skipped here, so no line is cooked twice.
-# A receipt paid again after a void (amend) is a revision: what the voided receipt's picked-up tickets of that station
-# already sent out is not cooked again. The served quantity of an item is spread over the revision's lines of that item
+# A receipt paid again after a void (amend) is a revision: what the voided receipt's tickets of that station already
+# handed over (lines Diambil, kitchen_ticket.served; a ticket voided half handed over counts its handed-over lines) is
+# not made again. The served quantity of an item is spread over the revision's lines of that item
 # in their order (line idx), so two lines of one item never both count the same served portion. The rest goes to the kitchen as Baru, and the part already served is kept as a
 # ticket that is Diambil from the start (its lines done), so a later revision knows it too. Each ticket line keeps the
 # receipt line's key and whether the cashier held it (kitchen_hold, rangka-apps#131), and the ticket the station's verbs.
@@ -19,7 +20,7 @@ steps:
       - {find_all: kitchen_route, where: outlet == event.outlet, as: routes}
       - if: event.amended_from != ''
         then:
-          - {find_all: kitchen_ticket, where: "sale == event.amended_from && status == 'picked_up'", as: served}
+          - {find_all: kitchen_ticket, where: "sale == event.amended_from", as: served}
         else:
           - {find_all: kitchen_station, where: "false", as: served}
       - for_each: stations

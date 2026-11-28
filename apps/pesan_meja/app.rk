@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
 name: pesan_meja
-version: 1.0.0
+version: 1.0.1
 title: {id: Pesan dari meja, en: Table self order}
 label: {id: Rangka Pesan dari Meja, en: Rangka Table Self Order}
 summary:
@@ -18,7 +18,7 @@ modules:
   pos: ^1.11
   self_order: ^1.0
 optional:
-  kitchen: ^1.0
+  kitchen: ^2.0
 roles: [cashier, head_office]
 home: {model: self_order}
 work:

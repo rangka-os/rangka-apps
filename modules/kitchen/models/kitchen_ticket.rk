@@ -42,10 +42,12 @@ fields:
   - {name: start_label, type: data, label: {id: Tombol mulai}, read_only: true, hidden: true}
   - {name: ready_label, type: data, label: {id: Tombol siap}, read_only: true, hidden: true}
   - {name: held_count, type: int, label: {id: Item ditahan}, compute: "items.filter(l, l.kind == 'normal' && l.held).size()"}
-  - {name: item_count, type: float, label: {id: Jumlah porsi}, compute: "items.map(l, l.qty).sum()"}
-  # the lines as a list a flow can read (a flow's find does not load table rows): a revision of the receipt does not
-  # cook again what a picked-up ticket already sent out (flow kitchen_ticket_on_sale)
-  - {name: served, type: json, label: {id: Menu (data)}, hidden: true, compute: "items.map(l, {'item': l.item, 'qty': l.qty})"}
+  # notice lines (Batal, Diubah) are not portions
+  - {name: item_count, type: float, label: {id: Jumlah porsi}, compute: "items.filter(l, l.kind == 'normal').map(l, l.qty).sum()"}
+  # the lines handed over, as a list a flow can read (a flow's find does not load table rows): a revision of the receipt
+  # does not make again what already went out (flow kitchen_ticket_on_sale). Per line, so a partly handed-over ticket
+  # counts what left; notice lines (Batal, Diubah) never count
+  - {name: served, type: json, label: {id: Menu (data)}, hidden: true, compute: "items.filter(l, l.kind == 'normal' && l.status == 'done').map(l, {'item': l.item, 'qty': l.qty})"}
   # set by flow kitchen_ticket_on_void on a ticket already picked up when its receipt is voided: it stays Diambil
   - {name: sale_void, type: check, label: {id: Struk dibatalkan}, read_only: true}
   # set by flow kitchen_ticket_on_void when the receipt is voided before the food went out
