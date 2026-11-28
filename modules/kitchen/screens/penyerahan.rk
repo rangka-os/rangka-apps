@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+# The pass (kitchen 2.0, rangka-apps#131, rangka-os contract 0077): one card per order across every station of the
+# outlet, each line with its station and state. "Lepas" fires a held line (it reaches its station as new, with a tone);
+# "Serahkan yang siap" hands over what is ready (drinks can go out before the food); the order leaves when everything
+# is handed over. A small outlet without a pass person runs it on the cashier's tablet.
+name: penyerahan
+type: queue
+label: {id: Penyerahan, en: Pass}
+description: {id: 'Semua stasiun per pesanan: lepas item yang ditahan, serahkan yang sudah siap.'}
+icon: list
+roles: [kitchen, cashier, head_office]
+device: tablet
+queue:
+  source: {model: kitchen_ticket, filter: "date == today() && status != 'picked_up' && status != 'void'", sort: sent_at}
+  group_by: sale
+  card:
+    title: heading
+    lines: items
+    line: [description, qty, note]
+    age_from: sent_at
+    line_tag: station
+    line_badge: badge
+    line_muted: held
+    line_show: "kind == 'normal' && status != 'done'"
+  line_steps:
+    - {when: "kind == 'normal' && held", label: {id: Lepas}, set: {held: false, fired_at: "now()"}}
+  bulk_steps:
+    - {when: "kind == 'normal' && held", label: {id: Lepas semua}, min: 2, set: {held: false, fired_at: "now()"}}
+    - {when: "kind == 'normal' && !held && status == 'ready'", label: {id: Serahkan yang siap}, set: {status: done, done_at: "now()"}}
+  refresh: 5

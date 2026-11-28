@@ -1,10 +1,55 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
-# A line of a kitchen ticket: copied from the receipt line (no price).
+# A line of a kitchen ticket: copied from the receipt line (no price) by the kitchen flows, so its menu, quantity, note
+# and key are read-only. Each line has its own state (kitchen 2.0, rangka-apps#131, rangka-os contract 0077): the
+# station moves it Baru -> Diproses -> Siap, the pass hands it over (Diambil). A line the cashier held (dessert later,
+# mains after starters) waits greyed at the station until the pass or the cashier fires it ("Lepas"). A line of kind
+# void or change is a notice from the cashier (removed or changed after it reached the station); the station taps
+# "Oke" (seen). Staff write only status, held, seen and the time stamps; flow kitchen_ticket_on_update guards them.
 name: kitchen_ticket_item
 is_child: true
 fields:
-  - {name: item, type: link, to: item, label: {id: Menu}, required: true}
-  - {name: description, type: data, label: {id: Uraian}}
-  - {name: qty, type: float, label: {id: Qty}, required: true}
-  - {name: uom, type: link, to: uom, label: {id: Satuan}}
-  - {name: note, type: data, label: {id: Catatan}}
+  - {name: item, type: link, to: item, label: {id: Menu}, required: true, read_only: true}
+  - {name: description, type: data, label: {id: Uraian}, read_only: true}
+  - {name: qty, type: float, label: {id: Qty}, required: true, read_only: true}
+  - {name: uom, type: link, to: uom, label: {id: Satuan}, read_only: true}
+  - {name: note, type: data, label: {id: Catatan}, read_only: true}
+  # the receipt line's key (pos_sale_item.line_key): a self order reads its line's state by it (rangka-apps#119)
+  - {name: line_key, type: data, label: {id: Kunci baris}, hidden: true, read_only: true}
+  - name: kind
+    type: select
+    label: {id: Jenis baris}
+    default: "'normal'"
+    read_only: true
+    options:
+      - {value: normal, label: {id: Pesanan}}
+      - {value: void, label: {id: Batal}}
+      - {value: change, label: {id: Diubah}}
+  - name: status
+    type: select
+    label: {id: Status}
+    default: "'new'"
+    options:
+      - {value: new, label: {id: Baru}, tone: neutral}
+      - {value: in_progress, label: {id: Diproses}, tone: info}
+      - {value: ready, label: {id: Siap}, tone: ok}
+      - {value: done, label: {id: Diambil}, tone: muted}
+  - {name: held, type: check, label: {id: Ditahan}}
+  # a notice line (void, change) the station has read
+  - {name: seen, type: check, label: {id: Sudah dibaca}}
+  - {name: course, type: int, label: {id: Urutan saji}, read_only: true}
+  - {name: fired_at, type: datetime, label: {id: Dilepas}}
+  - {name: ready_at, type: datetime, label: {id: Siap pada}}
+  - {name: done_at, type: datetime, label: {id: Diambil pada}}
+  # what the screens show as the line's lozenge: a notice's kind, a held line, else its status
+  - name: badge
+    type: select
+    label: {id: Tanda}
+    compute: "kind != 'normal' ? kind : (held ? 'held' : status)"
+    options:
+      - {value: new, label: {id: Baru}, tone: neutral}
+      - {value: in_progress, label: {id: Diproses}, tone: info}
+      - {value: ready, label: {id: Siap}, tone: ok}
+      - {value: done, label: {id: Diambil}, tone: muted}
+      - {value: held, label: {id: Ditahan}, tone: warn}
+      - {value: void, label: {id: Batal}, tone: bad}
+      - {value: change, label: {id: Diubah}, tone: warn}

@@ -1,30 +1,36 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
-# A ticket's status moves one step at a time, forward or back (Baru -> Dimasak -> Siap -> Diambil; back is the work
-# screen's "Urungkan"), and each step is stamped with its time; a step back clears the stamp of the step undone. Batal
-# is set only by flow kitchen_ticket_on_void (writes by flows start no flow), so a person cannot void a ticket, and a
-# void ticket does not come back, nor does a picked-up ticket of a voided receipt (sale_void). Runs inside the write, as the writer; kitchen_guard refuses the write.
+# Kitchen 2.0 (rangka-apps#131): staff move a ticket's lines (status, held, seen, stamps); the ticket's status follows
+# its lines (kitchen_ticket.status compute). This flow runs inside every staff write, as the writer, and refuses through
+# kitchen_guard what a screen never does: changing a voided ticket, moving a held line (fire it first: "Lepas"), moving
+# a notice line (Batal, Diubah), holding a line that is already being made, or un-reading a notice. Each change of the
+# ticket's status is stamped with its time; a step back clears the stamps after it. Writes by flows start no flow, so
+# the kitchen flows that make and void tickets are not checked here.
 name: kitchen_ticket_on_update
-label: {id: 'Tiket dapur diubah: satu langkah, catat waktunya'}
+label: {id: 'Tiket dapur diubah: periksa per item, catat waktunya'}
 on: kitchen_ticket.updated
-if: event.before != null && event.before.status != event.status
+if: event.before != null
 steps:
-  - if: event.before.status == 'void'
+  - if: event.before.voided
     create: kitchen_guard
     set: {reason: "'ticket_void'", document: event.name}
-  - if: event.status == 'void'
-    create: kitchen_guard
-    set: {reason: "'void_by_receipt'", document: event.name}
-  # a picked-up ticket of a voided receipt stays picked up: its receipt no longer exists to cook for
-  - if: event.before.status == 'picked_up' && event.sale_void
+  # a picked-up ticket of a voided receipt stays picked up: its receipt no longer exists to prepare for
+  - if: event.before.status == 'picked_up' && event.sale_void && event.status != 'picked_up'
     create: kitchen_guard
     set: {reason: "'sale_void'", document: event.name}
-  # positions 0..3; a jump of more than one step is refused
-  - if: "event.status != 'void' && event.before.status != 'void' && ({'new': 0, 'cooking': 1, 'ready': 2, 'picked_up': 3}[event.status] - {'new': 0, 'cooking': 1, 'ready': 2, 'picked_up': 3}[event.before.status]) * ({'new': 0, 'cooking': 1, 'ready': 2, 'picked_up': 3}[event.status] - {'new': 0, 'cooking': 1, 'ready': 2, 'picked_up': 3}[event.before.status]) > 1"
+  - if: "event.items.exists(l, event.before.items.exists(b, b.name == l.name && b.held && l.held && b.status != l.status))"
     create: kitchen_guard
-    set: {reason: "'one_step'", document: event.name}
-  - {find: kitchen_ticket, where: name == event.name, as: t}
-  - update: t
-    set:
-      cooking_at: "event.status == 'new' ? null : (event.status == 'cooking' && event.before.status == 'new' ? now() : t.cooking_at)"
-      ready_at: "event.status == 'new' || event.status == 'cooking' ? null : (event.status == 'ready' && event.before.status == 'cooking' ? now() : t.ready_at)"
-      picked_up_at: "event.status == 'picked_up' ? now() : null"
+    set: {reason: "'held_line'", document: event.name}
+  - if: "event.items.exists(l, l.kind != 'normal' && event.before.items.exists(b, b.name == l.name && (b.status != l.status || b.held != l.held || (b.seen && !l.seen))))"
+    create: kitchen_guard
+    set: {reason: "'notice_line'", document: event.name}
+  - if: "event.items.exists(l, l.held && event.before.items.exists(b, b.name == l.name && !b.held && b.status != 'new'))"
+    create: kitchen_guard
+    set: {reason: "'hold_started'", document: event.name}
+  - if: event.before.status != event.status
+    then:
+      - {find: kitchen_ticket, where: name == event.name, as: t}
+      - update: t
+        set:
+          cooking_at: "event.status == 'new' ? null : (event.status == 'cooking' && t.cooking_at == null ? now() : t.cooking_at)"
+          ready_at: "event.status == 'new' || event.status == 'cooking' ? null : (event.status == 'ready' && t.ready_at == null ? now() : t.ready_at)"
+          picked_up_at: "event.status == 'picked_up' ? now() : null"

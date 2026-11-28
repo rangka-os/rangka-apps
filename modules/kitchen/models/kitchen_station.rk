@@ -30,6 +30,10 @@ fields:
     label: {id: Aktif}
     default: 'true'
     in_list: true
+  # the station's verbs on the kitchen screen (rangka-apps#131): neutral by default, a packing station says "Kemas" and
+  # "Siap kirim"; never "Masak", which is wrong for a bar, a dessert counter or packing
+  - {name: start_label, type: data, label: {id: Tombol mulai}, default: "'Proses'", help: {id: 'Kata di tombol pertama, misalnya Proses atau Kemas'}}
+  - {name: ready_label, type: data, label: {id: Tombol siap}, default: "'Siap'", help: {id: 'Kata di tombol kedua, misalnya Siap atau Siap kirim'}}
   - {name: notes, type: text, label: {id: Catatan}}
   # one station of a name per outlet
   - {name: station_key, type: data, label: {id: Kunci stasiun}, hidden: true, unique: true, compute: "outlet + '/' + station_name"}

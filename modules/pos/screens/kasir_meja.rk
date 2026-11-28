@@ -27,7 +27,7 @@ counter:
     model: pos_sale
     lines: items
     # amount: the model's line amount shows a promo (struck price) or a free gift; flag: the cashier marks the gift line
-    line: {item: item, qty: qty, price: rate, note: note, amount: amount, flag: is_gift}
+    line: {item: item, qty: qty, price: rate, note: note, amount: amount, flag: is_gift, hold: kitchen_hold}
     # amount_due: the total less what the member's deposit pays (module loyalty); without it, the total
     total: amount_due
     change: change_amount
