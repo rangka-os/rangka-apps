@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/app.json
 name: dapur
-version: 1.0.0
+version: 1.1.0
 title: {id: Tiket dapur, en: Kitchen tickets}
 label: {id: Rangka Tiket Dapur, en: Rangka Kitchen Tickets}
 summary:
@@ -16,13 +16,15 @@ modules:
   catalogue: ^1.3
   outlets: ^1.2
   pos: ^1.0
-  kitchen: ^1.0
+  kitchen: ^1.1
 dashboards: [dapur_hari_ini]
 roles: [kitchen, cashier, head_office]
 home: {dashboard: dapur_hari_ini}
 work:
   - {screen: dapur, roles: [kitchen], home: true}
   - {screen: dapur, roles: [cashier, head_office]}
+  # the pickup board for a TV at the counter (read-only)
+  - {screen: siap_ambil, roles: [kitchen, cashier, head_office]}
 menu:
   - group: {id: Dapur}
     items: [kitchen_ticket]

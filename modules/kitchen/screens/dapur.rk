@@ -4,6 +4,7 @@
 # renderer's "Urungkan" is the step back). Rendered by the kernel's queue renderer (rangka-os WS4).
 # No link to the receipt on the card: a receipt's title is its total (pos_sale title_field), and the kitchen sees no
 # money; the card's title carries the table or receipt number and REVISI for a corrected receipt.
+# Dark on purpose (contract 0048 §6): a wall TV or tablet in a hot, bright kitchen; one tone per new ticket (alert: new).
 name: dapur
 type: queue
 label: {id: Dapur, en: Kitchen}
@@ -11,6 +12,7 @@ description: {id: 'Tiket pesanan dari kasir masuk di sini; tekan Masak, lalu Sia
 icon: list
 roles: [kitchen, cashier, head_office]
 device: tablet
+theme: dark
 needs: [print]
 queue:
   source: {model: kitchen_ticket, filter: "status != 'picked_up' && status != 'void' && date == today()", sort: sent_at}
@@ -21,3 +23,4 @@ queue:
     - {when: "status == 'cooking'", set: {status: ready}, label: {id: Siap}}
     - {when: "status == 'ready'", set: {status: picked_up}, label: {id: Diambil}}
   refresh: 5
+  alert: new

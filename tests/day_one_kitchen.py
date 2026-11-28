@@ -8,7 +8,8 @@ Dapur (Makanan); Toko Dago has none until the scope scenario gives it one. Cover
 receipt's item categories (no ticket for an unrouted category or a shop), status new -> cooking -> ready -> picked up
 with a time per step, one step back clears the stamp, a jump or a void by hand refused, read-only receipt lines,
 voided receipt voids its tickets, an amended receipt sends a revision, the 80 mm ticket print (no price), the kitchen
-dashboard and the kitchen work screen as the kitchen's home (contract 0030), and role kitchen limited to its outlet.
+dashboard and the kitchen work screen as the kitchen's home (contract 0030), dark with a tone per new ticket, the
+read-only pickup board of ready tickets (rangka-apps#131), and role kitchen limited to its outlet.
 
 Members: Tono (kitchen, Kedai Riau), Wati (outlet_staff, Kedai Riau); Dika, Sari and Rina come from day_one_pos.
 """
@@ -330,6 +331,23 @@ def scenario_kitchen_dashboard_and_screen(api):
     check("the kitchen screen is a queue over kitchen_ticket", sc.get("type") == "queue" and sc.get("queue", {}).get("source", {}).get("model") == "kitchen_ticket", sc)
     st, r = tono.call("GET", "/api/v1/screens/dapur")
     check("Tono opens the kitchen screen -> 200", st == 200, (st, r))
+    # rangka-apps#131: the TV mode (dark, a tone per new ticket) and the read-only pickup board
+    check("the kitchen screen is dark and sounds on a new ticket (theme: dark, alert: new)",
+          sc.get("theme") == "dark" and sc.get("queue", {}).get("alert") == "new", sc)
+    check("Tono is also offered the pickup board (meta.work: siap_ambil)", {"screen": "siap_ambil", "home": False} in work, work)
+    board = ((m or {}).get("screens") or {}).get("siap_ambil") or {}
+    bq = board.get("queue") or {}
+    check("the pickup board is a dark read-only queue over ready kitchen tickets (no steps)",
+          board.get("type") == "queue" and board.get("theme") == "dark" and not bq.get("steps")
+          and bq.get("source", {}).get("model") == "kitchen_ticket" and "status == 'ready'" in bq.get("source", {}).get("filter", ""), board)
+    st, r = tono.call("GET", "/api/v1/screens/siap_ambil")
+    check("Tono opens the pickup board -> 200", st == 200, (st, r))
+    import urllib.parse
+    st, r = tono.call("GET", "/api/v1/r/kitchen_ticket?" + urllib.parse.urlencode({"filter": bq.get("source", {}).get("filter", ""), "limit": 200}))
+    rows = (r or {}).get("data") or []
+    check("the board lists exactly Kedai Riau's ready tickets of today (row scope), none picked up",
+          st == 200 and {t["name"] for t in rows} == {t["name"] for t in riu if t["status"] == "ready"}
+          and all(t["status"] == "ready" for t in rows), (st, [t.get("name") for t in rows]))
     st, m = wati.call("GET", "/api/v1/meta")
     check("Wati is not offered the kitchen screen", "dapur" not in ((m or {}).get("screens") or {}), (m or {}).get("work"))
     st, r = wati.call("GET", "/api/v1/screens/dapur")

@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+# The pickup board (rangka-apps#131): a TV at the counter or the pass lists today's ready tickets of the outlet (row
+# scope), oldest first, in large type so guests and waiters read their table or receipt number across the room. A
+# read-only queue (no steps): the kitchen screen moves a ticket to Siap, and it leaves this board on Diambil.
+name: siap_ambil
+type: queue
+label: {id: Siap diambil, en: Ready for pickup}
+description: {id: 'Pesanan yang sudah siap; tampil di TV dekat kasir sampai ditandai Diambil.'}
+icon: list
+roles: [kitchen, cashier, head_office]
+device: tablet
+theme: dark
+queue:
+  source: {model: kitchen_ticket, filter: "status == 'ready' && date == today()", sort: ready_at}
+  card: {title: heading, subtitle: station, age_from: ready_at}
+  refresh: 5
