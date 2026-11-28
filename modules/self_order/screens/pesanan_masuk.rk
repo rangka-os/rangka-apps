@@ -1,19 +1,25 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
-# Orders guests sent from the table QR (contract 0030 queue), oldest first. Terima puts the lines on the table's bill and
-# in the kitchen (flow self_order_on_update); Tolak turns it down (the guest's page says Ditolak kasir). A taken card
-# leaves the screen; the renderer's "Urungkan" after Terima is refused (bad_step): the lines are on the bill already.
+# What guests sent from the table QR (contract 0030 queue), oldest first: rounds of tables not opened yet (Terima opens
+# the table: the lines go on its bill and to the kitchen; Tolak turns it down), calls for a waiter, bill requests, and
+# requests to bring held dishes (Kirim ke dapur sends the held lines of that order). The renderer shows one step per
+# card (the first that holds): a round is turned down from its form (status Ditolak kasir) until the queue slot has
+# secondary steps. Rounds of an opened table never wait
+# here: they go straight to the bill (flow self_order_on_create). A handled card leaves the screen; "Urungkan" is
+# refused (bad_step).
 name: pesanan_masuk
 type: queue
-label: {id: Pesanan dari meja, en: Table orders}
-description: {id: 'Pesanan yang dikirim tamu dari QR meja. Tekan Terima: menunya masuk ke tagihan meja dan dapur. Pembayaran tetap di kasir.'}
+label: {id: Dari HP tamu, en: From guests' phones}
+description: {id: 'Pesanan pertama meja yang belum dibuka, panggilan pelayan, minta tagihan, dan minta menu yang ditahan diantar. Pembayaran tetap di kasir.'}
 icon: qr-code-line
 roles: [cashier, head_office]
 device: any
 queue:
   source: {model: self_order, filter: "status == 'new'", sort: ordered_at}
-  card: {title: heading, subtitle: note, lines: items, line: [qty, item, note], fields: [total], age_from: ordered_at}
-  columns: {by: status, values: [new]}
+  card: {title: heading, subtitle: note, lines: items, line: [qty, description, note], fields: [subtotal_text], age_from: ordered_at}
+  columns: {by: lane, values: [order, request]}
   steps:
-    - {when: "status == 'new'", set: {status: accepted}, label: {id: Terima}}
-    - {when: "status == 'new'", set: {status: rejected}, label: {id: Tolak}}
+    - {when: "kind == 'order' && status == 'new'", set: {status: accepted}, label: {id: Terima}}
+    - {when: "kind == 'order' && status == 'new'", set: {status: rejected}, label: {id: Tolak}}
+    - {when: "kind == 'fire' && status == 'new'", set: {status: done}, label: {id: Kirim ke dapur}}
+    - {when: "(kind == 'call' || kind == 'bill') && status == 'new'", set: {status: done}, label: {id: Sudah ditangani}}
   refresh: 10

@@ -1,19 +1,41 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/portal.json
 # "Pesan dari meja" (rangka-os contract 0073 §9, order_page): the QR on a table opens this page without an account. The
-# guest sees only the menu rows below (title, price, category) and sends a self_order on that table; the kernel takes
-# the table from the link and the module prices every line. share: head office makes and rotates the table QRs.
+# guest sees only the menu rows below (title, price, category, option groups), the table's open bill (its lines, totals
+# and the rounds every phone sent), and sends rounds or requests to the staff. The kernel takes the table from the link,
+# checks every option against the item's own groups, and the module prices every line from the item and option records.
+# share: head office makes and rotates the table QRs.
 type: order_page
 model: self_order
 label: {id: Pesan, en: Order}
 anchor: {model: dining_table, field: table, title: table_name}
 menu:
   model: item
-  filter: "kind != 'material' && active != false"
+  filter: "qr_menu && kind != 'material' && active != false"
   title: item_name
   price: rate
   group_by: category
-lines: {field: items, item: item, qty: qty, note: note}
+lines: {field: items, item: item, qty: qty, note: note, key: line_key, later: later}
+options:
+  table: options
+  line: line
+  option: option
+  model: item_option
+  link: group
+  title: label
+  price: price_delta
+  filter: "active != false"
+  groups: {table: option_groups, link: group}
+  group: {model: item_option_group, title: group_name, required: required, multi: multi, max: max, filter: "active != false"}
 guest: guest_name
 note: note
 status: {field: status, open: [new], cancel: cancelled}
+requests: {field: kind, order: order, values: [call, bill, fire], about: about}
+estimate: [subtotal, service_charge, pbjt, estimate]
+session:
+  model: pos_sale
+  link: table
+  filter: "docstatus == 0 && !merged && amended_from == ''"
+  order_link: sale
+  lines: {field: items, title: description, qty: qty, amount: amount}
+  totals: [subtotal, discount_total, service_charge, pbjt, rounding, grand_total]
 share: [head_office]

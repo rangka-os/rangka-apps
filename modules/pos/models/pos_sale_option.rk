@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One option chosen for one line of a sale (rangka-os contract 0048 §1): the line is named by its line_key (nested tables
+# are not usable). Priced and labelled from item_option; a row whose line is gone adds nothing (pos_sale_item.option_delta
+# reads only rows of existing keys) and rule option_line_exists refuses it on save.
+name: pos_sale_option
+is_child: true
+fields:
+  - {name: line, type: data, label: {id: Baris}, required: true}
+  - {name: option, type: link, to: item_option, label: {id: Pilihan}, required: true}
+  - {name: label, type: data, label: {id: Nama pilihan}, compute: option.label}
+  - {name: price_delta, type: currency, label: {id: Tambahan harga}, compute: option.price_delta}

@@ -26,6 +26,8 @@ steps:
         set:
           items: "tgt.items.map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key}) + event.items.map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key == '' ? '' : event.name + ':' + l.line_key})"
           sent_to_kitchen: "(tgt.sent_to_kitchen == null ? [] : tgt.sent_to_kitchen) + (event.sent_to_kitchen == null ? [] : event.sent_to_kitchen).map(s, {'key': event.name + ':' + s.key, 'item': s.item, 'packing': has(s.packing) ? s.packing : '', 'description': s.description, 'qty': s.qty, 'uom': s.uom, 'note': s.note, 'category': s.category})"
+          # options follow their lines under the same prefixed keys (contract 0048 §1)
+          options: "(tgt.options == null ? [] : tgt.options).map(o, {'line': o.line, 'option': o.option}) + (event.options == null ? [] : event.options).map(o, {'line': event.name + ':' + o.line, 'option': o.option})"
           guests: tgt.guests + event.guests
           discount_amount: tgt.discount_amount + event.discount_amount
           bill_asked: "false"

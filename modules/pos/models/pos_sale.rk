@@ -163,6 +163,9 @@ fields:
     options:
       - {value: equal, label: {id: Sama rata}}
       - {value: amount, label: {id: Jumlah bebas}}
+  # options of the lines, by line_key (contract 0048 §1); declared before items so the lines read them computed: their
+  # prices are inside each line's rate (pos_sale_item.option_delta)
+  - {name: options, type: table, of: pos_sale_option, label: {id: Pilihan menu}}
   - name: items
     type: table
     of: pos_sale_item
@@ -372,6 +375,11 @@ stock:
     - {lines: items, out: outlet, explode: recipe, reason: sale, cogs: cogs}
   cogs_total: cogs_total
 rules:
+  # an option row belongs to a line of this sale (contract 0048 §1); a line removed at the counter takes its options with it
+  - name: option_line_exists
+    on: save
+    check: "options.all(o, o.line in items.map(l, l.line_key))"
+    message: {id: 'Ada pilihan menu yang barisnya sudah tidak ada. Hapus pilihannya juga'}
   - name: table_of_outlet
     on: save
     check: "table == '' || table.outlet == outlet"
@@ -428,9 +436,11 @@ rules:
     on: save
     check: shift.state == 'open'
     message: {id: 'Sesi kasir ini sudah ditutup; buka sesi baru'}
+  # a table's open bill also takes the rounds guests send from the table QR (module self_order, rangka-apps#119): the
+  # kernel's portal route writes them as the link's actor portal:<link id>, on the bill's own shift, a table bill only
   - name: own_shift
     on: save
-    check: "shift.cashier == user.email || 'head_office' in user.roles || 'owner' in user.roles"
+    check: "shift.cashier == user.email || 'head_office' in user.roles || 'owner' in user.roles || (user.email.startsWith('portal:') && table != '')"
     message: {id: 'Ini sesi kasir orang lain; pakai sesi kasirmu sendiri'}
   # Jalur A or Jalur B per outlet: with outlet_sales installed, only an outlet whose sales source is the cashier.
   - name: outlet_uses_cashier

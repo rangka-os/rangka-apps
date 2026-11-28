@@ -13,9 +13,9 @@ rangka: '>=0.5'
 # the table QRs through POST /api/v1/portal/pesan/qr. Prices always come from the item records.
 modules:
   users: ^1.2
-  catalogue: ^1.5
+  catalogue: ^1.7
   outlets: ^1.7
-  pos: ^1.10
+  pos: ^1.11
   self_order: ^1.0
 optional:
   kitchen: ^1.0
@@ -25,4 +25,4 @@ work:
   - {screen: pesanan_masuk, roles: [cashier, head_office]}
 menu:
   - group: {id: Pesan dari meja}
-    items: [self_order, dining_table]
+    items: [self_order, dining_table, item_option_group, item_option]

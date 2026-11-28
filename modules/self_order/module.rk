@@ -25,5 +25,5 @@ icon: qr-code-line
 # QR stickers: POST /api/v1/portal/pesan/qr (owner and head office) makes a new link per active table and revokes the
 # old ones; the answer carries a QR image per table for an A4 sheet. Offline: the page needs the guest's connection.
 # An order waits as Menunggu kasir until a cashier takes it; after 5 minutes the page tells the guest to call a waiter.
-requires: {rangka: '>=0.5', users: ^1.2, catalogue: ^1.5, outlets: ^1.7, pos: ^1.10}
+requires: {rangka: '>=0.5', users: ^1.2, catalogue: ^1.7, outlets: ^1.7, pos: ^1.11}
 optional: {kitchen: ^1.0}

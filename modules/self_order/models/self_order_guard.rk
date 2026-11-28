@@ -20,6 +20,7 @@ fields:
       - {value: locked, label: {id: Isi pesanan tidak boleh diubah}}
       - {value: no_shift, label: {id: Belum ada sesi kasir}}
       - {value: item_off, label: {id: Menu sudah tidak dijual}}
+      - {value: closed, label: {id: Kasir belum buka}}
   - {name: document, type: data, label: {id: Dokumen}}
 rules:
   - name: bad_step
@@ -38,3 +39,7 @@ rules:
     on: save
     check: reason != 'item_off'
     message: {id: 'Ada menu di pesanan ini yang sudah tidak dijual. Tolak pesanannya dan minta tamu pesan ulang'}
+  - name: closed
+    on: save
+    check: reason != 'closed'
+    message: {id: 'Kasir belum buka. Pesan langsung ke pelayan ya'}

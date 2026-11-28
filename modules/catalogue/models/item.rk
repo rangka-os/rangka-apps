@@ -223,6 +223,12 @@ fields:
     default: 'true'
     in_list: true
     in_filter: true
+  # shown on the table QR page (module self_order, rangka-apps#119): a business with a shop and a cafe shares one
+  # catalogue, so only ticked items reach the guests' menu
+  - {name: qr_menu, type: check, label: {id: Tampil di menu QR meja}, help: {id: 'Centang menu yang boleh dipesan tamu dari QR di meja'}, in_filter: true}
+  # options chosen before the line enters the cart (rangka-os contract 0048 §1; rangka-apps#119 uses them on the table QR page)
+  - {name: option_groups, type: table, of: item_option_group_row, label: {id: Grup pilihan}, help: {id: 'Pilihan seperti level pedas atau tambahan yang dipilih pembeli'}}
+
 rules:
   - name: variant_label_needs_group
     on: save

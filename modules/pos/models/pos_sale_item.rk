@@ -33,10 +33,14 @@ fields:
     label: {id: Qty satuan stok}
     compute: "packing == '' ? qty : qty * packing.factor"
     stock: true
+  # Options (rangka-os contract 0048 §1; first used by the table QR page, module self_order, rangka-apps#119): the
+  # sale's options rows that name this line's line_key add their price deltas to the unit price, so promotions, totals,
+  # PPN, PBJT and the journal see one price per line. The option rows are priced from item_option, never typed.
+  - {name: option_delta, type: currency, label: {id: Tambahan pilihan}, compute: "line_key == '' ? 0 : parent.options.map(o, o.line == line_key ? o.price_delta : 0).sum()"}
   - name: rate
     type: currency
     label: {id: Harga satuan}
-    compute: "packing == '' ? item.rate : (packing.rate > 0 ? packing.rate : round(item.rate * packing.factor))"
+    compute: "(packing == '' ? item.rate : (packing.rate > 0 ? packing.rate : round(item.rate * packing.factor))) + option_delta"
   - name: gross
     type: currency
     label: {id: Harga}

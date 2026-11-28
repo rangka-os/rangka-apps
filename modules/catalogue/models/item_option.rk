@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One choice of an option group (rangka-os contract 0048 §1): "Pedas", "Tanpa es", "Telur ceplok +Rp 5.000". The price
+# delta is added to the unit price of the line that takes it; never negative in v1.
+name: item_option
+label: {id: Pilihan menu, en: Option}
+icon: list
+naming: OPT-{####}
+title_field: label
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true}
+  - {role: sales_manager, read: true, create: true, write: true}
+  - {role: cashier, read: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - {name: group, type: link, to: item_option_group, label: {id: Grup}, required: true, in_list: true}
+  - {name: label, type: data, label: {id: Pilihan}, required: true, in_list: true}
+  - {name: price_delta, type: currency, label: {id: Tambahan harga}, default: '0', in_list: true}
+  - {name: sort, type: int, label: {id: Urutan}, default: '0'}
+  - {name: active, type: check, label: {id: Aktif}, help: {id: 'Matikan kalau sedang habis'}, default: 'true', in_list: true}
+rules:
+  - name: price_delta_not_negative
+    on: save
+    check: price_delta >= 0
+    message: {id: 'Tambahan harga tidak boleh negatif'}
+views:
+  list:
+    columns: [label, group, price_delta, active]
+    filters: [group, active]
+    sort: group
