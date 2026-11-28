@@ -65,7 +65,7 @@ item:
   - {name: BRG-0021, category: KTG-001, item_name: Kopi susu aren, kind: product, stock_uom: UOM-005, sales_uom: UOM-005, sku: KSA, rate: 22000, qr_menu: true, option_groups: [{group: OPG-001}, {group: OPG-002}, {group: OPG-003}]}
   - {name: BRG-0022, category: KTG-001, item_name: Kopi hitam, kind: product, stock_uom: UOM-005, sales_uom: UOM-005, sku: KHT, rate: 15000, qr_menu: true, option_groups: [{group: OPG-003}]}
   # the cafe's kitchen menu for the table QR page (rangka-apps#119): made to order, no stock of their own
-  - {name: BRG-0051, category: KTG-004, stock_uom: UOM-001, item_name: Nasi goreng kampung, kind: service, rate: 32000, qr_menu: true, option_groups: [{group: OPG-005}, {group: OPG-006}]}
+  - {name: BRG-0051, category: KTG-004, stock_uom: UOM-001, item_name: Nasi bakar cakalang, kind: service, rate: 32000, qr_menu: true, option_groups: [{group: OPG-005}, {group: OPG-006}]}
   - {name: BRG-0052, category: KTG-004, stock_uom: UOM-001, item_name: Mie goreng jawa, kind: service, rate: 30000, qr_menu: true, option_groups: [{group: OPG-005}, {group: OPG-006}]}
   - {name: BRG-0053, category: KTG-004, stock_uom: UOM-001, item_name: Ayam geprek sambal matah, kind: service, rate: 35000, qr_menu: true, option_groups: [{group: OPG-005}]}
   - {name: BRG-0054, category: KTG-004, stock_uom: UOM-001, item_name: Kentang goreng, kind: service, rate: 20000, qr_menu: true}

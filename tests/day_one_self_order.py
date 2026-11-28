@@ -31,8 +31,11 @@ def bind(m):
     m.MATRIX.update({
         "self_order": {"head_office": {"read", "write", "export"}, "cashier": {"read", "write"}},
         "self_order_guard": {"head_office": {"create"}, "cashier": {"create"}},
-        "item_option_group": {"head_office": {"read", "create", "write", "delete"}, "cashier": {"read"}, "outlet_staff": {"read"}},
-        "item_option": {"head_office": {"read", "create", "write", "delete"}, "cashier": {"read"}, "outlet_staff": {"read"}},
+        # the grants of modules/catalogue/models/item_option*.rk: head office and sales managers keep the menu like items
+        "item_option_group": {"head_office": {"read", "create", "write", "delete"}, "sales_manager": {"read", "create", "write"},
+                              "cashier": {"read"}, "outlet_staff": {"read"}},
+        "item_option": {"head_office": {"read", "create", "write", "delete"}, "sales_manager": {"read", "create", "write"},
+                        "cashier": {"read"}, "outlet_staff": {"read"}},
     })
 
 
