@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
+name: self_order
+version: 1.0.0
+title: {id: Pesan dari meja, en: Table self order}
+summary:
+  id: Tamu scan QR di meja, pilih menu dari HP, pesanannya masuk ke kasir; kasir terima sekali ketuk, lalu masuk tagihan meja dan dapur.
+  en: Guests scan the table QR, order from their phone, and the order reaches the cashier; one tap puts it on the table's bill and in the kitchen.
+category: sales
+icon: qr-code-line
+# rangka-apps#119 (pay at the cashier). Each table has a QR: a portal link of page `pesan` (rangka-os contract 0073 §9,
+# page type order_page) whose record is the dining_table. The guest opens it without an account, reads the menu (items
+# ticked qr_menu, with their option groups), picks options, marks dishes "Antar nanti", sees the model's estimate and
+# sends rounds; the table view shows the table's open bill and every phone's rounds. The kernel takes the table from the
+# link, checks every option against the item's groups, and this module prices every line from the item and option
+# records, never from the request. The table session is the table's main open bill: a round on an open, live table goes
+# straight to the bill and the kitchen (flow self_order_on_create); a first round, a round on a bill marked "Tutup
+# pesanan QR" or a table quiet for 3 hours waits for the cashier ("Dari HP tamu", flow self_order_on_update), whose
+# Terima opens or feeds the bill. Requests (Panggil pelayan, Minta tagihan, Minta diantar) reach the same screen. An
+# outlet without an open cashier shift refuses QR orders. See README.md for what this version leaves out.
+requires: {rangka: '>=0.5', users: ^1.2, catalogue: ^1.7, outlets: ^1.7, pos: ^1.11}
+optional: {kitchen: ^1.0}

@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# One option the guest chose for one line (by its line_key), checked by the kernel against the item's option groups
+# (contract 0073 §9). Priced and labelled from item_option.
+name: self_order_option
+is_child: true
+fields:
+  - {name: line, type: data, label: {id: Baris}, required: true}
+  - {name: option, type: link, to: item_option, label: {id: Pilihan}, required: true}
+  - {name: label, type: data, label: {id: Nama pilihan}, compute: option.label}
+  - {name: price_delta, type: currency, label: {id: Tambahan harga}, compute: option.price_delta}
