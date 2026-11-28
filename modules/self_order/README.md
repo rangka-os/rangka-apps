@@ -25,7 +25,10 @@ contract 0063).
 Statuses: `new` Menunggu kasir, `accepted` Diterima, `cooking`, `ready`, `served` (from the kitchen), `done` (a request
 handled), `rejected` Ditolak kasir, `cancelled` Dibatalkan tamu (the guest only, within 2 minutes, while new).
 
-Not in this version: pay first, a printed QR sheet page in the web app, the cashier's own option dialog on the counter
-("Pilih varian", contract 0048 P5 web), Tolak as a second button on the queue card (the renderer shows one step; turn a
-round down from its form), per-item kitchen status (KDS #131), a 3-hour idle stop, menus per outlet.
-Test: `python3 tests/day_one.py --site demo-kasir` (`tests/day_one_self_order.py`).
+Not in this version (follow-ups): pay first by QRIS (needs the payment rail of contract 0063), a printed QR sheet page in
+the web app (the API returns the images), the cashier's own option dialog on the counter ("Pilih varian", contract 0048
+P5 web), Tolak as a second button on the queue card (the renderer shows one step; turn a round down from its form),
+per-item kitchen status (KDS #131), an outlet switch to confirm every round, a counter mode for outlets without tables
+(order number, pay first), a "QR · N HP" mark on the table map, a check that the cashier device is online (the open
+shift stands in for it), options taking stock or cost, an audit trail when a cashier removes an option row, menus per
+outlet. Test: `python3 tests/day_one.py --site demo-kasir` (`tests/day_one_self_order.py`).

@@ -11,6 +11,8 @@ fields:
   - {name: qty, type: int, label: {id: Qty}, default: '1'}
   - {name: note, type: data, label: {id: Catatan}, help: {id: 'Misalnya tanpa bawang goreng'}}
   - {name: later, type: check, label: {id: Antar nanti}}
+  # the work screen's card prints a line's values as text: "Antar nanti" so the cashier sees it before Terima
+  - {name: later_text, type: data, label: {id: Waktu antar}, compute: "later ? 'Antar nanti' : ''"}
   - {name: option_text, type: data, label: {id: Pilihan}, compute: "parent.options.filter(o, o.line == line_key).map(o, o.label).join(', ')"}
   - {name: option_delta, type: currency, label: {id: Tambahan pilihan}, compute: "parent.options.filter(o, o.line == line_key).map(o, o.price_delta).sum()"}
   - {name: description, type: data, label: {id: Uraian}, compute: "item.item_name + (option_text != '' ? ' (' + option_text + ')' : '')"}

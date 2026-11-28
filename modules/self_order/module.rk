@@ -7,23 +7,15 @@ summary:
   en: Guests scan the table QR, order from their phone, and the order reaches the cashier; one tap puts it on the table's bill and in the kitchen.
 category: sales
 icon: qr-code-line
-# rangka-apps#119 (v1: pay at the cashier). Each table has a QR: a portal link of page `pesan` (rangka-os contract 0073
-# §9, page type order_page) whose record is the dining_table. The guest opens it without an account, reads the menu
-# (items that are not materials and active, title, price and category only), and sends an order: the kernel creates a
-# self_order as the link's actor, with the table from the link, never from the page, and prices every line from the
-# item (self_order_item.rate), never from the request. Limits are the kernel's: 30 lines, 1 to 50 per line, 3 open
-# orders per table, a bucket per table and per address.
-# The cashier sees "Pesanan dari meja" (work screen pesanan_masuk) and taps Terima or Tolak (flow self_order_on_update,
-# run as the cashier). Terima needs the cashier's open shift at the table's outlet (head office or the owner without
-# one use an open shift of that outlet), then puts the lines on the table's open bill, or opens one (dine in), with
-# line keys <order>:<row>; the bill prices them again (promotions, service charge, PBJT), so the guest saw an estimate.
-# Writes by flows start no flow, so with module kitchen the same flow makes the station tickets the way
-# kitchen_ticket_on_draft does and records the lines in the bill's sent_to_kitchen: paying the bill never sends them
-# twice. The guest's page then follows the kitchen: Dimasak, Siap diantar, Sudah diantar (flow
-# self_order_kitchen_progress). The guest may cancel an order the cashier has not taken yet, within 2 minutes.
-# Payment stays at the cashier: pay-first by QRIS waits for the payment rail of contract 0063 (v2).
-# QR stickers: POST /api/v1/portal/pesan/qr (owner and head office) makes a new link per active table and revokes the
-# old ones; the answer carries a QR image per table for an A4 sheet. Offline: the page needs the guest's connection.
-# An order waits as Menunggu kasir until a cashier takes it; after 5 minutes the page tells the guest to call a waiter.
+# rangka-apps#119 (pay at the cashier). Each table has a QR: a portal link of page `pesan` (rangka-os contract 0073 §9,
+# page type order_page) whose record is the dining_table. The guest opens it without an account, reads the menu (items
+# ticked qr_menu, with their option groups), picks options, marks dishes "Antar nanti", sees the model's estimate and
+# sends rounds; the table view shows the table's open bill and every phone's rounds. The kernel takes the table from the
+# link, checks every option against the item's groups, and this module prices every line from the item and option
+# records, never from the request. The table session is the table's main open bill: a round on an open, live table goes
+# straight to the bill and the kitchen (flow self_order_on_create); a first round, a round on a bill marked "Tutup
+# pesanan QR" or a table quiet for 3 hours waits for the cashier ("Dari HP tamu", flow self_order_on_update), whose
+# Terima opens or feeds the bill. Requests (Panggil pelayan, Minta tagihan, Minta diantar) reach the same screen. An
+# outlet without an open cashier shift refuses QR orders. See README.md for what this version leaves out.
 requires: {rangka: '>=0.5', users: ^1.2, catalogue: ^1.7, outlets: ^1.7, pos: ^1.11}
 optional: {kitchen: ^1.0}

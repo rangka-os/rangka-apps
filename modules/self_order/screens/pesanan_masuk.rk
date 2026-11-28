@@ -15,7 +15,7 @@ roles: [cashier, head_office]
 device: any
 queue:
   source: {model: self_order, filter: "status == 'new'", sort: ordered_at}
-  card: {title: heading, subtitle: note, lines: items, line: [qty, description, note], fields: [subtotal_text], age_from: ordered_at}
+  card: {title: heading, subtitle: note, lines: items, line: [qty, description, note, later_text], fields: [subtotal_text], age_from: ordered_at}
   columns: {by: lane, values: [order, request]}
   steps:
     - {when: "kind == 'order' && status == 'new'", set: {status: accepted}, label: {id: Terima}}
