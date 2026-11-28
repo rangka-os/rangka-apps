@@ -8,10 +8,12 @@ Dapur (Makanan); Toko Dago has none until the scope scenario gives it one. Cover
 receipt's item categories (no ticket for an unrouted category or a shop), status new -> cooking -> ready -> picked up
 with a time per step, one step back clears the stamp, a jump or a void by hand refused, read-only receipt lines,
 voided receipt voids its tickets, an amended receipt sends a revision, the 80 mm ticket print (no price), the kitchen
-dashboard and the kitchen work screen as the kitchen's home (contract 0030), and role kitchen limited to its outlet.
+dashboard and the kitchen work screen as the kitchen's home (contract 0030), dark with a tone per new ticket, the
+read-only pickup board of ready tickets (rangka-apps#131), and role kitchen limited to its outlet.
 
 Members: Tono (kitchen, Kedai Riau), Wati (outlet_staff, Kedai Riau); Dika, Sari and Rina come from day_one_pos.
 """
+import json
 
 H = {}
 DGO, RIU = "OUT-02", "OUT-03"
@@ -68,6 +70,42 @@ def lines(t):
     return sorted((l["item"], l["qty"], l.get("note") or "") for l in t.get("items") or [])
 
 
+# kitchen 2.0 (rangka-apps#131): staff move lines; the ticket's status follows them
+LINE_STEP = {"new": "new", "cooking": "in_progress", "ready": "ready", "picked_up": "done"}
+
+
+def get_ticket(cl, name):
+    return cl.call("GET", f"/api/v1/r/kitchen_ticket/{name}?children=1")
+
+
+def set_lines(cl, name, pick, values, guard=("held", "seen", "status")):
+    """What the kitchen screen writes (rangka-os contract 0077): every line as loaded, values on the picked lines, and
+    _if on every line's state, so another device's change is a 409."""
+    st, t = get_ticket(cl, name)
+    if st != 200:
+        return st, t
+    rows, cond = [], {}
+    for l in t.get("items") or []:
+        cond[l["name"]] = {k: l.get(k) for k in guard}
+        r = dict(l)
+        if pick(l):
+            r.update(values)
+        rows.append(r)
+    return cl.patch("kitchen_ticket", name, {"items": rows, "_if": {"items": cond}})
+
+
+def normal(l):
+    return (l.get("kind") or "normal") == "normal" and not l.get("held")
+
+
+def to_status(cl, name, status):
+    """Every line not held moved so the ticket reaches status (cooking, ready, picked_up); any other value is written
+    as the ticket's status, which a client cannot set (computed)."""
+    if status not in LINE_STEP:
+        return cl.patch("kitchen_ticket", name, {"status": status})
+    return set_lines(cl, name, normal, {"status": LINE_STEP[status]})
+
+
 def open_shift(cl, outlet, label):
     mine = cl.find("pos_shift", f"outlet == '{outlet}' && state == 'open' && cashier == user.email")
     if mine:   # the cashier's shift of day_one_pos is still open
@@ -120,35 +158,52 @@ def scenario_kitchen_tickets(api):
 
 
 def scenario_kitchen_steps(api):
-    """Tono (kitchen, Kedai Riau) cooks the Bar ticket: one step at a time, each stamped; a step back clears the stamp;
-    a jump, a void by hand and a change of lines are refused; Sari marks it picked up."""
+    """Kitchen 2.0 (rangka-apps#131): Tono (kitchen, Kedai Riau) works the Bar ticket line by line. One line moves while
+    the other waits, the ticket's status follows its lines and each status is stamped; a step back clears the stamp;
+    a second tablet's stale write is refused (409); menu, quantity, note, station and table stay read-only; the
+    ticket's status and voided cannot be written by hand; Sari hands it over at the pass."""
     tono, sari = CTX.get("tono"), CTX.get("sari")
     bar = CTX.get("kt_bar")
     if not (tono and sari and bar):
         return
-    st, r = tono.patch("kitchen_ticket", bar, {"status": "ready"})
-    check("Tono: new -> ready in one go is refused -> 422 one_step", st == 422 and "one_step" in rules(r), (st, r))
-    st, r = tono.patch("kitchen_ticket", bar, {"status": "void"})
-    check("Tono cannot void a ticket by hand -> 422 void_by_receipt", st == 422 and "void_by_receipt" in rules(r), (st, r))
-    st, r = tono.patch("kitchen_ticket", bar, {"status": "cooking"})
+    st, t = get_ticket(tono, bar)
+    ksa = [l for l in (t or {}).get("items") or [] if l.get("item") == KSA]
+    if not check("the Bar ticket's lines start Baru, not held, with the station's verbs",
+                 st == 200 and ksa and all(l.get("status") == "new" and not l.get("held") and (l.get("kind") or "normal") == "normal" for l in t["items"])
+                 and t.get("start_label") == "Proses" and t.get("ready_label") == "Siap", t):
+        return
+    st, r = set_lines(tono, bar, lambda l: l["item"] == KSA, {"status": "in_progress"})
     t = rec(r)
-    check("Tono: Masak -> 200, cooking_at stamped", st == 200 and t.get("status") == "cooking" and bool(t.get("cooking_at")), (st, r))
+    check("Tono: Proses on the kopi susu aren only -> 200, the ticket is Diproses, cooking_at stamped, the kopi hitam waits",
+          st == 200 and t.get("status") == "cooking" and bool(t.get("cooking_at"))
+          and sorted((l["item"], l["status"]) for l in t.get("items") or []) == sorted([(KSA, "in_progress"), (KHT, "new")]), (st, r))
     cooking_at = t.get("cooking_at")
-    st, r = tono.patch("kitchen_ticket", bar, {"status": "ready"})
+    # a second tablet still shows both lines as Baru: its write is refused, nothing changes
+    rows = [dict(l, status="ready") for l in t.get("items") or []]
+    st, r = tono.patch("kitchen_ticket", bar, {"items": rows, "_if": {"items": {l["name"]: {"status": "new"} for l in t.get("items") or []}}})
+    check("a stale tablet's write -> 409 precondition_failed", st == 409, (st, r))
+    st, r = set_lines(tono, bar, lambda l: l["item"] == KSA, {"status": "ready"})
+    check("the kopi susu aren Siap while the kopi hitam is still Baru: the ticket stays Diproses", st == 200 and rec(r).get("status") == "cooking", (st, r))
+    st, r = set_lines(tono, bar, normal, {"status": "ready"})
     t = rec(r)
-    check("Tono: Siap -> 200, ready_at stamped, cooking_at kept", st == 200 and bool(t.get("ready_at")) and t.get("cooking_at") == cooking_at, (st, r))
-    st, r = tono.patch("kitchen_ticket", bar, {"status": "cooking"})
+    check("Semua siap -> 200, the ticket is Siap, ready_at stamped, cooking_at kept",
+          st == 200 and t.get("status") == "ready" and bool(t.get("ready_at")) and t.get("cooking_at") == cooking_at, (st, r))
+    st, r = set_lines(tono, bar, lambda l: l["item"] == KHT, {"status": "in_progress"})
     t = rec(r)
-    check("Urungkan (ready -> cooking) -> 200, ready_at cleared, cooking_at kept",
+    check("Kembalikan (one line back) -> 200, the ticket is Diproses again, ready_at cleared, cooking_at kept",
           st == 200 and t.get("status") == "cooking" and not t.get("ready_at") and t.get("cooking_at") == cooking_at, (st, r))
-    st, r = tono.patch("kitchen_ticket", bar, {"status": "ready", "station": DAPUR, "buyer": "Meja 9", "items": [{"item": AIR, "qty": 9}]})
-    t = api.call("GET", f"/api/v1/r/kitchen_ticket/{bar}?children=1")[1] or {}
-    check("receipt, station, table and lines stay as the receipt sent them (read-only)",
-          t.get("station") == BAR and t.get("buyer") == "Meja 4" and lines(t) == sorted([(KSA, 2, "kurang manis"), (KHT, 1, "")]), (st, r, t))
-    check("the status of that write went through -> ready", t.get("status") == "ready", t)
-    st, r = sari.patch("kitchen_ticket", bar, {"status": "picked_up"})
+    st, t = get_ticket(tono, bar)
+    rows = [dict(l, qty=9, description="Air", note="x", item=AIR) for l in t.get("items") or []]
+    st, r = tono.patch("kitchen_ticket", bar, {"items": rows, "station": DAPUR, "buyer": "Meja 9", "status": "picked_up", "voided": True})
+    t = get_ticket(api, bar)[1] or {}
+    check("menu, quantity, note, station and table stay as the receipt sent them; status and voided cannot be written",
+          t.get("station") == BAR and t.get("buyer") == "Meja 4" and lines(t) == sorted([(KSA, 2, "kurang manis"), (KHT, 1, "")])
+          and t.get("status") == "cooking" and not t.get("voided"), (st, r, t))
+    st, r = set_lines(tono, bar, normal, {"status": "ready"})
+    st, r = to_status(sari, bar, "picked_up")
     t = rec(r)
-    check("Sari (cashier) marks it Diambil -> 200, picked_up_at stamped", st == 200 and t.get("status") == "picked_up" and bool(t.get("picked_up_at")), (st, r))
+    check("Sari (cashier) hands it over at the pass (Serahkan) -> 200, Diambil, picked_up_at stamped",
+          st == 200 and t.get("status") == "picked_up" and bool(t.get("picked_up_at")) and all(l.get("status") == "done" for l in t.get("items") or []), (st, r))
     st, r = tono.create("kitchen_ticket", {"outlet": RIU, "station": BAR, "items": [{"item": KHT, "qty": 1}]})
     check("Tono cannot write a ticket of his own -> 403", denied(st, r), (st, r))
     st, r = tono.call("GET", "/api/v1/r/pos_sale?limit=1")
@@ -175,14 +230,14 @@ def scenario_kitchen_void_and_revision(api):
         return
     ts = tickets(api, s1["name"])
     check("Meja 7 made a Bar and a Dapur ticket", [t["station"] for t in ts] == [BAR, DAPUR], ts)
-    st, r = tono.patch("kitchen_ticket", ts[1]["name"], {"status": "cooking"})
+    st, r = to_status(tono, ts[1]["name"], "cooking")
     check("Tono starts the roti", st == 200, (st, r))
     st, r = sari.verb("pos_sale", s1["name"], "cancel")
     if not check("Sari voids the Meja 7 receipt -> 200", st == 200, (st, r)):
         return
     ts = tickets(api, s1["name"])
     check("both tickets are void, void_at stamped", all(t["status"] == "void" and t.get("void_at") for t in ts), ts)
-    st, r = tono.patch("kitchen_ticket", ts[0]["name"], {"status": "cooking"})
+    st, r = to_status(tono, ts[0]["name"], "cooking")
     check("a void ticket does not come back -> 422 ticket_void", st == 422 and "ticket_void" in rules(r), (st, r))
     st, am = sari.verb("pos_sale", s1["name"], "amend")
     am = rec(am)
@@ -223,7 +278,7 @@ def scenario_kitchen_served_revision(api):
     ts = tickets(api, s1["name"])
     for t in ts:
         for step in ("cooking", "ready", "picked_up"):
-            st, r = tono.patch("kitchen_ticket", t["name"], {"status": step})
+            st, r = to_status(tono, t["name"], step)
             if st != 200:
                 check(f"Meja 12 {t['station']}: {step}", False, (st, r))
     ts = tickets(api, s1["name"])
@@ -233,7 +288,7 @@ def scenario_kitchen_served_revision(api):
         return
     ts = tickets(api, s1["name"])
     check("picked-up tickets stay picked up, marked as of a voided receipt", all(t["status"] == "picked_up" and t.get("sale_void") for t in ts), ts)
-    st, r = tono.patch("kitchen_ticket", ts[0]["name"], {"status": "ready"})
+    st, r = to_status(tono, ts[0]["name"], "ready")
     check("Urungkan on a picked-up ticket of a voided receipt -> 422 sale_void", st == 422 and "sale_void" in rules(r), (st, r))
     st, am = sari.verb("pos_sale", s1["name"], "amend")
     am = rec(am)
@@ -254,7 +309,7 @@ def scenario_kitchen_served_revision(api):
         return
     t3 = tickets(api, s3["name"])
     for step in ("cooking", "ready", "picked_up"):
-        tono.patch("kitchen_ticket", t3[0]["name"], {"status": step})
+        to_status(tono, t3[0]["name"], step)
     sari.verb("pos_sale", s3["name"], "cancel")
     st, am = sari.verb("pos_sale", s3["name"], "amend")
     am = rec(am)
@@ -291,12 +346,12 @@ def scenario_kitchen_scope(api):
     dgo_t = dts[0]["name"]
     st, r = tono.call("GET", f"/api/v1/r/kitchen_ticket/{dgo_t}")
     check("Tono cannot open Toko Dago's ticket -> 403/404", st in (403, 404), (st, r))
-    st, r = tono.patch("kitchen_ticket", dgo_t, {"status": "cooking"})
+    st, r = to_status(tono, dgo_t, "cooking")
     check("Tono cannot move Toko Dago's ticket -> 403/404", st in (403, 404), (st, r))
     for key, cl in (("Tono", tono), ("Wati", wati)):
         outs = {t["outlet"] for t in cl.find("kitchen_ticket", "true")}
         check(f"{key} lists Kedai Riau's tickets only", outs == {RIU}, outs)
-    st, r = wati.patch("kitchen_ticket", CTX.get("kt_dapur"), {"status": "cooking"})
+    st, r = to_status(wati, CTX.get("kt_dapur"), "cooking")
     check("Wati (outlet staff) reads tickets but cannot move them -> 403", denied(st, r), (st, r))
     st, r = dika.call("GET", "/api/v1/r/kitchen_ticket/" + (CTX.get("kt_dapur") or "x"))
     check("Dika (cashier, Toko Dago) cannot open Kedai Riau's ticket -> 403/404", st in (403, 404), (st, r))
@@ -330,6 +385,25 @@ def scenario_kitchen_dashboard_and_screen(api):
     check("the kitchen screen is a queue over kitchen_ticket", sc.get("type") == "queue" and sc.get("queue", {}).get("source", {}).get("model") == "kitchen_ticket", sc)
     st, r = tono.call("GET", "/api/v1/screens/dapur")
     check("Tono opens the kitchen screen -> 200", st == 200, (st, r))
+    # rangka-apps#131: the station screen works per line (dark, a tone per new line), the pass and the guest board
+    q = sc.get("queue") or {}
+    check("the kitchen screen is dark, sounds on a new line, and works per line (line steps with the station's verbs, Semua siap, totals, recall)",
+          sc.get("theme") == "dark" and q.get("alert") == "new" and [x.get("label_field") for x in q.get("line_steps") or []] == [None, "start_label", "ready_label"]
+          and len(q.get("bulk_steps") or []) == 1 and q.get("totals", {}).get("by") == "description" and q.get("recall", {}).get("set") == {"status": "in_progress"}, sc)
+    words = json.dumps(sc) + json.dumps(((m or {}).get("screens") or {}).get("penyerahan") or {})
+    check("no screen says Masak or Dimasak", "Masak" not in words and "Dimasak" not in words, words[:300])
+    for scr in ("penyerahan", "siap_ambil"):
+        check(f"Tono is also offered {scr} (meta.work)", {"screen": scr, "home": False} in work, work)
+        st, r = tono.call("GET", f"/api/v1/screens/{scr}")
+        check(f"Tono opens {scr} -> 200", st == 200, (st, r))
+    pas = ((m or {}).get("screens") or {}).get("penyerahan") or {}
+    check("the pass joins an order's tickets (group_by sale), fires held lines (Lepas) and hands over what is ready",
+          (pas.get("queue") or {}).get("group_by") == "sale" and [L0.get("set") for L0 in (pas.get("queue") or {}).get("line_steps") or []] == [{"held": False, "fired_at": "now()"}], pas)
+    board = ((m or {}).get("screens") or {}).get("siap_ambil") or {}
+    bq = board.get("queue") or {}
+    check("the guest board is dark and read-only: orders joined by sale in two columns (Sedang disiapkan, Siap diambil)",
+          board.get("theme") == "dark" and not bq.get("line_steps") and not bq.get("bulk_steps") and not bq.get("steps")
+          and bq.get("group_by") == "sale" and bq.get("columns") == {"by": "board", "values": ["preparing", "ready"]}, board)
     st, m = wati.call("GET", "/api/v1/meta")
     check("Wati is not offered the kitchen screen", "dapur" not in ((m or {}).get("screens") or {}), (m or {}).get("work"))
     st, r = wati.call("GET", "/api/v1/screens/dapur")
@@ -366,8 +440,16 @@ def scenario_kitchen_on_draft(api):
     check("a new line sent: one more ticket, only the new line", st == 200 and len(ts) == 3 and len([t for t in ts if t["station"] == BAR and lines(t) == [(KHT, 1, "")]]) == 1, (st, r, ts))
     st, r = sari.patch("pos_sale", name, {"items": [L("k1", KSA, 1), L("k3", KHT, 1)], "send_kitchen": True})
     ts = tickets(api, name)
-    batal = [l for t in ts for l in t["items"] if str(l.get("description") or "").startswith("BATAL")]
-    check("a sent line removed: a BATAL line for the roti at the Dapur station", st == 200 and len(ts) == 4 and len(batal) == 1 and batal[0]["item"] == ROTI, (st, r, ts))
+    batal = [l for t in ts for l in t["items"] if l.get("kind") == "void"]
+    check("a sent line removed: a Batal notice line for the roti at the Dapur station (kind void, key kept)",
+          st == 200 and len(ts) == 4 and len(batal) == 1 and batal[0]["item"] == ROTI and batal[0].get("line_key") == "k2", (st, r, ts))
+    tono = CTX.get("tono")
+    nt = [t for t in ts if any(l.get("kind") == "void" for l in t["items"])][0]
+    if tono:
+        st, r = set_lines(tono, nt["name"], lambda l: True, {"status": "in_progress"})
+        check("a notice line cannot be worked on -> 422 notice_line", st == 422 and "notice_line" in rules(r), (st, r))
+        st, r = set_lines(tono, nt["name"], lambda l: True, {"seen": True})
+        check("Oke on the notice -> 200, the notice ticket leaves the station (Diambil)", st == 200 and rec(r).get("status") == "picked_up", (st, r))
     # the kitchen knows a sent line by its key: a reused key, a raised quantity or a doubled key would hide a dish from it
     st, r = sari.patch("pos_sale", name, {"items": [L("k1", ROTI, 1), L("k3", KHT, 1)], "send_kitchen": True})
     check("a sent line's key reused for another item is refused (sent_line_kept)", st != 200 and "sent_line_kept" in str(r), (st, r))
@@ -384,12 +466,201 @@ def scenario_kitchen_on_draft(api):
     st, p = sari.verb("pos_sale", name, "submit", {"payments": [{"method": "cash", "amount": 100_000}]})
     paid = rec(p).get("name") if st == 200 else name
     ts = tickets(api, paid)
-    dapur = [t for t in ts if t["station"] == DAPUR and not any(str(l.get("description") or "").startswith("BATAL") for l in t["items"])]
+    dapur = [t for t in ts if t["station"] == DAPUR and not any(l.get("kind") == "void" for l in t["items"])]
     check("payment sends only the line never sent (roti k4): 5 tickets, none for the coffees again",
           st == 200 and len(ts) == 5 and len([t for t in ts if t["station"] == BAR]) == 2 and len(dapur) == 2
           and lines(sorted(dapur, key=lambda t: t["sent_at"])[-1]) == [(ROTI, 1, "")], (st, [(t["station"], lines(t)) for t in ts]))
 
 
+def scenario_kitchen_hold_and_change(api):
+    """Kitchen 2.0 (rangka-apps#131): Sari sends table 7's bill with the roti held (Tahan: after the coffee). The Dapur
+    line waits held: Tono cannot move it, the station still lists the ticket; Sari fires it at the pass (Lepas) and Tono
+    works it. Then Sari lowers the kopi from 2 to 1 and changes its note after it was sent: the Bar gets a Diubah
+    notice with what it was. A line already being made cannot be held again."""
+    sari, tono = CTX.get("sari"), CTX.get("tono")
+    shift = CTX.get("shift_riu_kitchen")
+    if not (sari and tono and shift):
+        return
+
+    def L(key, item, qty, **kw):
+        return dict({"item": item, "qty": qty, "line_key": key}, **kw)
+
+    st, b = sari.create("pos_sale", {"shift": shift, "table": "MJA-RIU-007", "guests": 2,
+                                     "items": [L("h1", KSA, 2, note="kurang manis"), L("h2", ROTI, 1, kitchen_hold=True)]})
+    if not check("table 7: a bill with the roti held -> 201", st == 201, (st, b)):
+        return
+    name = rec(b)["name"]
+    st, r = sari.patch("pos_sale", name, {"send_kitchen": True})
+    check("Kirim ke dapur -> 200", st == 200, (st, r))
+    ts = tickets(api, name)
+    dap = [t for t in ts if t["station"] == DAPUR]
+    if not check("the Dapur ticket's roti line is held; the ticket counts it (held_count 1) and stays Baru",
+                 len(dap) == 1 and dap[0]["items"][0].get("held") is True and dap[0].get("held_count") == 1 and dap[0]["status"] == "new"
+                 and dap[0]["items"][0].get("line_key") == "h2", ts):
+        return
+    dname = dap[0]["name"]
+    listed = [t["name"] for t in tono.find("kitchen_ticket", "date == today() && (status == 'new' || status == 'cooking' || held_count > 0)")]
+    check("the station's screen filter still lists the ticket of a held line", dname in listed, listed)
+    st, r = set_lines(tono, dname, lambda l: True, {"status": "in_progress"})
+    check("Tono cannot work a held line -> 422 held_line", st == 422 and "held_line" in rules(r), (st, r))
+    st, r = set_lines(sari, dname, lambda l: l.get("held"), {"held": False, "fired_at": "2026-11-28T12:00:00Z"})
+    check("Sari fires it at the pass (Lepas) -> 200, the line is Baru and not held", st == 200 and not rec(r)["items"][0].get("held")
+          and rec(r)["items"][0].get("status") == "new", (st, r))
+    st, r = set_lines(tono, dname, normal, {"status": "in_progress"})
+    check("Tono now works the roti -> 200, Diproses", st == 200 and rec(r).get("status") == "cooking", (st, r))
+    st, r = set_lines(sari, dname, lambda l: True, {"held": True})
+    check("a line already being made cannot be held again -> 422 hold_started", st == 422 and "hold_started" in rules(r), (st, r))
+    st, r = sari.patch("pos_sale", name, {"items": [L("h1", KSA, 1, note="panas"), L("h2", ROTI, 1)], "send_kitchen": True})
+    ts = tickets(api, name)
+    chg = [l for t in ts for l in t["items"] if l.get("kind") == "change"]
+    check("the kopi lowered to 1 and its note changed after sending: a Diubah notice at the Bar with what it was",
+          st == 200 and len(chg) == 1 and chg[0]["item"] == KSA and chg[0]["qty"] == 1 and "panas" in chg[0].get("note", "")
+          and "tadi 2" in chg[0].get("note", "") and "kurang manis" in chg[0].get("note", "") and chg[0].get("line_key") == "h1", (st, r, chg))
+    st, r = sari.patch("pos_sale", name, {"send_kitchen": True})
+    eq("sending again with nothing changed makes no notice", len([l for t in tickets(api, name) for l in t["items"] if l.get("kind") == "change"]), 1)
+
+
 SCENARIOS = [scenario_kitchen_tickets, scenario_kitchen_steps, scenario_kitchen_void_and_revision, scenario_kitchen_served_revision,
-             scenario_kitchen_scope, scenario_kitchen_on_draft,
+             scenario_kitchen_scope, scenario_kitchen_on_draft, scenario_kitchen_hold_and_change,
              scenario_kitchen_dashboard_and_screen]
+
+
+# ---------------- regressions from the rk-auditor attack scenarios on kitchen 2.0 (reports/audit/2026-11-28-audit-kds-131-apps.md):
+# revisions after notices and partial hand-overs, staff writes that drop or add lines or move a held line, Sajikan nanti
+# through merge and split, and the printed markers of notice and held lines. They keep off the tables the self order
+# scenarios use (A3, A4, A6, B2, B3): a receipt paid on a table opens its QR session.
+
+def _summ(ts):
+    return sorted((t["station"], t["status"], tuple(sorted((l["item"], l["qty"], l.get("kind") or "normal", l.get("status"), bool(l.get("held"))) for l in t.get("items") or []))) for t in ts)
+
+
+def _amend_pay(sari, paid, label):
+    st, r = sari.verb("pos_sale", paid, "cancel")
+    check(f"{label}: void -> 200", st == 200, (st, r))
+    st, am = sari.verb("pos_sale", paid, "amend")
+    am = rec(am)
+    st, r = sari.verb("pos_sale", am.get("name"), "submit")
+    if st != 200:
+        st, r = sari.verb("pos_sale", am.get("name"), "submit", {"payments": [{"method": "cash", "amount": 100_000}]})
+    check(f"{label}: amended receipt paid -> 200", st == 200, (st, r))
+    return rec(r).get("name")
+
+
+def scenario_kitchen_audit_a1_change_notice_served(api):
+    sari, tono = CTX.get("sari"), CTX.get("tono")
+    shift = CTX.get("shift_riu_kitchen") or open_shift(sari, RIU, "a1")
+    st, b = sari.create("pos_sale", {"shift": shift, "table": "MJA-RIU-005", "guests": 2, "items": [{"item": ROTI, "qty": 2, "line_key": "a1"}]})
+    name = rec(b).get("name")
+    sari.patch("pos_sale", name, {"send_kitchen": True})
+    st, r = sari.patch("pos_sale", name, {"items": [{"item": ROTI, "qty": 1, "line_key": "a1"}], "send_kitchen": True})
+    ts = tickets(api, name)
+    notice = [t for t in ts if any(l.get("kind") == "change" for l in t["items"])]
+    orig = [t for t in ts if not any(l.get("kind") == "change" for l in t["items"])]
+    st1, _ = set_lines(tono, notice[0]["name"], lambda l: True, {"seen": True})
+    st2, _ = to_status(tono, orig[0]["name"], "cooking")
+    ts = tickets(api, name)
+    st, p = sari.verb("pos_sale", name, "submit", {"payments": [{"method": "cash", "amount": 100_000}]})
+    paid = rec(p).get("name")
+    newname = _amend_pay(sari, paid, "A1")
+    rts = tickets(api, newname)
+    eq("A1: revision after a change notice was read: the roti nobody served goes to Dapur as new", [(t["status"], lines(t)) for t in rts if t["status"] == "new"], [("new", [(ROTI, 1, "")])])
+
+
+def scenario_kitchen_audit_a2_partial_handover(api):
+    sari, tono = CTX.get("sari"), CTX.get("tono")
+    shift = CTX.get("shift_riu_kitchen") or open_shift(sari, RIU, "a2")
+    s = pay(sari, shift, [{"item": KSA, "qty": 1}, {"item": KHT, "qty": 1}], "A2 Meja 21", buyer="Meja 21")
+    t = tickets(api, s["name"])[0]
+    to_status(tono, t["name"], "ready")
+    st, r = set_lines(sari, t["name"], lambda l: l["item"] == KSA, {"status": "done"})
+    newname = _amend_pay(sari, s["name"], "A2")
+    rts = tickets(api, newname)
+    eq("A2: revision after a partial handover: only the kopi hitam is made again", sorted((t["status"], tuple(lines(t))) for t in rts if t["status"] == "new"),
+       [("new", ((KHT, 1, ""),))])
+
+
+def scenario_kitchen_audit_a3_row_delete(api):
+    sari, tono = CTX.get("sari"), CTX.get("tono")
+    shift = CTX.get("shift_riu_kitchen") or open_shift(sari, RIU, "a3")
+    s = pay(sari, shift, [{"item": KSA, "qty": 1}, {"item": KHT, "qty": 1, "kitchen_hold": True}], "A3 Meja 22", buyer="Meja 22")
+    t = tickets(api, s["name"])[0]
+    st, full = get_ticket(tono, t["name"])
+    keep = [dict(l, status="ready") for l in full["items"] if not l.get("held")]
+    st, r = tono.patch("kitchen_ticket", t["name"], {"items": keep})
+    after = get_ticket(api, t["name"])[1]
+    check("A3: the kitchen cannot drop a ticket line (the held kopi hitam) by leaving it out of a write",
+          st != 200 and len(after.get("items") or []) == 2, (st, after.get("status"), _summ([after])))
+    st, r = tono.patch("kitchen_ticket", t["name"], {"items": (after.get("items") or []) + [{"status": "new"}]})
+    check("A3b: the kitchen cannot add a line", st != 200, (st, r))
+
+
+def scenario_kitchen_audit_a4_held_partial_row(api):
+    sari, tono = CTX.get("sari"), CTX.get("tono")
+    shift = CTX.get("shift_riu_kitchen") or open_shift(sari, RIU, "a4")
+    s = pay(sari, shift, [{"item": ROTI, "qty": 1, "kitchen_hold": True}], "A4 Meja 23", buyer="Meja 23")
+    t = tickets(api, s["name"])[0]
+    st, full = get_ticket(tono, t["name"])
+    rows = [{"name": l["name"], "status": "in_progress"} for l in full["items"]]
+    st, r = tono.patch("kitchen_ticket", t["name"], {"items": rows})
+    after = get_ticket(api, t["name"])[1]
+    check("A4: a write that leaves held out cannot move a held line (held_line)", st == 422, (st, _summ([after])))
+
+
+def scenario_kitchen_audit_a5_merge_split_hold(api):
+    sari = CTX.get("sari")
+    shift = CTX.get("shift_riu_kitchen") or open_shift(sari, RIU, "a5")
+    st, a = sari.create("pos_sale", {"shift": shift, "table": "MJA-RIU-001", "guests": 1, "items": [{"item": ROTI, "qty": 1, "line_key": "m1", "kitchen_hold": True}]})
+    st2, b = sari.create("pos_sale", {"shift": shift, "table": "MJA-RIU-002", "guests": 1, "items": [{"item": KHT, "qty": 1, "line_key": "m2"}]})
+    check("A5 setup", st == 201 and st2 == 201, (st, a, st2, b))
+    st, r = sari.patch("pos_sale", rec(a)["name"], {"merge_into": rec(b)["name"]})
+    m = sari.get("pos_sale", rec(b)["name"])
+    eq("A5: merge keeps Sajikan nanti on the moved roti", [(l["item"], bool(l.get("kitchen_hold"))) for l in m.get("items") or []], [(KHT, False), (ROTI, True)])
+    st, c = sari.create("pos_sale", {"shift": shift, "table": "MJA-RIU-010", "guests": 1, "items": [{"item": ROTI, "qty": 1, "line_key": "p1", "kitchen_hold": True}, {"item": KHT, "qty": 1, "line_key": "p2"}]})
+    st, r = sari.patch("pos_sale", rec(c)["name"], {"split_lines": ["p1"]})
+    kids = api.find("pos_sale", f"split_of == '{rec(c)['name']}'", children=1)
+    eq("A5b: split keeps Sajikan nanti on the moved roti", [(l["item"], bool(l.get("kitchen_hold"))) for k in kids for l in k.get("items") or []], [(ROTI, True)])
+    # the open bills leave their tables free for the scenarios after this one (self order)
+    for n in [rec(a)["name"], rec(b)["name"], rec(c)["name"]] + [k["name"] for k in kids]:
+        sari.call("DELETE", f"/api/v1/r/pos_sale/{sari.q(n)}")
+
+
+def scenario_kitchen_audit_a6_void_notice_served(api):
+    sari, tono = CTX.get("sari"), CTX.get("tono")
+    shift = CTX.get("shift_riu_kitchen") or open_shift(sari, RIU, "a6")
+    st, b = sari.create("pos_sale", {"shift": shift, "table": "MJA-RIU-001", "guests": 2, "items": [{"item": ROTI, "qty": 1, "line_key": "v1"}]})
+    name = rec(b).get("name")
+    sari.patch("pos_sale", name, {"send_kitchen": True})
+    sari.patch("pos_sale", name, {"items": [{"item": KHT, "qty": 1, "line_key": "v0"}], "send_kitchen": True})
+    ts = tickets(api, name)
+    notice = [t for t in ts if any(l.get("kind") == "void" for l in t["items"])]
+    set_lines(tono, notice[0]["name"], lambda l: True, {"seen": True})
+    sari.patch("pos_sale", name, {"items": [{"item": KHT, "qty": 1, "line_key": "v0"}, {"item": ROTI, "qty": 1, "line_key": "v2"}], "send_kitchen": True})
+    st, p = sari.verb("pos_sale", name, "submit", {"payments": [{"method": "cash", "amount": 100_000}]})
+    paid = rec(p).get("name")
+    newname = _amend_pay(sari, paid, "A6")
+    rts = tickets(api, newname)
+    eq("A6: revision after a Batal notice was read: the roti nobody served goes to Dapur as new",
+       sorted((t["station"], tuple(lines(t))) for t in rts if t["status"] == "new" and t["station"] == DAPUR), [(DAPUR, ((ROTI, 1, ""),))])
+
+
+SCENARIOS = SCENARIOS + [scenario_kitchen_audit_a1_change_notice_served, scenario_kitchen_audit_a2_partial_handover, scenario_kitchen_audit_a3_row_delete,
+                         scenario_kitchen_audit_a4_held_partial_row, scenario_kitchen_audit_a5_merge_split_hold, scenario_kitchen_audit_a6_void_notice_served]
+
+
+def scenario_kitchen_audit_a7_print_notice(api):
+    sari, tono = CTX.get("sari"), CTX.get("tono")
+    shift = CTX.get("shift_riu_kitchen") or open_shift(sari, RIU, "a7")
+    st, b = sari.create("pos_sale", {"shift": shift, "table": "MJA-RIU-002", "guests": 2, "items": [{"item": ROTI, "qty": 1, "line_key": "w1"}, {"item": KHT, "qty": 2, "line_key": "w2", "kitchen_hold": True}]})
+    name = rec(b).get("name")
+    sari.patch("pos_sale", name, {"send_kitchen": True})
+    sari.patch("pos_sale", name, {"items": [{"item": KHT, "qty": 1, "line_key": "w2", "kitchen_hold": True}], "send_kitchen": True})
+    for t in tickets(api, name):
+        st, raw, _ = tono.print_html("kitchen_ticket", t["name"], "kitchen_ticket")
+        kinds = sorted({(l.get("kind") or "normal") + ("/held" if l.get("held") else "") for l in t["items"]})
+        txt = page_text(raw)
+        check(f"A7: the printed ticket of a {kinds} ticket says what it is (BATAL / DIUBAH / DITAHAN)",
+              kinds == ["normal"] or any(w in txt.upper() for w in ("BATAL", "DIUBAH", "DITAHAN", "NANTI")), txt[:400])
+    sari.call("DELETE", f"/api/v1/r/pos_sale/{sari.q(name)}")   # the table stays free for the scenarios after this one
+
+
+SCENARIOS = SCENARIOS + [scenario_kitchen_audit_a7_print_notice]

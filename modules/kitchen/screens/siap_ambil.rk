@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/screen.json
+# The guest board (rangka-apps#131): a TV at the counter shows today's orders of the outlet in two columns, Sedang
+# disiapkan and Siap diambil, by table or receipt in large type. An order sits under Siap once every station's lines
+# not held are ready, and leaves when the pass hands everything over. Read-only: no buttons.
+name: siap_ambil
+type: queue
+label: {id: Layar tamu, en: Guest board}
+description: {id: 'Nomor pesanan yang sedang disiapkan dan yang siap diambil; tampil di TV dekat kasir.'}
+icon: list
+roles: [kitchen, cashier, head_office]
+device: tablet
+theme: dark
+queue:
+  source: {model: kitchen_ticket, filter: "date == today() && status != 'picked_up' && status != 'void'", sort: sent_at}
+  group_by: sale
+  card: {title: board_title, lines: items, line_show: "false"}
+  columns: {by: board, values: [preparing, ready]}
+  refresh: 5

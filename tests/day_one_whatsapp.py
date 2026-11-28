@@ -26,6 +26,8 @@ import time
 import urllib.error
 import urllib.request
 
+from day_one_kitchen import to_status  # kitchen 2.0: staff move lines, the ticket's status follows (rangka-apps#131)
+
 H = {}
 SITE = "demo-whatsapp"
 ORG = "warung_contoh"
@@ -324,7 +326,7 @@ def scenario_wa_order_ready(api):
         return
     t = ts[0]["name"]
     for status in ("cooking", "ready", "cooking", "ready"):
-        st, r = tono.patch("kitchen_ticket", t, {"status": status})
+        st, r = to_status(tono, t, status)
         check(f"Tono: ticket -> {status}", st == 200, (st, r))
     key = t + ":order_ready:1"
     m = message(api, key)
@@ -337,8 +339,8 @@ def scenario_wa_order_ready(api):
           len(ps) == 1 and ps[0]["buyer"] == "Dewi" and "grand_total" not in ps[0], ps)
     plain = CTX.get("wa_plain_sale") or {}
     for pt in tono.find("kitchen_ticket", f"sale == '{plain.get('name', 'x')}'"):
-        tono.patch("kitchen_ticket", pt["name"], {"status": "cooking"})
-        tono.patch("kitchen_ticket", pt["name"], {"status": "ready"})
+        to_status(tono, pt["name"], "cooking")
+        to_status(tono, pt["name"], "ready")
         check("a ticket whose buyer did not agree sends nothing", not message(api, pt["name"] + ":order_ready:1"), pt["name"])
 
 

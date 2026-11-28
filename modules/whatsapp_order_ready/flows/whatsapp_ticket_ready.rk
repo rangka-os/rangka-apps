@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/flow.json
 # The kitchen moves a ticket to Siap: the buyer of its receipt, when they gave a WhatsApp number and agreed at the
 # kasir (whatsapp_pickup, written at payment), gets `pesanan_siap` once per ticket (key <ticket>:order_ready:1), so a
-# ticket moved back to Dimasak and to Siap again sends nothing more. Runs inside the ticket's update, as the kitchen,
+# ticket moved back to Diproses and to Siap again sends nothing more. Runs inside the ticket's update, as the kitchen,
 # which reads no receipt: everything it needs is on the whatsapp_pickup row.
 name: whatsapp_ticket_ready
 label: {id: 'Pesanan siap: kabari pembeli lewat WhatsApp'}

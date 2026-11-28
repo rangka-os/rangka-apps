@@ -9,8 +9,8 @@ cache: 1m
 # Outlet staff land on outlet_hari_ini (stok_outlet comes before dapur in the site's apps); this one is in their menu.
 roles: [kitchen, cashier, outlet_staff, head_office]
 widgets:
-  - {name: waiting, type: number, label: {id: Belum dimasak}, model: kitchen_ticket, filter: "status == 'new' && date == today()", good_when: down, span: 3}
-  - {name: cooking, type: number, label: {id: Sedang dimasak}, model: kitchen_ticket, filter: "status == 'cooking' && date == today()", span: 3}
+  - {name: waiting, type: number, label: {id: Belum diproses}, model: kitchen_ticket, filter: "status == 'new' && date == today()", good_when: down, span: 3}
+  - {name: cooking, type: number, label: {id: Sedang diproses}, model: kitchen_ticket, filter: "status == 'cooking' && date == today()", span: 3}
   - {name: ready, type: number, label: {id: Siap diambil}, model: kitchen_ticket, filter: "status == 'ready' && date == today()", good_when: down, span: 3}
   - {name: done, type: number, label: {id: Sudah diambil}, model: kitchen_ticket, filter: "status == 'picked_up' && date == today()", span: 3}
   - name: open_list
