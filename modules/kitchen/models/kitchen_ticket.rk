@@ -66,6 +66,8 @@ fields:
       - {value: ready, label: {id: Siap}, tone: ok}
       - {value: picked_up, label: {id: Diambil}, tone: muted}
       - {value: void, label: {id: Batal}, tone: bad}
+  # what a guest reads on the board: the table or buyer, else the receipt's last three digits ("No. 005")
+  - {name: board_title, type: data, label: {id: Nomor di layar tamu}, compute: "buyer != '' ? buyer : (size(sale) > 3 ? 'No. ' + sale.replace(truncate(sale, size(sale) - 3), '') : sale)"}
   # the guest board's two columns (screen siap_ambil)
   - name: board
     type: select

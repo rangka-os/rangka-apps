@@ -13,6 +13,6 @@ theme: dark
 queue:
   source: {model: kitchen_ticket, filter: "date == today() && status != 'picked_up' && status != 'void'", sort: sent_at}
   group_by: sale
-  card: {title: heading, lines: items, line_show: "false"}
+  card: {title: board_title, lines: items, line_show: "false"}
   columns: {by: board, values: [preparing, ready]}
   refresh: 5
