@@ -69,7 +69,7 @@ steps:
   # up so a counter holding an older copy gets a conflict instead of dropping them. No open bill: a new dine-in bill.
   - find: pos_sale
     if: "event.kind == 'order' && event.before.status == 'new' && event.status == 'accepted'"
-    where: "table == event.table && docstatus == 0 && !merged && amended_from == ''"
+    where: "table == event.table && docstatus == 0 && !merged && amended_from == '' && split_of == ''"
     as: open_bill
   - find: dining_table
     if: "event.kind == 'order' && event.before.status == 'new' && event.status == 'accepted'"
@@ -96,7 +96,7 @@ steps:
       options: "event.options.map(o, {'line': event.name + ':' + o.line, 'option': o.option})"
   - find: pos_sale
     if: "event.kind == 'order' && event.before.status == 'new' && event.status == 'accepted'"
-    where: "table == event.table && docstatus == 0 && !merged && amended_from == ''"
+    where: "table == event.table && docstatus == 0 && !merged && amended_from == '' && split_of == ''"
     as: bill
   # the kitchen (module kitchen): writes by flows start no flow, so the station tickets are made here with the routing of
   # kitchen_ticket_on_draft, buyer "<table> · <order>"; lines the guest wants later ("Antar nanti") wait on the bill
@@ -127,14 +127,15 @@ steps:
       sent_to_kitchen: >-
         (bill.sent_to_kitchen == null ? [] : bill.sent_to_kitchen) + event.items.filter(l, !l.later).map(l, {'key': event.name + ':' + l.line_key,
         'item': l.item, 'packing': '', 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note, 'category': l.category})
-  # Minta diantar handled: the held lines of the named order go to the kitchen now
+  # Minta diantar handled: the held lines of the named order go to the kitchen now, from the table's open bill as it is
+  # (after a merge the keys carry the source bill's prefix, so a line is found by the end of its key: <order>:<row>)
   - find: self_order
     if: "event.kind == 'fire' && event.before.status == 'new' && event.status == 'done' && event.about != ''"
-    where: "name == event.about && table == event.table && kind == 'order' && sale != ''"
+    where: "name == event.about && table == event.table && kind == 'order'"
     as: held
   - find: pos_sale
     if: "event.kind == 'fire' && event.before.status == 'new' && event.status == 'done' && event.about != '' && held != null"
-    where: "name == held.sale && docstatus == 0"
+    where: "table == event.table && docstatus == 0 && !merged && amended_from == '' && split_of == ''"
     as: hbill
   - find: dining_table
     if: "event.kind == 'fire' && event.before.status == 'new' && event.status == 'done' && event.about != '' && held != null && hbill != null"
@@ -151,7 +152,7 @@ steps:
   - for_each: "event.kind == 'fire' && event.before.status == 'new' && event.status == 'done' && event.about != '' && held != null && hbill != null && app_installed('kitchen') ? hstations : []"
     as: st
     do:
-      - if: "held.items.filter(l, l.later && !((held.name + ':' + l.line_key) in hbill.sent_to_kitchen.map(s, s.key)) && hroutes.filter(r, r.station == st.name && r.category == l.category).size() > 0).size() > 0"
+      - if: "hbill.items.filter(b, held.items.exists(l, l.later && b.line_key.endsWith(held.name + ':' + l.line_key)) && !(b.line_key in hbill.sent_to_kitchen.map(s, s.key)) && hroutes.filter(r, r.station == st.name && r.category == b.category).size() > 0).size() > 0"
         create: kitchen_ticket
         set:
           sale: hbill.name
@@ -159,13 +160,13 @@ steps:
           station: st.name
           date: hbill.date
           buyer: htbl.table_name + ' · ' + held.name
-          items: "held.items.filter(l, l.later && !((held.name + ':' + l.line_key) in hbill.sent_to_kitchen.map(s, s.key)) && hroutes.filter(r, r.station == st.name && r.category == l.category).size() > 0).map(l, {'item': l.item, 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note})"
+          items: "hbill.items.filter(b, held.items.exists(l, l.later && b.line_key.endsWith(held.name + ':' + l.line_key)) && !(b.line_key in hbill.sent_to_kitchen.map(s, s.key)) && hroutes.filter(r, r.station == st.name && r.category == b.category).size() > 0).map(b, {'item': b.item, 'description': b.description, 'qty': b.qty, 'uom': b.uom, 'note': b.note})"
   - update: hbill
     if: "event.kind == 'fire' && event.before.status == 'new' && event.status == 'done' && event.about != '' && held != null && hbill != null && app_installed('kitchen') && hstations.size() > 0"
     set:
       sent_to_kitchen: >-
-        hbill.sent_to_kitchen + held.items.filter(l, l.later && !((held.name + ':' + l.line_key) in hbill.sent_to_kitchen.map(s, s.key))).map(l, {'key': held.name + ':' + l.line_key,
-        'item': l.item, 'packing': '', 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note, 'category': l.category})
+        hbill.sent_to_kitchen + hbill.items.filter(b, held.items.exists(l, l.later && b.line_key.endsWith(held.name + ':' + l.line_key)) && !(b.line_key in hbill.sent_to_kitchen.map(s, s.key))).map(b, {'key': b.line_key,
+        'item': b.item, 'packing': b.packing, 'description': b.description, 'qty': b.qty, 'uom': b.uom, 'note': b.note, 'category': b.category})
   - update: held
     if: "event.kind == 'fire' && event.before.status == 'new' && event.status == 'done' && event.about != '' && held != null && hbill != null"
     set:

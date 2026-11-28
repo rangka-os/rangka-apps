@@ -3,7 +3,8 @@
 # portal:<link id>, a system actor, so every step here reads only the table and outlet the kernel set).
 # - No open cashier shift at the table's outlet: refused (closed), nothing kept: nobody would take it.
 # - A round (kind order) on a table whose bill is open (the table session) goes straight to that bill and the kitchen:
-#   the cashier already opened the table. A round on a table without an open bill waits as new: the cashier's Terima
+#   the cashier already opened the table. Not when the bill is marked "Tutup pesanan QR" or the table had no round (nor
+#   the bill was opened) in the last 3 hours: then the round waits for the cashier like a first one. A round on a table without an open bill waits as new: the cashier's Terima
 #   opens the table (flow self_order_on_update). So a QR used away from the table, or after the bill was paid, makes
 #   nothing until a person looks at it.
 # - Minta tagihan on an open table marks the bill "Minta tagihan" on the table map. Requests stay new for the staff.
@@ -20,23 +21,31 @@ steps:
     if: open_shifts.size() == 0
     set: {reason: "'closed'", document: event.name}
   - find: pos_sale
-    where: "table == event.table && docstatus == 0 && !merged && amended_from == ''"
+    where: "table == event.table && docstatus == 0 && !merged && amended_from == '' && split_of == ''"
     as: session
   - update: session
     if: "event.kind == 'bill' && session != null"
     set: {bill_asked: "true"}
+  # the session is live only while the cashier keeps it open: not "Tutup pesanan QR", and a round or the bill itself
+  # within the last 3 hours; otherwise a round waits for the cashier (a QR photographed, a party gone)
+  - find_all: self_order
+    if: session != null
+    where: "table == event.table && sale == session.name && name != event.name"
+    sort: -ordered_at
+    limit: 1
+    as: last
   # the table's open bill takes the round after its own lines (keys <order>:<row>, options by the same keys); rev goes
   # up so a counter holding an older copy gets a conflict instead of dropping them. No open bill: a new dine-in bill.
   - find: pos_sale
-    if: "event.kind == 'order' && session != null"
-    where: "table == event.table && docstatus == 0 && !merged && amended_from == ''"
+    if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800"
+    where: "table == event.table && docstatus == 0 && !merged && amended_from == '' && split_of == ''"
     as: open_bill
   - find: dining_table
-    if: "event.kind == 'order' && session != null"
+    if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800"
     where: name == event.table
     as: tbl
   - update: open_bill
-    if: "event.kind == 'order' && session != null && open_bill != null"
+    if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800 && open_bill != null"
     set:
       items: >-
         open_bill.items.map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key})
@@ -45,7 +54,7 @@ steps:
       bill_asked: "false"
       rev: open_bill.rev + 1
   - create: pos_sale
-    if: "event.kind == 'order' && session != null && open_bill == null"
+    if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800 && open_bill == null"
     set:
       shift: "session.shift"
       table: event.table
@@ -55,21 +64,21 @@ steps:
       items: "event.items.map(l, {'item': l.item, 'packing': '', 'qty': l.qty, 'discount_pct': 0, 'description': l.description, 'note': l.note, 'is_gift': false, 'line_key': event.name + ':' + l.line_key})"
       options: "event.options.map(o, {'line': event.name + ':' + o.line, 'option': o.option})"
   - find: pos_sale
-    if: "event.kind == 'order' && session != null"
-    where: "table == event.table && docstatus == 0 && !merged && amended_from == ''"
+    if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800"
+    where: "table == event.table && docstatus == 0 && !merged && amended_from == '' && split_of == ''"
     as: bill
   # the kitchen (module kitchen): writes by flows start no flow, so the station tickets are made here with the routing of
   # kitchen_ticket_on_draft, buyer "<table> · <order>"; lines the guest wants later ("Antar nanti") wait on the bill
   # until staff send them. Sent lines go into the bill's sent_to_kitchen, so payment and "Kirim ke dapur" skip them.
   - find_all: kitchen_station
-    if: "event.kind == 'order' && session != null && app_installed('kitchen')"
+    if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800 && app_installed('kitchen')"
     where: outlet == event.outlet && active
     as: stations
   - find_all: kitchen_route
-    if: "event.kind == 'order' && session != null && app_installed('kitchen')"
+    if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800 && app_installed('kitchen')"
     where: outlet == event.outlet
     as: routes
-  - for_each: "event.kind == 'order' && session != null && app_installed('kitchen') ? stations : []"
+  - for_each: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800 && app_installed('kitchen') ? stations : []"
     as: st
     do:
       - if: "event.items.filter(l, !l.later && routes.filter(r, r.station == st.name && r.category == l.category).size() > 0).size() > 0"
@@ -82,12 +91,12 @@ steps:
           buyer: tbl.table_name + ' · ' + event.name
           items: "event.items.filter(l, !l.later && routes.filter(r, r.station == st.name && r.category == l.category).size() > 0).map(l, {'item': l.item, 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note})"
   - update: bill
-    if: "event.kind == 'order' && session != null && app_installed('kitchen') && stations.size() > 0"
+    if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800 && app_installed('kitchen') && stations.size() > 0"
     set:
       sent_to_kitchen: >-
         (bill.sent_to_kitchen == null ? [] : bill.sent_to_kitchen) + event.items.filter(l, !l.later).map(l, {'key': event.name + ':' + l.line_key,
         'item': l.item, 'packing': '', 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note, 'category': l.category})
-  - {find: self_order, if: "event.kind == 'order' && session != null", where: name == event.name, as: me}
+  - {find: self_order, if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800", where: name == event.name, as: me}
   - update: me
-    if: "event.kind == 'order' && session != null"
+    if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800"
     set: {status: "'accepted'", auto: "true", sale: bill.name, handled_at: now()}

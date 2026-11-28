@@ -55,6 +55,18 @@ def order(g, path, lines, **extra):
     return g.call("POST", path + "/order", dict({"lines": lines}, **extra))
 
 
+def order_keyed(path, lines, key):
+    """POST an order with an Idempotency-Key, as the page sends it (one key per basket)."""
+    import json, urllib.request, urllib.error
+    req = urllib.request.Request(CTX["kernel"].base + path + "/order", data=json.dumps({"lines": lines}).encode(), method="POST",
+                                 headers={"Content-Type": "application/json", "Idempotency-Key": key})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status, json.loads(r.read() or b"null")
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read() or b"null")
+
+
 def data(g, path, mine=()):
     return g.call("GET", path + "/data" + ("?mine=" + ",".join(mine) if mine else ""))
 
@@ -288,12 +300,25 @@ def scenario_self_order_session(api):
           and api.get("self_order", r2.get("name", "")).get("auto") is True, (st, r))
     b = api.get("pos_sale", bill["name"])
     eq("round 2 is on the same bill", (len(b.get("items", [])), b.get("rev", 0)), (3, bill.get("rev", 0) + 1))
+    b = api.get("pos_sale", bill["name"])
     eq("round 2 reached the Bar at once", len(api.find("kitchen_ticket", f"sale == '{bill['name']}' && station == '{BAR}'")), 2)
+    st, k1 = order_keyed(a4b, [{"item": KHT, "qty": 1}], "so-test-resend-1")
+    st2, k2 = order_keyed(a4b, [{"item": KHT, "qty": 1}], "so-test-resend-1")
+    check("a resend with the same key answers the first round, no second one", st == 201 and st2 == 201
+          and (k1 or {}).get("order", {}).get("name") == (k2 or {}).get("order", {}).get("name"), (st, k1, st2, k2))
+    eq("the resent round is on the bill once", len(api.get("pos_sale", bill["name"]).get("items", [])), 4)
+    st, r = api.patch("pos_sale", bill["name"], {"qr_closed": True})
+    st2, r2c = order(g, a4b, [{"item": KHT, "qty": 1}])
+    check("Tutup pesanan QR: the next round waits for the cashier", st == 200 and st2 == 201 and (r2c or {}).get("order", {}).get("status") == "new", (st, r, st2, r2c))
+    st, r = sari.patch("self_order", (r2c or {}).get("order", {}).get("name", ""), {"status": "rejected"})
+    check("Sari turns it down -> 200", st == 200, (st, r))
+    api.patch("pos_sale", bill["name"], {"qr_closed": False})
     st, d = data(g, a4, [r1["name"]])
     sess = (d or {}).get("session") or {}
     tot = {x["name"]: x["value"] for x in sess.get("totals", [])}
+    b = api.get("pos_sale", bill["name"])
     check("every phone sees the table bill: its total and both rounds", tot.get("grand_total") == b.get("grand_total")
-          and sorted(x["name"] for x in sess.get("rounds", [])) == sorted([r1["name"], r2["name"]]), (tot, [x.get("name") for x in sess.get("rounds", [])]))
+          and {r1["name"], r2["name"]} <= {x["name"] for x in sess.get("rounds", [])}, (tot, [x.get("name") for x in sess.get("rounds", [])]))
     mine = [x for x in sess.get("rounds", []) if x["name"] == r1["name"]]
     check("the held roti shows as held to the guest", mine and any(l.get("later") for l in mine[0].get("lines", [])), mine)
 

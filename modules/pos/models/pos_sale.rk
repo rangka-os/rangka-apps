@@ -67,6 +67,9 @@ fields:
   # devices on one bill into a conflict, not a lost update
   - {name: rev, type: int, label: {id: Versi tagihan}, default: '0', hidden: true}
   - {name: bill_asked, type: check, label: {id: Minta tagihan}}
+  # the table QR (module self_order, rangka-apps#119): ticked, guests' rounds on this bill wait for the cashier instead
+  # of going straight to the kitchen (a QR photographed or a party gone)
+  - {name: qr_closed, type: check, label: {id: Tutup pesanan QR}, help: {id: 'Pesanan baru dari QR meja ini menunggu dicek kasir'}}
   # the counter's "Kirim ke dapur" sets send_kitchen; flow kitchen_ticket_on_draft makes the tickets, records the lines
   # in sent_to_kitchen (key, item, packing, description, qty, uom, note, category) and clears the check
   - {name: send_kitchen, type: check, label: {id: Kirim ke dapur}}
@@ -164,7 +167,7 @@ fields:
       - {value: equal, label: {id: Sama rata}}
       - {value: amount, label: {id: Jumlah bebas}}
   # options of the lines, by line_key (contract 0048 §1); declared before items so the lines read them computed: their
-  # prices are inside each line's rate (pos_sale_item.option_delta)
+  # prices are inside each line's rate (pos_sale_item.option_delta). A row whose line is gone adds nothing.
   - {name: options, type: table, of: pos_sale_option, label: {id: Pilihan menu}}
   - name: items
     type: table
@@ -375,11 +378,6 @@ stock:
     - {lines: items, out: outlet, explode: recipe, reason: sale, cogs: cogs}
   cogs_total: cogs_total
 rules:
-  # an option row belongs to a line of this sale (contract 0048 §1); a line removed at the counter takes its options with it
-  - name: option_line_exists
-    on: save
-    check: "options.all(o, o.line in items.map(l, l.line_key))"
-    message: {id: 'Ada pilihan menu yang barisnya sudah tidak ada. Hapus pilihannya juga'}
   - name: table_of_outlet
     on: save
     check: "table == '' || table.outlet == outlet"
