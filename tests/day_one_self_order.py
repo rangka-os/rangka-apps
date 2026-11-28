@@ -16,6 +16,8 @@ the kitchen again; a cashier of another outlet does not see the order; no role c
 """
 import time
 
+from day_one_kitchen import to_status  # kitchen 2.0: staff move lines, the ticket's status follows (rangka-apps#131)
+
 H = {}
 RIU, DGO = "OUT-03", "OUT-02"
 KHT, ROTI, KSA = "BRG-0022", "BRG-0015", "BRG-0021"
@@ -206,11 +208,11 @@ def scenario_self_order_cashier(api):
     check("no step back after Terima -> refused (bad_step)", st != 200 and "bad_step" in str(r), (st, r))
 
     if tono and BAR in by_station:
-        st, r = tono.patch("kitchen_ticket", by_station[BAR]["name"], {"status": "cooking"})
+        st, r = to_status(tono, by_station[BAR]["name"], "cooking")
         check("the kitchen starts the kopi -> 200", st == 200, (st, r))
         st, d = data(g, a3, [o1])
         eq("the guest sees Sedang disiapkan", [o.get("label") for o in d.get("orders", [])], ["Sedang disiapkan"])
-        st, r = tono.patch("kitchen_ticket", by_station[BAR]["name"], {"status": "ready"})
+        st, r = to_status(tono, by_station[BAR]["name"], "ready")
         st, d = data(g, a3, [o1])
         st2, r2 = tono.patch("self_order", o1, {"status": "rejected"})
         check("the kitchen cannot take or turn down an order -> refused", st2 != 200, (st2, r2))
