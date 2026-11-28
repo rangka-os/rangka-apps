@@ -72,7 +72,7 @@ fields:
     label: {id: Subtotal (teks)}
     hidden: true
     compute: >-
-      'Rp ' + (int(subtotal) < 1000 ? string(int(subtotal)) :
+      kind != 'order' ? '' : 'Rp ' + (int(subtotal) < 1000 ? string(int(subtotal)) :
       int(subtotal) < 1000000 ? string(int(subtotal) / 1000) + '.' + ('x' + string(1000 + int(subtotal) - (int(subtotal) / 1000) * 1000)).replace('x1', '') :
       int(subtotal) < 1000000000 ? string(int(subtotal) / 1000000) + '.' + ('x' + string(1000 + int(subtotal) / 1000 - (int(subtotal) / 1000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(subtotal) - (int(subtotal) / 1000) * 1000)).replace('x1', '') :
       string(int(subtotal) / 1000000000) + '.' + ('x' + string(1000 + int(subtotal) / 1000000 - (int(subtotal) / 1000000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(subtotal) / 1000 - (int(subtotal) / 1000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(subtotal) - (int(subtotal) / 1000) * 1000)).replace('x1', ''))

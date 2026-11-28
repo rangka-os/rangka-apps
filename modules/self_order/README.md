@@ -1,22 +1,31 @@
 # self_order: orders from the table QR (rangka-apps#119)
 
-v1: the guest orders from the phone, the cashier takes the order, payment stays at the counter.
+Guests order from their phones; payment stays at the counter (pay first by QRIS waits for the payment rail of rangka-os
+contract 0063).
 
-- **Guest page** `portal/pesan.rk` (rangka-os contract 0073 §9, type `order_page`): the QR of a table is a portal link
-  whose record is the `dining_table`. The page lists items that are not materials and active (title, price,
-  category), takes a basket with notes and an optional name, and shows the status of the orders sent from that phone.
-- **Cashier** work screen `pesanan_masuk` (app `pesan_meja`): Terima puts the lines on the table's open bill (or opens
-  a dine-in bill on the cashier's shift) and sends them to the kitchen stations; Tolak turns the order down.
-- **Kitchen**: flow `self_order_on_update` makes the station tickets itself (writes by flows start no flow) with the
-  routing of `kitchen_ticket_on_draft`, buyer `<table> · <order>`, and records the lines in the bill's
-  `sent_to_kitchen`, so payment never sends them twice. Flow `self_order_kitchen_progress` moves the guest's status
-  to Sedang dimasak, Siap diantar, Sudah diantar.
-- **QR stickers**: `POST /api/v1/portal/pesan/qr {records?}` as owner or head office makes a new link per table (the old
-  ones stop working) and returns a QR image per table.
+- **Guest page** `portal/pesan.rk` (rangka-os contract 0073 §9, `order_page`): the QR of a table is a portal link whose
+  record is the `dining_table`. The menu lists items ticked "Tampil di menu QR meja" (`item.qr_menu`), with their option
+  groups (contract 0048 §1: Level pedas, Es, Tambahan). The guest picks options, marks a dish "Antar nanti", sees the
+  model's estimate, sends a round, and follows the table: the table's open bill, every phone's rounds, and buttons
+  Panggil pelayan, Minta tagihan, Minta diantar.
+- **Table session** = the table's open bill. A round on a closed table waits for the cashier ("Dari HP tamu",
+  Terima opens the table); a round on an open table goes straight to the bill and the kitchen (flow
+  `self_order_on_create`). A paid bill closes the session: the QR takes no round until a person opens it again. An
+  outlet without an open cashier shift refuses QR orders.
+- **Prices** always come from `item.rate` plus `item_option.price_delta`: on the bill, `pos_sale.options` rows by
+  `line_key` are folded into each line's rate (`pos_sale_item.option_delta`), so promotions, PPN, PBJT, receipts and the
+  journal see one price per line.
+- **Kitchen**: writes by flows start no flow, so the flows make the station tickets themselves with the routing of
+  `kitchen_ticket_on_draft` (buyer `<table> · <order>`) and record the lines in `sent_to_kitchen`. Held lines wait until
+  the cashier handles "Minta diantar" (or taps "Kirim ke dapur" on the bill). `self_order_kitchen_progress` moves the
+  guest's round to Sedang disiapkan, Siap diantar, Sudah diantar.
+- **QR stickers**: `POST /api/v1/portal/pesan/qr {records?}` (owner, head office) makes a new link per table and
+  revokes the old ones; the answer carries a QR image per table.
 
-Statuses: `new` Menunggu kasir, `accepted` Diterima kasir, `cooking`, `ready`, `served` (from the kitchen), `rejected`
-Ditolak kasir, `cancelled` Dibatalkan tamu (the guest only, within 2 minutes, while new).
+Statuses: `new` Menunggu kasir, `accepted` Diterima, `cooking`, `ready`, `served` (from the kitchen), `done` (a request
+handled), `rejected` Ditolak kasir, `cancelled` Dibatalkan tamu (the guest only, within 2 minutes, while new).
 
-Not in v1: pay first by QRIS (needs the payment rail of contract 0063), auto-accept, item photos, options and
-modifiers, a printed QR sheet in the web app. Test: `python3 tests/day_one.py --site demo-kasir` (scenarios
-`scenario_self_order_*` in `tests/day_one_self_order.py`).
+Not in this version: pay first, a printed QR sheet page in the web app, the cashier's own option dialog on the counter
+("Pilih varian", contract 0048 P5 web), Tolak as a second button on the queue card (the renderer shows one step; turn a
+round down from its form), per-item kitchen status (KDS #131), a 3-hour idle stop, menus per outlet.
+Test: `python3 tests/day_one.py --site demo-kasir` (`tests/day_one_self_order.py`).
