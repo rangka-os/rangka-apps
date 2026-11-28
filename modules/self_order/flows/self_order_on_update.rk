@@ -77,7 +77,7 @@ steps:
     as: open_bill_open
   - find: pos_sale
     if: "event.kind == 'order' && event.before.status == 'new' && event.status == 'accepted'"
-    where: "open_bill_open.size() > 0 && name == open_bill_open[0].name"
+    where: "table == event.table && docstatus == 0 && open_bill_open.size() > 0 && name == open_bill_open[0].name"
     as: open_bill
   - find: dining_table
     if: "event.kind == 'order' && event.before.status == 'new' && event.status == 'accepted'"
@@ -112,7 +112,7 @@ steps:
     as: bill_open
   - find: pos_sale
     if: "event.kind == 'order' && event.before.status == 'new' && event.status == 'accepted'"
-    where: "bill_open.size() > 0 && name == bill_open[0].name"
+    where: "table == event.table && docstatus == 0 && bill_open.size() > 0 && name == bill_open[0].name"
     as: bill
   # the kitchen (module kitchen): writes by flows start no flow, so the station tickets are made here with the routing of
   # kitchen_ticket_on_draft, buyer "<table> · <order>"; lines the guest wants later ("Antar nanti") wait on the bill
@@ -156,7 +156,7 @@ steps:
     as: hopen
   - find: pos_sale
     if: "event.kind == 'fire' && event.before.status == 'new' && event.status == 'done' && event.about != '' && held != null"
-    where: "hopen.filter(b, b.items.exists(x, held.items.exists(l, l.later && x.line_key.endsWith(held.name + ':' + l.line_key)))).size() > 0 && name == hopen.filter(b, b.items.exists(x, held.items.exists(l, l.later && x.line_key.endsWith(held.name + ':' + l.line_key))))[0].name"
+    where: "table == event.table && docstatus == 0 && hopen.filter(b, b.items.exists(x, held.items.exists(l, l.later && x.line_key.endsWith(held.name + ':' + l.line_key)))).size() > 0 && name == hopen.filter(b, b.items.exists(x, held.items.exists(l, l.later && x.line_key.endsWith(held.name + ':' + l.line_key))))[0].name"
     as: hbill
   - find: dining_table
     if: "event.kind == 'fire' && event.before.status == 'new' && event.status == 'done' && event.about != '' && held != null && hbill != null"

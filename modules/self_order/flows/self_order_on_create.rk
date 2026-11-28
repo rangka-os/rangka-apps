@@ -46,7 +46,7 @@ steps:
     as: open_bill_open
   - find: pos_sale
     if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800"
-    where: "open_bill_open.size() > 0 && name == open_bill_open[0].name"
+    where: "table == event.table && docstatus == 0 && open_bill_open.size() > 0 && name == open_bill_open[0].name"
     as: open_bill
   - find: dining_table
     if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800"
@@ -81,7 +81,7 @@ steps:
     as: bill_open
   - find: pos_sale
     if: "session != null && event.kind == 'order' && !session.qr_closed && epoch(last.size() > 0 ? last[0].ordered_at : session.sold_at) > epoch(now()) - 10800"
-    where: "bill_open.size() > 0 && name == bill_open[0].name"
+    where: "table == event.table && docstatus == 0 && bill_open.size() > 0 && name == bill_open[0].name"
     as: bill
   # the kitchen (module kitchen): writes by flows start no flow, so the station tickets are made here with the routing of
   # kitchen_ticket_on_draft, buyer "<table> · <order>"; lines the guest wants later ("Antar nanti") wait on the bill
