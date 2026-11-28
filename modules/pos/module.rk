@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/module.json
 name: pos
-version: 1.10.0
+version: 1.11.0
 title: {id: Kasir, en: Point of sale}
 summary:
   id: Kasir di browser dengan sesi kas, transaksi dan tutup sesi per outlet.
@@ -24,7 +24,8 @@ icon: shopping-basket-line
 # loyalty the checkout also takes a member, points to redeem and a part paid from the member's deposit (rangka-apps#102).
 # A sale copies the outlet's service charge (dine-in only), PBJT rate and bill rounding while it is a draft, and a paid
 # receipt can be printed split into parts (rangka-apps#121, pos 1.9.0). Tables: an open bill per table, moved, merged
-# or split by line, sent to the kitchen while a draft; a bill opened on a table is dine-in (rangka-apps#122, pos 1.10.0).
+# or split by line, sent to the kitchen while a draft; a bill opened on a table is dine-in (rangka-apps#122, pos 1.10.0). A line may carry the price of options chosen on the
+# table QR page (option_delta, written by flows only; rangka-apps#119, pos 1.11.0).
 requires: {rangka: '>=0.5', users: ^1.2, contacts: ^1.4, catalogue: ^1.5, outlets: ^1.7, stock: ^1.2}
 hooks: [stock.reverse_moves]
 optional: {accounting: ^1.4, outlet_sales: ^1.1, promotions: ^1.0, loyalty: ^1.0, shifts: ^1.0}

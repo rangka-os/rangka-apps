@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# A group of choices for made-to-order goods (rangka-os contract 0048 §1): "Level pedas", "Es", "Tambahan". Shared across
+# items (one "Gula" group for 30 drinks): an item lists its groups in option_groups. Required groups need a choice;
+# multi lets the buyer take more than one, up to max (0 = no limit). Variants as separate items (variant_group) stay
+# for retail SKUs.
+name: item_option_group
+label: {id: Grup pilihan menu, en: Option group}
+icon: list
+naming: OPG-{###}
+title_field: group_name
+permissions:
+  - {role: head_office, read: true, create: true, write: true, delete: true}
+  - {role: sales_manager, read: true, create: true, write: true}
+  - {role: cashier, read: true}
+  - {role: outlet_staff, read: true}
+fields:
+  - {name: group_name, type: data, label: {id: Nama grup}, help: {id: 'Misalnya Level pedas, Es, Tambahan'}, required: true, in_list: true}
+  - {name: required, type: check, label: {id: Wajib pilih}, help: {id: 'Pembeli harus memilih salah satu'}, in_list: true}
+  - {name: multi, type: check, label: {id: Boleh lebih dari satu}, in_list: true}
+  - {name: max, type: int, label: {id: Maksimal pilihan}, help: {id: '0 berarti tanpa batas'}, default: '0'}
+  - {name: active, type: check, label: {id: Aktif}, default: 'true', in_list: true}
+rules:
+  - name: max_not_negative
+    on: save
+    check: max >= 0
+    message: {id: 'Maksimal pilihan tidak boleh negatif'}
+views:
+  list:
+    columns: [group_name, required, multi, active]
+    sort: group_name

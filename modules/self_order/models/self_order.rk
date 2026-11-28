@@ -1,0 +1,114 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/model.json
+# What a guest sends from the table QR page (portal page pesan, kernel contract 0073 §9): a round of the table's order
+# (kind order) or a request to the staff (call a waiter, ask for the bill, ask for held dishes). Only the kernel's portal
+# route creates one, as the link's actor portal:<link id>; no role has create. Table, guest name, note, lines and their
+# options come from the page; outlet, prices and the estimate are computed here from the item, option and outlet
+# records. Staff change only the status (work screen pesanan_masuk); flow self_order_on_update holds every other change.
+# The table session is the table's open bill (a draft pos_sale on the table, rangka-apps#122): a round from a table with
+# an open bill goes straight to that bill and the kitchen (flow self_order_on_create); a round from a table without one
+# waits for the cashier, whose Terima opens the bill. A paid bill ends the session.
+name: self_order
+label: {id: Pesanan dari meja, en: Table order}
+icon: qr-code-line
+naming: SO-{outlet.code}-{YY}{MM}-{#####}
+title_field: heading
+permissions:
+  - {role: head_office, read: true, write: true, export: true}
+  - {role: cashier, read: true, write: true}
+  # the kitchen's progress (flow self_order_kitchen_progress) runs as the kitchen staff who move the ticket; the kitchen
+  # never takes, turns down or edits an order (flow self_order_on_update refuses its moves)
+  - {role: kitchen, read: true, write: true}
+fields:
+  - name: kind
+    type: select
+    label: {id: Jenis}
+    required: true
+    default: "'order'"
+    in_list: true
+    in_filter: true
+    options:
+      - {value: order, label: {id: Pesanan}}
+      - {value: call, label: {id: Panggil pelayan}}
+      - {value: bill, label: {id: Minta tagihan}}
+      - {value: fire, label: {id: Minta diantar}}
+  - name: status
+    type: select
+    label: {id: Status}
+    required: true
+    default: "'new'"
+    in_list: true
+    in_filter: true
+    chip: true
+    options:
+      - {value: new, label: {id: Menunggu kasir}}
+      - {value: accepted, label: {id: Diterima}}
+      - {value: cooking, label: {id: Sedang disiapkan}}
+      - {value: ready, label: {id: Siap diantar}}
+      - {value: served, label: {id: Sudah diantar}}
+      - {value: done, label: {id: Sudah ditangani}}
+      - {value: rejected, label: {id: Ditolak kasir}}
+      - {value: cancelled, label: {id: Dibatalkan tamu}}
+  - {name: table, type: link, to: dining_table, label: {id: Meja}, required: true, in_list: true}
+  - {name: outlet, type: link, to: outlet, label: {id: Outlet}, compute: table.outlet, in_list: true, in_filter: true}
+  - {name: table_title, type: data, label: {id: Nama meja}, compute: table.table_name}
+  - name: heading
+    type: data
+    label: {id: Pesanan}
+    compute: "(kind == 'call' ? 'Panggil pelayan · ' : (kind == 'bill' ? 'Minta tagihan · ' : (kind == 'fire' ? 'Minta diantar · ' : ''))) + 'Meja ' + table_title + (guest_name != '' ? ' · ' + guest_name : '')"
+  - {name: guest_name, type: data, label: {id: Nama tamu}, help: {id: 'Diisi tamu, boleh kosong'}}
+  - {name: note, type: data, label: {id: Catatan tamu}}
+  - {name: ordered_at, type: datetime, label: {id: Waktu kirim}, default: now(), read_only: true, in_list: true}
+  # options before items: a line reads its options' computed prices (rangka-os contract 0069 §2, tables of the parent)
+  - {name: options, type: table, of: self_order_option, label: {id: Pilihan menu}}
+  - {name: items, type: table, of: self_order_item, label: {id: Menu}}
+  - {name: item_count, type: int, label: {id: Jumlah porsi}, compute: "int(items.map(l, l.qty).sum())"}
+  - {name: held_count, type: int, label: {id: Porsi antar nanti}, compute: "int(items.filter(l, l.later).map(l, l.qty).sum())"}
+  # the guest's estimate before sending, the same order as pos_sale (#121): service on the subtotal (dine in), PBJT on
+  # subtotal plus service; the bill reprices with its own promotions and rounding
+  - {name: subtotal, type: currency, label: {id: Subtotal}, compute: "items.map(l, l.amount).sum()", in_list: true}
+  # "Rp 66.000" for the work screen's card (a card prints numbers raw), the cut of whatsapp_order.total_text
+  - name: subtotal_text
+    type: data
+    label: {id: Subtotal (teks)}
+    hidden: true
+    compute: >-
+      kind != 'order' ? '' : 'Rp ' + (int(subtotal) < 1000 ? string(int(subtotal)) :
+      int(subtotal) < 1000000 ? string(int(subtotal) / 1000) + '.' + ('x' + string(1000 + int(subtotal) - (int(subtotal) / 1000) * 1000)).replace('x1', '') :
+      int(subtotal) < 1000000000 ? string(int(subtotal) / 1000000) + '.' + ('x' + string(1000 + int(subtotal) / 1000 - (int(subtotal) / 1000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(subtotal) - (int(subtotal) / 1000) * 1000)).replace('x1', '') :
+      string(int(subtotal) / 1000000000) + '.' + ('x' + string(1000 + int(subtotal) / 1000000 - (int(subtotal) / 1000000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(subtotal) / 1000 - (int(subtotal) / 1000000) * 1000)).replace('x1', '') + '.' + ('x' + string(1000 + int(subtotal) - (int(subtotal) / 1000) * 1000)).replace('x1', ''))
+  # the work screen's two columns: rounds waiting for Terima, and requests to the staff
+  - {name: lane, type: select, label: {id: Jalur}, hidden: true, compute: "kind == 'order' ? 'order' : 'request'", options: [{value: order, label: {id: Pesanan baru}}, {value: request, label: {id: Permintaan}}]}
+  - {name: service_pct, type: float, label: {id: Service charge (%)}, compute: table.outlet.service_pct, hidden: true}
+  - {name: pbjt_pct, type: float, label: {id: PBJT (%)}, compute: table.outlet.pbjt_pct, hidden: true}
+  - {name: service_charge, type: currency, label: {id: Biaya layanan}, compute: round(subtotal * service_pct / 100)}
+  - {name: pbjt, type: currency, label: {id: PBJT}, compute: round((subtotal + service_charge) * pbjt_pct / 100)}
+  - {name: estimate, type: currency, label: {id: Perkiraan total}, compute: subtotal + service_charge + pbjt}
+  - {name: about, type: data, label: {id: Untuk pesanan}, help: {id: 'Minta diantar: pesanan yang menunya ditahan'}}
+  - {name: reject_reason, type: data, label: {id: Alasan ditolak}, help: {id: 'Boleh kosong, misalnya menu habis'}}
+  # written by the flows when the order reaches the bill
+  - {name: sale, type: link, to: pos_sale, label: {id: Tagihan meja}, read_only: true}
+  - {name: auto, type: check, label: {id: Langsung ke tagihan}, help: {id: 'Meja sudah dibuka, jadi pesanan langsung masuk tagihan dan dapur'}, read_only: true}
+  - {name: handled_by, type: data, label: {id: Diproses oleh}, read_only: true}
+  - {name: handled_at, type: datetime, label: {id: Waktu diproses}, read_only: true}
+rules:
+  - name: order_has_lines
+    on: save
+    check: "kind != 'order' || items.size() > 0"
+    message: {id: 'Pilih minimal satu menu'}
+  - name: request_has_no_lines
+    on: save
+    check: "kind == 'order' || items.size() == 0"
+    message: {id: 'Permintaan ke pelayan tidak membawa menu'}
+  - name: qty_in_range
+    on: save
+    check: "items.all(l, l.qty >= 1 && l.qty <= 50)"
+    message: {id: 'Jumlah per menu 1 sampai 50'}
+  - name: option_line_exists
+    on: save
+    check: "options.all(o, o.line in items.map(l, l.line_key))"
+    message: {id: 'Ada pilihan menu yang barisnya tidak ada'}
+views:
+  list:
+    columns: [heading, kind, status, subtotal, ordered_at, outlet]
+    filters: [kind, status, outlet, table]
+    sort: -ordered_at

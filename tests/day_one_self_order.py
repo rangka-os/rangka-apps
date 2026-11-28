@@ -1,0 +1,394 @@
+"""Day-one scenarios of the pesan_meja piece (module self_order, rangka-apps#119) on demo-kasir: a guest at Kedai Riau
+scans the QR of table A3, orders from the menu without an account, the cashier takes the order onto A3's bill and the
+kitchen gets it, the guest's page follows the kitchen, and the bill is paid at the counter.
+
+Loaded by tests/day_one.py after day_one_pos and day_one_kitchen (their members Sari, Dika, Tono and the open shift of
+Sari at Kedai Riau): `python3 tests/day_one.py --site demo-kasir --only self_order`. The guest is a client without a
+session: every guest request goes to /p/<org>/pesan/<token> (rangka-os contract 0073 §9).
+
+Covered: QR links made (and rotated) by the owner, the menu shows only sellable items with title, price and category;
+an order priced from the item records whatever the request says; refusals: wrong or rotated token, a page of another
+type, unknown item, qty out of range, too many lines, a note too long, a fourth open order on one table, a flood
+from one table (429); the guest's status list shows only the orders its own link made; cancel within 2 minutes;
+Terima puts the lines on the table's open bill (or opens one) with line keys and sends them to the stations once;
+Tolak; no step back; the guest's lines cannot be edited; kitchen progress reaches the guest; payment sends nothing to
+the kitchen again; a cashier of another outlet does not see the order; no role creates an order directly.
+"""
+import time
+
+H = {}
+RIU, DGO = "OUT-03", "OUT-02"
+KHT, ROTI, KSA = "BRG-0022", "BRG-0015", "BRG-0021"
+A3, A4, B2, B3 = "MJA-RIU-003", "MJA-RIU-004", "MJA-RIU-008", "MJA-RIU-009"
+BAR, DAPUR = "STD-001", "STD-002"
+KSA_OPTS = ["OPT-0002", "OPT-0005"]   # Sedikit es, Kurang manis: Kopi susu aren needs one Es and one Gula
+
+
+def bind(m):
+    for k in ("ok", "fail", "check", "eq", "CTX", "Api"):
+        H[k] = getattr(m, k)
+    globals().update(H)
+    m.MATRIX.update({
+        "self_order": {"head_office": {"read", "write", "export"}, "cashier": {"read", "write"}},
+        "self_order_guard": {"head_office": {"create"}, "cashier": {"create"}},
+        "item_option_group": {"head_office": {"read", "create", "write", "delete"}, "cashier": {"read"}, "outlet_staff": {"read"}},
+        "item_option": {"head_office": {"read", "create", "write", "delete"}, "cashier": {"read"}, "outlet_staff": {"read"}},
+    })
+
+
+def rec(x):
+    return (x or {}).get("record", x) or {}
+
+
+def guest():
+    """A client with no session: only the portal routes answer it."""
+    return Api(CTX["kernel"].base, cookie="")
+
+
+def qr(api, tables):
+    st, r = api.call("POST", "/api/v1/portal/pesan/qr", {"records": tables})
+    rows = {x["record"]: x for x in (r or {}).get("data", [])} if st == 200 else {}
+    return st, rows
+
+
+def order(g, path, lines, **extra):
+    return g.call("POST", path + "/order", dict({"lines": lines}, **extra))
+
+
+def order_keyed(path, lines, key):
+    """POST an order with an Idempotency-Key, as the page sends it (one key per basket)."""
+    import json, urllib.request, urllib.error
+    req = urllib.request.Request(CTX["kernel"].base + path + "/order", data=json.dumps({"lines": lines}).encode(), method="POST",
+                                 headers={"Content-Type": "application/json", "Idempotency-Key": key})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status, json.loads(r.read() or b"null")
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read() or b"null")
+
+
+def data(g, path, mine=()):
+    return g.call("GET", path + "/data" + ("?mine=" + ",".join(mine) if mine else ""))
+
+
+def scenario_self_order_guest(api):
+    """The guest's side: QR, menu, an order, every refusal, the status list and a cancel."""
+    sari = CTX.get("sari")
+    if not sari:
+        fail("self_order: cashier Sari from day_one_pos", "missing")
+        return
+    st, links = qr(api, [A3, B2, B3])
+    if not check("owner makes QR links for A3, B2, B3 -> 200 with a QR image each",
+                 st == 200 and len(links) == 3 and all(str(x.get("qr", "")).startswith("data:image/png;base64,") for x in links.values()), (st, links)):
+        return
+    CTX["so_links"] = {k: v["path"] for k, v in links.items()}
+    eq("the QR is named by the table", links[A3]["title"], "A3")
+    st, l2 = api.call("POST", "/api/v1/portal/pesan/links", {"record": A3})
+    check("a second link on A3 (another phone stand) -> 201", st == 201, (st, l2))
+    CTX["so_a3b"] = (l2 or {}).get("path", "")
+    st, r = sari.call("POST", "/api/v1/portal/pesan/qr", {"records": [A3]})
+    check("a cashier cannot make QR links (share: head_office) -> 403", st == 403, (st, r))
+
+    g = guest()
+    a3 = CTX["so_links"][A3]
+    st, page, ctype = g.html(a3)
+    check("the QR opens the page shell -> 200, HTML that loads the order script", st == 200 and "text/html" in ctype and "/portal/order.js" in page, (st, ctype))
+    st, d = data(g, a3)
+    if not check("page data -> 200, type order_page, table A3", st == 200 and d.get("page", {}).get("type") == "order_page" and d.get("anchor", {}).get("title") == "A3", (st, d)):
+        return
+    menu = {m["name"]: m for m in d.get("menu", [])}
+    items = {r["name"]: r for r in api.find("item", "true")}
+    check("the menu has the kopi and the roti, at the item's rate", KHT in menu and ROTI in menu and menu[KHT]["price"] == items[KHT]["rate"], list(menu)[:5])
+    check("no material is on the menu", all(items[n].get("kind") != "material" for n in menu if n in items), [n for n in menu if items.get(n, {}).get("kind") == "material"])
+    check("a menu row carries only name, title, price, group, sold_out and its option groups", all(set(m) == {"name", "title", "price", "group", "sold_out", "groups"} for m in menu.values()), list(menu.values())[:1])
+    opts = d.get("options") or {}
+    check("option groups come with their live options only (Meses is off)", opts.get("OPG-004", {}).get("title") == "Topping"
+          and [o["title"] for o in opts.get("OPG-004", {}).get("options", [])] == ["Keju"] and menu[KSA]["groups"] == ["OPG-001", "OPG-002", "OPG-003"], (opts.get("OPG-004"), menu.get(KSA)))
+    check("the group is the category's title, not its code", all(not str(m["group"]).startswith("KTG-") for m in menu.values()), [m["group"] for m in menu.values()][:3])
+
+    # an order: two kopi "kurang manis" and a roti; the request's price is ignored
+    st, r = order(g, a3, [{"item": KHT, "qty": 2, "note": "kurang manis", "rate": 1}, {"item": ROTI, "qty": 1}], guest="Budi")
+    o1 = (r or {}).get("order", {})
+    if not check("the guest's order -> 201, Menunggu kasir", st == 201 and o1.get("status") == "new" and o1.get("label") == "Menunggu kasir" and o1.get("can_cancel"), (st, r)):
+        return
+    so = api.get("self_order", o1["name"])
+    eq("the order sits on A3 at Kedai Riau, made by the link", (so.get("table"), so.get("outlet"), str(so.get("created_by", "")).startswith("portal:")), (A3, RIU, True))
+    eq("prices come from the item, never the request", so.get("subtotal"), 2 * items[KHT]["rate"] + items[ROTI]["rate"])
+    eq("the table has no open bill yet, so the first round waits for the cashier", so.get("status"), "new")
+    eq("the note and the guest name are kept", ([l.get("note") for l in so.get("items", [])], so.get("guest_name")), (["kurang manis", ""], "Budi"))
+    CTX["so_o1"] = o1["name"]
+
+    # refusals
+    bad = a3[:-4] + ("AAAA" if not a3.endswith("AAAA") else "BBBB")
+    n0 = len(api.find("self_order", "true"))
+    st, r = order(g, bad, [{"item": KHT, "qty": 1}])
+    check("a wrong token -> 404 and nothing written", st == 404 and len(api.find("self_order", "true")) == n0, (st, r))
+    st, r = g.call("GET", a3.replace("/pesan/", "/tagihan/") + "/data")
+    check("the table token on another page -> 404", st == 404, (st, r))
+    b2 = CTX["so_links"][B2]
+    st, r = order(g, b2, [{"item": "BRG-9999", "qty": 1}])
+    check("an item not on the menu -> 409 order_item_unavailable", st == 409 and (r or {}).get("error", {}).get("code") == "order_item_unavailable", (st, r))
+    st, r = order(g, b2, [{"item": KHT, "qty": 0}])
+    check("qty 0 -> 400 order_qty", st == 400 and (r or {}).get("error", {}).get("code") == "order_qty", (st, r))
+    st, r = order(g, b2, [{"item": KHT, "qty": 1}])
+    check("a third send from B2 is still served -> 201", st == 201, (st, r))
+    st, r = order(g, b2, [{"item": KHT, "qty": 1}])
+    check("a fourth send from one table within a minute -> 429", st == 429, (st, r))
+    b3 = CTX["so_links"][B3]
+    st, r = order(g, b3, [{"item": KHT, "qty": 1}] * 31)
+    check("31 lines -> 400 order_too_long", st == 400 and (r or {}).get("error", {}).get("code") == "order_too_long", (st, r))
+    st, r = order(g, b3, [{"item": KHT, "qty": 1, "note": "x" * 141}])
+    check("a note over 140 characters -> 400", st == 400, (st, r))
+    eq("no refused request wrote an order (only B2's good one)", len(api.find("self_order", "true")), n0 + 1)
+
+    # cancel within 2 minutes, then the open-order cap per table
+    st, r = order(g, a3, [{"item": KSA, "qty": 1, "options": KSA_OPTS}])
+    o2 = (r or {}).get("order", {}).get("name", "")
+    st, r = g.call("POST", f"{a3}/order/{o2}/cancel")
+    check("the guest cancels a fresh order -> 200, Dibatalkan tamu", st == 200 and (r or {}).get("order", {}).get("status") == "cancelled", (st, r))
+    a3b = CTX["so_a3b"]
+    st, r = order(g, a3b, [{"item": KSA, "qty": 1, "options": KSA_OPTS}])
+    CTX["so_o3"] = (r or {}).get("order", {}).get("name", "")
+    st, r = order(g, a3b, [{"item": KHT, "qty": 1}])
+    CTX["so_o4"] = (r or {}).get("order", {}).get("name", "")
+    check("orders 3 and 4 on A3 (two links) -> 201", bool(CTX["so_o3"] and CTX["so_o4"]), (st, r))
+    st, r = order(g, a3b, [{"item": KHT, "qty": 1}])
+    check("a fourth open order on A3 -> 409 order_too_many_open", st == 409 and (r or {}).get("error", {}).get("code") == "order_too_many_open", (st, r))
+    st, r = g.call("POST", f"{b3}/order/{CTX['so_o1']}/cancel")
+    check("another table's link cannot cancel the order -> 404", st == 404, (st, r))
+    st, d = data(g, a3, [CTX["so_o1"], CTX["so_o4"], "SO-RIU-0000-00001"])
+    eq("the status list shows only this link's orders", [o["name"] for o in d.get("orders", [])], [CTX["so_o1"]])
+
+
+def scenario_self_order_cashier(api):
+    """The cashier's side: Terima onto A3's bill and the kitchen, Tolak, no step back, locked lines, kitchen progress,
+    a second order onto the same bill, payment, and the scope of another outlet."""
+    sari, dika, tono, shift = CTX.get("sari"), CTX.get("dika"), CTX.get("tono"), CTX.get("shift_riu")
+    o1, o3, o4 = CTX.get("so_o1"), CTX.get("so_o3"), CTX.get("so_o4")
+    if not (sari and shift and o1 and o3 and o4):
+        fail("self_order: guest scenario first", "missing orders")
+        return
+    g = guest()
+    a3 = CTX["so_links"][A3]
+    st, r = sari.create("self_order", {"table": A3, "items": [{"item": KHT, "qty": 1}]})
+    check("no role creates a table order directly -> 403", st == 403, (st, r))
+    if dika:
+        st, r = dika.patch("self_order", o1, {"status": "accepted"})
+        check("a cashier of Toko Dago cannot take a Kedai Riau order", st in (403, 404), (st, r))
+    st, r = sari.patch("self_order", o1, {"items": [{"item": KHT, "qty": 9}]})
+    check("the guest's lines cannot be edited -> refused (locked)", st != 200 and "locked" in str(r), (st, r))
+
+    bills_before = api.find("pos_sale", f"table == '{A3}' && docstatus == 0")
+    st, r = sari.patch("self_order", o1, {"status": "accepted"})
+    if not check("Sari taps Terima -> 200", st == 200, (st, r)):
+        return
+    so = api.get("self_order", o1)
+    bill = api.get("pos_sale", so.get("sale") or "") if so.get("sale") else {}
+    sh = api.get("pos_shift", bill.get("shift") or "") if bill.get("shift") else {}
+    check("A3 now has an open dine-in bill on Sari's open shift at Kedai Riau", bill.get("table") == A3 and bill.get("docstatus") == 0
+          and sh.get("cashier") == "sari.riau@contohwarung.test" and sh.get("state") == "open" and sh.get("outlet") == RIU and bill.get("order_type") == "dine_in", (bills_before, bill.get("shift"), sh.get("cashier")))
+    keys = sorted(l.get("line_key") for l in bill.get("items", []) if str(l.get("line_key", "")).startswith(o1 + ":"))
+    eq("the bill has the guest's two lines with line keys", len(keys), 2)
+    note = [l.get("note") for l in bill.get("items", []) if l.get("item") == KHT]
+    eq("the note reaches the bill line", note, ["kurang manis"])
+    tickets = api.find("kitchen_ticket", f"sale == '{bill.get('name')}'", children=1)
+    by_station = {t["station"]: t for t in tickets}
+    check("one ticket at Bar (kopi) and one at Dapur (roti), titled A3 and the order",
+          set(by_station) == {BAR, DAPUR} and all(t.get("buyer") == f"A3 · {o1}" and t.get("status") == "new" for t in tickets), tickets)
+    sent = {s.get("key") for s in (bill.get("sent_to_kitchen") or [])}
+    check("the lines are recorded as sent to the kitchen", set(keys) <= sent, (keys, sent))
+    st, d = data(g, a3, [o1])
+    eq("the guest sees Diterima", [o.get("label") for o in d.get("orders", [])], ["Diterima"])
+    st, r = sari.patch("self_order", o1, {"status": "new"})
+    check("no step back after Terima -> refused (bad_step)", st != 200 and "bad_step" in str(r), (st, r))
+
+    if tono and BAR in by_station:
+        st, r = tono.patch("kitchen_ticket", by_station[BAR]["name"], {"status": "cooking"})
+        check("the kitchen starts the kopi -> 200", st == 200, (st, r))
+        st, d = data(g, a3, [o1])
+        eq("the guest sees Sedang disiapkan", [o.get("label") for o in d.get("orders", [])], ["Sedang disiapkan"])
+        st, r = tono.patch("kitchen_ticket", by_station[BAR]["name"], {"status": "ready"})
+        st, d = data(g, a3, [o1])
+        st2, r2 = tono.patch("self_order", o1, {"status": "rejected"})
+        check("the kitchen cannot take or turn down an order -> refused", st2 != 200, (st2, r2))
+        eq("the guest sees Siap diantar", [o.get("label") for o in d.get("orders", [])], ["Siap diantar"])
+
+    st, r = sari.patch("self_order", o3, {"status": "rejected", "reject_reason": "Kopi susu aren habis"})
+    check("Sari taps Tolak on another order -> 200, Ditolak kasir", st == 200 and rec(r).get("status") == "rejected", (st, r))
+    rev0 = api.get("pos_sale", bill["name"]).get("rev", 0)
+    st, r = sari.patch("self_order", o4, {"status": "accepted"})
+    b = api.get("pos_sale", bill["name"])
+    check("a second order lands on the same open bill, rev goes up", st == 200 and api.get("self_order", o4).get("sale") == bill["name"]
+          and len(b.get("items", [])) == len(bill.get("items", [])) + 1 and b.get("rev", 0) == rev0 + 1, (st, r, b.get("rev")))
+    eq("A3 still has one open bill", len(api.find("pos_sale", f"table == '{A3}' && docstatus == 0 && !merged")), 1)
+
+    n_tickets = len(api.find("kitchen_ticket", f"sale == '{bill['name']}'"))
+    st, r = sari.verb("pos_sale", bill["name"], "submit")
+    check("the bill is paid at the counter -> 200", st == 200, (st, r))
+    paid = rec(r).get("name") or bill["name"]
+    eq("payment sends nothing to the kitchen again", len(api.find("kitchen_ticket", f"sale == '{paid}'")), n_tickets)
+    eq("the order points at the paid receipt", api.get("self_order", o1).get("sale"), paid)
+
+    st, links = qr(api, [A3])
+    st2, r2 = data(g, a3)
+    check("a new QR sheet for A3 retires the old sticker -> 410", st == 200 and st2 == 410, (st, st2, r2))
+    st3, r3 = data(g, links[A3]["path"])
+    check("the new sticker opens the menu -> 200", st3 == 200, st3)
+
+
+def scenario_self_order_session(api):
+    """Options checked and priced from the records, the estimate from the model, the first round opening table A4, a
+    later round going straight to the bill and the kitchen, a dish held until the guest asks, calls and the bill request,
+    the table view every phone sees, and an outlet whose cashier has not opened: refused."""
+    sari = CTX.get("sari")
+    if not sari:
+        return
+    time.sleep(30)   # the per-address order bucket (20, then 1 per 2 s) refills after the guest scenario's sends
+    g = guest()
+    st, links = qr(api, [A4, "MJA-BRG-001"])
+    if not check("QR for A4 and Braga table 1 -> 200", st == 200 and len(links) == 2, (st, links)):
+        return
+    a4 = links[A4]["path"]
+    st, l2 = api.call("POST", "/api/v1/portal/pesan/links", {"record": A4})
+    a4b = (l2 or {}).get("path", "")
+    st, l3 = api.call("POST", "/api/v1/portal/pesan/links", {"record": A4})
+    a4c = (l3 or {}).get("path", "")   # a third phone stand: each link has its own small bucket
+    items = {r["name"]: r for r in api.find("item", "true")}
+
+    def est(lines):
+        return g.call("POST", a4 + "/estimate", {"lines": lines})
+    code = lambda r: (r or {}).get("error", {}).get("code")
+    st, r = est([{"item": KSA, "qty": 1}])
+    check("Kopi susu aren without Es and Gula -> 409 order_option_required", st == 409 and code(r) == "order_option_required", (st, r))
+    st, r = est([{"item": KHT, "qty": 1, "options": ["OPT-0001"]}])
+    check("an Es choice on Kopi hitam (not its group) -> 409 order_option_unavailable", st == 409 and code(r) == "order_option_unavailable", (st, r))
+    st, r = est([{"item": ROTI, "qty": 1, "options": ["OPT-0009"]}])
+    check("a switched-off option (Meses) -> 409 order_option_unavailable", st == 409 and code(r) == "order_option_unavailable", (st, r))
+    st, r = est([{"item": KSA, "qty": 1, "options": ["OPT-0001", "OPT-0002", "OPT-0005"]}])
+    check("two Es choices -> 409 order_option_one", st == 409 and code(r) == "order_option_one", (st, r))
+    st, r = est([{"item": KSA, "qty": 1, "options": KSA_OPTS + ["OPT-0006", "OPT-0007", "OPT-0008"]}])
+    check("an option of another item's group -> 409", st == 409, (st, r))
+    st, r = est([{"item": KSA, "qty": 2, "options": KSA_OPTS + ["OPT-0006"]}, {"item": ROTI, "qty": 1, "options": ["OPT-0008"], "later": True}])
+    e = {x["name"]: x["value"] for x in (r or {}).get("estimate", [])}
+    sub = 2 * (items[KSA]["rate"] + 6000) + items[ROTI]["rate"] + 4000
+    check("the estimate is the model's: options priced from the records", st == 200 and e.get("subtotal") == sub
+          and e.get("estimate") == e.get("subtotal") + e.get("service_charge") + e.get("pbjt"), (st, r))
+
+    st, r = order(g, a4, [{"item": KSA, "qty": 2, "options": KSA_OPTS + ["OPT-0006"], "note": "", "rate": 1},
+                          {"item": ROTI, "qty": 1, "options": ["OPT-0008"], "later": True}], guest="Rani")
+    r1 = (r or {}).get("order", {})
+    check("round 1 on A4 (no open bill) -> 201 and waits for the cashier", st == 201 and r1.get("status") == "new", (st, r))
+    st, r = sari.patch("self_order", r1.get("name", ""), {"status": "accepted"})
+    if not check("Sari takes round 1, which opens A4 -> 200", st == 200, (st, r)):
+        return
+    so = api.get("self_order", r1["name"])
+    bill = api.get("pos_sale", so.get("sale") or "") if so.get("sale") else {}
+    lines = {l.get("item"): l for l in bill.get("items", [])}
+    k = lines.get(KSA, {})
+    check("the bill line carries the options' price and labels", k.get("rate") == items[KSA]["rate"] + 6000 and k.get("option_delta") == 6000
+          and "Extra shot espresso" in (k.get("description") or "") and len([o for o in bill.get("options", []) if o.get("line") == k.get("line_key")]) == 3, (k, bill.get("options")))
+    eq("the bill's subtotal matches the estimate the guest saw", bill.get("subtotal"), sub)
+    sent = {x.get("key") for x in bill.get("sent_to_kitchen") or []}
+    roti = lines.get(ROTI, {})
+    check("the held roti is on the bill but not sent to the kitchen", roti.get("line_key") and roti["line_key"] not in sent and k.get("line_key") in sent, (sent, roti.get("line_key")))
+    tickets = api.find("kitchen_ticket", f"sale == '{bill.get('name')}'", children=1)
+    eq("only the Bar got a ticket (kopi); the kitchen waits for the roti", sorted(t["station"] for t in tickets), [BAR])
+
+    st, r = order(g, a4b, [{"item": KHT, "qty": 1}], guest="Budi")
+    r2 = (r or {}).get("order", {})
+    check("round 2 from another phone on the open table goes straight in -> accepted, auto", st == 201 and r2.get("status") == "accepted"
+          and api.get("self_order", r2.get("name", "")).get("auto") is True, (st, r))
+    b = api.get("pos_sale", bill["name"])
+    eq("round 2 is on the same bill", (len(b.get("items", [])), b.get("rev", 0)), (3, bill.get("rev", 0) + 1))
+    b = api.get("pos_sale", bill["name"])
+    eq("round 2 reached the Bar at once", len(api.find("kitchen_ticket", f"sale == '{bill['name']}' && station == '{BAR}'")), 2)
+    st, k1 = order_keyed(a4b, [{"item": KHT, "qty": 1}], "so-test-resend-1")
+    st2, k2 = order_keyed(a4b, [{"item": KHT, "qty": 1}], "so-test-resend-1")
+    check("a resend with the same key answers the first round, no second one", st == 201 and st2 == 201
+          and (k1 or {}).get("order", {}).get("name") == (k2 or {}).get("order", {}).get("name"), (st, k1, st2, k2))
+    eq("the resent round is on the bill once", len(api.get("pos_sale", bill["name"]).get("items", [])), 4)
+    st, r = api.patch("pos_sale", bill["name"], {"qr_closed": True})
+    st2, r2c = order(g, a4b, [{"item": KHT, "qty": 1}])
+    check("Tutup pesanan QR: the next round waits for the cashier", st == 200 and st2 == 201 and (r2c or {}).get("order", {}).get("status") == "new", (st, r, st2, r2c))
+    st, r = sari.patch("self_order", (r2c or {}).get("order", {}).get("name", ""), {"status": "rejected"})
+    check("Sari turns it down -> 200", st == 200, (st, r))
+    api.patch("pos_sale", bill["name"], {"qr_closed": False})
+    st, d = data(g, a4, [r1["name"]])
+    sess = (d or {}).get("session") or {}
+    tot = {x["name"]: x["value"] for x in sess.get("totals", [])}
+    b = api.get("pos_sale", bill["name"])
+    check("every phone sees the table bill: its total and both rounds", tot.get("grand_total") == b.get("grand_total")
+          and {r1["name"], r2["name"]} <= {x["name"] for x in sess.get("rounds", [])}, (tot, [x.get("name") for x in sess.get("rounds", [])]))
+    mine = [x for x in sess.get("rounds", []) if x["name"] == r1["name"]]
+    check("the held roti shows as held to the guest", mine and any(l.get("later") for l in mine[0].get("lines", [])), mine)
+
+    st, r = g.call("POST", a4 + "/request", {"kind": "fire", "about": r1["name"]})
+    fire = (r or {}).get("order", {}).get("name", "")
+    check("the guest asks for the held roti -> 201, waits for the staff", st == 201 and (r or {}).get("order", {}).get("status") == "new", (st, r))
+    st, r = g.call("POST", a4c + "/request", {"kind": "fire", "about": r1["name"]})
+    check("another phone cannot ask for someone else's held dish -> 404", st == 404, (st, r))
+    st, r = sari.patch("self_order", fire, {"status": "done"})
+    check("Sari sends it (Kirim ke dapur) -> 200", st == 200, (st, r))
+    t2 = api.find("kitchen_ticket", f"sale == '{bill['name']}' && station == '{DAPUR}'", children=1)
+    check("the roti reaches the Dapur now, with its topping", len(t2) == 1 and "Keju" in str(t2[0].get("items")), t2)
+    eq("round 1 has no held line any more", [l.get("later") for l in api.get("self_order", r1["name"]).get("items", [])], [False, False])
+    st, r = g.call("POST", a4c + "/request", {"kind": "call"})
+    st2, r2b = g.call("POST", a4c + "/request", {"kind": "bill"})
+    check("Panggil pelayan and Minta tagihan -> 201 each", st == 201 and st2 == 201, (st, r, st2, r2b))
+    eq("Minta tagihan marks the table's bill", api.get("pos_sale", bill["name"]).get("bill_asked"), True)
+    st, r = sari.patch("self_order", (r or {}).get("order", {}).get("name", ""), {"status": "done"})
+    check("Sari handles the call -> 200", st == 200, (st, r))
+    st, r = g.call("POST", a4c + "/request", {"kind": "dance"})
+    check("an unknown request -> 400", st == 400, (st, r))
+    st, r = sari.verb("pos_sale", bill["name"], "submit")
+    check("A4's bill is paid at the counter -> 200", st == 200, (st, r))
+    st, d = data(g, a4)
+    eq("after payment the table has no session: the next round waits for the cashier again", (d or {}).get("session"), None)
+
+    brg_open = api.find("pos_shift", "outlet == 'OUT-05' && state == 'open'")
+    if not brg_open:
+        st, r = order(g, links["MJA-BRG-001"]["path"], [{"item": KHT, "qty": 1}])
+        check("an outlet without an open cashier shift refuses QR orders -> 409", st == 409 and "Kasir belum buka" in str(r), (st, r))
+
+
+def scenario_self_order_split(api):
+    """A held dish split off to a part of the bill: Minta diantar sends it from that part; the main bill paid with the
+    part still open: the next round lands on the part, never on a second open bill beside it."""
+    sari = CTX.get("sari")
+    if not sari:
+        return
+    time.sleep(30)   # the per-address order bucket refills after the session scenario
+    T6 = "MJA-RIU-006"
+    g = guest()
+    st, links = qr(api, [T6])
+    if not check("QR for A6 -> 200", st == 200 and T6 in links, (st, links)):
+        return
+    p = links[T6]["path"]
+    st, r = order(g, p, [{"item": KHT, "qty": 1}, {"item": ROTI, "qty": 1, "later": True}])
+    r1 = (r or {}).get("order", {})
+    st, r = sari.patch("self_order", r1.get("name", ""), {"status": "accepted"})
+    if not check("round 1 on A6 taken -> 200", st == 200, (st, r)):
+        return
+    main = api.get("pos_sale", api.get("self_order", r1["name"]).get("sale") or "")
+    roti_key = [l["line_key"] for l in main.get("items", []) if l.get("item") == ROTI][0]
+    st, r = sari.patch("pos_sale", main["name"], {"split_lines": [roti_key]})
+    kids = api.find("pos_sale", f"split_of == '{main['name']}'")
+    if not check("the held roti is split off to a part", st == 200 and len(kids) == 1, (st, r, kids)):
+        return
+    child = kids[0]
+    st, r = g.call("POST", p + "/request", {"kind": "fire", "about": r1["name"]})
+    st, r = sari.patch("self_order", (r or {}).get("order", {}).get("name", ""), {"status": "done"})
+    tk = api.find("kitchen_ticket", f"sale == '{child['name']}' && station == '{DAPUR}'")
+    check("Minta diantar sends the roti from the part that holds it", st == 200 and len(tk) == 1, (st, r, tk))
+    st, r = sari.verb("pos_sale", main["name"], "submit")
+    check("the main bill is paid, the part stays open -> 200", st == 200, (st, r))
+    st, r = order(g, p, [{"item": KHT, "qty": 1}])
+    r2 = (r or {}).get("order", {})
+    check("the next round waits for the cashier (no main bill open)", st == 201 and r2.get("status") == "new", (st, r))
+    st, r = sari.patch("self_order", r2.get("name", ""), {"status": "accepted"})
+    open_bills = api.find("pos_sale", f"table == '{T6}' && docstatus == 0 && !merged")
+    check("Terima puts it on the open part: still one open bill on A6", st == 200 and [b["name"] for b in open_bills] == [child["name"]]
+          and api.get("self_order", r2["name"]).get("sale") == child["name"], (st, r, [(b["name"], b.get("split_of")) for b in open_bills]))
+
+
+SCENARIOS = [scenario_self_order_guest, scenario_self_order_cashier, scenario_self_order_session, scenario_self_order_split]

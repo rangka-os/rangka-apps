@@ -19,6 +19,33 @@ item_category:
   - {name: KTG-001, category_name: Minuman kopi}
   - {name: KTG-002, category_name: Makanan}
   - {name: KTG-003, category_name: Barang toko}
+  # the cafe's kitchen menu on the table QR page (rangka-apps#119)
+  - {name: KTG-004, category_name: Makanan berat}
+  - {name: KTG-005, category_name: Minuman lain}
+# options for made-to-order drinks and food (rangka-os contract 0048 §1; used by the table QR page, rangka-apps#119)
+item_option_group:
+  - {name: OPG-001, group_name: Es, required: true, multi: false, max: 0, active: true}
+  - {name: OPG-002, group_name: Gula, required: true, multi: false, max: 0, active: true}
+  - {name: OPG-003, group_name: Tambahan, required: false, multi: true, max: 2, active: true}
+  - {name: OPG-004, group_name: Topping, required: false, multi: true, max: 0, active: true}
+  - {name: OPG-005, group_name: Level pedas, required: true, multi: false, max: 0, active: true}
+  - {name: OPG-006, group_name: Tambahan, required: false, multi: true, max: 2, active: true}
+item_option:
+  - {name: OPT-0001, group: OPG-001, label: Normal, price_delta: 0, sort: 1, active: true}
+  - {name: OPT-0002, group: OPG-001, label: Sedikit es, price_delta: 0, sort: 2, active: true}
+  - {name: OPT-0003, group: OPG-001, label: Tanpa es, price_delta: 0, sort: 3, active: true}
+  - {name: OPT-0004, group: OPG-002, label: Normal, price_delta: 0, sort: 1, active: true}
+  - {name: OPT-0005, group: OPG-002, label: Kurang manis, price_delta: 0, sort: 2, active: true}
+  - {name: OPT-0006, group: OPG-003, label: Extra shot espresso, price_delta: 6000, sort: 1, active: true}
+  - {name: OPT-0007, group: OPG-003, label: Susu oat, price_delta: 7000, sort: 2, active: true}
+  - {name: OPT-0008, group: OPG-004, label: Keju, price_delta: 4000, sort: 1, active: true}
+  - {name: OPT-0009, group: OPG-004, label: Meses, price_delta: 3000, sort: 2, active: false}
+  - {name: OPT-0010, group: OPG-005, label: Tidak pedas, price_delta: 0, sort: 1, active: true}
+  - {name: OPT-0011, group: OPG-005, label: Sedang, price_delta: 0, sort: 2, active: true}
+  - {name: OPT-0012, group: OPG-005, label: Pedas, price_delta: 0, sort: 3, active: true}
+  - {name: OPT-0013, group: OPG-005, label: Pedas sekali, price_delta: 0, sort: 4, active: true}
+  - {name: OPT-0014, group: OPG-006, label: Telur ceplok, price_delta: 5000, sort: 1, active: true}
+  - {name: OPT-0015, group: OPG-006, label: Ayam suwir, price_delta: 8000, sort: 2, active: true}
 item:
   # retail goods, sold per piece or per dus / pak
   - {name: BRG-0001, category: KTG-003, item_name: Air mineral 600 ml, kind: good, stock_uom: UOM-001, sku: AIR-600, barcode: '8990000000011', rate: 4000, standard_cost: 2500}
@@ -34,9 +61,18 @@ item:
   - {name: BRG-0012, item_name: Susu segar, kind: material, stock_uom: UOM-004, sku: MAT-SUSU, standard_cost: 20000}
   - {name: BRG-0013, item_name: Gula aren cair, kind: material, stock_uom: UOM-004, sku: MAT-AREN, standard_cost: 40000}
   - {name: BRG-0014, item_name: Gelas plastik, kind: material, stock_uom: UOM-001, sku: MAT-GELAS, standard_cost: 600}
-  - {name: BRG-0015, category: KTG-002, item_name: Roti bakar cokelat, kind: good, stock_uom: UOM-001, sku: RTI-CKL, rate: 15000, standard_cost: 6000}
-  - {name: BRG-0021, category: KTG-001, item_name: Kopi susu aren, kind: product, stock_uom: UOM-005, sales_uom: UOM-005, sku: KSA, rate: 22000}
-  - {name: BRG-0022, category: KTG-001, item_name: Kopi hitam, kind: product, stock_uom: UOM-005, sales_uom: UOM-005, sku: KHT, rate: 15000}
+  - {name: BRG-0015, category: KTG-002, item_name: Roti bakar cokelat, kind: good, stock_uom: UOM-001, sku: RTI-CKL, rate: 15000, standard_cost: 6000, qr_menu: true, option_groups: [{group: OPG-004}]}
+  - {name: BRG-0021, category: KTG-001, item_name: Kopi susu aren, kind: product, stock_uom: UOM-005, sales_uom: UOM-005, sku: KSA, rate: 22000, qr_menu: true, option_groups: [{group: OPG-001}, {group: OPG-002}, {group: OPG-003}]}
+  - {name: BRG-0022, category: KTG-001, item_name: Kopi hitam, kind: product, stock_uom: UOM-005, sales_uom: UOM-005, sku: KHT, rate: 15000, qr_menu: true, option_groups: [{group: OPG-003}]}
+  # the cafe's kitchen menu for the table QR page (rangka-apps#119): made to order, no stock of their own
+  - {name: BRG-0051, category: KTG-004, stock_uom: UOM-001, item_name: Nasi goreng kampung, kind: service, rate: 32000, qr_menu: true, option_groups: [{group: OPG-005}, {group: OPG-006}]}
+  - {name: BRG-0052, category: KTG-004, stock_uom: UOM-001, item_name: Mie goreng jawa, kind: service, rate: 30000, qr_menu: true, option_groups: [{group: OPG-005}, {group: OPG-006}]}
+  - {name: BRG-0053, category: KTG-004, stock_uom: UOM-001, item_name: Ayam geprek sambal matah, kind: service, rate: 35000, qr_menu: true, option_groups: [{group: OPG-005}]}
+  - {name: BRG-0054, category: KTG-004, stock_uom: UOM-001, item_name: Kentang goreng, kind: service, rate: 20000, qr_menu: true}
+  - {name: BRG-0055, category: KTG-004, stock_uom: UOM-001, item_name: Pisang goreng keju, kind: service, rate: 22000, qr_menu: true}
+  - {name: BRG-0056, category: KTG-005, stock_uom: UOM-005, item_name: Teh tarik, kind: service, rate: 18000, qr_menu: true, option_groups: [{group: OPG-001}, {group: OPG-002}]}
+  - {name: BRG-0057, category: KTG-005, stock_uom: UOM-005, item_name: Es jeruk peras, kind: service, rate: 16000, qr_menu: true, option_groups: [{group: OPG-001}, {group: OPG-002}]}
+  - {name: BRG-0058, category: KTG-005, stock_uom: UOM-005, item_name: Es kopi susu pandan, kind: service, rate: 25000, qr_menu: true, active: false}
 uom_conversion:
   - {name: KONV-0001, item: BRG-0001, uom: UOM-002, factor: 24, rate: 84000}
   - {name: KONV-0002, item: BRG-0002, uom: UOM-002, factor: 40}
@@ -87,6 +123,8 @@ kitchen_station:
 kitchen_route:
   - {name: RTD-0001, station: STD-001, category: KTG-001}
   - {name: RTD-0002, station: STD-002, category: KTG-002}
+  - {name: RTD-0003, station: STD-002, category: KTG-004}
+  - {name: RTD-0004, station: STD-001, category: KTG-005}
 # tables of Kedai Riau (rangka-apps#122): two areas, ten tables, and three at Restoran Braga; the table scenarios of tests/day_one_pos.py open bills on them
 dining_area:
   - {name: ARM-001, area_name: Dalam, outlet: OUT-03, sort: 1}

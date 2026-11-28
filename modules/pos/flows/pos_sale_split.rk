@@ -29,9 +29,12 @@ steps:
           split_of: event.name
           items: "event.items.filter(l, l.line_key in event.split_lines).map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key})"
           sent_to_kitchen: "event.sent_to_kitchen.filter(s, s.key in event.split_lines)"
+          # the options of the moved lines move with them (contract 0048 §1)
+          options: "event.options.filter(o, o.line in event.split_lines).map(o, {'line': o.line, 'option': o.option})"
       - update: src
         set:
           items: "event.items.filter(l, !(l.line_key in event.split_lines)).map(l, {'item': l.item, 'packing': l.packing, 'qty': l.qty, 'discount_pct': l.discount_pct, 'description': l.description, 'note': l.note, 'is_gift': l.is_gift, 'line_key': l.line_key})"
           sent_to_kitchen: "event.sent_to_kitchen.filter(s, !(s.key in event.split_lines))"
+          options: "event.options.filter(o, !(o.line in event.split_lines)).map(o, {'line': o.line, 'option': o.option})"
           split_lines: "[]"
           rev: event.rev + 1

@@ -169,8 +169,8 @@ def scenario_pos_kasir_only_site(api):
         for name in ("config.rk", "features.rk"):
             path = os.path.join(site_dir, name)
             text = open(path).read()
-            assert "apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan]" in text, name
-            open(path, "w").write(text.replace("apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan]", "apps: [kasir]"))
+            assert "apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan, pesan_meja]" in text, name
+            open(path, "w").write(text.replace("apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan, pesan_meja]", "apps: [kasir]"))
         fixtures = os.path.join(state, "fixtures")
         os.makedirs(fixtures)
         open(os.path.join(fixtures, "demo.rk"), "w").write(KASIR_ONLY_FIXTURES)
@@ -247,8 +247,8 @@ def scenario_pos_day_source_kept_after_removal(api):
         for name in ("config.rk", "features.rk"):
             path = os.path.join(site_dir, name)
             text = open(path).read()
-            assert "apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan]" in text, name
-            open(path, "w").write(text.replace("apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan]", "apps: [kasir, stok_outlet, dapur, pembukuan]"))
+            assert "apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan, pesan_meja]" in text, name
+            open(path, "w").write(text.replace("apps: [kasir, penjualan_harian, stok_outlet, dapur, pembukuan, pesan_meja]", "apps: [kasir, stok_outlet, dapur, pembukuan, pesan_meja]"))
         r = subprocess.run([k.binary, "migrate"] + k.args(), capture_output=True, text=True)
         check("day source: migrate without penjualan_harian", r.returncode == 0, r.stderr[-400:])
         k.serve()
