@@ -15,7 +15,7 @@ modules:
   users: ^1.2
   catalogue: ^1.3
   outlets: ^1.2
-  pos: ^1.11
+  pos: ^1.12
   kitchen: ^1.2
 dashboards: [dapur_hari_ini]
 roles: [kitchen, cashier, head_office]

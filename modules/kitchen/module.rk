@@ -16,4 +16,4 @@ icon: restaurant-line
 # the stamp). A voided receipt voids its tickets; a corrected receipt (amend) makes new tickets marked as a revision.
 # The kitchen screen (screens/dapur.rk) is a queue screen of kernel contract 0030 over these tickets, dark with a tone
 # per new ticket; screens/siap_ambil.rk is the read-only pickup board of ready tickets for a TV at the counter.
-requires: {rangka: '>=0.5', users: ^1.2, catalogue: ^1.3, outlets: ^1.2, pos: ^1.11}
+requires: {rangka: '>=0.5', users: ^1.2, catalogue: ^1.3, outlets: ^1.2, pos: ^1.12}

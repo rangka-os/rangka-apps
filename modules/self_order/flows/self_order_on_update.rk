@@ -136,7 +136,9 @@ steps:
           station: st.name
           date: bill.date
           buyer: tbl.table_name + ' · ' + event.name
-          items: "event.items.filter(l, !l.later && routes.filter(r, r.station == st.name && r.category == l.category).size() > 0).map(l, {'item': l.item, 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note})"
+          start_label: st.start_label
+          ready_label: st.ready_label
+          items: "event.items.filter(l, !l.later && routes.filter(r, r.station == st.name && r.category == l.category).size() > 0).map(l, {'item': l.item, 'description': l.description, 'qty': l.qty, 'uom': l.uom, 'note': l.note, 'line_key': event.name + ':' + l.line_key})"
   - update: bill
     if: "event.kind == 'order' && event.before.status == 'new' && event.status == 'accepted' && app_installed('kitchen') && stations.size() > 0"
     set:
@@ -181,7 +183,9 @@ steps:
           station: st.name
           date: hbill.date
           buyer: htbl.table_name + ' · ' + held.name
-          items: "hbill.items.filter(b, held.items.exists(l, l.later && b.line_key.endsWith(held.name + ':' + l.line_key)) && !(b.line_key in hbill.sent_to_kitchen.map(s, s.key)) && hroutes.filter(r, r.station == st.name && r.category == b.category).size() > 0).map(b, {'item': b.item, 'description': b.description, 'qty': b.qty, 'uom': b.uom, 'note': b.note})"
+          start_label: st.start_label
+          ready_label: st.ready_label
+          items: "hbill.items.filter(b, held.items.exists(l, l.later && b.line_key.endsWith(held.name + ':' + l.line_key)) && !(b.line_key in hbill.sent_to_kitchen.map(s, s.key)) && hroutes.filter(r, r.station == st.name && r.category == b.category).size() > 0).map(b, {'item': b.item, 'description': b.description, 'qty': b.qty, 'uom': b.uom, 'note': b.note, 'line_key': b.line_key})"
   - update: hbill
     if: "event.kind == 'fire' && event.before.status == 'new' && event.status == 'done' && event.about != '' && held != null && hbill != null && app_installed('kitchen') && hstations.size() > 0"
     set:
