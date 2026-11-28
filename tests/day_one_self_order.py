@@ -351,4 +351,44 @@ def scenario_self_order_session(api):
         check("an outlet without an open cashier shift refuses QR orders -> 409", st == 409 and "Kasir belum buka" in str(r), (st, r))
 
 
-SCENARIOS = [scenario_self_order_guest, scenario_self_order_cashier, scenario_self_order_session]
+def scenario_self_order_split(api):
+    """A held dish split off to a part of the bill: Minta diantar sends it from that part; the main bill paid with the
+    part still open: the next round lands on the part, never on a second open bill beside it."""
+    sari = CTX.get("sari")
+    if not sari:
+        return
+    time.sleep(30)   # the per-address order bucket refills after the session scenario
+    T6 = "MJA-RIU-006"
+    g = guest()
+    st, links = qr(api, [T6])
+    if not check("QR for A6 -> 200", st == 200 and T6 in links, (st, links)):
+        return
+    p = links[T6]["path"]
+    st, r = order(g, p, [{"item": KHT, "qty": 1}, {"item": ROTI, "qty": 1, "later": True}])
+    r1 = (r or {}).get("order", {})
+    st, r = sari.patch("self_order", r1.get("name", ""), {"status": "accepted"})
+    if not check("round 1 on A6 taken -> 200", st == 200, (st, r)):
+        return
+    main = api.get("pos_sale", api.get("self_order", r1["name"]).get("sale") or "")
+    roti_key = [l["line_key"] for l in main.get("items", []) if l.get("item") == ROTI][0]
+    st, r = sari.patch("pos_sale", main["name"], {"split_lines": [roti_key]})
+    kids = api.find("pos_sale", f"split_of == '{main['name']}'")
+    if not check("the held roti is split off to a part", st == 200 and len(kids) == 1, (st, r, kids)):
+        return
+    child = kids[0]
+    st, r = g.call("POST", p + "/request", {"kind": "fire", "about": r1["name"]})
+    st, r = sari.patch("self_order", (r or {}).get("order", {}).get("name", ""), {"status": "done"})
+    tk = api.find("kitchen_ticket", f"sale == '{child['name']}' && station == '{DAPUR}'")
+    check("Minta diantar sends the roti from the part that holds it", st == 200 and len(tk) == 1, (st, r, tk))
+    st, r = sari.verb("pos_sale", main["name"], "submit")
+    check("the main bill is paid, the part stays open -> 200", st == 200, (st, r))
+    st, r = order(g, p, [{"item": KHT, "qty": 1}])
+    r2 = (r or {}).get("order", {})
+    check("the next round waits for the cashier (no main bill open)", st == 201 and r2.get("status") == "new", (st, r))
+    st, r = sari.patch("self_order", r2.get("name", ""), {"status": "accepted"})
+    open_bills = api.find("pos_sale", f"table == '{T6}' && docstatus == 0 && !merged")
+    check("Terima puts it on the open part: still one open bill on A6", st == 200 and [b["name"] for b in open_bills] == [child["name"]]
+          and api.get("self_order", r2["name"]).get("sale") == child["name"], (st, r, [(b["name"], b.get("split_of")) for b in open_bills]))
+
+
+SCENARIOS = [scenario_self_order_guest, scenario_self_order_cashier, scenario_self_order_session, scenario_self_order_split]
